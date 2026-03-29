@@ -154,19 +154,19 @@ async def seed_data(
         await db.flush()
         messages.append("[done] Created supplier: Frip and Co")
 
-    # --- Store zones ---
+    # --- Store zones (aligned with ai_mapping DEFAULT_ZONES + floor plan) ---
     zone_result = await db.execute(select(StoreZone).limit(1))
     if zone_result.scalar_one_or_none():
         messages.append("[skip] Store zones already exist.")
     else:
         zones = [
-            ("Vitrine", "Zone vitrine avant du magasin", 20),
-            ("Femme - Hauts", "Espace hauts femme", 60),
-            ("Femme - Bas", "Espace bas et jupes femme", 50),
-            ("Femme - Robes & Manteaux", "Robes et manteaux femme", 40),
-            ("Homme", "Espace homme complet", 50),
-            ("Enfants", "Espace enfants", 40),
-            ("Accessoires & Chaussures", "Accessoires, sacs et chaussures", 30),
+            ("Vitrine gauche", "Exposition exterieure cote gauche", 6),
+            ("Podium entree", "Zone mise en avant a l'entree (6.5m2)", 10),
+            ("Mur gauche", "Barres murales portants lineaires", 30),
+            ("Mur droit", "Zone meuble caisse + stockage", 15),
+            ("Mur fond", "Barres murales + etageres bois", 25),
+            ("Zone centrale", "Autour du pilier - portants libres", 20),
+            ("Cabine essayage", "Zone fond boutique - suggestions", 0),
         ]
         for name, description, capacity in zones:
             zone = StoreZone(
@@ -541,4 +541,46 @@ async def generate_test_data(
             "revenue": round(total_revenue, 2),
         },
         "messages": messages,
+    }
+
+
+@router.post("/reset-data")
+async def reset_data(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(manager_only),
+):
+    """Delete all test data (products, clients, transactions, zones) to allow re-seeding."""
+    from app.models.audit import AuditLog
+
+    counts: dict[str, int] = {}
+
+    # Order matters for FK constraints
+    for model, label in [
+        (Payment, "paiements"),
+        (TransactionItem, "lignes transaction"),
+        (Transaction, "transactions"),
+        (LoyaltyTransaction, "transactions fidelite"),
+        (LoyaltyAccount, "comptes fidelite"),
+        (Client, "clients"),
+        (Product, "produits"),
+        (StoreZone, "zones"),
+    ]:
+        result = await db.execute(select(func.count()).select_from(model))
+        count = result.scalar_one()
+        if count > 0:
+            await db.execute(model.__table__.delete())
+            counts[label] = count
+
+    # Reset cash drawers too
+    result = await db.execute(select(func.count()).select_from(CashDrawer))
+    if result.scalar_one() > 0:
+        await db.execute(CashDrawer.__table__.delete())
+        counts["caisses"] = result.scalar_one()
+
+    await db.commit()
+
+    return {
+        "status": "ok",
+        "message": "Donnees reintialisees",
+        "deleted": counts,
     }

@@ -87,6 +87,50 @@ export default function SettingsPage() {
     setLoading(false);
   };
 
+  const runReset = async () => {
+    if (!confirm('Supprimer toutes les donnees (produits, clients, transactions, zones) ? Cette action est irreversible.')) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.post('/api/admin/reset-data', {});
+      if (res.ok) {
+        const data = await res.json();
+        const deleted = Object.entries(data.deleted || {}).map(([k, v]) => `${v} ${k}`).join(', ');
+        setMessage(`Donnees supprimees : ${deleted || 'rien a supprimer'}`);
+      } else {
+        setError('Erreur lors du reset');
+      }
+    } catch {
+      setError('Erreur de connexion');
+    }
+    setLoading(false);
+  };
+
+  const runTestData = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.post('/api/admin/test-data', {});
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'skip') {
+          setMessage(data.message);
+        } else {
+          const s = data.summary;
+          setMessage(
+            `Donnees de test generees :\n${s.products} produits, ${s.clients} clients, ${s.loyalty_accounts} comptes fidelite, ${s.transactions} transactions (${s.revenue} EUR)`
+          );
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setError(err.message || err.detail || 'Erreur lors de la generation');
+      }
+    } catch {
+      setError('Erreur de connexion');
+    }
+    setLoading(false);
+  };
+
   const initZones = async () => {
     setLoading(true);
     const res = await api.post('/api/ai/mapping/init-zones', {});
@@ -327,6 +371,28 @@ export default function SettingsPage() {
               </p>
               <Button onClick={runSeed} disabled={loading}>
                 {loading ? 'Initialisation...' : 'Lancer le seed'}
+              </Button>
+            </Card>
+
+            <Card title="Donnees de test">
+              <p className="text-sm text-gray-500 mb-4">
+                Genere des produits, clients, comptes fidelite et transactions realistes pour tester l&apos;application.
+                Necessite d&apos;avoir lance le seed au prealable.
+              </p>
+              <div className="flex gap-3">
+                <Button onClick={runTestData} disabled={loading} variant="secondary">
+                  {loading ? 'Generation...' : 'Generer les donnees de test'}
+                </Button>
+              </div>
+            </Card>
+
+            <Card title="Reinitialisation">
+              <p className="text-sm text-gray-500 mb-4">
+                Supprime toutes les donnees (produits, clients, transactions, zones) pour repartir a zero.
+                Les categories et grilles de prix sont conservees.
+              </p>
+              <Button onClick={runReset} disabled={loading} variant="outline">
+                {loading ? 'Suppression...' : 'Reinitialiser les donnees'}
               </Button>
             </Card>
 
