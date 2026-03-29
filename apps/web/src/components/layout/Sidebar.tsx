@@ -50,6 +50,17 @@ const navItems = [
     ),
   },
   {
+    label: 'IA Booster',
+    href: '/ia',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v1a3 3 0 0 1-3 3h-1v4a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-4H7a3 3 0 0 1-3-3v-1a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z" />
+        <circle cx="9" cy="13" r="1" />
+        <circle cx="15" cy="13" r="1" />
+      </svg>
+    ),
+  },
+  {
     label: 'Rapports',
     href: '/reports',
     icon: (

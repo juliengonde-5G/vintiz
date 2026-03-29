@@ -11,6 +11,7 @@ from app.api.pos.router import router as pos_router
 from app.api.crm.router import router as crm_router
 from app.api.reporting.router import router as reporting_router
 from app.api.admin.router import router as admin_router
+from app.api.ai.router import router as ai_router
 
 logger = logging.getLogger("vintiz")
 
@@ -45,6 +46,7 @@ app.include_router(pos_router, prefix="/api")
 app.include_router(crm_router, prefix="/api")
 app.include_router(reporting_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
+app.include_router(ai_router, prefix="/api")
 
 
 @app.get("/api/health")
