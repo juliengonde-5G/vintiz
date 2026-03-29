@@ -19,7 +19,13 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await api.post('/api/auth/login', { username, password });
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const body = new URLSearchParams({ username, password });
+      const res = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.detail || 'Identifiants incorrects');

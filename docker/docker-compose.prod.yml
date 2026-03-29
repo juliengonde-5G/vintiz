@@ -70,10 +70,12 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.web
+      args:
+        - NEXT_PUBLIC_API_URL=https://api.vintiz.fr
     container_name: vintiz-web
     restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_URL=https://app.vintiz.fr/api
+      - NEXT_PUBLIC_API_URL=https://api.vintiz.fr
     networks:
       - vintiz-network
 
