@@ -71,8 +71,8 @@ class TransactionItem(Base):
     transaction_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("transactions.id"), nullable=False
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("products.id"), nullable=False
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id"), nullable=True
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)

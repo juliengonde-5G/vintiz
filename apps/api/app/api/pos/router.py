@@ -13,8 +13,11 @@ router = APIRouter(prefix="/pos", tags=["pos"])
 
 
 class CartItem(BaseModel):
-    product_id: uuid.UUID
+    product_id: uuid.UUID | None = None
+    name: str | None = None
     quantity: int = 1
+    unit_price: float | None = None
+    discount_percent: float = 0
 
 
 class PaymentInput(BaseModel):
@@ -58,6 +61,7 @@ async def create_transaction(
     await db.commit()
 
     return {
+        "id": str(transaction.id),
         "transaction_id": str(transaction.id),
         "transaction_number": transaction.transaction_number,
         "total_ttc": float(transaction.total_ttc),

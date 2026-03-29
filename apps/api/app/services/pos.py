@@ -36,36 +36,52 @@ class PosService:
     ) -> Transaction:
         """Create a sale transaction.
 
-        - Validates each product exists and is in *display* status.
-        - Computes HT / TVA / TTC (TVA 20 %).
-        - Creates transaction items and payment records.
-        - Validates that total payments >= total TTC (calculates change).
-        - Marks each product as *sold*.
+        Supports two kinds of cart items:
+        - Product items: have product_id → validates product, marks as sold
+        - Manual items: no product_id, just name + unit_price (e.g. sac)
+
+        Applies discount_percent per item if provided.
         """
         if not items:
             raise HTTPException(status_code=400, detail="Cart is empty")
 
         total_ttc = Decimal("0")
-        product_rows: list[tuple[Product, int]] = []
+        # (product | None, quantity, unit_price, discount_percent, item_name)
+        line_rows: list[tuple[Product | None, int, Decimal, float, str]] = []
 
         for cart_item in items:
-            result = await self.db.execute(
-                select(Product).where(Product.id == cart_item.product_id)
-            )
-            product = result.scalar_one_or_none()
-            if product is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Product {cart_item.product_id} not found",
+            if cart_item.product_id:
+                result = await self.db.execute(
+                    select(Product).where(Product.id == cart_item.product_id)
                 )
-            if product.status != ProductStatus.display:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Product {product.name} is not available for sale (status: {product.status.value})",
-                )
-            line_total = Decimal(str(product.sale_price)) * cart_item.quantity
-            total_ttc += line_total
-            product_rows.append((product, cart_item.quantity))
+                product = result.scalar_one_or_none()
+                if product is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Product {cart_item.product_id} not found",
+                    )
+                if product.status not in (ProductStatus.display, ProductStatus.stock):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Product {product.name} is not available for sale (status: {product.status.value})",
+                    )
+                unit_price = Decimal(str(cart_item.unit_price)) if cart_item.unit_price else Decimal(str(product.sale_price))
+                discount = cart_item.discount_percent or 0
+                line_total = (unit_price * cart_item.quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
+                total_ttc += line_total
+                line_rows.append((product, cart_item.quantity, unit_price, discount, product.name))
+            else:
+                # Manual item (e.g. sac)
+                if not cart_item.name or not cart_item.unit_price:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Manual items require name and unit_price",
+                    )
+                unit_price = Decimal(str(cart_item.unit_price))
+                discount = cart_item.discount_percent or 0
+                line_total = (unit_price * cart_item.quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
+                total_ttc += line_total
+                line_rows.append((None, cart_item.quantity, unit_price, discount, cart_item.name))
 
         # TVA 20 %: HT = TTC / 1.20, TVA = TTC - HT
         total_ht = (total_ttc / Decimal("1.20")).quantize(Decimal("0.01"))
@@ -99,27 +115,31 @@ class PosService:
         await self.db.flush()
 
         # Create transaction items
-        for product, quantity in product_rows:
-            line_total = Decimal(str(product.sale_price)) * quantity
+        for product, quantity, unit_price, discount, _name in line_rows:
+            line_total = (unit_price * quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
             item = TransactionItem(
                 transaction_id=transaction.id,
-                product_id=product.id,
+                product_id=product.id if product else None,
                 quantity=quantity,
-                unit_price=float(product.sale_price),
-                discount_percent=0,
+                unit_price=float(unit_price),
+                discount_percent=discount,
                 line_total=float(line_total),
             )
             self.db.add(item)
 
-            # Mark product as sold
-            product.status = ProductStatus.sold
-            product.sold_at = datetime.now(timezone.utc).isoformat()
+            # Mark product as sold (only real products)
+            if product:
+                product.status = ProductStatus.sold
+                product.sold_at = datetime.now(timezone.utc).isoformat()
 
         # Create payment records
+        method_map = {"especes": "cash", "carte": "card", "cheque": "cheque",
+                      "cash": "cash", "card": "card"}
         for pay in payments:
+            method_str = method_map.get(pay.method, pay.method)
             payment = Payment(
                 transaction_id=transaction.id,
-                method=PaymentMethod(pay.method),
+                method=PaymentMethod(method_str),
                 amount=float(pay.amount),
             )
             self.db.add(payment)
