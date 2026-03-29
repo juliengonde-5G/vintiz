@@ -54,6 +54,27 @@ interface VisionResult {
   error?: string;
 }
 
+interface AIRecoAction {
+  action: string;
+  product_name: string;
+  from_zone?: string;
+  to_zone?: string;
+  reason: string;
+}
+
+interface AIRecoZone {
+  zone: string;
+  theme_suggere: string;
+  conseil: string;
+}
+
+interface AIRecoResult {
+  resume?: string;
+  recommendations?: AIRecoAction[];
+  zone_suggestions?: AIRecoZone[];
+  error?: string;
+}
+
 function formatCurrency(v: number) {
   return v.toFixed(2).replace('.', ',') + '\u00A0\u20AC';
 }
@@ -80,7 +101,7 @@ export default function IAPage() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [aiReco, setAiReco] = useState<Record<string, unknown> | null>(null);
+  const [aiReco, setAiReco] = useState<AIRecoResult | null>(null);
   const [recoLoading, setRecoLoading] = useState(false);
 
   const loadTrends = useCallback(async () => {
@@ -487,19 +508,19 @@ export default function IAPage() {
             )}
 
             {/* AI Recommendations */}
-            {aiReco && !('error' in aiReco) && (
+            {aiReco && !aiReco.error && (
               <Card title="Recommandations IA">
                 {aiReco.resume && (
                   <div className="p-3 bg-teal-50 rounded-lg mb-4">
-                    <p className="text-sm text-teal-800">{aiReco.resume as string}</p>
+                    <p className="text-sm text-teal-800">{aiReco.resume}</p>
                   </div>
                 )}
 
-                {Array.isArray(aiReco.recommendations) && (aiReco.recommendations as Array<Record<string, string>>).length > 0 && (
+                {aiReco.recommendations && aiReco.recommendations.length > 0 && (
                   <div className="mb-4">
                     <h4 className="font-semibold text-black mb-2">Actions recommandees</h4>
                     <div className="space-y-2">
-                      {(aiReco.recommendations as Array<Record<string, string>>).map((r, i) => (
+                      {aiReco.recommendations.map((r, i) => (
                         <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
                           <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                             r.action === 'mettre_en_avant' ? 'bg-green-100 text-green-700' :
@@ -520,11 +541,11 @@ export default function IAPage() {
                   </div>
                 )}
 
-                {Array.isArray(aiReco.zone_suggestions) && (aiReco.zone_suggestions as Array<Record<string, string>>).length > 0 && (
+                {aiReco.zone_suggestions && aiReco.zone_suggestions.length > 0 && (
                   <div>
                     <h4 className="font-semibold text-black mb-2">Suggestions par zone</h4>
                     <div className="space-y-2">
-                      {(aiReco.zone_suggestions as Array<Record<string, string>>).map((s, i) => (
+                      {aiReco.zone_suggestions.map((s, i) => (
                         <div key={i} className="p-3 bg-gray-50 rounded-lg">
                           <p className="text-sm font-medium text-black">{s.zone} - {s.theme_suggere}</p>
                           <p className="text-xs text-gray-500 mt-1">{s.conseil}</p>
