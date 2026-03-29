@@ -79,6 +79,165 @@ function formatCurrency(v: number) {
   return v.toFixed(2).replace('.', ',') + '\u00A0\u20AC';
 }
 
+// ---------------------------------------------------------------------------
+// Visual floor plan of the boutique (L-shaped, ~98m2)
+// Zones are positioned to match the real layout:
+//   - Vitrine gauche (front left)
+//   - Podium entree (entry area)
+//   - Mur gauche (left wall)
+//   - Mur droit (right wall / cash desk)
+//   - Mur fond (back wall)
+//   - Zone centrale (center around pillar)
+//   - Cabine essayage (fitting room, back)
+// ---------------------------------------------------------------------------
+
+const ZONE_LAYOUT: Record<string, { x: number; y: number; w: number; h: number; label: string; shortLabel: string }> = {
+  'Vitrine gauche':      { x: 10,  y: 10,  w: 120, h: 70,  label: 'Vitrine gauche',     shortLabel: 'Vitrine' },
+  'Podium entree':       { x: 140, y: 10,  w: 160, h: 70,  label: 'Podium entree',      shortLabel: 'Podium' },
+  'Mur gauche':          { x: 10,  y: 90,  w: 60,  h: 200, label: 'Mur gauche',         shortLabel: 'Mur G' },
+  'Mur droit':           { x: 310, y: 10,  w: 60,  h: 160, label: 'Mur droit / Caisse', shortLabel: 'Caisse' },
+  'Zone centrale':       { x: 100, y: 110, w: 180, h: 130, label: 'Zone centrale',      shortLabel: 'Centre' },
+  'Mur fond':            { x: 10,  y: 300, w: 270, h: 60,  label: 'Mur fond',           shortLabel: 'Fond' },
+  'Cabine essayage':     { x: 290, y: 200, w: 80,  h: 160, label: 'Cabine essayage',    shortLabel: 'Cabine' },
+};
+
+function zoneOccupancyFill(percent: number): string {
+  if (percent > 80) return '#FEE2E2';  // red-100
+  if (percent > 50) return '#FEF9C3';  // yellow-100
+  if (percent > 0)  return '#DCFCE7';  // green-100
+  return '#F3F4F6';                     // gray-100
+}
+
+function zoneOccupancyStroke(percent: number): string {
+  if (percent > 80) return '#EF4444';  // red-500
+  if (percent > 50) return '#EAB308';  // yellow-500
+  if (percent > 0)  return '#22C55E';  // green-500
+  return '#9CA3AF';                     // gray-400
+}
+
+function FloorPlan({ zones, onSelectZone, selectedZoneId }: {
+  zones: ZoneStat[];
+  onSelectZone: (z: ZoneStat | null) => void;
+  selectedZoneId: string | null;
+}) {
+  const zoneMap = new Map(zones.map(z => [z.zone_name, z]));
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <svg viewBox="0 0 390 380" className="w-full max-w-[700px] mx-auto" style={{ minWidth: 350 }}>
+        {/* Background / building outline */}
+        <rect x="5" y="5" width="370" height="365" rx="8" fill="#FFF5F8" stroke="#E8B4D0" strokeWidth="2" />
+
+        {/* Street indicator */}
+        <text x="195" y="378" textAnchor="middle" fontSize="9" fill="#9CA3AF" fontFamily="sans-serif">
+          &#x2191; Rue Saint-Jacques &#x2191;
+        </text>
+
+        {/* Entry arrow */}
+        <line x1="220" y1="5" x2="220" y2="0" stroke="#2A8B8B" strokeWidth="2" markerEnd="url(#arrowhead)" />
+        <defs>
+          <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="4" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#2A8B8B" />
+          </marker>
+        </defs>
+        <text x="220" y="-4" textAnchor="middle" fontSize="8" fill="#2A8B8B" fontFamily="sans-serif" fontWeight="600">
+          ENTREE
+        </text>
+
+        {/* Pillar in center */}
+        <rect x="182" y="168" width="16" height="16" rx="2" fill="#D1D5DB" stroke="#9CA3AF" strokeWidth="1" />
+        <text x="190" y="178" textAnchor="middle" fontSize="6" fill="#6B7280" fontFamily="sans-serif">P</text>
+
+        {/* Zone rectangles */}
+        {Object.entries(ZONE_LAYOUT).map(([name, rect]) => {
+          const zoneData = zoneMap.get(name);
+          const occ = zoneData?.occupancy_percent ?? 0;
+          const isSelected = zoneData?.zone_id === selectedZoneId;
+          return (
+            <g
+              key={name}
+              onClick={() => onSelectZone(zoneData || null)}
+              className="cursor-pointer"
+              role="button"
+              tabIndex={0}
+            >
+              <rect
+                x={rect.x}
+                y={rect.y}
+                width={rect.w}
+                height={rect.h}
+                rx={6}
+                fill={zoneOccupancyFill(occ)}
+                stroke={isSelected ? '#2A8B8B' : zoneOccupancyStroke(occ)}
+                strokeWidth={isSelected ? 3 : 1.5}
+                opacity={0.95}
+              />
+              {/* Zone short label */}
+              <text
+                x={rect.x + rect.w / 2}
+                y={rect.y + rect.h / 2 - 6}
+                textAnchor="middle"
+                fontSize="10"
+                fontWeight="600"
+                fill="#1A1A1A"
+                fontFamily="sans-serif"
+              >
+                {rect.shortLabel}
+              </text>
+              {/* Product count / capacity */}
+              <text
+                x={rect.x + rect.w / 2}
+                y={rect.y + rect.h / 2 + 8}
+                textAnchor="middle"
+                fontSize="9"
+                fill="#6B7280"
+                fontFamily="sans-serif"
+              >
+                {zoneData ? `${zoneData.product_count}/${zoneData.capacity}` : '0/0'}
+              </text>
+              {/* Occupancy badge */}
+              {zoneData && zoneData.product_count > 0 && (
+                <>
+                  <rect
+                    x={rect.x + rect.w / 2 - 14}
+                    y={rect.y + rect.h / 2 + 14}
+                    width={28}
+                    height={14}
+                    rx={7}
+                    fill={zoneOccupancyStroke(occ)}
+                    opacity={0.2}
+                  />
+                  <text
+                    x={rect.x + rect.w / 2}
+                    y={rect.y + rect.h / 2 + 24}
+                    textAnchor="middle"
+                    fontSize="8"
+                    fontWeight="600"
+                    fill={zoneOccupancyStroke(occ)}
+                    fontFamily="sans-serif"
+                  >
+                    {occ}%
+                  </text>
+                </>
+              )}
+            </g>
+          );
+        })}
+
+        {/* Legend */}
+        <g transform="translate(10, 370)">
+          <rect x="0" y="-8" width="8" height="8" rx="2" fill="#DCFCE7" stroke="#22C55E" strokeWidth="1" />
+          <text x="12" y="-1" fontSize="7" fill="#6B7280" fontFamily="sans-serif">&lt;50%</text>
+          <rect x="50" y="-8" width="8" height="8" rx="2" fill="#FEF9C3" stroke="#EAB308" strokeWidth="1" />
+          <text x="62" y="-1" fontSize="7" fill="#6B7280" fontFamily="sans-serif">50-80%</text>
+          <rect x="108" y="-8" width="8" height="8" rx="2" fill="#FEE2E2" stroke="#EF4444" strokeWidth="1" />
+          <text x="120" y="-1" fontSize="7" fill="#6B7280" fontFamily="sans-serif">&gt;80%</text>
+        </g>
+      </svg>
+    </div>
+  );
+}
+
 function urgencyColor(u: string) {
   if (u === 'critique') return 'bg-red-100 text-red-700';
   if (u === 'haute') return 'bg-orange-100 text-orange-700';
@@ -103,6 +262,7 @@ export default function IAPage() {
   const [error, setError] = useState('');
   const [aiReco, setAiReco] = useState<AIRecoResult | null>(null);
   const [recoLoading, setRecoLoading] = useState(false);
+  const [selectedZone, setSelectedZone] = useState<ZoneStat | null>(null);
 
   const loadTrends = useCallback(async () => {
     setLoading(true);
@@ -460,51 +620,136 @@ export default function IAPage() {
                 </p>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {zones.map((z) => (
-                  <Card key={z.zone_id}>
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="font-semibold text-black">{z.zone_name}</h3>
-                        <p className="text-xs text-gray-400">{z.description}</p>
-                      </div>
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                        z.occupancy_percent > 80 ? 'bg-red-100 text-red-700' :
-                        z.occupancy_percent > 50 ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {z.occupancy_percent}%
-                      </span>
-                    </div>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Produits</span>
-                        <span className="text-black font-medium">{z.product_count} / {z.capacity}</span>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full ${
-                            z.occupancy_percent > 80 ? 'bg-red-400' :
-                            z.occupancy_percent > 50 ? 'bg-yellow-400' :
-                            'bg-green-400'
-                          }`}
-                          style={{ width: `${Math.min(100, z.occupancy_percent)}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Valeur</span>
-                        <span className="text-black font-medium">{formatCurrency(z.total_value)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Score tendance moy.</span>
-                        <span className={`font-medium ${scoreColor(z.avg_trend_score)}`}>
-                          {z.avg_trend_score}
+              <>
+                {/* Visual floor plan + detail panel */}
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                  <div className="lg:col-span-3">
+                    <Card title="Plan de la boutique">
+                      <FloorPlan
+                        zones={zones}
+                        onSelectZone={(z) => setSelectedZone(z)}
+                        selectedZoneId={selectedZone?.zone_id ?? null}
+                      />
+                    </Card>
+                  </div>
+                  <div className="lg:col-span-2">
+                    {selectedZone ? (
+                      <Card>
+                        <div className="flex items-start justify-between mb-4">
+                          <div>
+                            <h3 className="text-lg font-semibold text-black">{selectedZone.zone_name}</h3>
+                            <p className="text-xs text-gray-400 mt-1">{selectedZone.description}</p>
+                          </div>
+                          <button
+                            onClick={() => setSelectedZone(null)}
+                            className="text-gray-400 hover:text-gray-600 min-h-[36px] min-w-[36px] flex items-center justify-center"
+                          >
+                            &times;
+                          </button>
+                        </div>
+                        <div className="space-y-3 text-sm">
+                          <div className="flex justify-between py-2 border-b border-gray-100">
+                            <span className="text-gray-500">Occupation</span>
+                            <span className="font-medium text-black">{selectedZone.product_count} / {selectedZone.capacity} produits</span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-3">
+                            <div
+                              className={`h-3 rounded-full transition-all ${
+                                selectedZone.occupancy_percent > 80 ? 'bg-red-400' :
+                                selectedZone.occupancy_percent > 50 ? 'bg-yellow-400' :
+                                'bg-green-400'
+                              }`}
+                              style={{ width: `${Math.min(100, selectedZone.occupancy_percent)}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between py-2 border-b border-gray-100">
+                            <span className="text-gray-500">Taux d&apos;occupation</span>
+                            <span className={`font-bold ${
+                              selectedZone.occupancy_percent > 80 ? 'text-red-600' :
+                              selectedZone.occupancy_percent > 50 ? 'text-yellow-600' :
+                              'text-green-600'
+                            }`}>
+                              {selectedZone.occupancy_percent}%
+                            </span>
+                          </div>
+                          <div className="flex justify-between py-2 border-b border-gray-100">
+                            <span className="text-gray-500">Valeur en rayon</span>
+                            <span className="font-medium text-teal">{formatCurrency(selectedZone.total_value)}</span>
+                          </div>
+                          <div className="flex justify-between py-2 border-b border-gray-100">
+                            <span className="text-gray-500">Score tendance moyen</span>
+                            <span className={`font-bold ${scoreColor(selectedZone.avg_trend_score)}`}>
+                              {selectedZone.avg_trend_score}/100
+                            </span>
+                          </div>
+                          <div className="flex justify-between py-2">
+                            <span className="text-gray-500">Places disponibles</span>
+                            <span className="font-medium text-black">{selectedZone.capacity - selectedZone.product_count}</span>
+                          </div>
+                        </div>
+                      </Card>
+                    ) : (
+                      <Card>
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-4">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="16" x2="12" y2="12" />
+                            <line x1="12" y1="8" x2="12.01" y2="8" />
+                          </svg>
+                          <p className="text-gray-400 text-sm">Cliquez sur une zone du plan pour voir ses details</p>
+                        </div>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+
+                {/* Zone cards grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {zones.map((z) => (
+                    <Card key={z.zone_id}>
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <h3 className="font-semibold text-black">{z.zone_name}</h3>
+                          <p className="text-xs text-gray-400">{z.description}</p>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                          z.occupancy_percent > 80 ? 'bg-red-100 text-red-700' :
+                          z.occupancy_percent > 50 ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-green-100 text-green-700'
+                        }`}>
+                          {z.occupancy_percent}%
                         </span>
                       </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Produits</span>
+                          <span className="text-black font-medium">{z.product_count} / {z.capacity}</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full ${
+                              z.occupancy_percent > 80 ? 'bg-red-400' :
+                              z.occupancy_percent > 50 ? 'bg-yellow-400' :
+                              'bg-green-400'
+                            }`}
+                            style={{ width: `${Math.min(100, z.occupancy_percent)}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Valeur</span>
+                          <span className="text-black font-medium">{formatCurrency(z.total_value)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Score tendance moy.</span>
+                          <span className={`font-medium ${scoreColor(z.avg_trend_score)}`}>
+                            {z.avg_trend_score}
+                          </span>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </>
             )}
 
             {/* AI Recommendations */}
