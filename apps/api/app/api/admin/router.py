@@ -284,6 +284,23 @@ async def generate_test_data(
     current_user: User = Depends(manager_only),
 ):
     """Generate realistic test data: products, clients, loyalty, transactions."""
+    import traceback as tb
+
+    try:
+        return await _generate_test_data_impl(db)
+    except Exception as e:
+        await db.rollback()
+        error_detail = tb.format_exc()
+        logger = __import__("logging").getLogger("vintiz.admin")
+        logger.error("test-data failed: %s", error_detail)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur generation donnees: {type(e).__name__}: {str(e)}",
+        )
+
+
+async def _generate_test_data_impl(db: AsyncSession):
+    """Internal implementation of test data generation."""
     messages: list[str] = []
     now = datetime.now(timezone.utc)
 
@@ -553,6 +570,19 @@ async def reset_data(
     current_user: User = Depends(manager_only),
 ):
     """Delete all test data (products, clients, transactions, zones) to allow re-seeding."""
+    import traceback as tb
+
+    try:
+        return await _reset_data_impl(db)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur reset: {type(e).__name__}: {str(e)}",
+        )
+
+
+async def _reset_data_impl(db: AsyncSession):
     from app.models.store import AIRecommendation, StoreArrangement, ZoneProduct
 
     counts: dict[str, int] = {}

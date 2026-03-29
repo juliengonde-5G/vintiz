@@ -98,10 +98,11 @@ export default function SettingsPage() {
         const deleted = Object.entries(data.deleted || {}).map(([k, v]) => `${v} ${k}`).join(', ');
         setMessage(`Donnees supprimees : ${deleted || 'rien a supprimer'}`);
       } else {
-        setError('Erreur lors du reset');
+        const err = await res.json().catch(() => ({}));
+        setError(err.detail || 'Erreur lors du reset');
       }
-    } catch {
-      setError('Erreur de connexion');
+    } catch (e) {
+      setError('Erreur de connexion: ' + (e instanceof Error ? e.message : String(e)));
     }
     setLoading(false);
   };
@@ -123,10 +124,10 @@ export default function SettingsPage() {
         }
       } else {
         const err = await res.json().catch(() => ({}));
-        setError(err.message || err.detail || 'Erreur lors de la generation');
+        setError(err.detail || err.message || 'Erreur lors de la generation');
       }
-    } catch {
-      setError('Erreur de connexion');
+    } catch (e) {
+      setError('Erreur de connexion: ' + (e instanceof Error ? e.message : String(e)));
     }
     setLoading(false);
   };
