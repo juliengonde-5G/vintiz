@@ -9,17 +9,17 @@ import { api } from '@/lib/api';
 type Tab = 'daily' | 'weekly' | 'monthly';
 
 interface ReportData {
-  gross_revenue: number;
-  refunds: number;
+  total_revenue: number;
+  total_refunds: number;
   net_revenue: number;
   transaction_count: number;
-  average_basket: number;
-  top_products: { name: string; quantity: number; revenue: number }[];
+  avg_basket: number;
+  top_products?: { name: string; quantity: number; revenue: number }[];
 }
 
 interface StockValue {
-  total_items: number;
-  total_value: number;
+  total_products: number;
+  total_sale_value: number;
 }
 
 function formatCurrency(value: number): string {
@@ -217,11 +217,11 @@ export default function ReportsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-8">
               <Card>
                 <p className="text-xs text-gray-500 mb-1">CA brut</p>
-                <p className="text-xl font-bold text-black">{formatCurrency(report.gross_revenue)}</p>
+                <p className="text-xl font-bold text-black">{formatCurrency(report.total_revenue)}</p>
               </Card>
               <Card>
                 <p className="text-xs text-gray-500 mb-1">Remboursements</p>
-                <p className="text-xl font-bold text-red-600">{formatCurrency(report.refunds)}</p>
+                <p className="text-xl font-bold text-red-600">{formatCurrency(report.total_refunds)}</p>
               </Card>
               <Card>
                 <p className="text-xs text-gray-500 mb-1">CA net</p>
@@ -233,7 +233,7 @@ export default function ReportsPage() {
               </Card>
               <Card>
                 <p className="text-xs text-gray-500 mb-1">Panier moyen</p>
-                <p className="text-xl font-bold text-black">{formatCurrency(report.average_basket)}</p>
+                <p className="text-xl font-bold text-black">{formatCurrency(report.avg_basket)}</p>
               </Card>
             </div>
 
@@ -282,11 +282,11 @@ export default function ReportsPage() {
             <div className="flex gap-8">
               <div>
                 <p className="text-xs text-gray-500 mb-1">Articles en stock</p>
-                <p className="text-xl font-bold text-black">{stockValue.total_items}</p>
+                <p className="text-xl font-bold text-black">{stockValue.total_products}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Valeur totale</p>
-                <p className="text-xl font-bold text-teal">{formatCurrency(stockValue.total_value)}</p>
+                <p className="text-xl font-bold text-teal">{formatCurrency(stockValue.total_sale_value)}</p>
               </div>
             </div>
           ) : (

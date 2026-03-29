@@ -8,17 +8,15 @@ import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
 
 interface DashboardData {
-  revenue_today: number;
-  stock_count: number;
-  transactions_today: number;
-  average_basket: number;
-  top_products: { name: string; quantity: number; revenue: number }[];
+  today: { revenue: number; transaction_count: number; avg_basket: number };
+  stock: { count: number; value: number };
+  top_products_week: { name: string; quantity: number; revenue: number }[];
   recent_transactions: {
     id: string;
-    date: string;
-    total: number;
-    items_count: number;
-    payment_method: string;
+    transaction_number: number;
+    total_ttc: number;
+    type: string;
+    created_at: string;
   }[];
 }
 
@@ -71,7 +69,7 @@ export default function DashboardPage() {
     ? [
         {
           label: 'CA du jour',
-          value: formatCurrency(data.revenue_today),
+          value: formatCurrency(data.today.revenue),
           icon: (
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2A8B8B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="1" x2="12" y2="23" />
@@ -81,7 +79,7 @@ export default function DashboardPage() {
         },
         {
           label: 'Articles en stock',
-          value: String(data.stock_count),
+          value: String(data.stock.count),
           icon: (
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2A8B8B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
@@ -90,7 +88,7 @@ export default function DashboardPage() {
         },
         {
           label: "Transactions aujourd'hui",
-          value: String(data.transactions_today),
+          value: String(data.today.transaction_count),
           icon: (
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2A8B8B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
@@ -100,7 +98,7 @@ export default function DashboardPage() {
         },
         {
           label: 'Panier moyen',
-          value: formatCurrency(data.average_basket),
+          value: formatCurrency(data.today.avg_basket),
           icon: (
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2A8B8B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="9" cy="21" r="1" />
@@ -159,7 +157,7 @@ export default function DashboardPage() {
                   <SkeletonBlock key={i} className="h-10 w-full" />
                 ))}
               </div>
-            ) : data && data.top_products && data.top_products.length > 0 ? (
+            ) : data && data.top_products_week && data.top_products_week.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
@@ -170,7 +168,7 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.top_products.slice(0, 5).map((p, i) => (
+                    {data.top_products_week.slice(0, 5).map((p, i) => (
                       <tr key={i} className="border-b border-gray-50">
                         <td className="py-2 text-sm text-black">{p.name}</td>
                         <td className="py-2 text-sm text-gray-600 text-right">{p.quantity}</td>
@@ -204,11 +202,11 @@ export default function DashboardPage() {
                   >
                     <div>
                       <p className="text-sm font-medium text-black">
-                        {tx.items_count} article{tx.items_count > 1 ? 's' : ''}
+                        Ticket #{tx.transaction_number}
                       </p>
-                      <p className="text-xs text-gray-500">{formatDate(tx.date)}</p>
+                      <p className="text-xs text-gray-500">{tx.created_at ? formatDate(tx.created_at) : ''}</p>
                     </div>
-                    <p className="font-bold text-teal">{formatCurrency(tx.total)}</p>
+                    <p className="font-bold text-teal">{formatCurrency(tx.total_ttc)}</p>
                   </div>
                 ))}
               </div>
