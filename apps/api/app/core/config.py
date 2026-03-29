@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    model_config = {"env_prefix": "VINTIZ_", "env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()
