@@ -523,7 +523,10 @@ async def generate_test_data(
     # 9. Compute trend scores for remaining active products
     active = [p for p in created_products if p.status in (ProductStatus.stock, ProductStatus.display)]
     for p in active:
-        days_old = (now - p.created_at.replace(tzinfo=timezone.utc if p.created_at.tzinfo is None else None)).days
+        ca = p.created_at
+        if ca.tzinfo is None:
+            ca = ca.replace(tzinfo=timezone.utc)
+        days_old = (now - ca).days
         freshness = max(0, 25 - days_old)
         p.trend_score = round(random.uniform(20, 80) + freshness * 0.5, 1)
     await db.flush()
@@ -550,7 +553,7 @@ async def reset_data(
     current_user: User = Depends(manager_only),
 ):
     """Delete all test data (products, clients, transactions, zones) to allow re-seeding."""
-    from app.models.audit import AuditLog
+    from app.models.store import AIRecommendation, StoreArrangement, ZoneProduct
 
     counts: dict[str, int] = {}
 
@@ -562,8 +565,12 @@ async def reset_data(
         (LoyaltyTransaction, "transactions fidelite"),
         (LoyaltyAccount, "comptes fidelite"),
         (Client, "clients"),
+        (AIRecommendation, "recommandations IA"),
+        (StoreArrangement, "arrangements"),
+        (ZoneProduct, "zone_products"),
         (Product, "produits"),
         (StoreZone, "zones"),
+        (CashDrawer, "caisses"),
     ]:
         result = await db.execute(select(func.count()).select_from(model))
         count = result.scalar_one()
@@ -571,16 +578,10 @@ async def reset_data(
             await db.execute(model.__table__.delete())
             counts[label] = count
 
-    # Reset cash drawers too
-    result = await db.execute(select(func.count()).select_from(CashDrawer))
-    if result.scalar_one() > 0:
-        await db.execute(CashDrawer.__table__.delete())
-        counts["caisses"] = result.scalar_one()
-
     await db.commit()
 
     return {
         "status": "ok",
-        "message": "Donnees reintialisees",
+        "message": "Donnees reinitialisees",
         "deleted": counts,
     }
