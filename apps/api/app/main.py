@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.auth.router import router as auth_router
 from app.api.inventory.router import router as inventory_router
+from app.api.pos.router import router as pos_router
+from app.api.crm.router import router as crm_router
+from app.api.reporting.router import router as reporting_router
 
 logger = logging.getLogger("vintiz")
 
@@ -37,6 +40,9 @@ app.add_middleware(
 # Routers
 app.include_router(auth_router, prefix="/api")
 app.include_router(inventory_router, prefix="/api")
+app.include_router(pos_router, prefix="/api")
+app.include_router(crm_router, prefix="/api")
+app.include_router(reporting_router, prefix="/api")
 
 
 @app.get("/api/health")
