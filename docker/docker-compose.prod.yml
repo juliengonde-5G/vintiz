@@ -1,0 +1,98 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: vintiz-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../docker/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+      - site
+    networks:
+      - vintiz-network
+
+  db:
+    image: postgres:16-alpine
+    container_name: vintiz-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vintiz-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: vintiz-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vintiz-network
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: vintiz-api
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vintiz-network
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    container_name: vintiz-web
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=https://app.vintiz.fr/api
+    networks:
+      - vintiz-network
+
+  site:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.site
+    container_name: vintiz-site
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_SITE_URL=https://vintiz.fr
+    networks:
+      - vintiz-network
+
+networks:
+  vintiz-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

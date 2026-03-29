@@ -58,9 +58,23 @@ Docker Compose orchestre cinq services :
 ### Production (Scaleway VPS)
 
 - VPS Scaleway DEV1-M (3 vCPU, 4 Go RAM)
-- Docker Compose en mode production
-- Reverse proxy Caddy / Nginx avec HTTPS automatique
-- Sauvegardes PostgreSQL quotidiennes
+- Docker Compose production (`docker/docker-compose.prod.yml`)
+- Reverse proxy **Caddy** avec HTTPS automatique (Let's Encrypt)
+- Sauvegardes PostgreSQL quotidiennes (`scripts/backup.sh`, crontab 3h)
+
+**Domaines :**
+- `vintiz.fr` → Site vitrine (landing page, newsletter)
+- `app.vintiz.fr` → Back-office PWA (caisse, inventaire, dashboard)
+- `api.vintiz.fr` → API FastAPI (REST)
+
+**Deploiement :**
+```bash
+# Premier deploiement
+./scripts/deploy.sh --first-run
+
+# Mises a jour
+./scripts/deploy.sh
+```
 
 ## Conformite NF525
 
@@ -74,18 +88,25 @@ Le systeme de caisse respecte les exigences NF525 :
 
 ## Phases de developpement
 
-### Phase 1 -- Fondations (en cours)
+### Phase 1 -- MVP Caisse & Inventaire (LIVREE)
 
-Structure monorepo, infrastructure Docker, modeles de donnees, authentification JWT, scaffold API et front-end.
+- Structure monorepo, Docker, PostgreSQL, Redis
+- Page "Ouverture Prochaine" (vintiz.fr) avec collecte emails
+- API FastAPI : auth JWT/RBAC, inventaire CRUD, POS, CRM, reporting
+- Conformite NF525 : hash chain SHA-256, Z reports, audit trail
+- Frontend PWA : login, dashboard, inventaire, caisse, cloture Z
+- Services : code-barres, etiquettes, tickets, tiroir-caisse
+- Script seed data (admin, categories, grille tarifaire, zones)
+- Deploiement : Caddy reverse proxy, HTTPS, backup automatise
 
-### Phase 2 -- MVP Caisse
+### Phase 2 -- CRM & Reporting avance
 
-Systeme de caisse complet : scan / saisie produit, panier, paiement (especes, CB, mixte), tickets, conformite NF525, rapports Z.
+Fidelite client (cagnotte, ventes privees), dashboard analytics, rapports predictifs, integration meteo.
 
-### Phase 3 -- Gestion et intelligence
+### Phase 3 -- IA Booster
 
-Inventaire avance (import Excel, etiquettes, stats), tableau de bord analytique, assistant IA pour pricing et descriptions.
+Claude Vision (analyse photo produit), scoring tendance, mapping surface de vente, mode styliste cabine, recommandations hebdomadaires.
 
-### Phase 4 -- Site vitrine et lancement
+### Phase 4 -- Site vitrine complet & Social
 
-Site vintiz.fr public, newsletter, integration reseaux sociaux, deploiement production sur Scaleway.
+Site vintiz.fr public complet, extranet client, gestion reseaux sociaux, SEO local.
