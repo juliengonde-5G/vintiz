@@ -162,3 +162,30 @@ async def list_z_reports(
     fiscal_service = FiscalService(db)
     reports = await fiscal_service.list_z_reports(skip=skip, limit=limit)
     return reports
+
+
+@router.get("/transactions/{transaction_id}/receipt")
+async def get_transaction_receipt(
+    transaction_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate and return receipt text for a transaction."""
+    from sqlalchemy import select
+    from app.models.pos import Transaction
+    from app.services.receipt import ReceiptService
+
+    result = await db.execute(
+        select(Transaction).where(Transaction.id == transaction_id)
+    )
+    transaction = result.scalar_one_or_none()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    receipt_service = ReceiptService()
+    receipt_text = receipt_service.generate_receipt_text(transaction)
+
+    return {
+        "receipt_text": receipt_text,
+        "transaction_id": str(transaction_id),
+    }

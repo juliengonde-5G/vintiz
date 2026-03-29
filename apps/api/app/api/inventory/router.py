@@ -102,6 +102,41 @@ async def create_product(
     return ProductResponse.model_validate(product)
 
 
+@router.get("/products/search")
+async def search_products(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    q: str = Query(..., min_length=1, description="Search query"),
+):
+    """Search products by name, barcode, or category. Returns max 20 results. Used by POS for quick product lookup."""
+    pattern = f"%{q}%"
+    query = (
+        select(Product)
+        .outerjoin(Category, Product.category_id == Category.id)
+        .where(
+            or_(
+                Product.name.ilike(pattern),
+                Product.barcode.ilike(pattern),
+                Category.name.ilike(pattern),
+            )
+        )
+        .limit(20)
+    )
+    result = await db.execute(query)
+    products = result.scalars().all()
+    return [
+        {
+            "id": str(p.id),
+            "barcode": p.barcode,
+            "name": p.name,
+            "sale_price": float(p.sale_price),
+            "status": p.status.value,
+            "category": p.category.name if p.category else None,
+        }
+        for p in products
+    ]
+
+
 @router.get("/products/{product_id}", response_model=ProductResponse)
 async def get_product(
     product_id: uuid.UUID,

@@ -239,3 +239,86 @@ async def get_loyalty(
             for lt in (account.transactions or [])
         ],
     }
+
+
+class LoyaltyPointsRequest(BaseModel):
+    points: int
+    description: str
+
+
+@router.post("/clients/{client_id}/loyalty/earn")
+async def earn_loyalty_points(
+    client_id: uuid.UUID,
+    request: LoyaltyPointsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add points to a client's loyalty account."""
+    result = await db.execute(
+        select(LoyaltyAccount).where(LoyaltyAccount.client_id == client_id)
+    )
+    account = result.scalar_one_or_none()
+    if not account:
+        raise HTTPException(status_code=404, detail="No loyalty account found")
+
+    account.points += request.points
+
+    tx = LoyaltyTransaction(
+        account_id=account.id,
+        tx_type=LoyaltyTxType.earn,
+        points=request.points,
+        description=request.description,
+    )
+    db.add(tx)
+    await db.flush()
+    await db.refresh(account)
+    await db.commit()
+
+    return {
+        "account_id": str(account.id),
+        "client_id": str(client_id),
+        "points": account.points,
+        "earned": request.points,
+    }
+
+
+@router.post("/clients/{client_id}/loyalty/redeem")
+async def redeem_loyalty_points(
+    client_id: uuid.UUID,
+    request: LoyaltyPointsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Redeem points from a client's loyalty account."""
+    result = await db.execute(
+        select(LoyaltyAccount).where(LoyaltyAccount.client_id == client_id)
+    )
+    account = result.scalar_one_or_none()
+    if not account:
+        raise HTTPException(status_code=404, detail="No loyalty account found")
+
+    if account.points < request.points:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient points. Available: {account.points}, requested: {request.points}",
+        )
+
+    account.points -= request.points
+
+    tx = LoyaltyTransaction(
+        account_id=account.id,
+        tx_type=LoyaltyTxType.redeem,
+        points=request.points,
+        description=request.description,
+    )
+    db.add(tx)
+    await db.flush()
+    await db.refresh(account)
+    await db.commit()
+
+    return {
+        "account_id": str(account.id),
+        "client_id": str(client_id),
+        "points": account.points,
+        "redeemed": request.points,
+    }

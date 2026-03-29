@@ -250,3 +250,99 @@ async def stock_value_report(
             },
         },
     }
+
+
+@router.get("/dashboard")
+async def dashboard(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Combined dashboard data: today's revenue, stock summary, top products, recent transactions."""
+    today = date.today()
+    day_start = datetime.combine(today, datetime.min.time())
+    day_end = datetime.combine(today + timedelta(days=1), datetime.min.time())
+
+    # Today's revenue and transaction count
+    rev_result = await db.execute(
+        select(
+            func.coalesce(func.sum(Transaction.total_ttc), 0),
+            func.count(Transaction.id),
+        ).where(
+            Transaction.transaction_type == TransactionType.sale,
+            Transaction.created_at >= day_start,
+            Transaction.created_at < day_end,
+        )
+    )
+    rev_row = rev_result.one()
+    today_revenue = float(rev_row[0])
+    transaction_count = rev_row[1]
+    avg_basket = round(today_revenue / transaction_count, 2) if transaction_count > 0 else 0
+
+    # Current stock count and value
+    stock_result = await db.execute(
+        select(
+            func.count(Product.id),
+            func.coalesce(func.sum(Product.sale_price), 0),
+        ).where(
+            Product.status.in_([ProductStatus.stock, ProductStatus.display])
+        )
+    )
+    stock_row = stock_result.one()
+    stock_count = stock_row[0]
+    stock_value = float(stock_row[1])
+
+    # Top 5 products this week (Monday to now)
+    week_start = today - timedelta(days=today.weekday())
+    week_start_dt = datetime.combine(week_start, datetime.min.time())
+
+    top_result = await db.execute(
+        select(
+            Product.name,
+            func.sum(TransactionItem.quantity).label("qty"),
+            func.sum(TransactionItem.line_total).label("revenue"),
+        )
+        .join(TransactionItem, TransactionItem.product_id == Product.id)
+        .join(Transaction, TransactionItem.transaction_id == Transaction.id)
+        .where(
+            Transaction.created_at >= week_start_dt,
+            Transaction.transaction_type == TransactionType.sale,
+        )
+        .group_by(Product.id, Product.name)
+        .order_by(func.sum(TransactionItem.line_total).desc())
+        .limit(5)
+    )
+    top_products = [
+        {"name": r[0], "quantity": int(r[1]), "revenue": float(r[2])}
+        for r in top_result.all()
+    ]
+
+    # Recent 10 transactions
+    recent_result = await db.execute(
+        select(Transaction)
+        .order_by(Transaction.created_at.desc())
+        .limit(10)
+    )
+    recent_transactions = [
+        {
+            "id": str(t.id),
+            "transaction_number": t.transaction_number,
+            "total_ttc": float(t.total_ttc),
+            "type": t.transaction_type.value,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        }
+        for t in recent_result.scalars().all()
+    ]
+
+    return {
+        "today": {
+            "revenue": today_revenue,
+            "transaction_count": transaction_count,
+            "avg_basket": avg_basket,
+        },
+        "stock": {
+            "count": stock_count,
+            "value": stock_value,
+        },
+        "top_products_week": top_products,
+        "recent_transactions": recent_transactions,
+    }
