@@ -14,6 +14,86 @@ from app.models.user import User
 router = APIRouter(prefix="/crm", tags=["crm"])
 
 
+# ---------------------------------------------------------------------------
+# Public endpoint for client extranet
+# ---------------------------------------------------------------------------
+
+@router.get("/clients/lookup")
+async def lookup_client(
+    email: str = Query(..., description="Client email address"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public lookup for client extranet. Returns client info, loyalty, and recent transactions."""
+    result = await db.execute(
+        select(Client).where(Client.email == email.strip().lower())
+    )
+    client = result.scalar_one_or_none()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    loyalty_data = None
+    if client.loyalty_account:
+        la = client.loyalty_account
+        # Calculate total earned/redeemed
+        earn_result = await db.execute(
+            select(LoyaltyTransaction).where(
+                LoyaltyTransaction.account_id == la.id,
+                LoyaltyTransaction.tx_type == LoyaltyTxType.earn,
+            )
+        )
+        earned_txs = earn_result.scalars().all()
+        total_earned = sum(t.points for t in earned_txs)
+
+        redeem_result = await db.execute(
+            select(LoyaltyTransaction).where(
+                LoyaltyTransaction.account_id == la.id,
+                LoyaltyTransaction.tx_type == LoyaltyTxType.redeem,
+            )
+        )
+        redeemed_txs = redeem_result.scalars().all()
+        total_redeemed = sum(t.points for t in redeemed_txs)
+
+        loyalty_data = {
+            "points": la.points,
+            "total_earned": total_earned,
+            "total_redeemed": total_redeemed,
+            "tier": la.tier,
+        }
+
+    # Recent transactions
+    tx_result = await db.execute(
+        select(Transaction)
+        .where(Transaction.client_id == client.id)
+        .order_by(Transaction.created_at.desc())
+        .limit(20)
+    )
+    transactions = tx_result.scalars().all()
+
+    return {
+        "client": {
+            "first_name": client.first_name,
+            "last_name": client.last_name,
+            "email": client.email,
+            "phone": client.phone,
+        },
+        "loyalty": loyalty_data,
+        "recent_transactions": [
+            {
+                "id": str(t.id),
+                "transaction_number": t.transaction_number,
+                "total_ttc": float(t.total_ttc),
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+            }
+            for t in transactions
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Authenticated CRM endpoints
+# ---------------------------------------------------------------------------
+
+
 class CreateClientRequest(BaseModel):
     first_name: str
     last_name: str

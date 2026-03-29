@@ -83,10 +83,13 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.site
+      args:
+        - NEXT_PUBLIC_API_URL=https://api.vintiz.fr
     container_name: vintiz-site
     restart: unless-stopped
     environment:
       - NEXT_PUBLIC_SITE_URL=https://vintiz.fr
+      - NEXT_PUBLIC_API_URL=https://api.vintiz.fr
     networks:
       - vintiz-network
 

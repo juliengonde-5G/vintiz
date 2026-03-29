@@ -2,16 +2,30 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Vintiz - Ouverture Prochaine | Vernon",
+  title: "Vintiz | Boutique seconde main premium - Vernon",
   description:
-    "Vintiz, votre nouvelle boutique de vêtements de seconde main premium à Vernon. Ouverture prochaine au 6 rue Saint-Jacques, 27200 Vernon.",
+    "Vintiz, boutique de vetements de seconde main premium a Vernon. Marques selectionnees, pieces uniques, mode responsable. 6 rue Saint-Jacques, 27200 Vernon.",
+  keywords: "seconde main, vintage, premium, vetements femme, Vernon, friperie haut de gamme, mode responsable, Sandro, Maje, Isabel Marant",
   openGraph: {
-    title: "Vintiz - Ouverture Prochaine | Vernon",
+    title: "Vintiz | Boutique seconde main premium - Vernon",
     description:
-      "Votre nouvelle boutique de vêtements de seconde main premium à Vernon.",
+      "Mode premium de seconde main. Pieces uniques selectionnees avec soin a Vernon.",
     type: "website",
     locale: "fr_FR",
     siteName: "Vintiz",
+    url: "https://vintiz.fr",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Vintiz | Boutique seconde main premium",
+    description: "Mode premium de seconde main a Vernon.",
+  },
+  alternates: {
+    canonical: "https://vintiz.fr",
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 
