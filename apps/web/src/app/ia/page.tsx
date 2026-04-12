@@ -251,8 +251,42 @@ function scoreColor(score: number) {
   return 'text-red-600';
 }
 
+interface ChecklistItem {
+  type: string;
+  priority: string;
+  title: string;
+  description: string;
+  products?: Array<{ name: string; barcode?: string }>;
+}
+
+interface WeeklyChecklist {
+  week: number;
+  year: number;
+  generated_at: string;
+  checklist: ChecklistItem[];
+}
+
+interface TrendsMode {
+  week: number;
+  year: number;
+  generated_at: string;
+  channels: {
+    reseaux_sociaux: { summary: string; top_items: string[]; colors: string[] };
+    vinted: { summary: string; top_categories: string[]; price_trends: string };
+    retail: { summary: string; key_trends: string[] };
+  };
+}
+
+interface MarketingPersona {
+  situation: string;
+  points_forts: string[];
+  points_faibles: string[];
+  recommandations: string[];
+  generated_at: string;
+}
+
 export default function IAPage() {
-  const [tab, setTab] = useState<'vision' | 'trends' | 'pricing' | 'mapping'>('vision');
+  const [tab, setTab] = useState<'vision' | 'trends' | 'pricing' | 'mapping' | 'checklist' | 'tendances_mode' | 'marketing_report' | 'juridique'>('vision');
   const [trends, setTrends] = useState<TrendItem[]>([]);
   const [markdowns, setMarkdowns] = useState<MarkdownItem[]>([]);
   const [zones, setZones] = useState<ZoneStat[]>([]);
@@ -263,6 +297,20 @@ export default function IAPage() {
   const [aiReco, setAiReco] = useState<AIRecoResult | null>(null);
   const [recoLoading, setRecoLoading] = useState(false);
   const [selectedZone, setSelectedZone] = useState<ZoneStat | null>(null);
+
+  // New tab states
+  const [checklist, setChecklist] = useState<WeeklyChecklist | null>(null);
+  const [checklistLoading, setChecklistLoading] = useState(false);
+  const [trendsMode, setTrendsMode] = useState<TrendsMode | null>(null);
+  const [trendsModeLoading, setTrendsModeLoading] = useState(false);
+  const [trendsModeTab, setTrendsModeTab] = useState<'reseaux_sociaux' | 'vinted' | 'retail'>('reseaux_sociaux');
+  const [marketingPersona, setMarketingPersona] = useState<MarketingPersona | null>(null);
+  const [marketingLoading, setMarketingLoading] = useState(false);
+
+  // Juridique state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [legalReport, setLegalReport] = useState<any | null>(null);
+  const [legalLoading, setLegalLoading] = useState(false);
 
   const loadTrends = useCallback(async () => {
     setLoading(true);
@@ -293,7 +341,6 @@ export default function IAPage() {
         const data = await res.json();
         setZones(data);
       } else if (res.status === 404) {
-        // Init zones
         const initRes = await api.post('/api/ai/mapping/init-zones', {});
         if (initRes.ok) {
           const zonesRes = await api.get('/api/ai/mapping/zones');
@@ -304,11 +351,55 @@ export default function IAPage() {
     setLoading(false);
   }, []);
 
+  const loadChecklist = useCallback(async () => {
+    setChecklistLoading(true);
+    try {
+      const res = await api.get('/api/ai/weekly-checklist');
+      if (res.ok) setChecklist(await res.json());
+      else setError('Erreur chargement checklist');
+    } catch { setError('Erreur chargement checklist'); }
+    setChecklistLoading(false);
+  }, []);
+
+  const loadTrendsMode = useCallback(async () => {
+    setTrendsModeLoading(true);
+    try {
+      const res = await api.get('/api/ai/trends');
+      if (res.ok) setTrendsMode(await res.json());
+      else setError('Erreur chargement tendances');
+    } catch { setError('Erreur chargement tendances'); }
+    setTrendsModeLoading(false);
+  }, []);
+
+  const generateLegalReport = async () => {
+    setLegalLoading(true);
+    setLegalReport(null);
+    try {
+      const res = await api.post('/api/ai/persona/juridique', {});
+      if (res.ok) setLegalReport(await res.json());
+      else setError('Erreur génération rapport juridique');
+    } catch { setError('Erreur génération rapport juridique'); }
+    setLegalLoading(false);
+  };
+
+  const generateMarketingReport = async () => {
+    setMarketingLoading(true);
+    setMarketingPersona(null);
+    try {
+      const res = await api.post('/api/ai/persona/marketing', {});
+      if (res.ok) setMarketingPersona(await res.json());
+      else setError('Erreur génération rapport');
+    } catch { setError('Erreur génération rapport'); }
+    setMarketingLoading(false);
+  };
+
   useEffect(() => {
     if (tab === 'trends') loadTrends();
     else if (tab === 'pricing') loadMarkdowns();
     else if (tab === 'mapping') loadZones();
-  }, [tab, loadTrends, loadMarkdowns, loadZones]);
+    else if (tab === 'checklist') loadChecklist();
+    else if (tab === 'tendances_mode') loadTrendsMode();
+  }, [tab, loadTrends, loadMarkdowns, loadZones, loadChecklist, loadTrendsMode]);
 
   const refreshScores = async () => {
     setRefreshing(true);
@@ -364,10 +455,14 @@ export default function IAPage() {
   };
 
   const tabs = [
-    { key: 'vision' as const, label: 'Analyse Photo', icon: '\uD83D\uDCF7' },
-    { key: 'trends' as const, label: 'Tendances', icon: '\uD83D\uDCC8' },
-    { key: 'pricing' as const, label: 'Prix & Demarques', icon: '\uD83C\uDFF7\uFE0F' },
-    { key: 'mapping' as const, label: 'Mapping Boutique', icon: '\uD83D\uDDFA\uFE0F' },
+    { key: 'vision' as const, label: 'Analyse Photo', icon: '📷' },
+    { key: 'trends' as const, label: 'Tendances', icon: '📈' },
+    { key: 'pricing' as const, label: 'Prix & Demarques', icon: '🏷️' },
+    { key: 'mapping' as const, label: 'Mapping Boutique', icon: '🗺️' },
+    { key: 'checklist' as const, label: 'Checklist Semaine', icon: '✅' },
+    { key: 'tendances_mode' as const, label: 'Tendances Mode', icon: '👗' },
+    { key: 'marketing_report' as const, label: 'Rapport Marketing', icon: '📊' },
+    { key: 'juridique' as const, label: 'Conformité RGPD', icon: '⚖️' },
   ];
 
   return (
@@ -752,6 +847,298 @@ export default function IAPage() {
               </>
             )}
 
+        {/* CHECKLIST SEMAINE TAB */}
+        {tab === 'checklist' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-black">Checklist de la semaine</h2>
+                {checklist && <p className="text-sm text-gray-500">Semaine {checklist.week} — {checklist.year} · Générée le {new Date(checklist.generated_at).toLocaleDateString('fr-FR')}</p>}
+              </div>
+              <button onClick={loadChecklist} disabled={checklistLoading} className="min-h-[44px] px-4 py-2 rounded-lg border border-teal text-teal hover:bg-teal-50 text-sm font-medium transition-colors">
+                {checklistLoading ? 'Génération...' : '🔄 Régénérer'}
+              </button>
+            </div>
+            {checklistLoading ? (
+              <Card><div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal" /></div></Card>
+            ) : !checklist ? (
+              <Card><p className="text-gray-400 text-center py-8">Cliquez &quot;Régénérer&quot; pour générer la checklist de la semaine.</p></Card>
+            ) : (
+              <div className="space-y-4">
+                {checklist.checklist.map((item, i) => {
+                  const typeConfig: Record<string, { icon: string; bg: string; border: string }> = {
+                    mise_en_avant: { icon: '🎯', bg: 'bg-green-50', border: 'border-green-200' },
+                    reduction_prix: { icon: '💰', bg: 'bg-orange-50', border: 'border-orange-200' },
+                    vitrine: { icon: '🪟', bg: 'bg-blue-50', border: 'border-blue-200' },
+                    commande: { icon: '📦', bg: 'bg-purple-50', border: 'border-purple-200' },
+                  };
+                  const cfg = typeConfig[item.type] || { icon: '•', bg: 'bg-gray-50', border: 'border-gray-200' };
+                  const priorityColor = item.priority === 'haute' ? 'bg-red-100 text-red-700' : item.priority === 'moyenne' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600';
+                  return (
+                    <div key={i} className={`rounded-xl border p-4 ${cfg.bg} ${cfg.border}`}>
+                      <div className="flex items-start gap-3">
+                        <span className="text-2xl">{cfg.icon}</span>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold text-black">{item.title}</h3>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${priorityColor}`}>{item.priority}</span>
+                          </div>
+                          <p className="text-sm text-gray-600">{item.description}</p>
+                          {item.products && item.products.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {item.products.map((p, j) => (
+                                <span key={j} className="text-xs bg-white border border-gray-200 px-2 py-0.5 rounded-full text-gray-700">{p.name}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TENDANCES MODE TAB */}
+        {tab === 'tendances_mode' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-black">Tendances Mode</h2>
+                {trendsMode && <p className="text-sm text-gray-500">Semaine {trendsMode.week} — {trendsMode.year} · Actualisées le {new Date(trendsMode.generated_at).toLocaleDateString('fr-FR')}</p>}
+              </div>
+              <button onClick={loadTrendsMode} disabled={trendsModeLoading} className="min-h-[44px] px-4 py-2 rounded-lg border border-teal text-teal hover:bg-teal-50 text-sm font-medium transition-colors">
+                {trendsModeLoading ? 'Chargement...' : '🔄 Actualiser'}
+              </button>
+            </div>
+            {trendsModeLoading ? (
+              <Card><div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal" /></div></Card>
+            ) : !trendsMode ? (
+              <Card><p className="text-gray-400 text-center py-8">Cliquez &quot;Actualiser&quot; pour charger les tendances mode actuelles.</p></Card>
+            ) : (
+              <>
+                <div className="flex gap-2 border-b border-gray-200 pb-0">
+                  {(['reseaux_sociaux', 'vinted', 'retail'] as const).map(ch => (
+                    <button key={ch} onClick={() => setTrendsModeTab(ch)}
+                      className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${trendsModeTab === ch ? 'border-teal text-teal' : 'border-transparent text-gray-500 hover:text-black'}`}>
+                      {ch === 'reseaux_sociaux' ? '📱 Réseaux sociaux' : ch === 'vinted' ? '♻️ Vinted' : '🏪 Retail'}
+                    </button>
+                  ))}
+                </div>
+                {trendsModeTab === 'reseaux_sociaux' && (
+                  <Card>
+                    <p className="text-gray-700 mb-4 leading-relaxed">{trendsMode.channels.reseaux_sociaux.summary}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="font-semibold text-black mb-2">Tendances clés</h4>
+                        <ul className="space-y-1">{trendsMode.channels.reseaux_sociaux.top_items.map((item, i) => <li key={i} className="flex items-center gap-2 text-sm text-gray-700"><span className="text-pink-500">✦</span>{item}</li>)}</ul>
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-black mb-2">Couleurs en vogue</h4>
+                        <div className="flex flex-wrap gap-2">{trendsMode.channels.reseaux_sociaux.colors.map((c, i) => <span key={i} className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-sm">{c}</span>)}</div>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+                {trendsModeTab === 'vinted' && (
+                  <Card>
+                    <p className="text-gray-700 mb-4 leading-relaxed">{trendsMode.channels.vinted.summary}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="font-semibold text-black mb-2">Catégories populaires</h4>
+                        <ul className="space-y-1">{trendsMode.channels.vinted.top_categories.map((c, i) => <li key={i} className="flex items-center gap-2 text-sm text-gray-700"><span className="text-green-500">●</span>{c}</li>)}</ul>
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-black mb-2">Tendance des prix</h4>
+                        <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">{trendsMode.channels.vinted.price_trends}</p>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+                {trendsModeTab === 'retail' && (
+                  <Card>
+                    <p className="text-gray-700 mb-4 leading-relaxed">{trendsMode.channels.retail.summary}</p>
+                    <h4 className="font-semibold text-black mb-2">Tendances retail</h4>
+                    <ul className="space-y-2">{trendsMode.channels.retail.key_trends.map((t, i) => <li key={i} className="flex items-start gap-2 text-sm text-gray-700 p-2 bg-gray-50 rounded-lg"><span className="text-teal font-bold">{i+1}.</span>{t}</li>)}</ul>
+                  </Card>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* RAPPORT MARKETING TAB */}
+        {tab === 'marketing_report' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-black">Rapport Persona Marketing</h2>
+                <p className="text-sm text-gray-500">Analyse IA de la situation de la boutique par un responsable marketing virtuel</p>
+              </div>
+              <button onClick={generateMarketingReport} disabled={marketingLoading} className="min-h-[44px] px-4 py-2 rounded-lg bg-teal text-white hover:bg-teal-dark text-sm font-medium transition-colors">
+                {marketingLoading ? '⏳ Génération...' : '🤖 Générer le rapport'}
+              </button>
+            </div>
+            {marketingLoading && <Card><div className="flex flex-col items-center py-8 gap-3"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal" /><p className="text-sm text-gray-500">L&apos;IA analyse la boutique...</p></div></Card>}
+            {marketingPersona && (
+              <div className="space-y-4">
+                <Card title="Situation actuelle"><p className="text-gray-700 leading-relaxed">{marketingPersona.situation}</p></Card>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Card title="Points forts">
+                    <ul className="space-y-2">{marketingPersona.points_forts.map((p, i) => <li key={i} className="flex items-start gap-2 text-sm text-gray-700"><span className="text-green-500 mt-0.5">✓</span>{p}</li>)}</ul>
+                  </Card>
+                  <Card title="Points faibles">
+                    <ul className="space-y-2">{marketingPersona.points_faibles.map((p, i) => <li key={i} className="flex items-start gap-2 text-sm text-gray-700"><span className="text-orange-500 mt-0.5">!</span>{p}</li>)}</ul>
+                  </Card>
+                </div>
+                <Card title="Recommandations prioritaires">
+                  <ol className="space-y-3">{marketingPersona.recommandations.map((r, i) => <li key={i} className="flex items-start gap-3 text-sm text-gray-700 p-3 bg-gray-50 rounded-lg"><span className="font-bold text-teal w-6 shrink-0">{i+1}.</span>{r}</li>)}</ol>
+                </Card>
+                <p className="text-xs text-gray-400 text-right">Rapport généré le {new Date(marketingPersona.generated_at).toLocaleString('fr-FR')}</p>
+              </div>
+            )}
+            {!marketingPersona && !marketingLoading && (
+              <Card><p className="text-gray-400 text-center py-8">Cliquez &quot;Générer le rapport&quot; pour obtenir une analyse marketing de la boutique.</p></Card>
+            )}
+          </div>
+        )}
+
+        {/* CONFORMITE JURIDIQUE TAB */}
+        {tab === 'juridique' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-black">Conformité RGPD / CNIL</h2>
+                <p className="text-sm text-gray-500">Audit juridique de vos outils marketing par un responsable juridique virtuel</p>
+              </div>
+              <button onClick={generateLegalReport} disabled={legalLoading} className="min-h-[44px] px-4 py-2 rounded-lg bg-teal text-white hover:bg-teal-dark text-sm font-medium transition-colors">
+                {legalLoading ? '⏳ Analyse...' : '⚖️ Lancer l\'audit RGPD'}
+              </button>
+            </div>
+
+            {legalLoading && (
+              <Card>
+                <div className="flex flex-col items-center py-8 gap-3">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal" />
+                  <p className="text-sm text-gray-500">Analyse de conformité en cours...</p>
+                </div>
+              </Card>
+            )}
+
+            {legalReport && legalReport.report && (
+              <div className="space-y-4">
+                {/* Score */}
+                <div className={`p-5 rounded-xl border-2 ${
+                  legalReport.report.niveau_conformite === 'Conforme' ? 'border-green-400 bg-green-50' :
+                  legalReport.report.niveau_conformite === 'Non conforme' ? 'border-red-400 bg-red-50' :
+                  'border-yellow-400 bg-yellow-50'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Niveau de conformité</p>
+                      <p className={`text-2xl font-bold mt-1 ${
+                        legalReport.report.niveau_conformite === 'Conforme' ? 'text-green-700' :
+                        legalReport.report.niveau_conformite === 'Non conforme' ? 'text-red-700' :
+                        'text-yellow-700'
+                      }`}>{legalReport.report.niveau_conformite}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-4xl font-bold text-black">{legalReport.report.score_conformite}</p>
+                      <p className="text-sm text-gray-500">/ 100</p>
+                    </div>
+                  </div>
+                  {legalReport.report.resume_conformite && (
+                    <p className="mt-3 text-sm text-gray-700">{legalReport.report.resume_conformite}</p>
+                  )}
+                </div>
+
+                {/* Points to fix */}
+                {legalReport.report.points_a_corriger && legalReport.report.points_a_corriger.length > 0 && (
+                  <Card title="Points à corriger">
+                    <div className="space-y-3">
+                      {legalReport.report.points_a_corriger.map((point: {urgence: string; probleme: string; correction: string}, i: number) => (
+                        <div key={i} className={`p-3 rounded-lg border-l-4 ${
+                          point.urgence === 'haute' ? 'border-red-400 bg-red-50' :
+                          point.urgence === 'moyenne' ? 'border-yellow-400 bg-yellow-50' :
+                          'border-blue-300 bg-blue-50'
+                        }`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-medium text-gray-900">{point.probleme}</p>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
+                              point.urgence === 'haute' ? 'bg-red-100 text-red-700' :
+                              point.urgence === 'moyenne' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-blue-100 text-blue-700'
+                            }`}>{point.urgence}</span>
+                          </div>
+                          <p className="text-xs text-gray-600 mt-1">→ {point.correction}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                {/* Actions prioritaires */}
+                {legalReport.report.actions_prioritaires && (
+                  <Card title="Actions prioritaires">
+                    <ol className="space-y-2">
+                      {legalReport.report.actions_prioritaires.map((a: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                          <span className="font-bold text-teal shrink-0">{i + 1}.</span>
+                          {a}
+                        </li>
+                      ))}
+                    </ol>
+                  </Card>
+                )}
+
+                {/* Consentements */}
+                {legalReport.report.formulaires_consentement && legalReport.report.formulaires_consentement.length > 0 && (
+                  <Card title="Textes de consentement à intégrer">
+                    <div className="space-y-3">
+                      {legalReport.report.formulaires_consentement.map((f: {usage: string; texte_consentement: string}, i: number) => (
+                        <div key={i} className="p-3 bg-gray-50 rounded-lg">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{f.usage}</p>
+                          <p className="text-sm text-gray-700 italic">&ldquo;{f.texte_consentement}&rdquo;</p>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                {/* Mentions légales */}
+                {legalReport.report.mentions_legales_requises && (
+                  <Card title="Mentions légales requises">
+                    <ul className="space-y-1">
+                      {legalReport.report.mentions_legales_requises.map((m: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                          <span className="text-teal mt-0.5">•</span>
+                          {m}
+                        </li>
+                      ))}
+                    </ul>
+                  </Card>
+                )}
+
+                <p className="text-xs text-gray-400 text-right">Audit généré le {new Date(legalReport.generated_at).toLocaleString('fr-FR')}</p>
+              </div>
+            )}
+
+            {!legalReport && !legalLoading && (
+              <Card>
+                <div className="py-8 text-center">
+                  <p className="text-4xl mb-3">⚖️</p>
+                  <p className="text-gray-500 text-sm mb-1">Cliquez &quot;Lancer l&apos;audit RGPD&quot; pour générer un rapport de conformité.</p>
+                  <p className="text-gray-400 text-xs">L&apos;IA analyse vos outils marketing (email, SMS, personal shopper, cookies) et vous donne des recommandations de mise en conformité RGPD/CNIL.</p>
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {tab === 'mapping' && (
+          <>
             {/* AI Recommendations */}
             {aiReco && !aiReco.error && (
               <Card title="Recommandations IA">

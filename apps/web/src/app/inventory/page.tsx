@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -35,6 +36,17 @@ interface Product {
   status: string;
   trend_score: number | null;
   week_number: number | null;
+  shelf_date: string | null;
+  zone_name: string | null;
+}
+
+function formatShelfDate(dateStr: string | null): string {
+  if (!dateStr) return '-';
+  try {
+    return new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return '-';
+  }
 }
 
 function formatCurrency(v: number) {
@@ -42,6 +54,7 @@ function formatCurrency(v: number) {
 }
 
 export default function InventoryPage() {
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -187,6 +200,8 @@ export default function InventoryPage() {
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600 text-right">Prix achat</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600 text-right">Prix vente</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Statut</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-600">Mise en rayon</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-600">Emplacement</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600 text-right">Score</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Actions</th>
                 </tr>
@@ -195,7 +210,11 @@ export default function InventoryPage() {
                 {products.map((p) => {
                   const s = statusLabels[p.status] || statusLabels.stock;
                   return (
-                    <tr key={p.id} className="border-b border-gray-100 hover:bg-pink-50 transition-colors">
+                    <tr
+                      key={p.id}
+                      className="border-b border-gray-100 hover:bg-pink-50 transition-colors cursor-pointer"
+                      onClick={() => router.push('/inventory/' + p.id)}
+                    >
                       <td className="px-4 py-3 text-sm font-medium text-black">{p.name}</td>
                       <td className="px-4 py-3 text-sm text-gray-500 font-mono text-xs">{p.barcode}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{getCategoryName(p)}</td>
@@ -206,6 +225,8 @@ export default function InventoryPage() {
                       <td className="px-4 py-3">
                         <Badge variant={s.variant}>{s.label}</Badge>
                       </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{formatShelfDate(p.shelf_date)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{p.zone_name || '-'}</td>
                       <td className="px-4 py-3 text-sm text-right">
                         {p.trend_score != null ? (
                           <span className={`font-medium ${p.trend_score >= 70 ? 'text-green-600' : p.trend_score >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
@@ -218,7 +239,7 @@ export default function InventoryPage() {
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
                           <button
-                            onClick={() => handleDelete(p.id)}
+                            onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
                             className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg hover:bg-red-50 transition-colors text-gray-400 hover:text-red-600"
                             title="Supprimer"
                           >

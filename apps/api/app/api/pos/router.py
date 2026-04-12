@@ -8,6 +8,7 @@ from app.services.fiscal import FiscalService
 from pydantic import BaseModel
 from decimal import Decimal
 import uuid
+import os
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 
@@ -166,6 +167,136 @@ async def list_z_reports(
     fiscal_service = FiscalService(db)
     reports = await fiscal_service.list_z_reports(skip=skip, limit=limit)
     return reports
+
+
+class CBInitiateRequest(BaseModel):
+    amount: float
+    description: str = "Vente Vintiz"
+
+
+class ResendRequest(BaseModel):
+    channel: str  # 'email' or 'sms'
+
+
+# ---------------------------------------------------------------------------
+# CB / SumUp endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/payments/cb/initiate")
+async def initiate_cb_payment(
+    request: CBInitiateRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Initiate a SumUp card checkout. Returns checkout_id for polling."""
+    from app.services.sumup_service import SumUpService
+    svc = SumUpService()
+    result = await svc.create_checkout(
+        amount=request.amount,
+        description=request.description,
+    )
+    return result
+
+
+@router.get("/payments/cb/{checkout_id}/status")
+async def get_cb_payment_status(
+    checkout_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Poll the status of a SumUp checkout."""
+    from app.services.sumup_service import SumUpService
+    svc = SumUpService()
+    result = await svc.get_checkout_status(checkout_id)
+    return result
+
+
+@router.delete("/payments/cb/{checkout_id}")
+async def cancel_cb_payment(
+    checkout_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel a pending SumUp checkout."""
+    from app.services.sumup_service import SumUpService
+    svc = SumUpService()
+    ok = await svc.cancel_checkout(checkout_id)
+    return {"cancelled": ok}
+
+
+@router.post("/transactions/{transaction_id}/resend")
+async def resend_transaction(
+    transaction_id: uuid.UUID,
+    request: ResendRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Resend a transaction receipt by email or SMS."""
+    pos_service = PosService(db)
+    transaction = await pos_service.get_transaction(transaction_id)
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction introuvable")
+
+    client = transaction.get("client")
+    if not client:
+        raise HTTPException(status_code=400, detail="Aucun client associe a cette transaction")
+
+    ticket_num = transaction["transaction_number"]
+    total = transaction["total_ttc"]
+    items_text = "\n".join(
+        f"  - {item['name']} x{item['quantity']} : {item['unit_price']:.2f} EUR"
+        for item in transaction.get("items", [])
+    )
+
+    if request.channel == "email":
+        if not client.get("email"):
+            raise HTTPException(status_code=400, detail="Ce client n'a pas d'adresse email")
+        smtp_host = os.getenv("SMTP_HOST", "")
+        if smtp_host:
+            try:
+                import smtplib
+                from email.mime.text import MIMEText
+                msg = MIMEText(
+                    f"Bonjour {client['first_name']},\n\n"
+                    f"Voici le recu de votre achat chez Vintiz.\n\n"
+                    f"Ticket #{ticket_num}\n"
+                    f"Articles :\n{items_text}\n\n"
+                    f"Total TTC : {total:.2f} EUR\n\n"
+                    f"Merci de votre visite !\nVintiz — Boutique de seconde main premium",
+                    "plain",
+                    "utf-8",
+                )
+                msg["Subject"] = f"Votre recu Vintiz #{ticket_num}"
+                msg["From"] = os.getenv("SMTP_USER", "noreply@vintiz.fr")
+                msg["To"] = client["email"]
+                with smtplib.SMTP(smtp_host, int(os.getenv("SMTP_PORT", "587"))) as server:
+                    server.starttls()
+                    server.login(os.getenv("SMTP_USER", ""), os.getenv("SMTP_PASSWORD", ""))
+                    server.send_message(msg)
+                return {"success": True, "message": f"Email envoye a {client['email']}"}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Erreur envoi email : {e}")
+        else:
+            # Simulate
+            return {"success": True, "message": f"[SIMULE] Email envoye a {client['email']}"}
+
+    elif request.channel == "sms":
+        if not client.get("phone"):
+            raise HTTPException(status_code=400, detail="Ce client n'a pas de numero de telephone")
+        twilio_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
+        if twilio_sid:
+            try:
+                from twilio.rest import Client as TwilioClient
+                tw = TwilioClient(twilio_sid, os.getenv("TWILIO_AUTH_TOKEN", ""))
+                tw.messages.create(
+                    body=f"Vintiz - Ticket #{ticket_num} - Total {total:.2f}EUR. Merci !",
+                    from_=os.getenv("TWILIO_FROM", ""),
+                    to=client["phone"],
+                )
+                return {"success": True, "message": f"SMS envoye au {client['phone']}"}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Erreur envoi SMS : {e}")
+        else:
+            return {"success": True, "message": f"[SIMULE] SMS envoye au {client['phone']}"}
+    else:
+        raise HTTPException(status_code=400, detail="Canal invalide (email ou sms)")
 
 
 @router.get("/transactions/{transaction_id}/receipt")

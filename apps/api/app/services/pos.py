@@ -174,26 +174,56 @@ class PosService:
         ]
 
     async def get_transaction(self, transaction_id: uuid.UUID) -> dict | None:
-        """Return a single transaction with items and payments."""
+        """Return a single transaction with items, payments, and client info."""
+        from app.models.client import Client
         result = await self.db.execute(
             select(Transaction).where(Transaction.id == transaction_id)
         )
         t = result.scalar_one_or_none()
         if t is None:
             return None
+
+        # Build product name map for items that have a product_id
+        product_ids = [item.product_id for item in (t.items or []) if item.product_id]
+        product_names: dict[str, str] = {}
+        if product_ids:
+            prod_result = await self.db.execute(
+                select(Product.id, Product.name).where(Product.id.in_(product_ids))
+            )
+            for pid, pname in prod_result.all():
+                product_names[str(pid)] = pname
+
+        # Load client if present
+        client_data = None
+        if t.client_id:
+            c_result = await self.db.execute(
+                select(Client).where(Client.id == t.client_id)
+            )
+            client = c_result.scalar_one_or_none()
+            if client:
+                client_data = {
+                    "id": str(client.id),
+                    "first_name": client.first_name,
+                    "last_name": client.last_name,
+                    "email": client.email,
+                    "phone": client.phone,
+                }
+
         return {
             "id": str(t.id),
             "transaction_number": t.transaction_number,
-            "transaction_type": t.transaction_type.value,
+            "type": t.transaction_type.value,
             "total_ttc": float(t.total_ttc),
             "total_ht": float(t.total_ht),
-            "total_tva": float(t.total_tva),
+            "tax_amount": float(t.total_tva),
             "hash_chain": t.hash_chain,
             "created_at": t.created_at.isoformat() if t.created_at else None,
+            "client": client_data,
             "items": [
                 {
                     "id": str(item.id),
-                    "product_id": str(item.product_id),
+                    "product_id": str(item.product_id) if item.product_id else None,
+                    "name": product_names.get(str(item.product_id), "Article") if item.product_id else "Article",
                     "quantity": item.quantity,
                     "unit_price": float(item.unit_price),
                     "discount_percent": float(item.discount_percent),

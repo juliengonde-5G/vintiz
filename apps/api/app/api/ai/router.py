@@ -418,3 +418,264 @@ Réponds UNIQUEMENT avec le JSON, sans markdown ni commentaire."""
             },
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Persona Marketing
+# ---------------------------------------------------------------------------
+
+@router.post("/persona/marketing")
+async def generate_marketing_persona(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Generate a marketing manager persona report for the boutique."""
+    now = datetime.now(timezone.utc)
+
+    # Collect boutique metrics
+    total_products_result = await db.execute(
+        select(func.count(Product.id)).where(
+            Product.status.in_([ProductStatus.stock, ProductStatus.display])
+        )
+    )
+    total_products = total_products_result.scalar_one() or 0
+
+    avg_score_result = await db.execute(
+        select(func.avg(Product.trend_score)).where(
+            Product.trend_score.is_not(None)
+        )
+    )
+    avg_score = float(avg_score_result.scalar_one() or 0)
+
+    total_clients_result = await db.execute(select(func.count(Client.id)))
+    total_clients = total_clients_result.scalar_one() or 0
+
+    # Recent CA (last 30 days)
+    from datetime import timedelta
+    thirty_days_ago = now - timedelta(days=30)
+    ca_result = await db.execute(
+        select(func.sum(Transaction.total_ttc)).where(
+            Transaction.created_at >= thirty_days_ago
+        )
+    )
+    ca_30d = float(ca_result.scalar_one() or 0)
+
+    sold_count_result = await db.execute(
+        select(func.count(Product.id)).where(Product.status == ProductStatus.sold)
+    )
+    sold_count = sold_count_result.scalar_one() or 0
+
+    context = {
+        "articles_en_vente": total_products,
+        "score_tendance_moyen": round(avg_score, 1),
+        "total_clients": total_clients,
+        "ca_30_derniers_jours": round(ca_30d, 2),
+        "articles_vendus_total": sold_count,
+    }
+
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if anthropic_key:
+        try:
+            import anthropic
+            client_ai = anthropic.AsyncAnthropic(api_key=anthropic_key)
+            prompt = f"""Tu es un(e) directeur/directrice marketing externe mandaté(e) pour analyser la boutique Vintiz (Vernon, Normandie — seconde main premium).
+Voici les données actuelles de la boutique :
+- Articles en vente : {context['articles_en_vente']}
+- Score tendance moyen du stock : {context['score_tendance_moyen']}/100
+- Nombre de clients inscrits : {context['total_clients']}
+- CA des 30 derniers jours : {context['ca_30_derniers_jours']} €
+- Articles vendus au total : {context['articles_vendus_total']}
+
+Génère un rapport marketing structuré en JSON avec exactement ce format :
+{{
+  "situation": "analyse en 2-3 phrases de la situation actuelle",
+  "points_forts": ["force 1", "force 2", "force 3"],
+  "points_faibles": ["faiblesse 1", "faiblesse 2", "faiblesse 3"],
+  "recommandations": [
+    {{"priorite": "haute", "action": "action concrète", "impact": "résultat attendu"}},
+    {{"priorite": "haute", "action": "action concrète", "impact": "résultat attendu"}},
+    {{"priorite": "moyenne", "action": "action concrète", "impact": "résultat attendu"}},
+    {{"priorite": "faible", "action": "action concrète", "impact": "résultat attendu"}}
+  ],
+  "kpi_cibles": {{"ca_mensuel_cible": 0, "nouveaux_clients_mois": 0, "taux_conversion_vitrine": "X%"}}
+}}
+Réponds UNIQUEMENT avec le JSON, sans markdown."""
+            msg = await client_ai.messages.create(
+                model="claude-haiku-4-5",
+                max_tokens=800,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            import json
+            raw = msg.content[0].text if msg.content else "{}"
+            report = json.loads(raw)
+            return {
+                "generated_at": now.isoformat(),
+                "context": context,
+                "report": report,
+            }
+        except Exception:
+            pass
+
+    # Static fallback
+    return {
+        "generated_at": now.isoformat(),
+        "context": context,
+        "report": {
+            "situation": f"La boutique Vintiz dispose d'un stock de {total_products} articles en vente avec un score tendance moyen de {round(avg_score, 1)}/100. La base clients compte {total_clients} personnes avec un CA récent de {round(ca_30d, 2)} €.",
+            "points_forts": [
+                "Positionnement premium distinctif sur le marché de la seconde main",
+                "Score tendance utilisé pour l'optimisation du stock",
+                "Système de fidélité en place pour la rétention client",
+            ],
+            "points_faibles": [
+                "Visibilité digitale à renforcer pour attirer de nouveaux clients",
+                "Programme CRM à développer (email, SMS, espace client)",
+                "Conversion vitrine à optimiser via le merchandising",
+            ],
+            "recommandations": [
+                {"priorite": "haute", "action": "Lancer une campagne Instagram ciblée femmes 25-45 ans Vernon/Évreux", "impact": "+20% de nouveaux clients"},
+                {"priorite": "haute", "action": "Créer une newsletter mensuelle avec les nouvelles arrivées", "impact": "+15% de taux de retour"},
+                {"priorite": "moyenne", "action": "Développer des partenariats avec influenceurs mode locaux", "impact": "+10% CA mensuel"},
+                {"priorite": "faible", "action": "Mettre en place un programme de parrainage clients", "impact": "Acquisition clients à moindre coût"},
+            ],
+            "kpi_cibles": {
+                "ca_mensuel_cible": int(ca_30d * 1.2) or 3000,
+                "nouveaux_clients_mois": 8,
+                "taux_conversion_vitrine": "12%",
+            },
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Persona Juridique (RGPD/CNIL)
+# ---------------------------------------------------------------------------
+
+@router.post("/persona/juridique")
+async def generate_legal_persona(
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Generate a GDPR/legal compliance report for the boutique's marketing tools."""
+    now = datetime.now(timezone.utc)
+
+    tools_in_use = [
+        "Email marketing (SMTP) pour envoi de newsletters et tickets",
+        "SMS marketing via Twilio pour confirmations et promotions",
+        "Programme de fidélité avec collecte de points et tier",
+        "Espace client personnel (données d'achat, préférences)",
+        "Personal Shopper IA basé sur l'historique d'achats",
+        "Cookies de session et d'authentification (JWT)",
+        "Collecte : prénom, nom, email, téléphone, historique achats",
+    ]
+
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if anthropic_key:
+        try:
+            import anthropic
+            client_ai = anthropic.AsyncAnthropic(api_key=anthropic_key)
+            tools_str = "\n".join(f"- {t}" for t in tools_in_use)
+            prompt = f"""Tu es un(e) juriste spécialisé(e) RGPD/CNIL mandaté(e) pour auditer la conformité légale de la boutique Vintiz (commerce de détail, France).
+Outils et données collectés :
+{tools_str}
+
+Génère un rapport de conformité RGPD en JSON avec exactement ce format :
+{{
+  "niveau_conformite": "Partiel | Conforme | Non conforme",
+  "score_conformite": 0,
+  "points_conformes": ["point 1", "point 2"],
+  "points_a_corriger": [
+    {{"urgence": "haute|moyenne|faible", "probleme": "...", "correction": "..."}}
+  ],
+  "mentions_legales_requises": ["mention 1", "mention 2"],
+  "actions_prioritaires": ["action 1", "action 2", "action 3"],
+  "formulaires_consentement": [
+    {{"usage": "email marketing", "texte_consentement": "Je consens à..."}}
+  ],
+  "resume_conformite": "résumé 2 phrases"
+}}
+Réponds UNIQUEMENT avec le JSON, sans markdown."""
+            msg = await client_ai.messages.create(
+                model="claude-haiku-4-5",
+                max_tokens=900,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            import json
+            raw = msg.content[0].text if msg.content else "{}"
+            report = json.loads(raw)
+            return {
+                "generated_at": now.isoformat(),
+                "tools_audited": tools_in_use,
+                "report": report,
+            }
+        except Exception:
+            pass
+
+    # Static fallback
+    return {
+        "generated_at": now.isoformat(),
+        "tools_audited": tools_in_use,
+        "report": {
+            "niveau_conformite": "Partiel",
+            "score_conformite": 55,
+            "points_conformes": [
+                "Données minimales collectées (pas de données sensibles)",
+                "Authentification sécurisée avec JWT",
+                "Historique d'achat lié à un compte client consenti",
+            ],
+            "points_a_corriger": [
+                {
+                    "urgence": "haute",
+                    "probleme": "Absence de politique de confidentialité publiée",
+                    "correction": "Rédiger et afficher une politique de confidentialité sur le site public et dans l'espace client",
+                },
+                {
+                    "urgence": "haute",
+                    "probleme": "Consentement email marketing non documenté",
+                    "correction": "Ajouter une case à cocher explicite lors de l'inscription client avec texte opt-in",
+                },
+                {
+                    "urgence": "moyenne",
+                    "probleme": "Durée de conservation des données non définie",
+                    "correction": "Définir et documenter les durées de rétention (3 ans inactifs recommandés)",
+                },
+                {
+                    "urgence": "moyenne",
+                    "probleme": "Droit à l'effacement non implémenté",
+                    "correction": "Ajouter un bouton 'Supprimer mon compte' dans l'espace client",
+                },
+                {
+                    "urgence": "faible",
+                    "probleme": "Registre des traitements CNIL absent",
+                    "correction": "Créer un registre des activités de traitement (obligatoire pour TPE avec données clients)",
+                },
+            ],
+            "mentions_legales_requises": [
+                "Identité du responsable de traitement (nom, adresse)",
+                "Finalité de la collecte de données",
+                "Durée de conservation",
+                "Droits des personnes (accès, rectification, effacement, portabilité)",
+                "Contact DPO ou responsable RGPD",
+                "Droit de réclamation auprès de la CNIL",
+            ],
+            "actions_prioritaires": [
+                "Publier une politique de confidentialité sur le site public",
+                "Ajouter le consentement opt-in email/SMS lors de la création de compte client",
+                "Implémenter la fonctionnalité 'Supprimer mes données' dans l'espace client",
+            ],
+            "formulaires_consentement": [
+                {
+                    "usage": "Email marketing",
+                    "texte_consentement": "J'accepte de recevoir des newsletters et offres commerciales de Vintiz par email. Je peux me désabonner à tout moment.",
+                },
+                {
+                    "usage": "SMS marketing",
+                    "texte_consentement": "J'accepte de recevoir des SMS promotionnels de Vintiz. Je peux me désabonner en répondant STOP.",
+                },
+                {
+                    "usage": "Personal Shopper IA",
+                    "texte_consentement": "J'accepte que Vintiz utilise mon historique d'achats pour me proposer des recommandations personnalisées.",
+                },
+            ],
+            "resume_conformite": "La boutique Vintiz collecte des données personnelles sans disposer de tous les cadres légaux requis par le RGPD. Des actions prioritaires s'imposent pour atteindre la conformité, notamment la publication d'une politique de confidentialité et la mise en place de consentements documentés.",
+        },
+    }

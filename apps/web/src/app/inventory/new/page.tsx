@@ -171,8 +171,7 @@ export default function NewProductPage() {
         status: form.status,
         week_number: parseInt(form.week_number) || null,
       });
-      if (res.ok) {
-        router.push('/inventory');
+      if (res.ok) { const savedProduct = await res.json(); router.push('/inventory/' + savedProduct.id + '?showLabel=true');
       } else {
         const data = await res.json().catch(() => ({}));
         setError(data.detail || 'Erreur lors de la creation');
@@ -434,13 +433,18 @@ export default function NewProductPage() {
             {/* Label preview */}
             <Card title="Etiquette">
               <div className="flex flex-col sm:flex-row gap-4 items-start">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowLabel(true)}
-                >
-                  Generer etiquette
-                </Button>
+                <div className="flex flex-col gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowLabel(true)}
+                  >
+                    Generer etiquette
+                  </Button>
+                  {(!form.name || !form.sellingPrice) && (
+                    <p className="text-xs text-gray-400">L&apos;etiquette sera disponible apres enregistrement</p>
+                  )}
+                </div>
                 {showLabel && form.name && form.sellingPrice && (
                   <div className="border-2 border-dashed border-pink rounded-lg p-4 w-full sm:w-64">
                     <p className="font-serif text-lg font-bold text-pink text-center">Vintiz</p>

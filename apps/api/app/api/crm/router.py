@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.client import Client, LoyaltyAccount, LoyaltyTransaction, LoyaltyTxType
-from app.models.pos import Transaction
+from app.models.pos import Transaction, TransactionItem
+from app.models.product import Product, ProductStatus
 from app.models.user import User
 
 router = APIRouter(prefix="/crm", tags=["crm"])
@@ -526,3 +527,146 @@ async def send_sms(
             "client_id": str(request.client_id),
             "sent_at": datetime.now(timezone.utc).isoformat(),
         }
+
+
+# ---------------------------------------------------------------------------
+# Personal Shopper (public — accessible from client extranet)
+# ---------------------------------------------------------------------------
+
+@router.get("/clients/personal-shopper")
+async def get_personal_shopper(
+    email: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return AI-powered product recommendations for a client based on purchase history.
+
+    Public endpoint (no auth) — uses email as identifier.
+    """
+    result = await db.execute(
+        select(Client).where(Client.email == email.strip().lower())
+    )
+    client = result.scalar_one_or_none()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # Collect all products purchased by this client
+    tx_result = await db.execute(
+        select(Transaction)
+        .where(Transaction.client_id == client.id)
+        .order_by(Transaction.created_at.desc())
+        .limit(50)
+    )
+    transactions = tx_result.scalars().all()
+
+    # Collect purchased product details
+    purchased_brands: dict[str, int] = {}
+    purchased_sizes: list[str] = []
+    purchased_categories: dict[str, int] = {}
+
+    for tx in transactions:
+        for item in (tx.items or []):
+            if item.product_id:
+                prod_res = await db.execute(
+                    select(Product).where(Product.id == item.product_id)
+                )
+                prod = prod_res.scalar_one_or_none()
+                if prod:
+                    if prod.brand:
+                        purchased_brands[prod.brand] = purchased_brands.get(prod.brand, 0) + 1
+                    if prod.size:
+                        purchased_sizes.append(prod.size)
+                    if prod.category:
+                        cat_name = prod.category.name
+                        purchased_categories[cat_name] = purchased_categories.get(cat_name, 0) + 1
+
+    # Determine preferred brands (top 3) and most common size
+    top_brands = sorted(purchased_brands.items(), key=lambda x: -x[1])[:3]
+    top_brand_names = [b for b, _ in top_brands]
+    preferred_size = max(set(purchased_sizes), key=purchased_sizes.count) if purchased_sizes else None
+    top_categories = sorted(purchased_categories.items(), key=lambda x: -x[1])[:3]
+    top_category_names = [c for c, _ in top_categories]
+
+    # Find matching products in stock
+    stock_query = select(Product).where(
+        Product.status.in_([ProductStatus.stock, ProductStatus.display])
+    )
+    stock_result = await db.execute(stock_query.limit(500))
+    all_stock = stock_result.scalars().all()
+
+    # Score products by match
+    def match_score(p: Product) -> int:
+        score = 0
+        if p.brand and p.brand in top_brand_names:
+            idx = top_brand_names.index(p.brand)
+            score += (3 - idx) * 10  # Higher for better-ranked brands
+        if preferred_size and p.size == preferred_size:
+            score += 8
+        if p.category and p.category.name in top_category_names:
+            idx = top_category_names.index(p.category.name)
+            score += (3 - idx) * 5
+        if p.trend_score:
+            score += int(p.trend_score * 0.1)
+        return score
+
+    scored = [(match_score(p), p) for p in all_stock]
+    scored.sort(key=lambda x: -x[0])
+    top_matches = [p for _, p in scored if _ > 0][:8]
+
+    # If not enough matches, pad with top-scored products
+    if len(top_matches) < 4:
+        extras = [p for _, p in scored if p not in top_matches][:4 - len(top_matches)]
+        top_matches.extend(extras)
+
+    recommendations = [
+        {
+            "id": str(p.id),
+            "name": p.name,
+            "brand": p.brand,
+            "size": p.size,
+            "color": p.color,
+            "sale_price": float(p.sale_price),
+            "category": p.category.name if p.category else None,
+            "trend_score": p.trend_score,
+            "zone_name": None,  # Can be enriched later
+            "condition": getattr(p, "condition", None),
+        }
+        for p in top_matches
+    ]
+
+    # Claude-powered narrative
+    narrative = None
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if anthropic_key and top_matches:
+        try:
+            import anthropic
+            client_ai = anthropic.AsyncAnthropic(api_key=anthropic_key)
+            items_str = ", ".join(p.name for p in top_matches[:4])
+            brands_str = ", ".join(top_brand_names) if top_brand_names else "variées"
+            prompt = f"""Tu es une styliste personnelle pour la boutique Vintiz (Vernon, Normandie — seconde main premium).
+Ta cliente s'appelle {client.first_name}. Elle aime les marques : {brands_str}.
+Taille habituelle : {preferred_size or 'non renseignée'}.
+Pièces sélectionnées pour elle : {items_str}.
+Écris un message chaleureux et élégant de 2-3 phrases pour lui présenter ces sélections. Sois enthousiaste, personnelle et fashion. Tutoie-la."""
+            msg = await client_ai.messages.create(
+                model="claude-haiku-4-5",
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            narrative = msg.content[0].text if msg.content else None
+        except Exception:
+            pass
+
+    if not narrative:
+        narrative = f"Bonjour {client.first_name} ! Voici une sélection de pièces choisies spécialement pour toi, en accord avec tes goûts et ton style. Ces articles sont disponibles dès maintenant en boutique."
+
+    return {
+        "client": {"first_name": client.first_name, "last_name": client.last_name},
+        "profile": {
+            "preferred_brands": top_brand_names,
+            "preferred_size": preferred_size,
+            "preferred_categories": top_category_names,
+        },
+        "narrative": narrative,
+        "recommendations": recommendations,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }

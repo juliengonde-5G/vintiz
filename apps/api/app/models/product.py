@@ -65,6 +65,7 @@ class Product(Base):
         nullable=False,
         default=ProductStatus.stock,
     )
+    condition: Mapped[str | None] = mapped_column(String(50), nullable=True)
     week_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sold_at: Mapped[str | None] = mapped_column(String(255), nullable=True)
     zone_id: Mapped[uuid.UUID | None] = mapped_column(

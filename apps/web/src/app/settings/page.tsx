@@ -20,7 +20,11 @@ interface Zone {
   capacity: number;
   product_count: number;
   occupancy_percent: number;
+  product_types?: string[];
+  color_code?: string;
 }
+
+const ALL_PRODUCT_TYPES = ['Robes', 'Hauts', 'Pantalons', 'Jupes', 'Vestes', 'Manteaux', 'Accessoires', 'Chaussures', 'Sacs', 'Bijoux', 'Enfant'];
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<'store' | 'categories' | 'zones' | 'system'>('store');
@@ -33,6 +37,11 @@ export default function SettingsPage() {
   // New category form
   const [newCatName, setNewCatName] = useState('');
   const [newCatGender, setNewCatGender] = useState('femme');
+
+  // Zone edit modal
+  const [showZoneModal, setShowZoneModal] = useState(false);
+  const [editingZone, setEditingZone] = useState<Zone | null>(null);
+  const [zoneForm, setZoneForm] = useState({ name: '', description: '', capacity: 20, product_types: [] as string[], color_code: '#1A7A6A' });
 
   useEffect(() => {
     if (tab === 'categories') loadCategories();
@@ -48,9 +57,48 @@ export default function SettingsPage() {
 
   const loadZones = async () => {
     setLoading(true);
-    const res = await api.get('/api/ai/mapping/zones');
-    if (res.ok) setZones(await res.json());
+    const res = await api.get('/api/admin/zones');
+    if (res.ok) {
+      const data = await res.json();
+      setZones(data.zones || data || []);
+    }
     setLoading(false);
+  };
+
+  const openZoneModal = (zone?: Zone) => {
+    if (zone) {
+      setEditingZone(zone);
+      setZoneForm({ name: zone.zone_name, description: zone.description || '', capacity: zone.capacity, product_types: zone.product_types || [], color_code: zone.color_code || '#1A7A6A' });
+    } else {
+      setEditingZone(null);
+      setZoneForm({ name: '', description: '', capacity: 20, product_types: [], color_code: '#1A7A6A' });
+    }
+    setShowZoneModal(true);
+  };
+
+  const saveZone = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const body = { name: zoneForm.name, description: zoneForm.description, capacity: zoneForm.capacity, product_types: zoneForm.product_types, color_code: zoneForm.color_code };
+      const res = editingZone
+        ? await api.put(`/api/admin/zones/${editingZone.zone_id}`, body)
+        : await api.post('/api/admin/zones', body);
+      if (res.ok) {
+        setShowZoneModal(false);
+        await loadZones();
+        setMessage(editingZone ? 'Zone modifiée' : 'Zone créée');
+        setTimeout(() => setMessage(''), 3000);
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setError(e.detail || 'Erreur lors de la sauvegarde');
+      }
+    } catch { setError('Erreur de connexion'); }
+    setLoading(false);
+  };
+
+  const toggleProductType = (t: string) => {
+    setZoneForm(f => ({ ...f, product_types: f.product_types.includes(t) ? f.product_types.filter(x => x !== t) : [...f.product_types, t] }));
   };
 
   const addCategory = async () => {
@@ -322,42 +370,84 @@ export default function SettingsPage() {
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold text-black">Zones de la boutique</h2>
-              {zones.length === 0 && (
-                <Button onClick={initZones} disabled={loading}>Initialiser les zones</Button>
-              )}
+              <div className="flex gap-2">
+                {zones.length === 0 && <Button onClick={initZones} disabled={loading}>Initialiser les zones</Button>}
+                <Button onClick={() => openZoneModal()} variant="secondary">+ Ajouter une zone</Button>
+              </div>
             </div>
 
             {loading ? (
               <Card><p className="text-gray-400 text-center py-4">Chargement...</p></Card>
             ) : zones.length === 0 ? (
-              <Card><p className="text-gray-400 text-center py-4">Aucune zone configuree</p></Card>
+              <Card><p className="text-gray-400 text-center py-4">Aucune zone configuree. Cliquez &quot;Initialiser les zones&quot; ou &quot;Ajouter une zone&quot;.</p></Card>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {zones.map((z) => (
                   <Card key={z.zone_id}>
-                    <h3 className="font-semibold text-black mb-1">{z.zone_name}</h3>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: z.color_code || '#1A7A6A' }} />
+                        <h3 className="font-semibold text-black">{z.zone_name}</h3>
+                      </div>
+                      <button onClick={() => openZoneModal(z)} className="text-xs text-teal hover:underline min-h-[32px] px-2">Modifier</button>
+                    </div>
                     <p className="text-xs text-gray-400 mb-3">{z.description}</p>
+                    {z.product_types && z.product_types.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {z.product_types.map(t => <span key={t} className="text-xs px-2 py-0.5 bg-teal-50 text-teal-700 rounded-full">{t}</span>)}
+                      </div>
+                    )}
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-500">Capacite</span>
-                        <span className="text-black">{z.capacity}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Produits</span>
-                        <span className="text-black">{z.product_count}</span>
+                        <span className="text-gray-500">Capacité</span>
+                        <span className="text-black font-medium">{z.product_count} / {z.capacity}</span>
                       </div>
                       <div className="w-full bg-gray-100 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full ${
-                            z.occupancy_percent > 80 ? 'bg-red-400' :
-                            z.occupancy_percent > 50 ? 'bg-yellow-400' : 'bg-green-400'
-                          }`}
-                          style={{ width: `${Math.min(100, z.occupancy_percent)}%` }}
-                        />
+                        <div className={`h-2 rounded-full ${z.occupancy_percent > 80 ? 'bg-red-400' : z.occupancy_percent > 50 ? 'bg-yellow-400' : 'bg-green-400'}`}
+                          style={{ width: `${Math.min(100, z.occupancy_percent)}%` }} />
                       </div>
+                      <p className="text-xs text-gray-400 text-right">{z.occupancy_percent}% occupé</p>
                     </div>
                   </Card>
                 ))}
+              </div>
+            )}
+
+            {/* Zone Edit Modal */}
+            {showZoneModal && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+                  <h3 className="text-lg font-bold text-black mb-4">{editingZone ? 'Modifier la zone' : 'Nouvelle zone'}</h3>
+                  <div className="space-y-4">
+                    <Input label="Nom de la zone" value={zoneForm.name} onChange={e => setZoneForm(f => ({...f, name: e.target.value}))} placeholder="Ex: Vitrine gauche" />
+                    <Input label="Description" value={zoneForm.description} onChange={e => setZoneForm(f => ({...f, description: e.target.value}))} placeholder="Ex: Rails mur gauche entrée" />
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Capacité max (articles)</label>
+                      <input type="number" min={1} max={500} value={zoneForm.capacity} onChange={e => setZoneForm(f => ({...f, capacity: parseInt(e.target.value) || 20}))}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-2">Types de produits acceptés</label>
+                      <div className="flex flex-wrap gap-2">
+                        {ALL_PRODUCT_TYPES.map(t => (
+                          <button key={t} type="button" onClick={() => toggleProductType(t)}
+                            className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${zoneForm.product_types.includes(t) ? 'bg-teal text-white border-teal' : 'bg-white text-gray-600 border-gray-300 hover:border-teal'}`}>
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm font-medium text-black">Couleur</label>
+                      <input type="color" value={zoneForm.color_code} onChange={e => setZoneForm(f => ({...f, color_code: e.target.value}))} className="w-10 h-10 rounded cursor-pointer border border-gray-300" />
+                      <span className="text-sm text-gray-500">{zoneForm.color_code}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-6">
+                    <Button variant="outline" onClick={() => setShowZoneModal(false)} className="flex-1">Annuler</Button>
+                    <Button onClick={saveZone} disabled={loading || !zoneForm.name} className="flex-1">{loading ? 'Sauvegarde...' : 'Sauvegarder'}</Button>
+                  </div>
+                </div>
               </div>
             )}
           </div>

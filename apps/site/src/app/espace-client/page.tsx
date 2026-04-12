@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
@@ -27,6 +27,25 @@ interface Transaction {
   created_at: string;
 }
 
+interface PersonalShopperProduct {
+  id: string;
+  name: string;
+  brand: string | null;
+  size: string | null;
+  color: string | null;
+  sale_price: number;
+  category: string | null;
+  trend_score: number | null;
+  condition: string | null;
+}
+
+interface PersonalShopper {
+  profile: { preferred_brands: string[]; preferred_size: string | null; preferred_categories: string[] };
+  narrative: string;
+  recommendations: PersonalShopperProduct[];
+  generated_at: string;
+}
+
 export default function EspaceClientPage() {
   const [view, setView] = useState<"login" | "dashboard">("login");
   const [email, setEmail] = useState("");
@@ -36,6 +55,20 @@ export default function EspaceClientPage() {
   const [loyalty, setLoyalty] = useState<LoyaltyData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [token, setToken] = useState("");
+  const [personalShopper, setPersonalShopper] = useState<PersonalShopper | null>(null);
+  const [shopperLoading, setShopperLoading] = useState(false);
+
+  // Load personal shopper when dashboard is shown
+  useEffect(() => {
+    if (view === "dashboard" && email && !personalShopper) {
+      setShopperLoading(true);
+      fetch(`${API_URL}/api/crm/clients/personal-shopper?email=${encodeURIComponent(email)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) setPersonalShopper(data); })
+        .catch(() => {})
+        .finally(() => setShopperLoading(false));
+    }
+  }, [view, email, personalShopper]);
 
   // Simple client lookup by email (public endpoint)
   const handleLogin = async (e: FormEvent) => {
@@ -44,7 +77,6 @@ export default function EspaceClientPage() {
     setError("");
 
     try {
-      // First, try to find the client via the public API
       const res = await fetch(`${API_URL}/api/crm/clients/lookup?email=${encodeURIComponent(email)}`);
       if (res.ok) {
         const data = await res.json();
@@ -54,9 +86,9 @@ export default function EspaceClientPage() {
         setToken(data.token || "");
         setView("dashboard");
       } else if (res.status === 404) {
-        setError("Aucun compte trouve avec cet email. Demandez votre carte fidelite en boutique !");
+        setError("Aucun compte trouvé avec cet email. Demandez votre carte fidélité en boutique !");
       } else {
-        setError("Erreur de connexion. Veuillez reessayer.");
+        setError("Erreur de connexion. Veuillez réessayer.");
       }
     } catch {
       setError("Impossible de contacter le serveur.");
@@ -178,9 +210,78 @@ export default function EspaceClientPage() {
                 </div>
               )}
 
+              {/* Personal Shopper */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+                <h2 className="font-serif text-xl text-vintiz-black mb-1">
+                  ✨ Votre Personal Shopper
+                </h2>
+                <p className="text-sm text-vintiz-black/50 mb-4">Sélection IA personnalisée pour vous</p>
+
+                {shopperLoading && (
+                  <div className="flex items-center gap-3 py-6">
+                    <div className="w-5 h-5 border-2 border-vintiz-teal border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm text-vintiz-black/50">Préparation de votre sélection...</p>
+                  </div>
+                )}
+
+                {personalShopper && !shopperLoading && (
+                  <div>
+                    {/* Narrative */}
+                    <div className="p-4 bg-vintiz-pink/10 rounded-xl mb-4">
+                      <p className="text-sm text-vintiz-black italic leading-relaxed">&ldquo;{personalShopper.narrative}&rdquo;</p>
+                    </div>
+
+                    {/* Profile tags */}
+                    {personalShopper.profile.preferred_brands.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {personalShopper.profile.preferred_size && (
+                          <span className="px-3 py-1 bg-vintiz-teal/10 text-vintiz-teal text-xs rounded-full font-medium">
+                            Taille {personalShopper.profile.preferred_size}
+                          </span>
+                        )}
+                        {personalShopper.profile.preferred_brands.map(b => (
+                          <span key={b} className="px-3 py-1 bg-vintiz-black/5 text-vintiz-black text-xs rounded-full">
+                            {b}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Product cards */}
+                    <div className="grid grid-cols-2 gap-3">
+                      {personalShopper.recommendations.slice(0, 6).map(product => (
+                        <div key={product.id} className="p-3 bg-vintiz-bg rounded-xl border border-vintiz-pink/20">
+                          <div className="w-full h-24 bg-gradient-to-br from-vintiz-pink/20 to-vintiz-teal/10 rounded-lg mb-2 flex items-center justify-center">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-vintiz-teal/40">
+                              <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+                            </svg>
+                          </div>
+                          <p className="text-xs font-medium text-vintiz-black line-clamp-2 mb-1">{product.name}</p>
+                          {product.brand && <p className="text-xs text-vintiz-black/50 mb-1">{product.brand}</p>}
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-bold text-vintiz-teal">{formatCurrency(product.sale_price)}</p>
+                            {product.size && <p className="text-xs text-vintiz-black/40">{product.size}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="text-xs text-vintiz-black/30 text-center mt-4">
+                      Disponible en boutique · Demandez à voir ces pièces à l&apos;accueil
+                    </p>
+                  </div>
+                )}
+
+                {!personalShopper && !shopperLoading && (
+                  <p className="text-sm text-vintiz-black/40 text-center py-4">
+                    Effectuez votre premier achat en boutique pour débloquer votre sélection personnalisée.
+                  </p>
+                )}
+              </div>
+
               {/* Recent Purchases */}
               <div className="bg-white rounded-2xl p-6 shadow-sm">
-                <h2 className="font-serif text-xl text-vintiz-black mb-4">Mes achats recents</h2>
+                <h2 className="font-serif text-xl text-vintiz-black mb-4">Mes achats récents</h2>
                 {transactions.length === 0 ? (
                   <p className="text-vintiz-black/40 text-center py-6">Aucun achat pour le moment</p>
                 ) : (

@@ -96,6 +96,14 @@ export default function POSPage() {
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptText, setReceiptText] = useState('');
 
+  // CB / SumUp
+  const [cbCheckoutId, setCbCheckoutId] = useState<string | null>(null);
+  const [cbStatus, setCbStatus] = useState<'idle' | 'pending' | 'paid' | 'failed'>('idle');
+  const [cbPollingRef, setCbPollingRef] = useState<ReturnType<typeof setInterval> | null>(null);
+
+  // Loyalty redemption
+  const [redeemPoints, setRedeemPoints] = useState(false);
+
   // General
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -108,8 +116,14 @@ export default function POSPage() {
     const afterDiscount = linePrice * (1 - item.discount / 100);
     return sum + afterDiscount;
   }, 0);
+
+  // Loyalty discount: 1 point = 0.10 EUR, max 50% of cart
+  const loyaltyPoints = selectedClient?.loyalty?.points || 0;
+  const loyaltyDiscount = redeemPoints ? Math.min(loyaltyPoints * 0.10, cartTotal * 0.5) : 0;
+  const cartTotalAfterLoyalty = Math.max(0, cartTotal - loyaltyDiscount);
+
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
-  const remaining = cartTotal - totalPaid;
+  const remaining = cartTotalAfterLoyalty - totalPaid;
 
   // ── Product search ───────────────────────────────────────────────
   const searchProducts = useCallback(async (query: string) => {
@@ -241,10 +255,68 @@ export default function POSPage() {
     setCart(prev => prev.filter((_, i) => i !== index));
   };
 
+  // ── CB / SumUp ───────────────────────────────────────────────────
+  const initiateCBPayment = async (amount: number) => {
+    setCbStatus('pending');
+    try {
+      const res = await api.post('/api/pos/payments/cb/initiate', {
+        amount: parseFloat(amount.toFixed(2)),
+        description: `Vente Vintiz #${Date.now()}`,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCbCheckoutId(data.checkout_id);
+        // Poll every 3 seconds for status
+        const pollRef = setInterval(async () => {
+          try {
+            const statusRes = await api.get(`/api/pos/payments/cb/${data.checkout_id}/status`);
+            if (statusRes.ok) {
+              const s = await statusRes.json();
+              if (s.status === 'PAID') {
+                clearInterval(pollRef);
+                setCbStatus('paid');
+                setCbPollingRef(null);
+              } else if (s.status === 'FAILED') {
+                clearInterval(pollRef);
+                setCbStatus('failed');
+                setCbPollingRef(null);
+              }
+            }
+          } catch { /* keep polling */ }
+        }, 3000);
+        setCbPollingRef(pollRef);
+      } else {
+        setCbStatus('failed');
+      }
+    } catch {
+      setCbStatus('failed');
+    }
+  };
+
+  const cancelCBPayment = async () => {
+    if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
+    if (cbCheckoutId) {
+      await api.delete(`/api/pos/payments/cb/${cbCheckoutId}`).catch(() => {});
+    }
+    setCbCheckoutId(null);
+    setCbStatus('idle');
+    // Remove the carte payment line
+    setPayments(prev => prev.filter(p => p.method !== 'carte'));
+  };
+
+  const confirmCBManually = () => {
+    if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
+    setCbStatus('paid');
+  };
+
   // ── Payment ──────────────────────────────────────────────────────
   const addPayment = (method: PaymentLine['method']) => {
-    const autoAmount = Math.max(0, parseFloat((cartTotal - totalPaid).toFixed(2)));
+    const autoAmount = Math.max(0, parseFloat((cartTotalAfterLoyalty - totalPaid).toFixed(2)));
     setPayments(prev => [...prev, { method, amount: autoAmount }]);
+    if (method === 'carte') {
+      const amount = Math.max(0, cartTotalAfterLoyalty - totalPaid);
+      initiateCBPayment(amount);
+    }
   };
 
   const updatePaymentAmount = (index: number, amount: number) => {
@@ -259,6 +331,12 @@ export default function POSPage() {
     setSubmitting(true);
     setError('');
     try {
+      // If CB was initiated, ensure it's confirmed
+      if (payments.some(p => p.method === 'carte') && cbStatus !== 'paid') {
+        setError('Le paiement CB n\'a pas encore été confirmé par le TPE.');
+        setSubmitting(false);
+        return;
+      }
       const body: Record<string, unknown> = {
         items: cart.map(item => ({
           product_id: item.product_id || undefined,
@@ -268,6 +346,7 @@ export default function POSPage() {
           discount_percent: item.discount,
         })),
         payments: payments.map(p => ({ method: p.method, amount: p.amount })),
+        redeem_loyalty_discount: redeemPoints ? loyaltyDiscount : 0,
       };
       if (selectedClient) body.client_id = selectedClient.id;
 
@@ -308,6 +387,10 @@ export default function POSPage() {
     setSelectedClient(null);
     setClientSearch('');
     setError('');
+    setCbCheckoutId(null);
+    setCbStatus('idle');
+    setRedeemPoints(false);
+    if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
   };
 
   const methodLabels: Record<string, string> = {
@@ -557,7 +640,15 @@ export default function POSPage() {
                 size="lg"
                 className="w-full mt-6"
                 disabled={cart.length === 0}
-                onClick={() => { setPayments([]); setCashGiven(''); setError(''); setShowPayment(true); }}
+                onClick={() => {
+                  setPayments([]);
+                  setCashGiven('');
+                  setError('');
+                  setCbCheckoutId(null);
+                  setCbStatus('idle');
+                  if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
+                  setShowPayment(true);
+                }}
               >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
                 Encaisser {formatCurrency(cartTotal)}
@@ -671,10 +762,32 @@ export default function POSPage() {
         <div className="space-y-5">
           {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
 
+          {/* Loyalty redemption toggle */}
+          {selectedClient?.loyalty && loyaltyPoints > 0 && (
+            <div className="p-3 bg-purple-50 rounded-lg flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-purple-800">Utiliser les points fidélité</p>
+                <p className="text-xs text-purple-600">{loyaltyPoints} pts disponibles = {(loyaltyPoints * 0.10).toFixed(2)} €</p>
+              </div>
+              <button
+                onClick={() => setRedeemPoints(prev => !prev)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${redeemPoints ? 'bg-purple-600' : 'bg-gray-300'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${redeemPoints ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+          )}
+
           {/* Total */}
           <div className="text-center p-4 bg-teal-50 rounded-lg">
             <p className="text-sm text-gray-500">Total a encaisser</p>
-            <p className="text-3xl font-bold text-teal">{formatCurrency(cartTotal)}</p>
+            {redeemPoints && loyaltyDiscount > 0 && (
+              <p className="text-sm text-gray-400 line-through">{formatCurrency(cartTotal)}</p>
+            )}
+            <p className="text-3xl font-bold text-teal">{formatCurrency(cartTotalAfterLoyalty)}</p>
+            {redeemPoints && loyaltyDiscount > 0 && (
+              <p className="text-xs text-purple-600 mt-1">-{formatCurrency(loyaltyDiscount)} fidélité déduit</p>
+            )}
             {selectedClient && (
               <p className="text-xs text-gray-500 mt-1">Client : {selectedClient.first_name} {selectedClient.last_name}</p>
             )}
@@ -683,28 +796,102 @@ export default function POSPage() {
           {/* Payment methods */}
           <div>
             <p className="text-sm font-medium text-black mb-2">Moyen de paiement</p>
-            <div className="flex gap-3">
-              <Button variant="outline" size="sm" onClick={() => addPayment('especes')}>Especes</Button>
-              <Button variant="outline" size="sm" onClick={() => addPayment('carte')}>Carte (CB)</Button>
-              <Button variant="outline" size="sm" onClick={() => addPayment('cheque')}>Cheque</Button>
+            <div className="flex gap-3 flex-wrap">
+              <Button variant="outline" size="sm" onClick={() => addPayment('especes')}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-1.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                Espèces
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => addPayment('carte')}
+                disabled={cbStatus === 'pending' || cbStatus === 'paid'}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                Carte (CB)
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => addPayment('cheque')}>Chèque</Button>
             </div>
           </div>
+
+          {/* CB Status display */}
+          {cbStatus !== 'idle' && (
+            <div className={`p-4 rounded-xl border-2 ${
+              cbStatus === 'paid' ? 'border-green-400 bg-green-50' :
+              cbStatus === 'failed' ? 'border-red-400 bg-red-50' :
+              'border-blue-300 bg-blue-50'
+            }`}>
+              <div className="flex items-center gap-3 mb-3">
+                {cbStatus === 'pending' && (
+                  <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                )}
+                {cbStatus === 'paid' && (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" className="shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
+                )}
+                {cbStatus === 'failed' && (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" className="shrink-0"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                )}
+                <div>
+                  <p className={`font-semibold text-sm ${cbStatus === 'paid' ? 'text-green-700' : cbStatus === 'failed' ? 'text-red-700' : 'text-blue-700'}`}>
+                    {cbStatus === 'pending' ? 'En attente de confirmation TPE...' :
+                     cbStatus === 'paid' ? 'Paiement CB confirmé' :
+                     'Paiement CB échoué'}
+                  </p>
+                  {cbStatus === 'pending' && (
+                    <p className="text-xs text-blue-500">Présentez la carte sur le lecteur</p>
+                  )}
+                </div>
+              </div>
+              {cbStatus === 'pending' && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={confirmCBManually}
+                    className="flex-1 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors min-h-[44px]"
+                  >
+                    Confirmer manuellement
+                  </button>
+                  <button
+                    onClick={cancelCBPayment}
+                    className="px-4 py-2 bg-white text-red-600 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[44px]"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              )}
+              {cbStatus === 'failed' && (
+                <button
+                  onClick={cancelCBPayment}
+                  className="w-full py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 min-h-[44px]"
+                >
+                  Réessayer
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Payment lines */}
           {payments.map((payment, index) => (
             <div key={index} className="p-4 bg-gray-50 rounded-lg space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-medium">{methodLabels[payment.method]}</span>
-                <button onClick={() => removePayment(index)} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-red-600">
+                <button onClick={() => {
+                  removePayment(index);
+                  if (payment.method === 'carte') cancelCBPayment();
+                }} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-red-600">
                   <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="4" x2="16" y2="16"/><line x1="16" y1="4" x2="4" y2="16"/></svg>
                 </button>
               </div>
-              <Input
-                type="number"
-                placeholder="Montant"
-                value={payment.amount || ''}
-                onChange={e => updatePaymentAmount(index, parseFloat(e.target.value) || 0)}
-              />
+              {payment.method !== 'carte' && (
+                <Input
+                  type="number"
+                  placeholder="Montant"
+                  value={payment.amount || ''}
+                  onChange={e => updatePaymentAmount(index, parseFloat(e.target.value) || 0)}
+                />
+              )}
+              {payment.method === 'carte' && (
+                <p className="text-sm text-gray-500">{formatCurrency(payment.amount)} via TPE</p>
+              )}
               {payment.method === 'especes' && index === cashPaymentIndex && (
                 <div className="space-y-2">
                   <Input
