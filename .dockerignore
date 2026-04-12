@@ -1,0 +1,60 @@
+# ===========================================
+# .dockerignore — exclut les fichiers inutiles
+# du contexte de build Docker (monorepo root)
+# ===========================================
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Secrets — ne jamais envoyer au daemon Docker
+.env
+.env.local
+.env.production
+.env.*.local
+*.pem
+*.key
+
+# Documentation et assets de dev
+docs/
+assets/
+*.md
+!apps/api/README.md
+
+# Node — dossiers de build Next.js et dépendances
+apps/web/.next/
+apps/web/node_modules/
+apps/site/.next/
+apps/site/node_modules/
+
+# Python — artefacts de build et cache
+apps/api/__pycache__/
+apps/api/**/__pycache__/
+apps/api/.venv/
+apps/api/venv/
+apps/api/.pytest_cache/
+apps/api/**/*.pyc
+apps/api/**/*.pyo
+apps/api/.ruff_cache/
+apps/api/htmlcov/
+
+# Tests (pas besoin en prod)
+apps/api/tests/
+
+# Docker — évite la récursion
+docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

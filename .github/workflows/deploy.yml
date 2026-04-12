@@ -1,0 +1,60 @@
+name: Deploy Production
+
+on:
+  # Deploiement automatique apres merge sur main
+  push:
+    branches: [main]
+  # Deploiement manuel depuis l'onglet Actions
+  workflow_dispatch:
+    inputs:
+      first_run:
+        description: "Premier deploiement (migrations + seed data) ?"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+# Un seul deploiement a la fois
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    # Ne se declenche qu'apres le CI
+    needs: []
+    environment: production
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            cd /opt/vintiz
+
+            # Choisir le flag --first-run si demande manuellement
+            EXTRA_FLAG=""
+            if [ "${{ github.event.inputs.first_run }}" = "true" ]; then
+              EXTRA_FLAG="--first-run"
+            fi
+
+            ./scripts/deploy.sh $EXTRA_FLAG
+
+# -------------------------------------------------------
+# Secrets GitHub requis (Settings > Secrets > Actions):
+#   VPS_HOST      IP ou domaine du serveur (ex: 51.12.34.56)
+#   VPS_USER      Utilisateur SSH (ex: ubuntu, root)
+#   VPS_SSH_KEY   Cle privee SSH (contenu complet, ex: -----BEGIN OPENSSH PRIVATE KEY-----)
+#   VPS_PORT      Port SSH (optionnel, defaut 22)
+#
+# Sur le serveur, ajouter la cle publique dans ~/.ssh/authorized_keys
+# Cloner le repo : git clone https://github.com/juliengonde-5g/vintiz /opt/vintiz
+# Configurer .env : cp /opt/vintiz/.env.production.template /opt/vintiz/.env && nano /opt/vintiz/.env
+# -------------------------------------------------------

@@ -20,6 +20,9 @@ RUN addgroup --system app && adduser --system --ingroup app app
 COPY --from=builder /install /usr/local
 COPY --from=builder /build /app
 
+# Include seed script so it is available inside the container
+COPY scripts/ /app/scripts/
+
 RUN chown -R app:app /app
 USER app
 
