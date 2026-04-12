@@ -1,0 +1,93 @@
+import enum
+import uuid
+from datetime import datetime
+
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import Base
+
+
+class Gender(str, enum.Enum):
+    femme = "femme"
+    homme = "homme"
+    enfant = "enfant"
+    mixte = "mixte"
+
+
+class ProductStatus(str, enum.Enum):
+    stock = "stock"
+    display = "display"
+    sold = "sold"
+    returned = "returned"
+
+
+class Category(Base):
+    __tablename__ = "categories"
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True
+    )
+    gender: Mapped[Gender] = mapped_column(
+        Enum(Gender, name="gender"), nullable=False, default=Gender.mixte
+    )
+
+    parent: Mapped["Category | None"] = relationship(
+        "Category", remote_side="Category.id", lazy="selectin"
+    )
+    products: Mapped[list["Product"]] = relationship(
+        "Product", back_populates="category", lazy="selectin"
+    )
+
+
+class Product(Base):
+    __tablename__ = "products"
+
+    barcode: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id"), nullable=False
+    )
+    size: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    color: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    brand: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    purchase_price: Mapped[float] = mapped_column(
+        Numeric(10, 2), nullable=False, default=0
+    )
+    sale_price: Mapped[float] = mapped_column(
+        Numeric(10, 2), nullable=False, default=0
+    )
+    status: Mapped[ProductStatus] = mapped_column(
+        Enum(ProductStatus, name="product_status"),
+        nullable=False,
+        default=ProductStatus.stock,
+    )
+    condition: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    week_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sold_at: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    zone_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("store_zones.id"), nullable=True
+    )
+    trend_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    shelf_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    category: Mapped["Category"] = relationship(
+        "Category", back_populates="products", lazy="selectin"
+    )
+
+
+class PriceGrid(Base):
+    __tablename__ = "price_grids"
+
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id"), nullable=False
+    )
+    min_purchase: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    max_purchase: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    sale_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+
+    category: Mapped["Category"] = relationship("Category", lazy="selectin")

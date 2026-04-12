@@ -1,0 +1,20 @@
+# Vintiz - Reverse proxy configuration
+# vintiz.fr → Site vitrine (landing page)
+# app.vintiz.fr → Back-office PWA
+# api.vintiz.fr → API FastAPI
+
+vintiz.fr {
+	reverse_proxy site:3001
+}
+
+www.vintiz.fr {
+	redir https://vintiz.fr{uri} permanent
+}
+
+app.vintiz.fr {
+	reverse_proxy web:3000
+}
+
+api.vintiz.fr {
+	reverse_proxy api:8000
+}

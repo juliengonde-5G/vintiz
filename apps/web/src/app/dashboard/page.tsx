@@ -1,0 +1,592 @@
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import Sidebar from '@/components/layout/Sidebar';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import { api } from '@/lib/api';
+
+interface DashboardData {
+  today: { revenue: number; transaction_count: number; avg_basket: number };
+  stock: { count: number; value: number };
+  top_products_week: { name: string; quantity: number; revenue: number }[];
+  recent_transactions: {
+    id: string;
+    transaction_number: number;
+    total_ttc: number;
+    type: string;
+    created_at: string;
+  }[];
+}
+
+interface WeatherData {
+  current: {
+    temp: number;
+    feels_like: number;
+    humidity: number;
+    description: string;
+    icon: string;
+    wind_speed: number;
+  };
+  forecast: {
+    date: string;
+    temp_min: number;
+    temp_max: number;
+    description: string;
+    icon: string;
+  }[];
+  city: string;
+}
+
+interface TransactionDetail {
+  id: string;
+  transaction_number: number;
+  total_ttc: number;
+  total_ht: number;
+  tax_amount: number;
+  type: string;
+  created_at: string;
+  client?: { id: string; first_name: string; last_name: string; email?: string; phone?: string } | null;
+  items: { name: string; quantity: number; unit_price: number; discount_percent: number }[];
+  payments: { method: string; amount: number }[];
+}
+
+function formatCurrency(value: number): string {
+  return value.toFixed(2).replace('.', ',') + '\u00A0\u20AC';
+}
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes}`;
+}
+
+function formatDateShort(dateStr: string): string {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function methodLabel(m: string): string {
+  if (m === 'especes' || m === 'cash') return 'Espèces';
+  if (m === 'carte' || m === 'card') return 'CB';
+  if (m === 'cheque') return 'Chèque';
+  return m;
+}
+
+function weatherIconUrl(icon: string): string {
+  return `https://openweathermap.org/img/wn/${icon}@2x.png`;
+}
+
+function SkeletonBlock({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse bg-gray-200 rounded-lg ${className}`} />;
+}
+
+// ── Ticket Detail Modal ──────────────────────────────────────────────────────
+
+function TicketModal({
+  ticket,
+  onClose,
+}: {
+  ticket: TransactionDetail;
+  onClose: () => void;
+}) {
+  const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState('');
+
+  const handleResend = async (channel: 'email' | 'sms') => {
+    if (!ticket.client) return;
+    setSending(true);
+    setSendResult('');
+    try {
+      const res = await api.post(`/api/pos/transactions/${ticket.id}/resend`, { channel });
+      if (res.ok) {
+        setSendResult(channel === 'email' ? 'Email envoyé !' : 'SMS envoyé !');
+      } else {
+        const err = await res.json().catch(() => null);
+        setSendResult(err?.detail || 'Erreur envoi');
+      }
+    } catch {
+      setSendResult('Erreur réseau');
+    }
+    setSending(false);
+  };
+
+  const handlePrint = () => {
+    const win = window.open('', '_blank', 'width=400,height=600');
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Ticket #${ticket.transaction_number}</title>
+      <style>
+        body { font-family: monospace; font-size: 12px; margin: 20px; }
+        h2 { text-align: center; font-size: 16px; }
+        .sep { border-top: 1px dashed #999; margin: 8px 0; }
+        .row { display: flex; justify-content: space-between; }
+        .total { font-weight: bold; font-size: 14px; }
+        .footer { text-align: center; font-size: 11px; color: #666; margin-top: 16px; }
+      </style>
+      </head><body>
+      <h2>VINTIZ</h2>
+      <p style="text-align:center">Vernon, Normandie</p>
+      <div class="sep"></div>
+      <div class="row"><span>Ticket #${ticket.transaction_number}</span><span>${formatDate(ticket.created_at)}</span></div>
+      ${ticket.client ? `<div>Client : ${ticket.client.first_name} ${ticket.client.last_name}</div>` : ''}
+      <div class="sep"></div>
+      ${ticket.items.map(item => `
+        <div class="row">
+          <span>${item.name}${item.discount_percent > 0 ? ` (-${item.discount_percent}%)` : ''}</span>
+          <span>${formatCurrency(item.unit_price * item.quantity * (1 - item.discount_percent / 100))}</span>
+        </div>
+      `).join('')}
+      <div class="sep"></div>
+      <div class="row total"><span>TOTAL TTC</span><span>${formatCurrency(ticket.total_ttc)}</span></div>
+      <div class="row"><span>dont TVA</span><span>${formatCurrency(ticket.tax_amount)}</span></div>
+      <div class="sep"></div>
+      ${ticket.payments.map(p => `<div class="row"><span>${methodLabel(p.method)}</span><span>${formatCurrency(p.amount)}</span></div>`).join('')}
+      <div class="footer">Merci de votre visite !<br>Boutique de seconde main premium</div>
+      </body></html>
+    `);
+    win.document.close();
+    win.print();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-lg font-bold text-black">Ticket #{ticket.transaction_number}</h2>
+            <p className="text-sm text-gray-500">{formatDate(ticket.created_at)}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-black transition-colors p-2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+          {/* Client */}
+          {ticket.client && (
+            <div className="flex items-center gap-3 p-3 bg-teal-50 rounded-xl">
+              <div className="w-9 h-9 rounded-full bg-teal flex items-center justify-center text-white text-sm font-bold shrink-0">
+                {ticket.client.first_name[0]}{ticket.client.last_name[0]}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-black">{ticket.client.first_name} {ticket.client.last_name}</p>
+                {ticket.client.email && <p className="text-xs text-gray-500">{ticket.client.email}</p>}
+                {ticket.client.phone && <p className="text-xs text-gray-500">{ticket.client.phone}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Items */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Articles</p>
+            <div className="space-y-1">
+              {ticket.items.map((item, i) => (
+                <div key={i} className="flex justify-between text-sm">
+                  <span className="text-gray-700">
+                    {item.name}
+                    {item.quantity > 1 && <span className="text-gray-400"> ×{item.quantity}</span>}
+                    {item.discount_percent > 0 && (
+                      <span className="ml-1 text-xs text-orange-500">-{item.discount_percent}%</span>
+                    )}
+                  </span>
+                  <span className="font-medium text-black">
+                    {formatCurrency(item.unit_price * item.quantity * (1 - item.discount_percent / 100))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Totals */}
+          <div className="border-t border-gray-100 pt-3 space-y-1">
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>Total HT</span>
+              <span>{formatCurrency(ticket.total_ht)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>TVA (20%)</span>
+              <span>{formatCurrency(ticket.tax_amount)}</span>
+            </div>
+            <div className="flex justify-between text-base font-bold text-black">
+              <span>Total TTC</span>
+              <span className="text-teal">{formatCurrency(ticket.total_ttc)}</span>
+            </div>
+          </div>
+
+          {/* Payments */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Paiements</p>
+            {ticket.payments.map((p, i) => (
+              <div key={i} className="flex justify-between text-sm">
+                <span className="text-gray-600">{methodLabel(p.method)}</span>
+                <span>{formatCurrency(p.amount)}</span>
+              </div>
+            ))}
+          </div>
+
+          {sendResult && (
+            <div className={`p-3 rounded-lg text-sm text-center ${sendResult.includes('Erreur') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
+              {sendResult}
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="px-6 pb-6 flex flex-wrap gap-3">
+          <Button variant="outline" size="sm" onClick={handlePrint}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+              <polyline points="6 9 6 2 18 2 18 9" />
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+              <rect x="6" y="14" width="12" height="8" />
+            </svg>
+            Réimprimer
+          </Button>
+          {ticket.client?.email && (
+            <Button variant="outline" size="sm" onClick={() => handleResend('email')} disabled={sending}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                <polyline points="22,6 12,13 2,6" />
+              </svg>
+              Email
+            </Button>
+          )}
+          {ticket.client?.phone && (
+            <Button variant="outline" size="sm" onClick={() => handleResend('sms')} disabled={sending}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              SMS
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Weather Widget ───────────────────────────────────────────────────────────
+
+function WeatherWidget({ data }: { data: WeatherData }) {
+  return (
+    <Card title="Météo Vernon">
+      <div className="flex items-center gap-4 mb-4">
+        <img
+          src={weatherIconUrl(data.current.icon)}
+          alt={data.current.description}
+          className="w-16 h-16"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+        <div>
+          <p className="text-3xl font-bold text-black">{Math.round(data.current.temp)}°C</p>
+          <p className="text-sm text-gray-500 capitalize">{data.current.description}</p>
+          <p className="text-xs text-gray-400">Ressenti {Math.round(data.current.feels_like)}°C · Vent {data.current.wind_speed} m/s</p>
+        </div>
+      </div>
+      {data.forecast && data.forecast.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {data.forecast.slice(0, 4).map((day, i) => (
+            <div key={i} className="flex flex-col items-center min-w-[60px] p-2 bg-gray-50 rounded-lg">
+              <p className="text-xs text-gray-500 mb-1">{formatDateShort(day.date)}</p>
+              <img
+                src={weatherIconUrl(day.icon)}
+                alt={day.description}
+                className="w-8 h-8"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+              <p className="text-xs font-medium text-black">{Math.round(day.temp_max)}°</p>
+              <p className="text-xs text-gray-400">{Math.round(day.temp_min)}°</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── Main Page ────────────────────────────────────────────────────────────────
+
+export default function DashboardPage() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
+  const [selectedTicket, setSelectedTicket] = useState<TransactionDetail | null>(null);
+  const [ticketLoading, setTicketLoading] = useState(false);
+
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const res = await api.get('/api/reports/dashboard');
+      if (!res.ok) throw new Error('Erreur lors du chargement');
+      const json = await res.json();
+      setData(json);
+      setError('');
+    } catch {
+      setError('Impossible de charger le tableau de bord. Vérifiez votre connexion.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchWeather = useCallback(async () => {
+    setWeatherLoading(true);
+    try {
+      const res = await api.get('/api/admin/weather');
+      if (res.ok) setWeather(await res.json());
+    } catch { /* weather is optional */ }
+    setWeatherLoading(false);
+  }, []);
+
+  const openTicket = async (id: string) => {
+    setTicketLoading(true);
+    try {
+      const res = await api.get(`/api/pos/transactions/${id}`);
+      if (res.ok) {
+        setSelectedTicket(await res.json());
+      }
+    } catch { /* silent */ }
+    setTicketLoading(false);
+  };
+
+  useEffect(() => {
+    fetchDashboard();
+    fetchWeather();
+    const interval = setInterval(fetchDashboard, 60000);
+    return () => clearInterval(interval);
+  }, [fetchDashboard, fetchWeather]);
+
+  const kpis = data
+    ? [
+        {
+          label: 'CA du jour',
+          value: formatCurrency(data.today.revenue),
+          icon: (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2A8B8B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="1" x2="12" y2="23" />
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
+          ),
+        },
+        {
+          label: 'Articles en stock',
+          value: String(data.stock.count),
+          icon: (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2A8B8B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+            </svg>
+          ),
+        },
+        {
+          label: "Transactions aujourd'hui",
+          value: String(data.today.transaction_count),
+          icon: (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2A8B8B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+              <line x1="1" y1="10" x2="23" y2="10" />
+            </svg>
+          ),
+        },
+        {
+          label: 'Panier moyen',
+          value: formatCurrency(data.today.avg_basket),
+          icon: (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2A8B8B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="9" cy="21" r="1" />
+              <circle cx="20" cy="21" r="1" />
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+            </svg>
+          ),
+        },
+      ]
+    : [];
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Sidebar />
+      <main className="md:ml-64 p-6 md:p-8">
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-black">Tableau de bord</h1>
+          <p className="text-gray-500 mt-1">Bienvenue sur Vintiz</p>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg">
+            {error}
+          </div>
+        )}
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+          {loading
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <Card key={i} className="flex items-start gap-4">
+                  <SkeletonBlock className="w-14 h-14 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <SkeletonBlock className="h-4 w-24" />
+                    <SkeletonBlock className="h-8 w-20" />
+                  </div>
+                </Card>
+              ))
+            : kpis.map((kpi) => (
+                <Card key={kpi.label} className="flex items-start gap-4">
+                  <div className="p-3 bg-teal-50 rounded-lg shrink-0">{kpi.icon}</div>
+                  <div>
+                    <p className="text-sm text-gray-500">{kpi.label}</p>
+                    <p className="text-2xl font-bold text-black mt-1">{kpi.value}</p>
+                  </div>
+                </Card>
+              ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          {/* Top 5 Products */}
+          <div className="lg:col-span-1">
+            <Card title="Top 5 produits cette semaine">
+              {loading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <SkeletonBlock key={i} className="h-10 w-full" />
+                  ))}
+                </div>
+              ) : data && data.top_products_week && data.top_products_week.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="pb-2 text-sm font-semibold text-gray-600">Produit</th>
+                        <th className="pb-2 text-sm font-semibold text-gray-600 text-right">Qté</th>
+                        <th className="pb-2 text-sm font-semibold text-gray-600 text-right">CA</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.top_products_week.slice(0, 5).map((p, i) => (
+                        <tr key={i} className="border-b border-gray-50">
+                          <td className="py-2 text-sm text-black">{p.name}</td>
+                          <td className="py-2 text-sm text-gray-600 text-right">{p.quantity}</td>
+                          <td className="py-2 text-sm font-medium text-teal text-right">
+                            {formatCurrency(p.revenue)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-gray-400 text-center py-4">Aucune donnée</p>
+              )}
+            </Card>
+          </div>
+
+          {/* Recent Transactions — clickable */}
+          <div className="lg:col-span-2">
+            <Card title="Dernières transactions">
+              {ticketLoading && (
+                <div className="text-xs text-gray-400 mb-2 text-right">Chargement ticket...</div>
+              )}
+              {loading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <SkeletonBlock key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : data && data.recent_transactions && data.recent_transactions.length > 0 ? (
+                <div className="space-y-2">
+                  {data.recent_transactions.slice(0, 10).map((tx) => (
+                    <button
+                      key={tx.id}
+                      onClick={() => openTicket(tx.id)}
+                      className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer text-left group"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-black group-hover:text-teal transition-colors">
+                          Ticket #{tx.transaction_number}
+                        </p>
+                        <p className="text-xs text-gray-500">{tx.created_at ? formatDate(tx.created_at) : ''}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <p className="font-bold text-teal">{formatCurrency(tx.total_ttc)}</p>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 group-hover:text-teal transition-colors">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-400 text-center py-4">Aucune transaction</p>
+              )}
+            </Card>
+          </div>
+        </div>
+
+        {/* Weather + Quick Actions row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Weather */}
+          <div>
+            {weatherLoading ? (
+              <Card title="Météo Vernon">
+                <div className="flex items-center gap-4">
+                  <SkeletonBlock className="w-16 h-16 rounded-full" />
+                  <div className="space-y-2 flex-1">
+                    <SkeletonBlock className="h-8 w-20" />
+                    <SkeletonBlock className="h-4 w-32" />
+                  </div>
+                </div>
+              </Card>
+            ) : weather ? (
+              <WeatherWidget data={weather} />
+            ) : (
+              <Card title="Météo Vernon">
+                <p className="text-gray-400 text-sm text-center py-4">
+                  Météo indisponible (configurer OPENWEATHER_API_KEY)
+                </p>
+              </Card>
+            )}
+          </div>
+
+          {/* Quick Actions */}
+          <Card title="Actions rapides">
+            <div className="flex flex-wrap gap-4">
+              <Link href="/pos">
+                <Button size="lg">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                    <circle cx="9" cy="21" r="1" />
+                    <circle cx="20" cy="21" r="1" />
+                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+                  </svg>
+                  Nouvelle vente
+                </Button>
+              </Link>
+              <Link href="/inventory/new">
+                <Button variant="secondary" size="lg">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  Ajouter un produit
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        </div>
+      </main>
+
+      {/* Ticket Detail Modal */}
+      {selectedTicket && (
+        <TicketModal ticket={selectedTicket} onClose={() => setSelectedTicket(null)} />
+      )}
+    </div>
+  );
+}
