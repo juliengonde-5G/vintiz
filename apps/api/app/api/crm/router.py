@@ -103,6 +103,8 @@ class CreateClientRequest(BaseModel):
     phone: str | None = None
     email: str | None = None
     city: str | None = None
+    email_optin: bool = False
+    sms_optin: bool = False
 
 
 class UpdateClientRequest(BaseModel):
@@ -111,6 +113,8 @@ class UpdateClientRequest(BaseModel):
     phone: str | None = None
     email: str | None = None
     city: str | None = None
+    email_optin: bool | None = None
+    sms_optin: bool | None = None
 
 
 @router.post("/clients")
@@ -126,6 +130,8 @@ async def create_client(
         phone=request.phone,
         email=request.email,
         notes=request.city,
+        email_optin=request.email_optin,
+        sms_optin=request.sms_optin,
     )
     db.add(client)
     await db.flush()
@@ -137,6 +143,8 @@ async def create_client(
         "last_name": client.last_name,
         "phone": client.phone,
         "email": client.email,
+        "email_optin": client.email_optin,
+        "sms_optin": client.sms_optin,
     }
 
 
@@ -211,6 +219,8 @@ async def get_client(
         "phone": client.phone,
         "email": client.email,
         "notes": client.notes,
+        "email_optin": client.email_optin,
+        "sms_optin": client.sms_optin,
         "loyalty": loyalty_data,
         "purchases": [
             {
@@ -247,6 +257,10 @@ async def update_client(
         client.email = request.email
     if request.city is not None:
         client.notes = request.city
+    if request.email_optin is not None:
+        client.email_optin = request.email_optin
+    if request.sms_optin is not None:
+        client.sms_optin = request.sms_optin
 
     await db.flush()
     await db.refresh(client)
@@ -257,6 +271,8 @@ async def update_client(
         "last_name": client.last_name,
         "phone": client.phone,
         "email": client.email,
+        "email_optin": client.email_optin,
+        "sms_optin": client.sms_optin,
     }
 
 
@@ -527,6 +543,91 @@ async def send_sms(
             "client_id": str(request.client_id),
             "sent_at": datetime.now(timezone.utc).isoformat(),
         }
+
+
+# ---------------------------------------------------------------------------
+# Campaigns
+# ---------------------------------------------------------------------------
+
+WELCOME_EMAIL_TEMPLATE = """\
+<html><body style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #2C2C2C;">
+<h1 style="color: #1A7A6A; font-size: 24px;">Bienvenue chez Vintiz, {first_name} !</h1>
+<p style="font-size: 16px; line-height: 1.6;">
+  Nous sommes ravis de vous accueillir dans notre boutique de mode premium de seconde main,
+  au cœur de Vernon. Chaque pièce que nous sélectionnons a été choisie avec soin pour vous
+  offrir qualité, style et responsabilité.
+</p>
+<p style="font-size: 16px; line-height: 1.6;">
+  Retrouvez-nous au <strong>6 rue Saint-Jacques, 27200 Vernon</strong> ou découvrez nos
+  nouvelles arrivées sur notre site.
+</p>
+<p style="font-size: 14px; color: #666; margin-top: 30px;">
+  Pour vous désabonner de nos communications marketing, contactez-nous à
+  <a href="mailto:contact@vintiz.fr" style="color: #1A7A6A;">contact@vintiz.fr</a>.
+</p>
+<p style="font-size: 12px; color: #999;">
+  Vintiz — 6 rue Saint-Jacques, 27200 Vernon | SIRET : XXX XXX XXX XXXXX
+</p>
+</body></html>
+"""
+
+
+@router.post("/campaigns/welcome")
+async def send_welcome_campaign(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Send welcome email to all clients with email_optin=True.
+    Uses SMTP if configured, otherwise simulates sending.
+    """
+    result = await db.execute(
+        select(Client).where(Client.email_optin == True, Client.email.isnot(None))  # noqa: E712
+    )
+    clients = result.scalars().all()
+
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user or "noreply@vintiz.fr")
+
+    sent = 0
+    simulated = 0
+    errors = 0
+
+    for client in clients:
+        try:
+            subject = f"Bienvenue chez Vintiz, {client.first_name} !"
+            body = WELCOME_EMAIL_TEMPLATE.format(first_name=client.first_name)
+
+            if smtp_host and smtp_user and smtp_password:
+                import smtplib
+                from email.mime.multipart import MIMEMultipart
+                from email.mime.text import MIMEText
+
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = subject
+                msg["From"] = smtp_from
+                msg["To"] = client.email
+
+                msg.attach(MIMEText(body, "html", "utf-8"))
+                with smtplib.SMTP(smtp_host, smtp_port) as server:
+                    server.starttls()
+                    server.login(smtp_user, smtp_password)
+                    server.sendmail(smtp_from, client.email, msg.as_string())
+                sent += 1
+            else:
+                simulated += 1
+        except Exception:
+            errors += 1
+
+    return {
+        "total_eligible": len(clients),
+        "sent": sent,
+        "simulated": simulated,
+        "errors": errors,
+        "smtp_configured": bool(smtp_host and smtp_user and smtp_password),
+    }
 
 
 # ---------------------------------------------------------------------------

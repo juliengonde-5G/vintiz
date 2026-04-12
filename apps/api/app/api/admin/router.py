@@ -766,6 +766,51 @@ async def update_zone(
     }
 
 
+# ---------------------------------------------------------------------------
+# Monthly scoring automation
+# ---------------------------------------------------------------------------
+
+@router.post("/scoring/monthly-update")
+async def monthly_scoring_update(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Recompute trend score for all active products. Triggered on the 1st Wednesday of each month."""
+    from app.services.scoring_service import compute_score
+
+    result = await db.execute(
+        select(Product).where(
+            Product.status.in_([ProductStatus.stock, ProductStatus.display])
+        )
+    )
+    products = result.scalars().all()
+    updated = 0
+    for product in products:
+        # Get category average price for context
+        avg_result = await db.execute(
+            select(func.avg(Product.sale_price)).where(Product.category_id == product.category_id)
+        )
+        avg_price = float(avg_result.scalar_one_or_none() or product.sale_price)
+
+        score_data = compute_score(
+            shelf_date=product.shelf_date,
+            sale_price=float(product.sale_price),
+            category_avg_price=avg_price,
+            condition=getattr(product, "condition", "tres_bon") or "tres_bon",
+            brand=product.brand,
+            photo_url=product.photo_url,
+        )
+        product.trend_score = score_data["total_score"]
+        updated += 1
+
+    await db.commit()
+    return {
+        "updated": updated,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "message": f"Scores recalcules pour {updated} produits actifs",
+    }
+
+
 @router.delete("/zones/{zone_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_zone(
     zone_id: uuid.UUID,

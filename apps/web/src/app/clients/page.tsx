@@ -17,6 +17,8 @@ interface Client {
   phone?: string;
   email?: string;
   city?: string;
+  email_optin?: boolean;
+  sms_optin?: boolean;
   loyalty_active?: boolean;
   loyalty_points?: number;
   loyalty_tier?: string;
@@ -55,6 +57,8 @@ export default function ClientsPage() {
     phone: '',
     email: '',
     city: '',
+    email_optin: false,
+    sms_optin: false,
   });
   const [newError, setNewError] = useState('');
   const [newSubmitting, setNewSubmitting] = useState(false);
@@ -68,6 +72,8 @@ export default function ClientsPage() {
     phone: '',
     email: '',
     city: '',
+    email_optin: false,
+    sms_optin: false,
   });
   const [editMode, setEditMode] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
@@ -124,7 +130,7 @@ export default function ClientsPage() {
         throw new Error(err?.detail || err?.message || 'Erreur lors de la creation');
       }
       setShowNew(false);
-      setNewForm({ first_name: '', last_name: '', phone: '', email: '', city: '' });
+      setNewForm({ first_name: '', last_name: '', phone: '', email: '', city: '', email_optin: false, sms_optin: false });
       fetchClients(search);
     } catch (err) {
       setNewError(err instanceof Error ? err.message : 'Erreur inconnue');
@@ -141,6 +147,8 @@ export default function ClientsPage() {
       phone: client.phone || '',
       email: client.email || '',
       city: client.city || '',
+      email_optin: client.email_optin || false,
+      sms_optin: client.sms_optin || false,
     });
     setEditMode(false);
     setEditError('');
@@ -241,7 +249,7 @@ export default function ClientsPage() {
           </div>
           <Button
             onClick={() => {
-              setNewForm({ first_name: '', last_name: '', phone: '', email: '', city: '' });
+              setNewForm({ first_name: '', last_name: '', phone: '', email: '', city: '', email_optin: false, sms_optin: false });
               setNewError('');
               setShowNew(true);
             }}
@@ -346,6 +354,27 @@ export default function ClientsPage() {
             value={newForm.city}
             onChange={(e) => setNewForm((f) => ({ ...f, city: e.target.value }))}
           />
+          <div className="space-y-2 pt-2 border-t border-gray-100">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Consentement marketing (RGPD)</p>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newForm.email_optin}
+                onChange={(e) => setNewForm((f) => ({ ...f, email_optin: e.target.checked }))}
+                className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
+              />
+              <span className="text-sm text-gray-700">Accepte de recevoir des emails marketing</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newForm.sms_optin}
+                onChange={(e) => setNewForm((f) => ({ ...f, sms_optin: e.target.checked }))}
+                className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
+              />
+              <span className="text-sm text-gray-700">Accepte de recevoir des SMS</span>
+            </label>
+          </div>
         </div>
       </Modal>
 
@@ -413,6 +442,27 @@ export default function ClientsPage() {
                   value={editForm.city}
                   onChange={(e) => setEditForm((f) => ({ ...f, city: e.target.value }))}
                 />
+                <div className="space-y-2 pt-2 border-t border-gray-100">
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Consentement marketing (RGPD)</p>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editForm.email_optin}
+                      onChange={(e) => setEditForm((f) => ({ ...f, email_optin: e.target.checked }))}
+                      className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
+                    />
+                    <span className="text-sm text-gray-700">Accepte de recevoir des emails marketing</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editForm.sms_optin}
+                      onChange={(e) => setEditForm((f) => ({ ...f, sms_optin: e.target.checked }))}
+                      className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
+                    />
+                    <span className="text-sm text-gray-700">Accepte de recevoir des SMS</span>
+                  </label>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">
@@ -427,6 +477,18 @@ export default function ClientsPage() {
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-sm text-gray-500">Ville</span>
                   <span className="text-sm text-black">{selectedClient.city || '-'}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-500">Emails marketing</span>
+                  <span className={`text-sm font-medium ${selectedClient.email_optin ? 'text-teal' : 'text-gray-400'}`}>
+                    {selectedClient.email_optin ? 'Accepte' : 'Refuse'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-500">SMS marketing</span>
+                  <span className={`text-sm font-medium ${selectedClient.sms_optin ? 'text-teal' : 'text-gray-400'}`}>
+                    {selectedClient.sms_optin ? 'Accepte' : 'Refuse'}
+                  </span>
                 </div>
               </div>
             )}
