@@ -45,6 +45,8 @@ class ProductUpdate(BaseModel):
     status: str | None = None
     week_number: int | None = None
     zone_id: uuid.UUID | None = None
+    shelf_date: datetime | None = None
+    description: str | None = None
 
 
 class ProductResponse(BaseModel):
@@ -61,6 +63,8 @@ class ProductResponse(BaseModel):
     status: str
     week_number: int | None
     trend_score: float | None
+    shelf_date: datetime | None = None
+    description: str | None = None
     created_at: datetime
     updated_at: datetime
 

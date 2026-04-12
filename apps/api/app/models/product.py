@@ -1,7 +1,8 @@
 import enum
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Enum, Float, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -70,6 +71,8 @@ class Product(Base):
         UUID(as_uuid=True), ForeignKey("store_zones.id"), nullable=True
     )
     trend_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    shelf_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     category: Mapped["Category"] = relationship(
         "Category", back_populates="products", lazy="selectin"

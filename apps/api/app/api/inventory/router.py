@@ -151,6 +151,75 @@ async def get_product(
     return ProductResponse.model_validate(product)
 
 
+@router.get("/products/{product_id}/label")
+async def get_product_label(
+    product_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Generate and return a PNG label for a product."""
+    from fastapi.responses import Response
+    from app.services.label import generate_label
+    from app.services.barcode import generate_barcode
+
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    category_name = product.category.name if product.category else "Article"
+    week = product.week_number or 1
+    barcode_data = product.barcode
+
+    # Generate barcode image
+    try:
+        barcode_png = generate_barcode(week, category_name[:4].upper(), 1, int(product.sale_price * 100))
+    except Exception:
+        barcode_png = None
+
+    # Generate full label
+    label_png = generate_label(
+        product_name=product.name,
+        category=category_name,
+        barcode_data=barcode_data,
+        price=f"{float(product.sale_price):.2f} €",
+        week=week,
+        barcode_image=barcode_png,
+    )
+
+    return Response(content=label_png, media_type="image/png")
+
+
+@router.get("/products/{product_id}/score")
+async def get_product_score(
+    product_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Compute and return detailed score for a product."""
+    from app.services.scoring_service import compute_score
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Get category avg price
+    avg_result = await db.execute(
+        select(func.avg(Product.sale_price)).where(Product.category_id == product.category_id)
+    )
+    avg_price = avg_result.scalar_one_or_none() or float(product.sale_price)
+
+    score = compute_score(
+        shelf_date=product.shelf_date,
+        sale_price=float(product.sale_price),
+        category_avg_price=float(avg_price),
+        condition="tres_bon",
+        brand=product.brand,
+        photo_url=product.photo_url,
+    )
+    return score
+
+
 @router.put("/products/{product_id}", response_model=ProductResponse)
 async def update_product(
     product_id: uuid.UUID,

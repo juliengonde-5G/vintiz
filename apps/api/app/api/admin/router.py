@@ -1,9 +1,13 @@
+import asyncio
 import hashlib
+import json
 import random
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -615,3 +619,173 @@ async def _reset_data_impl(db: AsyncSession):
         "message": "Donnees reinitialisees",
         "deleted": counts,
     }
+
+
+# ---------------------------------------------------------------------------
+# Weather endpoint
+# ---------------------------------------------------------------------------
+
+@router.get("/weather")
+async def get_weather(current_user: Annotated[User, Depends(get_current_user)]):
+    """Get current weather and forecast for Vernon."""
+    from app.services.weather_service import get_current_weather, get_weather_forecast
+    current, forecast = await asyncio.gather(get_current_weather(), get_weather_forecast())
+    return {"current": current, "forecast": forecast}
+
+
+# ---------------------------------------------------------------------------
+# Zones CRUD
+# ---------------------------------------------------------------------------
+
+class ZoneCreate(BaseModel):
+    name: str
+    description: str | None = None
+    capacity: int = 0
+    product_types: List[str] | None = None
+    color_code: str | None = "#1A7A6A"
+
+
+class ZoneUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    capacity: int | None = None
+    product_types: List[str] | None = None
+    color_code: str | None = None
+
+
+@router.get("/zones")
+async def list_zones(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """List all zones with product count and product types."""
+    from app.models.store import ZoneProduct
+    result = await db.execute(select(StoreZone))
+    zones = result.scalars().all()
+
+    output = []
+    for zone in zones:
+        # Count products assigned to this zone directly via Product.zone_id
+        count_result = await db.execute(
+            select(func.count(Product.id)).where(Product.zone_id == zone.id)
+        )
+        product_count = count_result.scalar_one() or 0
+
+        # Parse product_types JSON string back to list
+        parsed_types = None
+        if zone.product_types:
+            try:
+                parsed_types = json.loads(zone.product_types)
+            except Exception:
+                parsed_types = [zone.product_types]
+
+        output.append({
+            "id": str(zone.id),
+            "name": zone.name,
+            "description": zone.description,
+            "capacity": zone.capacity,
+            "product_types": parsed_types,
+            "color_code": zone.color_code,
+            "product_count": product_count,
+        })
+
+    return output
+
+
+@router.post("/zones", status_code=status.HTTP_201_CREATED)
+async def create_zone(
+    zone_in: ZoneCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Create a new store zone."""
+    product_types_json = json.dumps(zone_in.product_types) if zone_in.product_types is not None else None
+    zone = StoreZone(
+        name=zone_in.name,
+        description=zone_in.description,
+        capacity=zone_in.capacity,
+        product_types=product_types_json,
+        color_code=zone_in.color_code or "#1A7A6A",
+    )
+    db.add(zone)
+    await db.flush()
+    await db.refresh(zone)
+    await db.commit()
+    return {
+        "id": str(zone.id),
+        "name": zone.name,
+        "description": zone.description,
+        "capacity": zone.capacity,
+        "product_types": zone_in.product_types,
+        "color_code": zone.color_code,
+    }
+
+
+@router.put("/zones/{zone_id}")
+async def update_zone(
+    zone_id: uuid.UUID,
+    zone_in: ZoneUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Update an existing store zone."""
+    result = await db.execute(select(StoreZone).where(StoreZone.id == zone_id))
+    zone = result.scalar_one_or_none()
+    if zone is None:
+        raise HTTPException(status_code=404, detail="Zone not found")
+
+    if zone_in.name is not None:
+        zone.name = zone_in.name
+    if zone_in.description is not None:
+        zone.description = zone_in.description
+    if zone_in.capacity is not None:
+        zone.capacity = zone_in.capacity
+    if zone_in.color_code is not None:
+        zone.color_code = zone_in.color_code
+    if zone_in.product_types is not None:
+        zone.product_types = json.dumps(zone_in.product_types)
+
+    await db.flush()
+    await db.refresh(zone)
+    await db.commit()
+
+    parsed_types = None
+    if zone.product_types:
+        try:
+            parsed_types = json.loads(zone.product_types)
+        except Exception:
+            parsed_types = [zone.product_types]
+
+    return {
+        "id": str(zone.id),
+        "name": zone.name,
+        "description": zone.description,
+        "capacity": zone.capacity,
+        "product_types": parsed_types,
+        "color_code": zone.color_code,
+    }
+
+
+@router.delete("/zones/{zone_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_zone(
+    zone_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Delete a store zone. Unassigns all products in that zone first."""
+    result = await db.execute(select(StoreZone).where(StoreZone.id == zone_id))
+    zone = result.scalar_one_or_none()
+    if zone is None:
+        raise HTTPException(status_code=404, detail="Zone not found")
+
+    # Unassign products from this zone
+    products_result = await db.execute(
+        select(Product).where(Product.zone_id == zone_id)
+    )
+    for product in products_result.scalars().all():
+        product.zone_id = None
+    await db.flush()
+
+    await db.delete(zone)
+    await db.flush()
+    await db.commit()

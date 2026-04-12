@@ -1,4 +1,6 @@
+import os
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -402,3 +404,125 @@ async def redeem_loyalty_points(
         "points": account.points,
         "redeemed": request.points,
     }
+
+
+# ---------------------------------------------------------------------------
+# Email / SMS sending
+# ---------------------------------------------------------------------------
+
+class SendEmailRequest(BaseModel):
+    client_id: uuid.UUID
+    subject: str
+    body: str
+    type: str = "marketing"  # "ticket" | "marketing"
+
+
+class SendSMSRequest(BaseModel):
+    client_id: uuid.UUID
+    message: str
+
+
+@router.post("/send-email")
+async def send_email(
+    request: SendEmailRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Send an email to a client. Uses SMTP if configured, otherwise simulates."""
+    result = await db.execute(select(Client).where(Client.id == request.client_id))
+    client = result.scalar_one_or_none()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if not client.email:
+        raise HTTPException(status_code=400, detail="Client has no email address")
+
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user or "noreply@vintiz.fr")
+
+    if smtp_host and smtp_user and smtp_password:
+        try:
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = request.subject
+            msg["From"] = smtp_from
+            msg["To"] = client.email
+
+            html_part = MIMEText(request.body, "html", "utf-8")
+            msg.attach(html_part)
+
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+                server.sendmail(smtp_from, client.email, msg.as_string())
+
+            return {
+                "status": "sent",
+                "message": f"Email envoye a {client.email}",
+                "client_id": str(request.client_id),
+                "type": request.type,
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Erreur envoi email: {str(e)}")
+    else:
+        # Simulated send
+        return {
+            "status": "simulated",
+            "message": f"[SIMULATION] Email '{request.subject}' envoye a {client.email} ({client.first_name} {client.last_name})",
+            "client_id": str(request.client_id),
+            "type": request.type,
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+@router.post("/send-sms")
+async def send_sms(
+    request: SendSMSRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Send an SMS to a client. Uses Twilio if configured, otherwise simulates."""
+    result = await db.execute(select(Client).where(Client.id == request.client_id))
+    client = result.scalar_one_or_none()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if not client.phone:
+        raise HTTPException(status_code=400, detail="Client has no phone number")
+
+    twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
+    twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
+    twilio_from_number = os.getenv("TWILIO_FROM_NUMBER", "")
+
+    if twilio_account_sid and twilio_auth_token and twilio_from_number:
+        try:
+            from twilio.rest import Client as TwilioClient
+
+            twilio_client = TwilioClient(twilio_account_sid, twilio_auth_token)
+            message = twilio_client.messages.create(
+                body=request.message,
+                from_=twilio_from_number,
+                to=client.phone,
+            )
+            return {
+                "status": "sent",
+                "message": f"SMS envoye au {client.phone}",
+                "client_id": str(request.client_id),
+                "sid": message.sid,
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Erreur envoi SMS: {str(e)}")
+    else:
+        # Simulated send
+        return {
+            "status": "simulated",
+            "message": f"[SIMULATION] SMS envoye au {client.phone} ({client.first_name} {client.last_name}): '{request.message}'",
+            "client_id": str(request.client_id),
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+        }

@@ -13,6 +13,8 @@ class StoreZone(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    product_types: Mapped[str | None] = mapped_column(Text, nullable=True)
+    color_code: Mapped[str | None] = mapped_column(String(20), nullable=True, default="#1A7A6A")
 
     zone_products: Mapped[list["ZoneProduct"]] = relationship(
         "ZoneProduct", back_populates="zone", lazy="selectin"
