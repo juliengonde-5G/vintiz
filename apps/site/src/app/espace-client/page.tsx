@@ -54,7 +54,6 @@ export default function EspaceClientPage() {
   const [clientData, setClientData] = useState<ClientData | null>(null);
   const [loyalty, setLoyalty] = useState<LoyaltyData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [token, setToken] = useState("");
   const [personalShopper, setPersonalShopper] = useState<PersonalShopper | null>(null);
   const [shopperLoading, setShopperLoading] = useState(false);
 
@@ -83,7 +82,6 @@ export default function EspaceClientPage() {
         setClientData(data.client);
         setLoyalty(data.loyalty || null);
         setTransactions(data.recent_transactions || []);
-        setToken(data.token || "");
         setView("dashboard");
       } else if (res.status === 404) {
         setError("Aucun compte trouvé avec cet email. Demandez votre carte fidélité en boutique !");
