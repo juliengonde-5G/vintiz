@@ -247,7 +247,7 @@ export default function POSPage() {
 
   const updateDiscount = (index: number, discount: number) => {
     setCart(prev => prev.map((item, i) =>
-      i === index ? { ...item, discount: Math.max(0, Math.min(100, discount)) } : item
+      i === index ? { ...item, discount: Math.max(0, Math.min(30, discount)) } : item
     ));
   };
 

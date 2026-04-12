@@ -10,7 +10,7 @@ VERNON_LON = 1.4833
 async def get_current_weather() -> dict:
     """Fetch current weather for Vernon (27200)."""
     if not OPENWEATHER_API_KEY:
-        return {"error": "API key not configured", "condition": "Inconnu", "temp": 0, "humidity": 0, "icon": "01d"}
+        return {"description": "Non configuré", "temp": 0, "feels_like": 0, "humidity": 0, "icon": "01d", "wind_speed": 0, "city": "Vernon"}
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -24,8 +24,9 @@ async def get_current_weather() -> dict:
             resp.raise_for_status()
             data = resp.json()
             return {
-                "condition": data["weather"][0]["description"].capitalize(),
+                "description": data["weather"][0]["description"].capitalize(),
                 "temp": round(data["main"]["temp"], 1),
+                "feels_like": round(data["main"]["feels_like"], 1),
                 "temp_min": round(data["main"]["temp_min"], 1),
                 "temp_max": round(data["main"]["temp_max"], 1),
                 "humidity": data["main"]["humidity"],
@@ -34,7 +35,7 @@ async def get_current_weather() -> dict:
                 "city": "Vernon",
             }
     except Exception as e:
-        return {"error": str(e), "condition": "Inconnu", "temp": 0, "humidity": 0, "icon": "01d", "city": "Vernon"}
+        return {"description": "Erreur météo", "temp": 0, "feels_like": 0, "humidity": 0, "icon": "01d", "wind_speed": 0, "city": "Vernon"}
 
 
 async def get_weather_forecast() -> list:

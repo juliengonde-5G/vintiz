@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
+from app.core.database import engine
+from app.models import Base
 from app.api.auth.router import router as auth_router
 from app.api.inventory.router import router as inventory_router
 from app.api.pos.router import router as pos_router
@@ -20,7 +22,10 @@ logger = logging.getLogger("vintiz")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Vintiz API started")
+    # Create all DB tables on startup (idempotent — safe to run on every restart)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Vintiz API started — tables ready")
     yield
     logger.info("Vintiz API shutting down")
 
