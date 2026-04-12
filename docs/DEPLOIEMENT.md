@@ -1,4 +1,4 @@
-# Guide de deploiement Vintiz V2
+# Guide de deploiement Vintiz V3
 
 ## Pre-requis serveur (VPS Scaleway)
 
@@ -21,13 +21,12 @@ Configurer les enregistrements A (pointer vers l'IP du VPS) :
 ## Installation sur le serveur
 
 ```bash
-# 1. Cloner le projet
-git clone https://github.com/juliengonde-5G/vintiz.git /opt/vintiz
+# 1. Cloner le projet (branche main)
+git clone -b main https://github.com/juliengonde-5G/vintiz.git /opt/vintiz
 cd /opt/vintiz
-git checkout claude/vintiz-shop-management-v2-Fso64
 
 # 2. Configurer l'environnement
-cp .env.production .env
+cp .env.production.template .env
 nano .env
 # → Remplir POSTGRES_PASSWORD (mot de passe fort)
 # → Remplir SECRET_KEY (openssl rand -hex 32)
