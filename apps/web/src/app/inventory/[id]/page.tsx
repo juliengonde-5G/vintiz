@@ -82,7 +82,7 @@ export default function ProductDetailPage() {
 
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [score, setScore] = useState<ScoreDetail | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);

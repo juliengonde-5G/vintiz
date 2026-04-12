@@ -282,6 +282,7 @@ function WeatherWidget({ data }: { data: WeatherData }) {
   return (
     <Card title="Météo Vernon">
       <div className="flex items-center gap-4 mb-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={weatherIconUrl(data.current.icon)}
           alt={data.current.description}
@@ -299,6 +300,7 @@ function WeatherWidget({ data }: { data: WeatherData }) {
           {data.forecast.slice(0, 4).map((day, i) => (
             <div key={i} className="flex flex-col items-center min-w-[60px] p-2 bg-gray-50 rounded-lg">
               <p className="text-xs text-gray-500 mb-1">{formatDateShort(day.date)}</p>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={weatherIconUrl(day.icon)}
                 alt={day.description}

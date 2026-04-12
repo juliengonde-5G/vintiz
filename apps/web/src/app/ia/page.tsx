@@ -847,6 +847,58 @@ export default function IAPage() {
               </>
             )}
 
+            {/* Recommandations IA */}
+            {aiReco && !aiReco.error && (
+              <Card title="Recommandations IA">
+                {aiReco.resume && (
+                  <div className="p-3 bg-teal-50 rounded-lg mb-4">
+                    <p className="text-sm text-teal-800">{aiReco.resume}</p>
+                  </div>
+                )}
+
+                {aiReco.recommendations && aiReco.recommendations.length > 0 && (
+                  <div className="mb-4">
+                    <h4 className="font-semibold text-black mb-2">Actions recommandees</h4>
+                    <div className="space-y-2">
+                      {aiReco.recommendations.map((r, i) => (
+                        <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                            r.action === 'mettre_en_avant' ? 'bg-green-100 text-green-700' :
+                            r.action === 'deplacer' ? 'bg-blue-100 text-blue-700' :
+                            r.action === 'demarquer' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {r.action}
+                          </span>
+                          <div>
+                            <p className="text-sm text-black font-medium">{r.product_name}</p>
+                            {r.to_zone && <p className="text-xs text-gray-500">Vers : {r.to_zone}</p>}
+                            <p className="text-xs text-gray-400 mt-1">{r.reason}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {aiReco.zone_suggestions && aiReco.zone_suggestions.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-black mb-2">Suggestions par zone</h4>
+                    <div className="space-y-2">
+                      {aiReco.zone_suggestions.map((s, i) => (
+                        <div key={i} className="p-3 bg-gray-50 rounded-lg">
+                          <p className="text-sm font-medium text-black">{s.zone} - {s.theme_suggere}</p>
+                          <p className="text-xs text-gray-500 mt-1">{s.conseil}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
+          </div>
+        )}
+
         {/* CHECKLIST SEMAINE TAB */}
         {tab === 'checklist' && (
           <div className="space-y-6">
@@ -1137,59 +1189,6 @@ export default function IAPage() {
           </div>
         )}
 
-        {tab === 'mapping' && (
-          <>
-            {/* AI Recommendations */}
-            {aiReco && !aiReco.error && (
-              <Card title="Recommandations IA">
-                {aiReco.resume && (
-                  <div className="p-3 bg-teal-50 rounded-lg mb-4">
-                    <p className="text-sm text-teal-800">{aiReco.resume}</p>
-                  </div>
-                )}
-
-                {aiReco.recommendations && aiReco.recommendations.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="font-semibold text-black mb-2">Actions recommandees</h4>
-                    <div className="space-y-2">
-                      {aiReco.recommendations.map((r, i) => (
-                        <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                            r.action === 'mettre_en_avant' ? 'bg-green-100 text-green-700' :
-                            r.action === 'deplacer' ? 'bg-blue-100 text-blue-700' :
-                            r.action === 'demarquer' ? 'bg-yellow-100 text-yellow-700' :
-                            'bg-red-100 text-red-700'
-                          }`}>
-                            {r.action}
-                          </span>
-                          <div>
-                            <p className="text-sm text-black font-medium">{r.product_name}</p>
-                            {r.to_zone && <p className="text-xs text-gray-500">Vers : {r.to_zone}</p>}
-                            <p className="text-xs text-gray-400 mt-1">{r.reason}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {aiReco.zone_suggestions && aiReco.zone_suggestions.length > 0 && (
-                  <div>
-                    <h4 className="font-semibold text-black mb-2">Suggestions par zone</h4>
-                    <div className="space-y-2">
-                      {aiReco.zone_suggestions.map((s, i) => (
-                        <div key={i} className="p-3 bg-gray-50 rounded-lg">
-                          <p className="text-sm font-medium text-black">{s.zone} - {s.theme_suggere}</p>
-                          <p className="text-xs text-gray-500 mt-1">{s.conseil}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </Card>
-            )}
-          </div>
-        )}
       </main>
     </div>
   );
