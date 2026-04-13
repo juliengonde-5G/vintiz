@@ -95,6 +95,9 @@ export default function POSPage() {
   // Receipt
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptText, setReceiptText] = useState('');
+  const [receiptTxId, setReceiptTxId] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [printMsg, setPrintMsg] = useState('');
 
   // CB / SumUp
   const [cbCheckoutId, setCbCheckoutId] = useState<string | null>(null);
@@ -356,6 +359,7 @@ export default function POSPage() {
         throw new Error(err?.detail || 'Erreur lors de la creation');
       }
       const transaction = await res.json();
+      setReceiptTxId(transaction.id);
 
       // Fetch receipt
       try {
@@ -378,9 +382,29 @@ export default function POSPage() {
     setSubmitting(false);
   };
 
+  const printReceiptOnPrinter = async () => {
+    if (!receiptTxId) return;
+    setPrinting(true);
+    setPrintMsg('');
+    try {
+      const res = await api.post(`/api/pos/transactions/${receiptTxId}/print`, {});
+      if (res.ok) {
+        setPrintMsg('Ticket imprime sur la MUNBYN');
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setPrintMsg(e.detail || 'Echec de l\'impression');
+      }
+    } catch {
+      setPrintMsg('Erreur de connexion imprimante');
+    }
+    setPrinting(false);
+  };
+
   const handleReceiptClose = () => {
     setShowReceipt(false);
     setReceiptText('');
+    setReceiptTxId(null);
+    setPrintMsg('');
     setCart([]);
     setPayments([]);
     setCashGiven('');
@@ -929,11 +953,21 @@ export default function POSPage() {
         open={showReceipt}
         onClose={handleReceiptClose}
         title="Ticket de caisse"
-        actions={<Button onClick={handleReceiptClose}>Fermer</Button>}
+        actions={
+          <div className="flex gap-2">
+            <Button onClick={printReceiptOnPrinter} disabled={printing || !receiptTxId} variant="secondary">
+              {printing ? 'Impression...' : 'Imprimer (MUNBYN)'}
+            </Button>
+            <Button onClick={handleReceiptClose}>Fermer</Button>
+          </div>
+        }
       >
         <div className="bg-gray-50 p-4 rounded-lg">
           <pre className="whitespace-pre-wrap text-sm font-mono text-black">{receiptText}</pre>
         </div>
+        {printMsg && (
+          <p className="mt-3 text-sm text-teal">{printMsg}</p>
+        )}
       </Modal>
     </div>
   );

@@ -26,8 +26,28 @@ interface Zone {
 
 const ALL_PRODUCT_TYPES = ['Robes', 'Hauts', 'Pantalons', 'Jupes', 'Vestes', 'Manteaux', 'Accessoires', 'Chaussures', 'Sacs', 'Bijoux', 'Enfant'];
 
+interface HardwareConfig {
+  receipt_printer: { enabled: boolean; model: string; host: string; port: number; width_chars: number; cut_paper: boolean };
+  cash_drawer: { enabled: boolean; model: string; kick_on_cash: boolean; kick_pin: number; on_time_ms: number; off_time_ms: number };
+  label_printer: { enabled: boolean; model: string; host: string; port: number; label_width_mm: number; label_height_mm: number };
+  barcode_scanner: { enabled: boolean; model: string; mode: string; suffix: string; min_length: number };
+  payment_terminal: { enabled: boolean; model: string; mode: string };
+}
+
+interface CompatibilityItem {
+  category: string;
+  label: string;
+  model: string;
+  connection: string;
+  supported: boolean;
+  notes: string;
+}
+
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'store' | 'categories' | 'zones' | 'system'>('store');
+  const [tab, setTab] = useState<'store' | 'categories' | 'zones' | 'hardware' | 'system'>('store');
+  const [hardware, setHardware] = useState<HardwareConfig | null>(null);
+  const [compatibility, setCompatibility] = useState<CompatibilityItem[]>([]);
+  const [hwSaving, setHwSaving] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,7 +66,81 @@ export default function SettingsPage() {
   useEffect(() => {
     if (tab === 'categories') loadCategories();
     if (tab === 'zones') loadZones();
+    if (tab === 'hardware') loadHardware();
   }, [tab]);
+
+  const loadHardware = async () => {
+    setLoading(true);
+    try {
+      const [cfgRes, compatRes] = await Promise.all([
+        api.get('/api/hardware/config'),
+        api.get('/api/hardware/compatibility'),
+      ]);
+      if (cfgRes.ok) setHardware(await cfgRes.json());
+      if (compatRes.ok) {
+        const data = await compatRes.json();
+        setCompatibility(data.items || []);
+      }
+    } catch {
+      setError('Erreur de chargement du materiel');
+    }
+    setLoading(false);
+  };
+
+  const saveHardware = async () => {
+    if (!hardware) return;
+    setHwSaving(true);
+    setError('');
+    try {
+      const res = await api.put('/api/hardware/config', hardware);
+      if (res.ok) {
+        setHardware(await res.json());
+        setMessage('Configuration materiel sauvegardee');
+        setTimeout(() => setMessage(''), 3000);
+      } else {
+        setError('Erreur lors de la sauvegarde');
+      }
+    } catch {
+      setError('Erreur de connexion');
+    }
+    setHwSaving(false);
+  };
+
+  const testReceiptPrinter = async () => {
+    setError(''); setMessage('');
+    try {
+      const res = await api.post('/api/hardware/receipt/test', {});
+      if (res.ok) setMessage('Ticket de test envoye a l\'imprimante MUNBYN');
+      else {
+        const e = await res.json().catch(() => ({}));
+        setError(e.detail || 'Echec du test imprimante');
+      }
+    } catch { setError('Erreur de connexion'); }
+  };
+
+  const kickDrawer = async () => {
+    setError(''); setMessage('');
+    try {
+      const res = await api.post('/api/hardware/drawer/kick', {});
+      if (res.ok) setMessage('Impulsion envoyee au tiroir-caisse');
+      else {
+        const e = await res.json().catch(() => ({}));
+        setError(e.detail || 'Echec ouverture tiroir');
+      }
+    } catch { setError('Erreur de connexion'); }
+  };
+
+  const testLabelPrinter = async () => {
+    setError(''); setMessage('');
+    try {
+      const res = await api.post('/api/hardware/label/test', {});
+      if (res.ok) setMessage('Etiquette de test envoyee a la SATO CT4-LX');
+      else {
+        const e = await res.json().catch(() => ({}));
+        setError(e.detail || 'Echec du test SATO');
+      }
+    } catch { setError('Erreur de connexion'); }
+  };
 
   const loadCategories = async () => {
     setLoading(true);
@@ -195,6 +289,7 @@ export default function SettingsPage() {
     { key: 'store' as const, label: 'Boutique' },
     { key: 'categories' as const, label: 'Categories' },
     { key: 'zones' as const, label: 'Zones' },
+    { key: 'hardware' as const, label: 'Materiel' },
     { key: 'system' as const, label: 'Systeme' },
   ];
 
@@ -449,6 +544,232 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {/* HARDWARE TAB */}
+        {tab === 'hardware' && (
+          <div className="space-y-6">
+            <Card title="Compatibilite materielle">
+              <p className="text-sm text-gray-500 mb-4">
+                Peripheriques supportes nativement par Vintiz. Configurez les adresses IP ci-dessous, puis lancez un test.
+              </p>
+              {loading && compatibility.length === 0 ? (
+                <p className="text-gray-400 text-center py-4">Chargement...</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="pb-2 text-sm font-semibold text-gray-600">Peripherique</th>
+                        <th className="pb-2 text-sm font-semibold text-gray-600">Modele</th>
+                        <th className="pb-2 text-sm font-semibold text-gray-600">Connexion</th>
+                        <th className="pb-2 text-sm font-semibold text-gray-600">Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {compatibility.map((it) => (
+                        <tr key={it.category} className="border-b border-gray-50">
+                          <td className="py-2 text-sm text-black font-medium">{it.label}</td>
+                          <td className="py-2 text-sm text-gray-700">{it.model}</td>
+                          <td className="py-2 text-xs text-gray-500">{it.connection}</td>
+                          <td className="py-2">
+                            <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                              Compatible
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+
+            {hardware && (
+              <>
+                <Card title="Imprimante de recus — MUNBYN 047P-WiFi">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex items-center gap-3 sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        id="rp-enabled"
+                        checked={hardware.receipt_printer.enabled}
+                        onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, enabled: e.target.checked } })}
+                        className="w-5 h-5 accent-teal"
+                      />
+                      <label htmlFor="rp-enabled" className="text-sm font-medium text-black">Activer l&apos;imprimante de recus</label>
+                    </div>
+                    <Input
+                      label="Adresse IP"
+                      value={hardware.receipt_printer.host}
+                      onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, host: e.target.value } })}
+                      placeholder="192.168.1.50"
+                    />
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Port TCP</label>
+                      <input
+                        type="number"
+                        value={hardware.receipt_printer.port}
+                        onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, port: parseInt(e.target.value) || 9100 } })}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Largeur papier (caracteres)</label>
+                      <input
+                        type="number"
+                        value={hardware.receipt_printer.width_chars}
+                        onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, width_chars: parseInt(e.target.value) || 42 } })}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">42 pour du 80 mm (Font A)</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="rp-cut"
+                        checked={hardware.receipt_printer.cut_paper}
+                        onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, cut_paper: e.target.checked } })}
+                        className="w-5 h-5 accent-teal"
+                      />
+                      <label htmlFor="rp-cut" className="text-sm text-black">Coupe automatique du papier</label>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <Button onClick={testReceiptPrinter} variant="secondary">Imprimer un ticket de test</Button>
+                  </div>
+                </Card>
+
+                <Card title="Tiroir-caisse — Safescan SD-4141">
+                  <p className="text-xs text-gray-500 mb-4">Connecte en RJ-12 a l&apos;imprimante de recus ci-dessus. Ouverture via commande ESC/POS.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex items-center gap-3 sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        id="cd-enabled"
+                        checked={hardware.cash_drawer.enabled}
+                        onChange={(e) => setHardware({ ...hardware, cash_drawer: { ...hardware.cash_drawer, enabled: e.target.checked } })}
+                        className="w-5 h-5 accent-teal"
+                      />
+                      <label htmlFor="cd-enabled" className="text-sm font-medium text-black">Activer le tiroir-caisse</label>
+                    </div>
+                    <div className="flex items-center gap-3 sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        id="cd-auto"
+                        checked={hardware.cash_drawer.kick_on_cash}
+                        onChange={(e) => setHardware({ ...hardware, cash_drawer: { ...hardware.cash_drawer, kick_on_cash: e.target.checked } })}
+                        className="w-5 h-5 accent-teal"
+                      />
+                      <label htmlFor="cd-auto" className="text-sm text-black">Ouverture automatique a l&apos;encaissement especes</label>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Broche (kick pin)</label>
+                      <select
+                        value={hardware.cash_drawer.kick_pin}
+                        onChange={(e) => setHardware({ ...hardware, cash_drawer: { ...hardware.cash_drawer, kick_pin: parseInt(e.target.value) } })}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black"
+                      >
+                        <option value={0}>Pin 2 (standard)</option>
+                        <option value={1}>Pin 5</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <Button onClick={kickDrawer} variant="secondary">Ouvrir le tiroir (test)</Button>
+                  </div>
+                </Card>
+
+                <Card title="Imprimante d&apos;etiquettes — SATO CT4-LX">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex items-center gap-3 sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        id="lp-enabled"
+                        checked={hardware.label_printer.enabled}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, enabled: e.target.checked } })}
+                        className="w-5 h-5 accent-teal"
+                      />
+                      <label htmlFor="lp-enabled" className="text-sm font-medium text-black">Activer l&apos;imprimante SATO</label>
+                    </div>
+                    <Input
+                      label="Adresse IP"
+                      value={hardware.label_printer.host}
+                      onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, host: e.target.value } })}
+                      placeholder="192.168.1.51"
+                    />
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Port TCP</label>
+                      <input
+                        type="number"
+                        value={hardware.label_printer.port}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, port: parseInt(e.target.value) || 9100 } })}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Largeur etiquette (mm)</label>
+                      <input
+                        type="number"
+                        value={hardware.label_printer.label_width_mm}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_width_mm: parseInt(e.target.value) || 50 } })}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Hauteur etiquette (mm)</label>
+                      <input
+                        type="number"
+                        value={hardware.label_printer.label_height_mm}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_height_mm: parseInt(e.target.value) || 30 } })}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <Button onClick={testLabelPrinter} variant="secondary">Imprimer une etiquette de test</Button>
+                  </div>
+                </Card>
+
+                <Card title="Douchette code-barres — Inateck BCST-35">
+                  <p className="text-xs text-gray-500 mb-4">Fonctionne en mode clavier HID : branchez le dongle USB ou appairez en Bluetooth. Le scan remplit le champ recherche du POS et ajoute l&apos;article au panier.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex items-center gap-3 sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        id="bs-enabled"
+                        checked={hardware.barcode_scanner.enabled}
+                        onChange={(e) => setHardware({ ...hardware, barcode_scanner: { ...hardware.barcode_scanner, enabled: e.target.checked } })}
+                        className="w-5 h-5 accent-teal"
+                      />
+                      <label htmlFor="bs-enabled" className="text-sm font-medium text-black">Activer le champ de scan automatique au POS</label>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Longueur minimale</label>
+                      <input
+                        type="number"
+                        value={hardware.barcode_scanner.min_length}
+                        onChange={(e) => setHardware({ ...hardware, barcode_scanner: { ...hardware.barcode_scanner, min_length: parseInt(e.target.value) || 4 } })}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal"
+                      />
+                    </div>
+                  </div>
+                </Card>
+
+                <Card title="Terminal de paiement — SumUp">
+                  <p className="text-sm text-gray-500">
+                    Deja integre via l&apos;API SumUp. Configurez <code className="font-mono bg-gray-100 px-1 rounded">SUMUP_API_KEY</code> et <code className="font-mono bg-gray-100 px-1 rounded">SUMUP_MERCHANT_CODE</code> dans le fichier <code className="font-mono bg-gray-100 px-1 rounded">.env</code> du backend.
+                  </p>
+                </Card>
+
+                <div className="flex justify-end gap-3">
+                  <Button onClick={saveHardware} disabled={hwSaving}>
+                    {hwSaving ? 'Sauvegarde...' : 'Sauvegarder la configuration'}
+                  </Button>
+                </div>
+              </>
             )}
           </div>
         )}

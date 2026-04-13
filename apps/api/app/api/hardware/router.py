@@ -1,0 +1,164 @@
+"""Hardware peripherals API — receipt printer, label printer, cash drawer.
+
+Exposes endpoints for the back-office "Materiel" settings tab:
+
+* ``GET  /hardware/config``         — read the persisted hardware config
+* ``PUT  /hardware/config``         — update hardware config (merge)
+* ``GET  /hardware/compatibility``  — static matrix of supported peripherals
+* ``POST /hardware/receipt/test``   — send a test ticket (MUNBYN)
+* ``POST /hardware/drawer/kick``    — pulse the Safescan drawer
+* ``POST /hardware/label/test``     — send a test label (SATO)
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from app.core.security import get_current_user
+from app.models.user import User
+from app.services import escpos_service, sato_service
+from app.services.hardware_config import load_config, save_config
+
+router = APIRouter(prefix="/hardware", tags=["hardware"])
+
+
+class HardwareConfigUpdate(BaseModel):
+    receipt_printer: dict[str, Any] | None = None
+    cash_drawer: dict[str, Any] | None = None
+    label_printer: dict[str, Any] | None = None
+    barcode_scanner: dict[str, Any] | None = None
+    payment_terminal: dict[str, Any] | None = None
+
+
+COMPATIBILITY_MATRIX = [
+    {
+        "category": "receipt_printer",
+        "label": "Imprimante de recus",
+        "model": "MUNBYN 047P-WiFi",
+        "connection": "WiFi / USB (ESC/POS, 80 mm)",
+        "supported": True,
+        "notes": "Impression des tickets NF525 et ouverture du tiroir-caisse via ESC/POS (TCP 9100).",
+    },
+    {
+        "category": "cash_drawer",
+        "label": "Tiroir-caisse",
+        "model": "Safescan SD-4141",
+        "connection": "RJ-12 (via imprimante)",
+        "supported": True,
+        "notes": "Ouverture automatique a l'encaissement especes ou au click-in POS.",
+    },
+    {
+        "category": "barcode_scanner",
+        "label": "Douchette code-barres",
+        "model": "Inateck BCST-35",
+        "connection": "Bluetooth / USB dongle (HID)",
+        "supported": True,
+        "notes": "Mode clavier HID : scan vers le champ POS, ajout auto au panier.",
+    },
+    {
+        "category": "label_printer",
+        "label": "Imprimante d'etiquettes",
+        "model": "SATO CT4-LX",
+        "connection": "Ethernet / USB (SBPL)",
+        "supported": True,
+        "notes": "Impression des etiquettes Vintiz 50x30 mm (transfert thermique 203 dpi).",
+    },
+    {
+        "category": "payment_terminal",
+        "label": "Terminal de paiement",
+        "model": "SumUp",
+        "connection": "Cloud (API SumUp)",
+        "supported": True,
+        "notes": "Deja integre : POST /api/pos/payments/cb/initiate.",
+    },
+]
+
+
+@router.get("/compatibility")
+async def get_compatibility(current_user: User = Depends(get_current_user)):
+    """Return the static matrix of supported hardware."""
+    return {"items": COMPATIBILITY_MATRIX}
+
+
+@router.get("/config")
+async def get_config(current_user: User = Depends(get_current_user)):
+    return load_config()
+
+
+@router.put("/config")
+async def update_config(
+    update: HardwareConfigUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    payload = {k: v for k, v in update.model_dump(exclude_none=True).items()}
+    return save_config(payload)
+
+
+class TestPrintRequest(BaseModel):
+    host: str | None = None
+    port: int | None = None
+
+
+@router.post("/receipt/test")
+async def receipt_test(
+    req: TestPrintRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Send a test ticket to the MUNBYN receipt printer."""
+    cfg = load_config()["receipt_printer"]
+    host = req.host or cfg.get("host") or ""
+    port = int(req.port or cfg.get("port") or 9100)
+    if not host:
+        raise HTTPException(status_code=400, detail="Adresse IP de l'imprimante non configuree")
+    try:
+        escpos_service.print_test(host, port, width=int(cfg.get("width_chars") or 42))
+    except Exception as exc:  # noqa: BLE001 — surface hardware error
+        raise HTTPException(status_code=502, detail=f"Imprimante injoignable : {exc}") from exc
+    return {"success": True, "host": host, "port": port}
+
+
+@router.post("/drawer/kick")
+async def drawer_kick(
+    req: TestPrintRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Kick open the Safescan cash drawer via the receipt printer."""
+    cfg = load_config()
+    rp = cfg["receipt_printer"]
+    drawer = cfg["cash_drawer"]
+    host = req.host or rp.get("host") or ""
+    port = int(req.port or rp.get("port") or 9100)
+    if not host:
+        raise HTTPException(status_code=400, detail="Imprimante non configuree : impossible d'ouvrir le tiroir")
+    try:
+        escpos_service.kick_drawer(
+            host,
+            port,
+            pin=int(drawer.get("kick_pin") or 0),
+            on_time=int(drawer.get("on_time_ms") or 50),
+            off_time=int(drawer.get("off_time_ms") or 250),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Tiroir injoignable : {exc}") from exc
+    return {"success": True}
+
+
+@router.post("/label/test")
+async def label_test(
+    req: TestPrintRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Send a test SBPL label to the SATO CT4-LX."""
+    cfg = load_config()["label_printer"]
+    host = req.host or cfg.get("host") or ""
+    port = int(req.port or cfg.get("port") or 9100)
+    if not host:
+        raise HTTPException(status_code=400, detail="Imprimante SATO non configuree")
+    try:
+        sato_service.print_test(host, port)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Imprimante SATO injoignable : {exc}") from exc
+    return {"success": True, "host": host, "port": port}

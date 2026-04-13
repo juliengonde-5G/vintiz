@@ -299,6 +299,71 @@ async def resend_transaction(
         raise HTTPException(status_code=400, detail="Canal invalide (email ou sms)")
 
 
+@router.post("/transactions/{transaction_id}/print")
+async def print_transaction_receipt(
+    transaction_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Send the receipt to the MUNBYN ESC/POS printer (TCP 9100)."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from app.models.pos import PaymentMethod, Transaction
+    from app.services import escpos_service
+    from app.services.hardware_config import load_config
+
+    result = await db.execute(
+        select(Transaction)
+        .options(selectinload(Transaction.items), selectinload(Transaction.payments))
+        .where(Transaction.id == transaction_id)
+    )
+    transaction = result.scalar_one_or_none()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction introuvable")
+
+    cfg = load_config()
+    rp = cfg["receipt_printer"]
+    if not rp.get("enabled"):
+        raise HTTPException(status_code=400, detail="Imprimante de recus desactivee dans les parametres")
+    host = rp.get("host") or ""
+    port = int(rp.get("port") or 9100)
+    if not host:
+        raise HTTPException(status_code=400, detail="Adresse IP de l'imprimante non configuree")
+
+    try:
+        escpos_service.print_receipt(
+            transaction,
+            host=host,
+            port=port,
+            width=int(rp.get("width_chars") or 42),
+            cut=bool(rp.get("cut_paper", True)),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Imprimante injoignable : {exc}") from exc
+
+    # Auto-kick drawer if cash payment and drawer enabled
+    drawer_cfg = cfg["cash_drawer"]
+    if drawer_cfg.get("enabled") and drawer_cfg.get("kick_on_cash"):
+        has_cash = any(
+            (p.method == PaymentMethod.cash)
+            for p in (transaction.payments or [])
+        )
+        if has_cash:
+            try:
+                escpos_service.kick_drawer(
+                    host,
+                    port,
+                    pin=int(drawer_cfg.get("kick_pin") or 0),
+                    on_time=int(drawer_cfg.get("on_time_ms") or 50),
+                    off_time=int(drawer_cfg.get("off_time_ms") or 250),
+                )
+            except Exception:  # noqa: BLE001 — drawer is best effort
+                pass
+
+    return {"success": True, "transaction_id": str(transaction_id)}
+
+
 @router.get("/transactions/{transaction_id}/receipt")
 async def get_transaction_receipt(
     transaction_id: uuid.UUID,

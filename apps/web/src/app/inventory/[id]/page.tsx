@@ -96,6 +96,8 @@ export default function ProductDetailPage() {
   const [showLabel, setShowLabel] = useState(false);
   const [labelUrl, setLabelUrl] = useState('');
   const [labelLoading, setLabelLoading] = useState(false);
+  const [satoSending, setSatoSending] = useState(false);
+  const [satoMsg, setSatoMsg] = useState('');
 
   const fetchProduct = useCallback(async () => {
     setLoading(true);
@@ -159,6 +161,7 @@ export default function ProductDetailPage() {
   const handleGenerateLabel = async () => {
     setLabelLoading(true);
     setShowLabel(true);
+    setSatoMsg('');
     try {
       const res = await api.get(`/api/inventory/products/${productId}/label`);
       if (res.ok) {
@@ -168,6 +171,23 @@ export default function ProductDetailPage() {
       }
     } catch { /* show error in modal */ }
     setLabelLoading(false);
+  };
+
+  const handlePrintSato = async () => {
+    setSatoSending(true);
+    setSatoMsg('');
+    try {
+      const res = await api.post(`/api/inventory/products/${productId}/print-label?quantity=1`, {});
+      if (res.ok) {
+        setSatoMsg('Etiquette envoyee a la SATO CT4-LX');
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setSatoMsg(e.detail || 'Echec de l\'impression SATO');
+      }
+    } catch {
+      setSatoMsg('Erreur de connexion SATO');
+    }
+    setSatoSending(false);
   };
 
   const scoreColor = (s: number) => s >= 70 ? 'text-green-600' : s >= 40 ? 'text-yellow-600' : 'text-red-600';
@@ -340,7 +360,7 @@ export default function ProductDetailPage() {
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={labelUrl} alt="Étiquette" className="mx-auto border rounded-lg max-w-full" />
-                <div className="flex justify-center gap-3">
+                <div className="flex justify-center gap-3 flex-wrap">
                   <a href={labelUrl} download={`etiquette-${product.barcode}.png`}>
                     <Button variant="outline">⬇ Télécharger</Button>
                   </a>
@@ -348,7 +368,11 @@ export default function ProductDetailPage() {
                     const win = window.open(labelUrl, '_blank');
                     win?.print();
                   }}>🖨 Imprimer</Button>
+                  <Button onClick={handlePrintSato} disabled={satoSending} variant="secondary">
+                    {satoSending ? 'Envoi...' : 'Imprimer sur SATO'}
+                  </Button>
                 </div>
+                {satoMsg && <p className="text-sm text-teal mt-2">{satoMsg}</p>}
               </>
             ) : (
               <p className="text-red-600 py-4">Erreur lors de la génération de l&apos;étiquette. Vérifiez la connexion API.</p>
