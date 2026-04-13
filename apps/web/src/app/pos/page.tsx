@@ -108,6 +108,14 @@ export default function POSPage() {
   // Numpad (touch)
   const [numpadTarget, setNumpadTarget] = useState<{ type: 'cash' | 'payment'; index: number } | null>(null);
 
+  // Cash drawer
+  const [drawer, setDrawer] = useState<{ open: boolean; drawer_id?: string; opening_amount?: number } | null>(null);
+  const [showDrawerOpen, setShowDrawerOpen] = useState(false);
+  const [showDrawerClose, setShowDrawerClose] = useState(false);
+  const [drawerAmount, setDrawerAmount] = useState(0);
+  const [zReport, setZReport] = useState<{ z_report_number: number; total_sales: number; total_refunds: number; total_net: number; transaction_count: number; difference: number } | null>(null);
+  const [drawerSubmitting, setDrawerSubmitting] = useState(false);
+
   // General
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -128,6 +136,41 @@ export default function POSPage() {
 
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   const remaining = cartTotalAfterLoyalty - totalPaid;
+
+  // ── Cash drawer ─────────────────────────────────────────────────
+  useEffect(() => {
+    api.get('/api/pos/drawer/current').then(async (res) => {
+      if (res.ok) setDrawer(await res.json());
+    }).catch(() => {});
+  }, []);
+
+  const handleOpenDrawer = async () => {
+    setDrawerSubmitting(true);
+    try {
+      const res = await api.post('/api/pos/drawer/open', { opening_amount: drawerAmount });
+      if (res.ok) {
+        const data = await res.json();
+        setDrawer({ open: true, drawer_id: data.drawer_id, opening_amount: data.opening_amount });
+        setShowDrawerOpen(false);
+        setDrawerAmount(0);
+      }
+    } catch { /* silent */ }
+    setDrawerSubmitting(false);
+  };
+
+  const handleCloseDrawer = async () => {
+    setDrawerSubmitting(true);
+    try {
+      const res = await api.post('/api/pos/drawer/close', { closing_amount: drawerAmount });
+      if (res.ok) {
+        const data = await res.json();
+        setZReport(data);
+        setDrawer({ open: false });
+        setDrawerAmount(0);
+      }
+    } catch { /* silent */ }
+    setDrawerSubmitting(false);
+  };
 
   // ── Product search ───────────────────────────────────────────────
   const searchProducts = useCallback(async (query: string) => {
@@ -442,6 +485,28 @@ export default function POSPage() {
 
         {/* ── LEFT PANEL: Order / Cart ────────────────────────────── */}
         <div className="w-[42%] flex flex-col bg-white border-r border-gray-200 shadow-sm">
+
+          {/* Cash drawer status strip */}
+          {drawer !== null && (
+            <div className={`flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs ${drawer.open ? 'bg-green-50 border-b border-green-100' : 'bg-amber-50 border-b border-amber-200'}`}>
+              <span className={`font-medium ${drawer.open ? 'text-green-700' : 'text-amber-700'}`}>
+                {drawer.open
+                  ? `Caisse ouverte — fonds: ${drawer.opening_amount?.toFixed(2)} €`
+                  : 'Caisse non initialisée'}
+              </span>
+              {drawer.open ? (
+                <button onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
+                  className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
+                  Clôturer
+                </button>
+              ) : (
+                <button onClick={() => { setDrawerAmount(0); setShowDrawerOpen(true); }}
+                  className="text-xs px-2 py-1 rounded bg-teal text-white hover:bg-teal-700 transition-colors">
+                  Initialiser
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Header */}
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
@@ -987,6 +1052,49 @@ export default function POSPage() {
         <div className="bg-gray-50 p-4 rounded-lg">
           <pre className="whitespace-pre-wrap text-sm font-mono text-black">{receiptText}</pre>
         </div>
+      </Modal>
+
+      {/* ── Open Drawer Modal ───────────────────────────────────── */}
+      <Modal open={showDrawerOpen} onClose={() => setShowDrawerOpen(false)} title="Initialiser la caisse"
+        actions={<Button size="lg" onClick={handleOpenDrawer} disabled={drawerSubmitting}>{drawerSubmitting ? 'En cours...' : 'Ouvrir la caisse'}</Button>}>
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500">Saisissez le fonds de caisse initial (monnaie disponible).</p>
+          <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[50, 100, 150, 200]} />
+        </div>
+      </Modal>
+
+      {/* ── Close Drawer Modal ──────────────────────────────────── */}
+      <Modal open={showDrawerClose} onClose={() => setShowDrawerClose(false)} title="Clôturer la caisse"
+        actions={<Button size="lg" onClick={handleCloseDrawer} disabled={drawerSubmitting}>{drawerSubmitting ? 'En cours...' : 'Générer le rapport Z'}</Button>}>
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500">Comptez les espèces en caisse et saisissez le montant total.</p>
+          <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[]} />
+        </div>
+      </Modal>
+
+      {/* ── Z Report Modal ───────────────────────────────────────── */}
+      <Modal open={!!zReport} onClose={() => setZReport(null)} title="Rapport Z — Clôture de caisse"
+        actions={<Button onClick={() => setZReport(null)}>Fermer</Button>}>
+        {zReport && (
+          <div className="space-y-3">
+            <div className="p-4 bg-teal-50 rounded-xl text-center">
+              <p className="text-xs text-gray-500 mb-1">Rapport Z n°{zReport.z_report_number}</p>
+              <p className="text-3xl font-bold text-teal">{formatCurrency(zReport.total_net)}</p>
+              <p className="text-sm text-gray-500 mt-1">Chiffre d&apos;affaires net</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 bg-gray-50 rounded-lg"><p className="text-xs text-gray-500">Ventes</p><p className="font-bold text-black">{formatCurrency(zReport.total_sales)}</p></div>
+              <div className="p-3 bg-gray-50 rounded-lg"><p className="text-xs text-gray-500">Remboursements</p><p className="font-bold text-black">{formatCurrency(zReport.total_refunds)}</p></div>
+              <div className="p-3 bg-gray-50 rounded-lg"><p className="text-xs text-gray-500">Transactions</p><p className="font-bold text-black">{zReport.transaction_count}</p></div>
+              <div className={`p-3 rounded-lg ${Math.abs(zReport.difference) < 0.01 ? 'bg-green-50' : 'bg-amber-50'}`}>
+                <p className="text-xs text-gray-500">Écart caisse</p>
+                <p className={`font-bold ${Math.abs(zReport.difference) < 0.01 ? 'text-green-700' : 'text-amber-700'}`}>
+                  {zReport.difference >= 0 ? '+' : ''}{formatCurrency(zReport.difference)}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
