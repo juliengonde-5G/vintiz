@@ -158,7 +158,7 @@ async def list_clients(
 ):
     """List clients with optional search. Uses an outerjoin to avoid selectin chain."""
     query = (
-        select(Client, LoyaltyAccount.points, LoyaltyAccount.tier)
+        select(Client)
         .outerjoin(LoyaltyAccount, LoyaltyAccount.client_id == Client.id)
     )
     if search:
@@ -173,21 +173,21 @@ async def list_clients(
         )
     query = query.order_by(Client.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(query)
-    rows = result.all()
+    clients = result.scalars().unique().all()
     return [
         {
-            "id": str(row.Client.id),
-            "first_name": row.Client.first_name,
-            "last_name": row.Client.last_name,
-            "phone": row.Client.phone,
-            "email": row.Client.email,
-            "email_optin": row.Client.email_optin,
-            "sms_optin": row.Client.sms_optin,
-            "loyalty_active": row.points is not None,
-            "loyalty_points": row.points or 0,
-            "loyalty_tier": row.tier or "bronze",
+            "id": str(c.id),
+            "first_name": c.first_name,
+            "last_name": c.last_name,
+            "phone": c.phone,
+            "email": c.email,
+            "email_optin": getattr(c, "email_optin", False),
+            "sms_optin": getattr(c, "sms_optin", False),
+            "loyalty_active": c.loyalty_account is not None,
+            "loyalty_points": c.loyalty_account.points if c.loyalty_account else 0,
+            "loyalty_tier": c.loyalty_account.tier if c.loyalty_account else "bronze",
         }
-        for row in rows
+        for c in clients
     ]
 
 
