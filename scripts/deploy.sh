@@ -191,7 +191,7 @@ fi
 echo "  Attente API (max 120s)..."
 API_OK=false
 for i in $(seq 1 40); do
-  if docker exec vintiz-api curl -sf http://localhost:8000/api/health > /dev/null 2>&1; then
+  if docker exec vintiz-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" > /dev/null 2>&1; then
     API_OK=true
     break
   fi
