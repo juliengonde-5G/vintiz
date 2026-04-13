@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Button from '@/components/ui/Button';
+import NumPad from '@/components/ui/NumPad';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import Card from '@/components/ui/Card';
@@ -103,6 +104,9 @@ export default function POSPage() {
 
   // Loyalty redemption
   const [redeemPoints, setRedeemPoints] = useState(false);
+
+  // Numpad (touch)
+  const [numpadTarget, setNumpadTarget] = useState<{ type: 'cash' | 'payment'; index: number } | null>(null);
 
   // General
   const [submitting, setSubmitting] = useState(false);
@@ -312,11 +316,40 @@ export default function POSPage() {
   // ── Payment ──────────────────────────────────────────────────────
   const addPayment = (method: PaymentLine['method']) => {
     const autoAmount = Math.max(0, parseFloat((cartTotalAfterLoyalty - totalPaid).toFixed(2)));
+    const newIndex = payments.length;
     setPayments(prev => [...prev, { method, amount: autoAmount }]);
     if (method === 'carte') {
-      const amount = Math.max(0, cartTotalAfterLoyalty - totalPaid);
-      initiateCBPayment(amount);
+      initiateCBPayment(autoAmount);
+    } else if (method === 'especes') {
+      setCashGiven('');
+      setNumpadTarget({ type: 'cash', index: newIndex });
+    } else {
+      setNumpadTarget({ type: 'payment', index: newIndex });
     }
+  };
+
+  const handleNumpadChange = (v: number) => {
+    if (!numpadTarget) return;
+    if (numpadTarget.type === 'cash') {
+      setCashGiven(v > 0 ? v.toString() : '');
+    } else {
+      updatePaymentAmount(numpadTarget.index, v);
+    }
+  };
+
+  const getNumpadPresets = (): number[] => {
+    if (!numpadTarget) return [];
+    if (numpadTarget.type === 'cash') {
+      const exact = parseFloat((payments[numpadTarget.index]?.amount || cartTotalAfterLoyalty).toFixed(2));
+      const presets: number[] = [exact];
+      for (const bill of [5, 10, 20, 50, 100]) {
+        const rounded = Math.ceil(exact / bill) * bill;
+        if (rounded > exact && !presets.some(p => p === rounded) && presets.length < 5) presets.push(rounded);
+      }
+      return presets;
+    }
+    const others = payments.reduce((s, p, i) => i === numpadTarget.index ? s : s + p.amount, 0);
+    return [parseFloat(Math.max(0, cartTotalAfterLoyalty - others).toFixed(2))];
   };
 
   const updatePaymentAmount = (index: number, amount: number) => {
@@ -390,6 +423,7 @@ export default function POSPage() {
     setCbCheckoutId(null);
     setCbStatus('idle');
     setRedeemPoints(false);
+    setNumpadTarget(null);
     if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
   };
 
@@ -398,8 +432,6 @@ export default function POSPage() {
     carte: 'Carte (CB)',
     cheque: 'Cheque',
   };
-
-  const cashPaymentIndex = payments.findIndex(p => p.method === 'especes');
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100">
@@ -564,6 +596,7 @@ export default function POSPage() {
                 setError('');
                 setCbCheckoutId(null);
                 setCbStatus('idle');
+                setNumpadTarget(null);
                 if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
                 setShowPayment(true);
               }}
@@ -878,46 +911,59 @@ export default function POSPage() {
 
           {/* Payment lines */}
           {payments.map((payment, index) => (
-            <div key={index} className="p-4 bg-gray-50 rounded-lg space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{methodLabels[payment.method]}</span>
-                <button onClick={() => {
+            <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+              <span className="flex-1 font-semibold text-black text-sm">{methodLabels[payment.method]}</span>
+              {payment.method !== 'carte' ? (
+                <button
+                  type="button"
+                  onClick={() => setNumpadTarget({ type: payment.method === 'especes' ? 'cash' : 'payment', index })}
+                  className={`px-4 py-2.5 rounded-xl font-bold text-base transition-colors min-h-[44px] ${
+                    numpadTarget?.index === index
+                      ? 'bg-teal text-white'
+                      : 'bg-white border border-gray-200 text-black hover:bg-gray-100'
+                  }`}
+                >
+                  {payment.amount.toFixed(2)} €
+                </button>
+              ) : (
+                <span className="text-sm font-medium text-gray-500">{payment.amount.toFixed(2)} € CB</span>
+              )}
+              <button
+                type="button"
+                onClick={() => {
                   removePayment(index);
                   if (payment.method === 'carte') cancelCBPayment();
-                }} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-red-600">
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="4" x2="16" y2="16"/><line x1="16" y1="4" x2="4" y2="16"/></svg>
-                </button>
-              </div>
-              {payment.method !== 'carte' && (
-                <Input
-                  type="number"
-                  placeholder="Montant"
-                  value={payment.amount || ''}
-                  onChange={e => updatePaymentAmount(index, parseFloat(e.target.value) || 0)}
-                />
-              )}
-              {payment.method === 'carte' && (
-                <p className="text-sm text-gray-500">{formatCurrency(payment.amount)} via TPE</p>
-              )}
-              {payment.method === 'especes' && index === cashPaymentIndex && (
-                <div className="space-y-2">
-                  <Input
-                    label="Montant donne"
-                    type="number"
-                    placeholder="0.00"
-                    value={cashGiven}
-                    onChange={e => setCashGiven(e.target.value)}
-                  />
-                  {parseFloat(cashGiven) > 0 && (
-                    <p className="text-sm">
-                      Monnaie a rendre :{' '}
-                      <span className="font-bold text-teal">{formatCurrency(Math.max(0, parseFloat(cashGiven) - payment.amount))}</span>
-                    </p>
-                  )}
+                  if (numpadTarget?.index === index) setNumpadTarget(null);
+                }}
+                className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-red-600 rounded-xl hover:bg-red-50"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          ))}
+
+          {/* Numpad for active payment */}
+          {numpadTarget && (
+            <div className="space-y-2 border-t border-gray-100 pt-3">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                {numpadTarget.type === 'cash' ? 'Montant remis par le client' : 'Montant à encaisser'}
+              </p>
+              <NumPad
+                value={numpadTarget.type === 'cash' ? parseFloat(cashGiven) || 0 : payments[numpadTarget.index]?.amount || 0}
+                onChange={handleNumpadChange}
+                presets={getNumpadPresets()}
+              />
+              {numpadTarget.type === 'cash' && parseFloat(cashGiven) > 0 && payments[numpadTarget.index] && (
+                <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-200">
+                  <span className="text-sm font-semibold text-green-800">Monnaie à rendre</span>
+                  <span className="text-xl font-bold text-green-700">
+                    {formatCurrency(Math.max(0, parseFloat(cashGiven) - payments[numpadTarget.index].amount))}
+                  </span>
                 </div>
               )}
             </div>
-          ))}
+          )}
+
 
           {/* Remaining */}
           {payments.length > 0 && (

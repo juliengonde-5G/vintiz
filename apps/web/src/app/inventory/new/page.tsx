@@ -372,19 +372,40 @@ export default function NewProductPage() {
                   placeholder="Ex: Sandro, Maje..."
                 />
 
-                <Input
-                  label="Taille"
-                  value={form.size}
-                  onChange={(e) => handleChange('size', e.target.value)}
-                  placeholder="Ex: M, 38, 42..."
-                />
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-black mb-1.5">Taille</label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {['XS','S','M','L','XL','XXL','XXXL','TU','34','36','38','40','42','44','46'].map(s => (
+                      <button key={s} type="button" onClick={() => handleChange('size', form.size === s ? '' : s)}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${form.size === s ? 'bg-teal text-white' : 'bg-gray-100 hover:bg-gray-200 text-black'}`}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                  <Input value={form.size} onChange={(e) => handleChange('size', e.target.value)} placeholder="Autre taille..." />
+                </div>
 
-                <Input
-                  label="Couleur"
-                  value={form.color}
-                  onChange={(e) => handleChange('color', e.target.value)}
-                  placeholder="Ex: Noir, Bleu..."
-                />
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-black mb-1.5">Couleur</label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {[
+                      {l:'Noir',c:'#1a1a1a'},{l:'Blanc',c:'#f0f0f0'},{l:'Gris',c:'#9ca3af'},
+                      {l:'Beige',c:'#d4b896'},{l:'Camel',c:'#c19a6b'},{l:'Marine',c:'#1e3a5f'},
+                      {l:'Rose',c:'#f4a7b9'},{l:'Rouge',c:'#dc2626'},{l:'Bordeaux',c:'#7c1d2a'},
+                      {l:'Bleu',c:'#2563eb'},{l:'Vert',c:'#16a34a'},{l:'Kaki',c:'#5d6b3b'},
+                      {l:'Marron',c:'#92400e'},{l:'Jaune',c:'#fbbf24'},{l:'Orange',c:'#ea580c'},
+                      {l:'Violet',c:'#7c3aed'},{l:'Multicolore',c:'linear-gradient(135deg,#f43f5e,#3b82f6,#22c55e)'},
+                    ].map(({l,c}) => (
+                      <button key={l} type="button" onClick={() => handleChange('color', form.color === l ? '' : l)}
+                        title={l}
+                        className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-all ${form.color === l ? 'ring-2 ring-teal ring-offset-1 bg-teal-50' : 'hover:bg-gray-50'}`}>
+                        <div className="w-6 h-6 rounded-full border border-gray-200" style={{background:c}} />
+                        <span className="text-xs text-gray-600 whitespace-nowrap">{l}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <Input value={form.color} onChange={(e) => handleChange('color', e.target.value)} placeholder="Autre couleur..." />
+                </div>
 
                 <Input
                   label="Semaine (SEM)"
@@ -409,24 +430,26 @@ export default function NewProductPage() {
 
             <Card title="Tarification">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <Input
-                  label="Prix d'achat (EUR)"
-                  type="number"
-                  step="0.01"
-                  value={form.purchasePrice}
-                  onChange={(e) => handleChange('purchasePrice', e.target.value)}
-                  placeholder="0.00"
-                  required
-                />
-                <Input
-                  label="Prix de vente (EUR)"
-                  type="number"
-                  step="0.50"
-                  value={form.sellingPrice}
-                  onChange={(e) => handleChange('sellingPrice', e.target.value)}
-                  placeholder="0.00"
-                  required
-                />
+                <div>
+                  <label className="block text-sm font-medium text-black mb-1.5">Prix d&apos;achat (EUR)</label>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => handleChange('purchasePrice', String(Math.max(0, parseFloat(form.purchasePrice||'0') - 1).toFixed(2)))}
+                      className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">−</button>
+                    <Input type="number" step="0.01" value={form.purchasePrice} onChange={(e) => handleChange('purchasePrice', e.target.value)} placeholder="0.00" required className="text-center font-bold" />
+                    <button type="button" onClick={() => handleChange('purchasePrice', String((parseFloat(form.purchasePrice||'0') + 1).toFixed(2)))}
+                      className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">+</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-black mb-1.5">Prix de vente (EUR)</label>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => handleChange('sellingPrice', String(Math.max(0, parseFloat(form.sellingPrice||'0') - 0.5).toFixed(2)))}
+                      className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">−</button>
+                    <Input type="number" step="0.50" value={form.sellingPrice} onChange={(e) => handleChange('sellingPrice', e.target.value)} placeholder="0.00" required className="text-center font-bold" />
+                    <button type="button" onClick={() => handleChange('sellingPrice', String((parseFloat(form.sellingPrice||'0') + 0.5).toFixed(2)))}
+                      className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">+</button>
+                  </div>
+                </div>
               </div>
             </Card>
 
