@@ -31,6 +31,17 @@ interface WeatherData {
   forecast: WeatherDay[];
 }
 
+interface WeatherSnapshot {
+  date: string;
+  temp: number;
+  description: string;
+  icon: string;
+  temp_min: number;
+  temp_max: number;
+  humidity: number;
+  wind_speed: number;
+}
+
 interface ReportData {
   total_revenue: number;
   total_refunds: number;
@@ -90,10 +101,17 @@ export default function ReportsPage() {
   const [stockLoading, setStockLoading] = useState(false);
 
   const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherHistory, setWeatherHistory] = useState<WeatherSnapshot[]>([]);
 
   useEffect(() => {
     api.get('/api/admin/weather').then(async (res) => {
       if (res.ok) setWeather(await res.json());
+    }).catch(() => {});
+    api.get('/api/admin/weather/history').then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        setWeatherHistory((data.history || []).slice(-14).reverse());
+      }
     }).catch(() => {});
   }, []);
 
@@ -372,6 +390,47 @@ export default function ReportsPage() {
             <p className="text-xs text-gray-400 mt-4">
               Impact météo sur les ventes : les journées pluvieuses génèrent +18% de passages en boutique selon les données historiques.
             </p>
+          </Card>
+        )}
+
+        {/* Météo Historique */}
+        {weatherHistory.length > 0 && (
+          <Card title="Historique météo Vernon — 14 derniers jours" className="mt-6">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="pb-2 text-xs font-semibold text-gray-500">Date</th>
+                    <th className="pb-2 text-xs font-semibold text-gray-500">Conditions</th>
+                    <th className="pb-2 text-xs font-semibold text-gray-500 text-right">Min</th>
+                    <th className="pb-2 text-xs font-semibold text-gray-500 text-right">Max</th>
+                    <th className="pb-2 text-xs font-semibold text-gray-500 text-right">Humidité</th>
+                    <th className="pb-2 text-xs font-semibold text-gray-500 text-right">Vent</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weatherHistory.map((snap, i) => (
+                    <tr key={i} className="border-b border-gray-50">
+                      <td className="py-2 text-sm text-black">
+                        {new Date(snap.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      </td>
+                      <td className="py-2">
+                        <div className="flex items-center gap-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={`https://openweathermap.org/img/wn/${snap.icon}.png`} alt="" className="w-6 h-6"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                          <span className="text-sm text-gray-700 capitalize">{snap.description}</span>
+                        </div>
+                      </td>
+                      <td className="py-2 text-sm text-gray-600 text-right">{Math.round(snap.temp_min)}°C</td>
+                      <td className="py-2 text-sm font-medium text-black text-right">{Math.round(snap.temp_max)}°C</td>
+                      <td className="py-2 text-sm text-gray-600 text-right">{snap.humidity}%</td>
+                      <td className="py-2 text-sm text-gray-600 text-right">{snap.wind_speed} m/s</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
         )}
       </main>
