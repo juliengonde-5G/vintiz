@@ -452,48 +452,10 @@ export default function DashboardPage() {
               ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Top 5 Products */}
-          <div className="lg:col-span-1">
-            <Card title="Top 5 produits cette semaine">
-              {loading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <SkeletonBlock key={i} className="h-10 w-full" />
-                  ))}
-                </div>
-              ) : data && data.top_products_week && data.top_products_week.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="pb-2 text-sm font-semibold text-gray-600">Produit</th>
-                        <th className="pb-2 text-sm font-semibold text-gray-600 text-right">Qté</th>
-                        <th className="pb-2 text-sm font-semibold text-gray-600 text-right">CA</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.top_products_week.slice(0, 5).map((p, i) => (
-                        <tr key={i} className="border-b border-gray-50">
-                          <td className="py-2 text-sm text-black">{p.name}</td>
-                          <td className="py-2 text-sm text-gray-600 text-right">{p.quantity}</td>
-                          <td className="py-2 text-sm font-medium text-teal text-right">
-                            {formatCurrency(p.revenue)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-gray-400 text-center py-4">Aucune donnée</p>
-              )}
-            </Card>
-          </div>
-
-          {/* Recent Transactions — clickable */}
-          <div className="lg:col-span-2">
-            <Card title="Dernières transactions">
+        <div className="mb-8">
+          {/* Recent Transactions — clickable, full width */}
+          <div>
+            <Card title="10 derniers tickets">
               {ticketLoading && (
                 <div className="text-xs text-gray-400 mb-2 text-right">Chargement ticket...</div>
               )}

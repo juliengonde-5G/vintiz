@@ -256,8 +256,39 @@ export default function ProductDetailPage() {
                       <Input label="Nom" value={editing.name || ''} onChange={e => setEditing(p => ({...p, name: e.target.value}))} />
                     </div>
                     <Input label="Marque" value={editing.brand || ''} onChange={e => setEditing(p => ({...p, brand: e.target.value}))} />
-                    <Input label="Taille" value={editing.size || ''} onChange={e => setEditing(p => ({...p, size: e.target.value}))} />
-                    <Input label="Couleur" value={editing.color || ''} onChange={e => setEditing(p => ({...p, color: e.target.value}))} />
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-black mb-1.5">Taille</label>
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {['XS','S','M','L','XL','XXL','XXXL','TU','34','36','38','40','42','44','46'].map(s => (
+                          <button key={s} type="button" onClick={() => setEditing(p => ({...p, size: p.size === s ? '' : s}))}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${editing.size === s ? 'bg-teal text-white' : 'bg-gray-100 hover:bg-gray-200 text-black'}`}>
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                      <Input value={editing.size || ''} onChange={e => setEditing(p => ({...p, size: e.target.value}))} placeholder="Autre taille..." />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-black mb-1.5">Couleur</label>
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {[
+                          {l:'Noir',c:'#1a1a1a'},{l:'Blanc',c:'#f0f0f0'},{l:'Gris',c:'#9ca3af'},
+                          {l:'Beige',c:'#d4b896'},{l:'Camel',c:'#c19a6b'},{l:'Marine',c:'#1e3a5f'},
+                          {l:'Rose',c:'#f4a7b9'},{l:'Rouge',c:'#dc2626'},{l:'Bordeaux',c:'#7c1d2a'},
+                          {l:'Bleu',c:'#2563eb'},{l:'Vert',c:'#16a34a'},{l:'Kaki',c:'#5d6b3b'},
+                          {l:'Marron',c:'#92400e'},{l:'Jaune',c:'#fbbf24'},{l:'Orange',c:'#ea580c'},
+                          {l:'Violet',c:'#7c3aed'},{l:'Multicolore',c:'linear-gradient(135deg,#f43f5e,#3b82f6,#22c55e)'},
+                        ].map(({l,c}) => (
+                          <button key={l} type="button" onClick={() => setEditing(p => ({...p, color: p.color === l ? '' : l}))}
+                            title={l}
+                            className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-all ${editing.color === l ? 'ring-2 ring-teal ring-offset-1 bg-teal-50' : 'hover:bg-gray-50'}`}>
+                            <div className="w-6 h-6 rounded-full border border-gray-200" style={{background:c}} />
+                            <span className="text-xs text-gray-600 whitespace-nowrap">{l}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <Input value={editing.color || ''} onChange={e => setEditing(p => ({...p, color: e.target.value}))} placeholder="Autre couleur..." />
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-black mb-1.5">Statut</label>
                       <select value={editing.status || 'stock'} onChange={e => setEditing(p => ({...p, status: e.target.value}))}
@@ -265,8 +296,26 @@ export default function ProductDetailPage() {
                         {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>
-                    <Input label="Prix d'achat (€)" type="number" step="0.01" value={String(editing.purchase_price || 0)} onChange={e => setEditing(p => ({...p, purchase_price: parseFloat(e.target.value)}))} />
-                    <Input label="Prix de vente (€)" type="number" step="0.50" value={String(editing.sale_price || 0)} onChange={e => setEditing(p => ({...p, sale_price: parseFloat(e.target.value)}))} />
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Prix d&apos;achat (€)</label>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setEditing(p => ({...p, purchase_price: Math.max(0, (p.purchase_price||0) - 1)}))}
+                          className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">−</button>
+                        <Input type="number" step="0.01" value={String(editing.purchase_price || 0)} onChange={e => setEditing(p => ({...p, purchase_price: parseFloat(e.target.value)}))} className="text-center font-bold" />
+                        <button type="button" onClick={() => setEditing(p => ({...p, purchase_price: (p.purchase_price||0) + 1}))}
+                          className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">+</button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Prix de vente (€)</label>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setEditing(p => ({...p, sale_price: Math.max(0, (p.sale_price||0) - 0.5)}))}
+                          className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">−</button>
+                        <Input type="number" step="0.50" value={String(editing.sale_price || 0)} onChange={e => setEditing(p => ({...p, sale_price: parseFloat(e.target.value)}))} className="text-center font-bold" />
+                        <button type="button" onClick={() => setEditing(p => ({...p, sale_price: (p.sale_price||0) + 0.5}))}
+                          className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">+</button>
+                      </div>
+                    </div>
                     <Input label="Date de mise en rayon" type="date" value={editing.shelf_date ? editing.shelf_date.split('T')[0] : ''} onChange={e => setEditing(p => ({...p, shelf_date: e.target.value}))} />
                   </>
                 ) : (
