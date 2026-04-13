@@ -15,10 +15,12 @@
 # DNS requis (pointer vers l'IP du VPS):
 #   vintiz.fr, www.vintiz.fr, app.vintiz.fr, api.vintiz.fr
 
-set -euo pipefail
+set -eo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# Resolve paths robustly regardless of how the script is invoked
+_SELF="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$(cd "$(dirname "$_SELF")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$PROJECT_DIR/docker/docker-compose.prod.yml"
 ENV_FILE="$PROJECT_DIR/.env"
 ROLLBACK_FILE="$PROJECT_DIR/.deploy_rollback"
