@@ -122,9 +122,15 @@ log "Commit actuel sauvegarde pour rollback eventuel: $CURRENT_COMMIT"
 # ============================================================
 # 1. GIT PULL
 # ============================================================
-step "1/6" "Recuperation du code depuis main..."
-git fetch origin main
-git reset --hard origin/main
+# Branch to deploy: env var DEPLOY_BRANCH, or CLI arg --branch=xxx, or default main
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
+for arg in "$@"; do
+  case "$arg" in --branch=*) DEPLOY_BRANCH="${arg#--branch=}" ;; esac
+done
+
+step "1/6" "Recuperation du code (branche: $DEPLOY_BRANCH)..."
+git fetch origin "$DEPLOY_BRANCH"
+git reset --hard "origin/$DEPLOY_BRANCH"
 NEW_COMMIT=$(git rev-parse --short HEAD)
 if [ "$CURRENT_COMMIT" = "$NEW_COMMIT" ]; then
   warn "Code deja a jour ($NEW_COMMIT). Deploiement force."
