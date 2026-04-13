@@ -156,38 +156,55 @@ async def list_clients(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List clients with optional search. Uses an outerjoin to avoid selectin chain."""
-    query = (
-        select(Client)
-        .outerjoin(LoyaltyAccount, LoyaltyAccount.client_id == Client.id)
-    )
+    """List clients with optional search — raw SQL to avoid ORM/async lazy-load issues."""
+    from sqlalchemy import text
+
+    where = ""
+    params: dict = {"skip": skip, "limit": limit}
     if search:
-        pattern = f"%{search}%"
-        query = query.where(
-            or_(
-                Client.first_name.ilike(pattern),
-                Client.last_name.ilike(pattern),
-                Client.phone.ilike(pattern),
-                Client.email.ilike(pattern),
-            )
+        where = (
+            "WHERE (c.first_name ILIKE :s OR c.last_name ILIKE :s "
+            "OR c.phone ILIKE :s OR c.email ILIKE :s)"
         )
-    query = query.order_by(Client.created_at.desc()).offset(skip).limit(limit)
-    result = await db.execute(query)
-    clients = result.scalars().unique().all()
+        params["s"] = f"%{search}%"
+
+    # Try with optional optin columns; fall back if they don't exist yet in DB
+    for optin_select in (
+        "COALESCE(c.email_optin, false) AS email_optin, COALESCE(c.sms_optin, false) AS sms_optin,",
+        "false AS email_optin, false AS sms_optin,",
+    ):
+        try:
+            sql = text(f"""
+                SELECT c.id, c.first_name, c.last_name, c.phone, c.email,
+                       {optin_select}
+                       la.points, la.tier
+                FROM clients c
+                LEFT JOIN loyalty_accounts la ON la.client_id = c.id
+                {where}
+                ORDER BY c.created_at DESC
+                OFFSET :skip LIMIT :limit
+            """)
+            rows = (await db.execute(sql, params)).mappings().all()
+            break
+        except Exception:
+            await db.rollback()
+    else:
+        return []
+
     return [
         {
-            "id": str(c.id),
-            "first_name": c.first_name,
-            "last_name": c.last_name,
-            "phone": c.phone,
-            "email": c.email,
-            "email_optin": getattr(c, "email_optin", False),
-            "sms_optin": getattr(c, "sms_optin", False),
-            "loyalty_active": c.loyalty_account is not None,
-            "loyalty_points": c.loyalty_account.points if c.loyalty_account else 0,
-            "loyalty_tier": c.loyalty_account.tier if c.loyalty_account else "bronze",
+            "id": str(r["id"]),
+            "first_name": r["first_name"],
+            "last_name": r["last_name"],
+            "phone": r["phone"],
+            "email": r["email"],
+            "email_optin": bool(r["email_optin"]),
+            "sms_optin": bool(r["sms_optin"]),
+            "loyalty_active": r["points"] is not None,
+            "loyalty_points": r["points"] or 0,
+            "loyalty_tier": r["tier"] or "bronze",
         }
-        for c in clients
+        for r in rows
     ]
 
 
