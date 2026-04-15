@@ -11,7 +11,6 @@ Provides:
 """
 
 import os
-import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 

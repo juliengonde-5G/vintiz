@@ -82,6 +82,9 @@ class TransactionItem(Base):
     transaction: Mapped["Transaction"] = relationship(
         "Transaction", back_populates="items", lazy="selectin"
     )
+    product: Mapped["Product | None"] = relationship(  # noqa: F821
+        "Product", lazy="selectin"
+    )
 
 
 class Payment(Base):

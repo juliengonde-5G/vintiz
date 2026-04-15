@@ -1,6 +1,9 @@
+import logging
 import os
 
 import httpx
+
+logger = logging.getLogger("vintiz")
 
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
 VERNON_LAT = 49.0937
@@ -34,7 +37,8 @@ async def get_current_weather() -> dict:
                 "wind_speed": round(data.get("wind", {}).get("speed", 0), 1),
                 "city": "Vernon",
             }
-    except Exception as e:
+    except Exception:
+        logger.exception("OpenWeather call failed")
         return {"description": "Erreur météo", "temp": 0, "feels_like": 0, "humidity": 0, "icon": "01d", "wind_speed": 0, "city": "Vernon"}
 
 
@@ -66,4 +70,5 @@ async def get_weather_forecast() -> list:
                     }
             return [{"date": k, **v} for k, v in list(days.items())[:5]]
     except Exception:
+        logger.exception("OpenWeather forecast call failed")
         return []

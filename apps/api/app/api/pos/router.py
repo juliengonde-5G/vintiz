@@ -1,14 +1,19 @@
+import logging
+import os
+import uuid
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
-from app.services.pos import PosService
 from app.services.fiscal import FiscalService
-from pydantic import BaseModel
-from decimal import Decimal
-import uuid
-import os
+from app.services.pos import PosService
+
+logger = logging.getLogger("vintiz")
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 
@@ -270,11 +275,18 @@ async def resend_transaction(
                     server.starttls()
                     server.login(os.getenv("SMTP_USER", ""), os.getenv("SMTP_PASSWORD", ""))
                     server.send_message(msg)
+                logger.info("Receipt email sent for transaction %s", transaction_id)
                 return {"success": True, "message": f"Email envoye a {client['email']}"}
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Erreur envoi email : {e}")
+            except Exception:
+                # Don't leak SMTP details (host, credentials, transport state) to clients.
+                logger.exception("Failed to send receipt email for transaction %s", transaction_id)
+                raise HTTPException(
+                    status_code=502,
+                    detail="L'envoi de l'email a échoué. Réessayez plus tard.",
+                )
         else:
             # Simulate
+            logger.info("Receipt email simulated for transaction %s", transaction_id)
             return {"success": True, "message": f"[SIMULE] Email envoye a {client['email']}"}
 
     elif request.channel == "sms":
@@ -290,10 +302,16 @@ async def resend_transaction(
                     from_=os.getenv("TWILIO_FROM", ""),
                     to=client["phone"],
                 )
+                logger.info("Receipt SMS sent for transaction %s", transaction_id)
                 return {"success": True, "message": f"SMS envoye au {client['phone']}"}
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Erreur envoi SMS : {e}")
+            except Exception:
+                logger.exception("Failed to send receipt SMS for transaction %s", transaction_id)
+                raise HTTPException(
+                    status_code=502,
+                    detail="L'envoi du SMS a échoué. Réessayez plus tard.",
+                )
         else:
+            logger.info("Receipt SMS simulated for transaction %s", transaction_id)
             return {"success": True, "message": f"[SIMULE] SMS envoye au {client['phone']}"}
     else:
         raise HTTPException(status_code=400, detail="Canal invalide (email ou sms)")

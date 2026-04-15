@@ -1,10 +1,11 @@
 import uuid
 
 from sqlalchemy import Float, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.models.types import JSONType
 
 
 class StoreZone(Base):
@@ -45,7 +46,7 @@ class TrendAnalysis(Base):
         UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True
     )
     score: Mapped[float] = mapped_column(Float, nullable=False, default=0)
-    data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    data: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
@@ -54,7 +55,7 @@ class StoreArrangement(Base):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     week_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    layout: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    layout: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
@@ -65,6 +66,6 @@ class AIRecommendation(Base):
         UUID(as_uuid=True), ForeignKey("store_arrangements.id"), nullable=True
     )
     recommendation_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    content: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    content: Mapped[dict] = mapped_column(JSONType, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     applied: Mapped[bool] = mapped_column(default=False, nullable=False)

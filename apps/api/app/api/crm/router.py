@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -10,9 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.client import Client, LoyaltyAccount, LoyaltyTransaction, LoyaltyTxType
-from app.models.pos import Transaction, TransactionItem
+from app.models.pos import Transaction
 from app.models.product import Product, ProductStatus
 from app.models.user import User
+
+logger = logging.getLogger("vintiz")
 
 router = APIRouter(prefix="/crm", tags=["crm"])
 
@@ -23,16 +26,25 @@ router = APIRouter(prefix="/crm", tags=["crm"])
 
 @router.get("/clients/lookup")
 async def lookup_client(
-    email: str = Query(..., description="Client email address"),
+    email: str = Query(..., description="Client email address", min_length=5, max_length=255),
     db: AsyncSession = Depends(get_db),
 ):
-    """Public lookup for client extranet. Returns client info, loyalty, and recent transactions."""
+    """Public lookup for client extranet.
+
+    Returns client info, loyalty, and recent transactions. Returns a generic
+    404 message when no account exists, to limit account enumeration. A proper
+    fix requires a magic-link / OTP flow (see correction plan).
+    """
+    email_clean = email.strip().lower()
+    if "@" not in email_clean or "." not in email_clean.split("@", 1)[-1]:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+
     result = await db.execute(
-        select(Client).where(Client.email == email.strip().lower())
+        select(Client).where(Client.email == email_clean)
     )
     client = result.scalar_one_or_none()
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
 
     loyalty_data = None
     if client.loyalty_account:
@@ -485,8 +497,12 @@ async def send_email(
                 "type": request.type,
                 "sent_at": datetime.now(timezone.utc).isoformat(),
             }
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Erreur envoi email: {str(e)}")
+        except Exception:
+            logger.exception("send-email failed for client_id=%s", request.client_id)
+            raise HTTPException(
+                status_code=502,
+                detail="L'envoi de l'email a échoué. Réessayez plus tard.",
+            )
     else:
         # Simulated send
         return {
@@ -533,8 +549,12 @@ async def send_sms(
                 "sid": message.sid,
                 "sent_at": datetime.now(timezone.utc).isoformat(),
             }
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Erreur envoi SMS: {str(e)}")
+        except Exception:
+            logger.exception("send-sms failed for client_id=%s", request.client_id)
+            raise HTTPException(
+                status_code=502,
+                detail="L'envoi du SMS a échoué. Réessayez plus tard.",
+            )
     else:
         # Simulated send
         return {
@@ -619,6 +639,10 @@ async def send_welcome_campaign(
             else:
                 simulated += 1
         except Exception:
+            logger.exception(
+                "welcome campaign: send failed for client_id=%s",
+                getattr(client, "id", "unknown"),
+            )
             errors += 1
 
     return {
@@ -636,19 +660,24 @@ async def send_welcome_campaign(
 
 @router.get("/clients/personal-shopper")
 async def get_personal_shopper(
-    email: str = Query(...),
+    email: str = Query(..., min_length=5, max_length=255),
     db: AsyncSession = Depends(get_db),
 ):
     """Return AI-powered product recommendations for a client based on purchase history.
 
-    Public endpoint (no auth) — uses email as identifier.
+    Public endpoint (no auth) — uses email as identifier. As with /clients/lookup,
+    this should be moved to a magic-link flow for proper protection.
     """
+    email_clean = email.strip().lower()
+    if "@" not in email_clean or "." not in email_clean.split("@", 1)[-1]:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+
     result = await db.execute(
-        select(Client).where(Client.email == email.strip().lower())
+        select(Client).where(Client.email == email_clean)
     )
     client = result.scalar_one_or_none()
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
 
     # Collect all products purchased by this client
     tx_result = await db.execute(

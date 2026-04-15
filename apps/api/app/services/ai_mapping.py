@@ -17,9 +17,7 @@ from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.product import Product, ProductStatus
 from app.models.store import (
     AIRecommendation,
-    StoreArrangement,
     StoreZone,
-    ZoneProduct,
 )
 
 logger = logging.getLogger("vintiz.ai.mapping")
@@ -247,7 +245,6 @@ Reponds en JSON avec :
         result = {"error": "Reponse IA invalide", "raw": raw[:500]}
 
     # Save recommendation
-    week_number = datetime.now().isocalendar()[1]
     recommendation = AIRecommendation(
         recommendation_type="arrangement",
         content=result,

@@ -241,7 +241,7 @@ export default function ClientsPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="md:ml-64 p-6 md:p-8">
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8">
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-black">Clients</h1>

@@ -6,7 +6,6 @@ and suggests category + price range.
 
 import base64
 import logging
-from pathlib import Path
 
 import anthropic
 

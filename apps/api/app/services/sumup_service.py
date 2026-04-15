@@ -5,7 +5,6 @@ and poll for completion. Falls back to simulation if no API key is set.
 """
 import os
 import uuid
-from typing import Literal
 
 import httpx
 
