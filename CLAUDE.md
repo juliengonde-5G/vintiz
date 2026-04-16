@@ -11,7 +11,14 @@ apps/
   api/          FastAPI (Python 3.11) — API REST + services IA
   web/          Next.js 14 (App Router) — Interface d'administration
   site/         Next.js 14 — Site vitrine public + espace client
-scripts/        Scripts de maintenance (seed_data.py)
+scripts/
+  seed_data.py            300 produits + 50 clients + 200 transactions
+  seed_test_products.py   15 produits de test POS + codes-barres PNG
+  deploy.sh               Déploiement production (Docker Compose)
+  backup.sh               Backup PostgreSQL
+docs/
+  POS_TEST_BARCODES.md    Codes-barres scannables + procédure hardware
+  test_barcodes/*.png     Barcodes Code 128 pour la douchette
 ```
 
 ## Stack technique
@@ -21,13 +28,16 @@ scripts/        Scripts de maintenance (seed_data.py)
 | API backend | FastAPI + SQLAlchemy async (PostgreSQL) |
 | Auth | JWT (python-jose) |
 | IA | Anthropic Claude (claude-haiku-4-5) |
-| Payment CB | SumUp API (simulation si non configuré) |
+| Payment CB | SumUp API — 3 modes : production / sandbox / simulation |
 | Email | SMTP standard (simulation si non configuré) |
 | SMS | Twilio (simulation si non configuré) |
 | Météo | OpenWeatherMap API |
 | Admin UI | Next.js 14 App Router + Tailwind CSS |
 | Site public | Next.js 14 App Router + Tailwind CSS |
-| Barcode | python-barcode + Pillow |
+| Barcode | python-barcode + Pillow (Code 128) |
+| Impression ticket | AirPrint iPad via `window.print()` format 80 mm |
+| Douchette | USB HID (Inateck 160B), champ recherche POS auto-focus |
+| Tiroir-caisse | Kick RJ11 via imprimante thermique (option driver) |
 
 ## Démarrage rapide
 
@@ -69,9 +79,14 @@ ANTHROPIC_API_KEY=sk-ant-...
 # Météo Vernon (sans cette clé, widget météo indisponible)
 OPENWEATHER_API_KEY=votre-cle-openweather
 
-# CB SumUp (sans ces clés, simulation automatique)
-SUMUP_API_KEY=votre-cle-sumup
-SUMUP_MERCHANT_CODE=votre-merchant-code
+# CB SumUp — 3 modes
+#   - production : SUMUP_ENVIRONMENT=production + clé + merchant code
+#   - sandbox    : SUMUP_ENVIRONMENT=sandbox avec clé de dev
+#   - simulation : pas de clé → sandbox en mémoire, event log + approve manuel
+SUMUP_ENVIRONMENT=sandbox
+SUMUP_API_KEY=
+SUMUP_MERCHANT_CODE=
+SUMUP_SANDBOX_AUTO_DELAY_SEC=5    # 0 = approbation manuelle requise
 
 # Email SMTP (sans ces clés, simulation)
 SMTP_HOST=smtp.gmail.com
@@ -111,22 +126,32 @@ Base URL: `http://localhost:8000`
 ### Endpoints clés
 
 ```
-POST /api/auth/login                    Connexion
-GET  /api/inventory/products            Liste produits (paginée)
-GET  /api/inventory/products/{id}       Fiche produit
-GET  /api/inventory/products/{id}/label Étiquette PNG
-GET  /api/inventory/products/{id}/score Score détaillé
-POST /api/pos/transactions              Créer une vente
-POST /api/pos/payments/cb/initiate      Initier paiement SumUp
-GET  /api/pos/transactions/{id}         Détail ticket
-POST /api/pos/transactions/{id}/resend  Renvoyer ticket (email/SMS)
-GET  /api/admin/weather                 Météo Vernon
-GET  /api/ai/weekly-checklist           Checklist semaine IA
-GET  /api/ai/trends                     Tendances mode
-POST /api/ai/persona/marketing          Rapport marketing IA
-POST /api/ai/persona/juridique          Audit RGPD IA
-GET  /api/crm/clients/lookup?email=...  Lookup client public
-GET  /api/crm/clients/personal-shopper?email=... Personal shopper
+POST /api/auth/login                         Connexion
+GET  /api/inventory/products                 Liste produits (paginée)
+GET  /api/inventory/products/search?q=…      Recherche (utilisé par douchette)
+GET  /api/inventory/products/{id}            Fiche produit
+GET  /api/inventory/products/{id}/label      Étiquette PNG
+GET  /api/inventory/products/{id}/score      Score détaillé
+POST /api/pos/transactions                   Créer une vente
+GET  /api/pos/transactions/{id}/receipt      Texte du ticket (80 mm)
+POST /api/pos/transactions/{id}/resend       Renvoyer ticket (email/SMS)
+POST /api/pos/drawer/open                    Ouvrir la caisse (fond initial)
+POST /api/pos/drawer/close                   Fermer + rapport Z
+GET  /api/pos/drawer/current                 État tiroir
+POST /api/pos/payments/cb/initiate           Initier paiement SumUp
+GET  /api/pos/payments/cb/{id}/status        Poller statut SumUp
+DELETE /api/pos/payments/cb/{id}             Annuler checkout
+GET  /api/pos/payments/cb/sandbox/config     Config SumUp (env, clés)
+GET  /api/pos/payments/cb/sandbox/state      Event log sandbox (live)
+POST /api/pos/payments/cb/sandbox/{id}/approve  Valider manuellement
+POST /api/pos/payments/cb/sandbox/{id}/decline  Refuser manuellement
+GET  /api/admin/weather                      Météo Vernon
+GET  /api/ai/weekly-checklist                Checklist semaine IA
+GET  /api/ai/trends                          Tendances mode
+POST /api/ai/persona/marketing               Rapport marketing IA
+POST /api/ai/persona/juridique               Audit RGPD IA
+GET  /api/crm/clients/lookup?email=…         Lookup client public
+GET  /api/crm/clients/personal-shopper?email=…  Personal shopper
 ```
 
 ## Fonctionnalités principales
@@ -138,13 +163,22 @@ GET  /api/crm/clients/personal-shopper?email=... Personal shopper
 - Édition inline prix / zone / statut
 - Bouton "Générer étiquette" → PNG téléchargeable/imprimable
 
-### 2. POS (Caisse)
-- Interface tactile optimisée pour tablette (≥768px)
-- Recherche produit par scan code-barres ou texte
-- Remises par article (0-30%)
-- 3 modes de paiement : Espèces (rendu monnaie), CB SumUp (TPE), Chèque
-- Fidélité : affichage points, toggle rachat (1pt = 0,10€)
-- Reçu généré et envoyable par email/SMS
+### 2. POS (Caisse) — prêt pour matériel
+- Interface tactile optimisée iPad (Safari), champ recherche auto-focus
+- **Douchette USB HID** (Inateck 160B) : scan → Entrée → ajout auto au panier
+  (résolution via exact match sur `barcode`, fallback recherche 1 résultat)
+- **Numpad tactile** pour saisies de montants (espèces, fond de caisse)
+- Remises par article (0-30 %)
+- 3 modes de paiement :
+  - *Espèces* : rendu monnaie calculé
+  - *CB SumUp* : TPE Solo + polling checkout + approve/decline manuel
+  - *Chèque* : saisie libre
+- Fidélité : affichage points, toggle rachat (1 pt = 0,10 €, max 50 % panier)
+- **Ouverture / fermeture caisse** : fond initial, clôture avec rapport Z
+  (écart attendu vs compté, totaux par méthode)
+- **Ticket 80 mm** : bouton *Imprimer* → `window.print()` AirPrint → ouverture
+  automatique tiroir (option driver imprimante "open drawer on print")
+- Reçu renvoyable par email/SMS
 
 ### 3. IA Booster
 - **Analyse photo** : Claude Vision détecte type, couleur, marque, état
@@ -200,17 +234,40 @@ Branche de travail : `claude/prepare-pos-software-stoSD`
 git push -u origin claude/prepare-pos-software-stoSD
 ```
 
-## Hardware POS — test de mise en service
+## Hardware POS — mise en service
 
-Voir `docs/POS_TEST_BARCODES.md` pour la série de 15 produits de test +
-codes-barres scannables (Code128), et la procédure complète de test avec
-iPad, douchette USB, imprimante 80 mm, tiroir RJ11 et TPE SumUp Solo.
+Matériel supporté :
+
+| Composant | Référence testée | Connexion |
+|---|---|---|
+| Tablette caisse | iPad (Safari) | — |
+| Douchette code-barres | **Inateck 160B** | USB HID (clavier) |
+| Imprimante ticket | 80 mm thermique | AirPrint (Wi-Fi) |
+| Tiroir-caisse | RJ11 | Branché sur imprimante |
+| TPE | **SumUp Solo** | Wi-Fi / compte SumUp |
+
+Procédure complète + 15 codes-barres scannables : `docs/POS_TEST_BARCODES.md`.
 
 ```bash
-# 1. Configurer SumUp sandbox
-SUMUP_ENVIRONMENT=sandbox
-SUMUP_API_KEY=<sandbox-key>     # vide → mode simulation auto
+# 1. Configurer SumUp (dev local ou .env prod)
+SUMUP_ENVIRONMENT=sandbox       # sandbox | production
+SUMUP_API_KEY=                  # vide → simulation en mémoire
+SUMUP_MERCHANT_CODE=
+SUMUP_SANDBOX_AUTO_DELAY_SEC=5  # 0 = approbation manuelle via Settings
 
-# 2. Seeder les 15 produits de test et régénérer les codes-barres
+# 2. Seeder les 15 produits de test + régénérer les PNG codes-barres
 PYTHONPATH=apps/api python scripts/seed_test_products.py
+# Régénérer juste la doc + les PNG sans toucher la DB :
+python scripts/seed_test_products.py --docs-only
+
+# 3. En prod (sur le VPS)
+./scripts/deploy.sh --test-products
 ```
+
+### Modes SumUp
+
+- **production** — appels réels api.sumup.com, frais SumUp qui s'appliquent.
+- **sandbox** — clé de dev SumUp, appels API réels en mode test.
+- **simulation** (défaut sans clé) — sandbox en mémoire dans l'API. Event log
+  visible dans `/settings > Paiement`, approve/decline manuel disponible, les
+  checkouts PENDING passent auto en PAID après `SUMUP_SANDBOX_AUTO_DELAY_SEC`.
