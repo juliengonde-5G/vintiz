@@ -15,10 +15,12 @@
 # DNS requis (pointer vers l'IP du VPS):
 #   vintiz.fr, www.vintiz.fr, app.vintiz.fr, api.vintiz.fr
 
-set -euo pipefail
+set -eo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# Resolve paths robustly regardless of how the script is invoked
+_SELF="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$(cd "$(dirname "$_SELF")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$PROJECT_DIR/docker/docker-compose.prod.yml"
 ENV_FILE="$PROJECT_DIR/.env"
 ROLLBACK_FILE="$PROJECT_DIR/.deploy_rollback"
@@ -120,9 +122,15 @@ log "Commit actuel sauvegarde pour rollback eventuel: $CURRENT_COMMIT"
 # ============================================================
 # 1. GIT PULL
 # ============================================================
-step "1/6" "Recuperation du code depuis main..."
-git fetch origin main
-git reset --hard origin/main
+# Branch to deploy: env var DEPLOY_BRANCH, or CLI arg --branch=xxx, or default main
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
+for arg in "$@"; do
+  case "$arg" in --branch=*) DEPLOY_BRANCH="${arg#--branch=}" ;; esac
+done
+
+step "1/6" "Recuperation du code (branche: $DEPLOY_BRANCH)..."
+git fetch origin "$DEPLOY_BRANCH"
+git reset --hard "origin/$DEPLOY_BRANCH"
 NEW_COMMIT=$(git rev-parse --short HEAD)
 if [ "$CURRENT_COMMIT" = "$NEW_COMMIT" ]; then
   warn "Code deja a jour ($NEW_COMMIT). Deploiement force."
@@ -189,7 +197,7 @@ fi
 echo "  Attente API (max 120s)..."
 API_OK=false
 for i in $(seq 1 40); do
-  if docker exec vintiz-api curl -sf http://localhost:8000/api/health > /dev/null 2>&1; then
+  if docker exec vintiz-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" > /dev/null 2>&1; then
     API_OK=true
     break
   fi

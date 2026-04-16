@@ -626,11 +626,77 @@ async def _reset_data_impl(db: AsyncSession):
 # ---------------------------------------------------------------------------
 
 @router.get("/weather")
-async def get_weather(current_user: Annotated[User, Depends(get_current_user)]):
-    """Get current weather and forecast for Vernon."""
+async def get_weather(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Get current weather and forecast for Vernon. Saves snapshot to history."""
     from app.services.weather_service import get_current_weather, get_weather_forecast
+    from app.models.audit import Settings
+
     current, forecast = await asyncio.gather(get_current_weather(), get_weather_forecast())
-    return {"current": current, "forecast": forecast}
+
+    # Save weather snapshot to history (stored in Settings as JSON array)
+    import json as _json
+    from datetime import date as _date
+
+    weather_data = {"current": current, "forecast": forecast}
+
+    try:
+        # Load existing history
+        history_setting = await db.execute(select(Settings).where(Settings.key == "weather_history"))
+        setting = history_setting.scalar_one_or_none()
+
+        today_str = str(_date.today())
+        snapshot = {
+            "date": today_str,
+            "temp": current.get("temp", 0),
+            "description": current.get("description", ""),
+            "icon": current.get("icon", "01d"),
+            "temp_min": current.get("temp_min", current.get("temp", 0)),
+            "temp_max": current.get("temp_max", current.get("temp", 0)),
+            "humidity": current.get("humidity", 0),
+            "wind_speed": current.get("wind_speed", 0),
+        }
+
+        if setting:
+            history = _json.loads(setting.value or "[]")
+            # Update today's snapshot or append
+            history = [h for h in history if h.get("date") != today_str]
+            history.append(snapshot)
+            # Keep last 30 days
+            history = sorted(history, key=lambda x: x["date"])[-30:]
+            setting.value = _json.dumps(history)
+        else:
+            db.add(Settings(key="weather_history", value=_json.dumps([snapshot])))
+
+        await db.commit()
+    except Exception:
+        pass  # History storage is non-critical
+
+    return weather_data
+
+
+@router.get("/weather/history")
+async def get_weather_history(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Get historical weather snapshots for Vernon (last 30 days)."""
+    import json as _json
+    from app.models.audit import Settings
+
+    setting_result = await db.execute(select(Settings).where(Settings.key == "weather_history"))
+    setting = setting_result.scalar_one_or_none()
+
+    if not setting or not setting.value:
+        return {"history": []}
+
+    try:
+        history = _json.loads(setting.value)
+        return {"history": history}
+    except Exception:
+        return {"history": []}
 
 
 # ---------------------------------------------------------------------------

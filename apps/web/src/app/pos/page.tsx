@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Button from '@/components/ui/Button';
+import NumPad from '@/components/ui/NumPad';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import Card from '@/components/ui/Card';
@@ -104,6 +105,17 @@ export default function POSPage() {
   // Loyalty redemption
   const [redeemPoints, setRedeemPoints] = useState(false);
 
+  // Numpad (touch)
+  const [numpadTarget, setNumpadTarget] = useState<{ type: 'cash' | 'payment'; index: number } | null>(null);
+
+  // Cash drawer
+  const [drawer, setDrawer] = useState<{ open: boolean; drawer_id?: string; opening_amount?: number } | null>(null);
+  const [showDrawerOpen, setShowDrawerOpen] = useState(false);
+  const [showDrawerClose, setShowDrawerClose] = useState(false);
+  const [drawerAmount, setDrawerAmount] = useState(0);
+  const [zReport, setZReport] = useState<{ z_report_number: number; total_sales: number; total_refunds: number; total_net: number; transaction_count: number; difference: number } | null>(null);
+  const [drawerSubmitting, setDrawerSubmitting] = useState(false);
+
   // General
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -124,6 +136,41 @@ export default function POSPage() {
 
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   const remaining = cartTotalAfterLoyalty - totalPaid;
+
+  // ── Cash drawer ─────────────────────────────────────────────────
+  useEffect(() => {
+    api.get('/api/pos/drawer/current').then(async (res) => {
+      if (res.ok) setDrawer(await res.json());
+    }).catch(() => {});
+  }, []);
+
+  const handleOpenDrawer = async () => {
+    setDrawerSubmitting(true);
+    try {
+      const res = await api.post('/api/pos/drawer/open', { opening_amount: drawerAmount });
+      if (res.ok) {
+        const data = await res.json();
+        setDrawer({ open: true, drawer_id: data.drawer_id, opening_amount: data.opening_amount });
+        setShowDrawerOpen(false);
+        setDrawerAmount(0);
+      }
+    } catch { /* silent */ }
+    setDrawerSubmitting(false);
+  };
+
+  const handleCloseDrawer = async () => {
+    setDrawerSubmitting(true);
+    try {
+      const res = await api.post('/api/pos/drawer/close', { closing_amount: drawerAmount });
+      if (res.ok) {
+        const data = await res.json();
+        setZReport(data);
+        setDrawer({ open: false });
+        setDrawerAmount(0);
+      }
+    } catch { /* silent */ }
+    setDrawerSubmitting(false);
+  };
 
   // ── Product search ───────────────────────────────────────────────
   const searchProducts = useCallback(async (query: string) => {
@@ -312,11 +359,40 @@ export default function POSPage() {
   // ── Payment ──────────────────────────────────────────────────────
   const addPayment = (method: PaymentLine['method']) => {
     const autoAmount = Math.max(0, parseFloat((cartTotalAfterLoyalty - totalPaid).toFixed(2)));
+    const newIndex = payments.length;
     setPayments(prev => [...prev, { method, amount: autoAmount }]);
     if (method === 'carte') {
-      const amount = Math.max(0, cartTotalAfterLoyalty - totalPaid);
-      initiateCBPayment(amount);
+      initiateCBPayment(autoAmount);
+    } else if (method === 'especes') {
+      setCashGiven('');
+      setNumpadTarget({ type: 'cash', index: newIndex });
+    } else {
+      setNumpadTarget({ type: 'payment', index: newIndex });
     }
+  };
+
+  const handleNumpadChange = (v: number) => {
+    if (!numpadTarget) return;
+    if (numpadTarget.type === 'cash') {
+      setCashGiven(v > 0 ? v.toString() : '');
+    } else {
+      updatePaymentAmount(numpadTarget.index, v);
+    }
+  };
+
+  const getNumpadPresets = (): number[] => {
+    if (!numpadTarget) return [];
+    if (numpadTarget.type === 'cash') {
+      const exact = parseFloat((payments[numpadTarget.index]?.amount || cartTotalAfterLoyalty).toFixed(2));
+      const presets: number[] = [exact];
+      for (const bill of [5, 10, 20, 50, 100]) {
+        const rounded = Math.ceil(exact / bill) * bill;
+        if (rounded > exact && !presets.some(p => p === rounded) && presets.length < 5) presets.push(rounded);
+      }
+      return presets;
+    }
+    const others = payments.reduce((s, p, i) => i === numpadTarget.index ? s : s + p.amount, 0);
+    return [parseFloat(Math.max(0, cartTotalAfterLoyalty - others).toFixed(2))];
   };
 
   const updatePaymentAmount = (index: number, amount: number) => {
@@ -390,6 +466,7 @@ export default function POSPage() {
     setCbCheckoutId(null);
     setCbStatus('idle');
     setRedeemPoints(false);
+    setNumpadTarget(null);
     if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
   };
 
@@ -399,264 +476,292 @@ export default function POSPage() {
     cheque: 'Cheque',
   };
 
-  const cashPaymentIndex = payments.findIndex(p => p.method === 'especes');
-
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex h-screen overflow-hidden bg-gray-100">
       <Sidebar />
-      <main className="md:ml-64 p-6 md:p-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-black">Caisse</h1>
-          <p className="text-gray-500 mt-1">Point de vente</p>
-        </div>
 
-        {error && !showPayment && (
-          <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-lg">
-            {error}
-            <button onClick={() => setError('')} className="ml-2 font-bold">&times;</button>
-          </div>
-        )}
+      {/* ── Main POS area ─────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden md:ml-64">
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* ── Left: Search + Client ─────────────────────────────── */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* Product search */}
-            <Card title="Recherche produit">
+        {/* ── LEFT PANEL: Order / Cart ────────────────────────────── */}
+        <div className="w-[42%] flex flex-col bg-white border-r border-gray-200 shadow-sm">
+
+          {/* Cash drawer status strip */}
+          {drawer !== null && (
+            <div className={`flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs ${drawer.open ? 'bg-green-50 border-b border-green-100' : 'bg-amber-50 border-b border-amber-200'}`}>
+              <span className={`font-medium ${drawer.open ? 'text-green-700' : 'text-amber-700'}`}>
+                {drawer.open
+                  ? `Caisse ouverte — fonds: ${drawer.opening_amount?.toFixed(2)} €`
+                  : 'Caisse non initialisée'}
+              </span>
+              {drawer.open ? (
+                <button onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
+                  className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
+                  Clôturer
+                </button>
+              ) : (
+                <button onClick={() => { setDrawerAmount(0); setShowDrawerOpen(true); }}
+                  className="text-xs px-2 py-1 rounded bg-teal text-white hover:bg-teal-700 transition-colors">
+                  Initialiser
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Header */}
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+            <div>
+              <h1 className="text-base font-bold text-black">Commande</h1>
+              <p className="text-xs text-gray-400">{cart.length} article{cart.length > 1 ? 's' : ''}</p>
+            </div>
+            {/* Client section */}
+            {selectedClient ? (
+              <div className="flex items-center gap-2">
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-black">{selectedClient.first_name} {selectedClient.last_name}</p>
+                  {selectedClient.loyalty && (
+                    <p className="text-xs text-purple-600">{selectedClient.loyalty.points} pts fidélité</p>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => setShowClientPopup(true)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-teal-50 text-teal hover:bg-teal-100 text-xs">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  </button>
+                  <button onClick={() => { setSelectedClient(null); setClientSearch(''); }}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 text-xs">&times;</button>
+                </div>
+              </div>
+            ) : (
               <div className="relative">
-                <Input
-                  placeholder="Scanner code-barres ou rechercher..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  icon={
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-                  }
+                <input
+                  className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg w-44 focus:outline-none focus:ring-1 focus:ring-teal"
+                  placeholder="Chercher client..."
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
                 />
-                {(searchResults.length > 0 || searchLoading) && searchQuery.trim() && (
-                  <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto">
-                    {searchLoading ? (
-                      <div className="p-4 text-center text-gray-400">Recherche...</div>
-                    ) : searchResults.length === 0 ? (
-                      <div className="p-4 text-center text-gray-400">Aucun produit trouve</div>
-                    ) : (
-                      searchResults.map(product => (
-                        <button
-                          key={product.id}
-                          onClick={() => addProductToCart(product)}
-                          className="w-full text-left p-3 hover:bg-pink-50 transition-colors flex items-center justify-between border-b border-gray-50 last:border-0 min-h-[44px]"
-                        >
-                          <div>
-                            <p className="font-medium text-black">{product.name}</p>
-                            <p className="text-xs text-gray-400">{product.barcode}{product.category ? ` · ${product.category}` : ''}</p>
-                          </div>
-                          <p className="font-bold text-teal">{formatCurrency(product.sale_price)}</p>
-                        </button>
-                      ))
-                    )}
+                {clientResults.length > 0 && (
+                  <div className="absolute right-0 top-8 z-20 w-64 bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                    {clientResults.map(c => (
+                      <button key={c.id} onClick={() => selectClient(c)}
+                        className="w-full text-left px-3 py-2 hover:bg-pink-50 transition-colors border-b border-gray-50 last:border-0">
+                        <p className="text-sm font-medium text-black">{c.first_name} {c.last_name}</p>
+                        {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
+            )}
+          </div>
 
-              {/* Quick buttons */}
-              <div className="flex gap-2 mt-3">
-                <button
-                  onClick={addBag}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm text-black transition-colors min-h-[40px]"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
-                  Sac 0,25&nbsp;&euro;
-                </button>
-                <button
-                  onClick={() => setShowManualEntry(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm text-black transition-colors min-h-[40px]"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  Article manuel
-                </button>
+          {error && !showPayment && (
+            <div className="mx-3 mt-2 p-2 bg-red-50 text-red-700 rounded-lg text-xs flex-shrink-0">
+              {error}
+              <button onClick={() => setError('')} className="ml-1 font-bold">&times;</button>
+            </div>
+          )}
+
+          {/* Cart items - scrollable */}
+          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+            {cart.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-300">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-3">
+                  <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                  <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/>
+                </svg>
+                <p className="text-sm">Panier vide</p>
               </div>
-            </Card>
-
-            {/* Client search */}
-            <Card title="Client">
-              {selectedClient ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-black">{selectedClient.first_name} {selectedClient.last_name}</p>
-                      {selectedClient.phone && <p className="text-xs text-gray-400">{selectedClient.phone}</p>}
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setShowClientPopup(true)}
-                        className="px-2 py-1 text-xs bg-teal-50 text-teal rounded-lg hover:bg-teal-100 min-h-[36px]"
-                      >
-                        Voir fiche
-                      </button>
-                      <button
-                        onClick={() => { setSelectedClient(null); setClientSearch(''); }}
-                        className="px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded-lg min-h-[36px]"
-                      >
-                        Retirer
-                      </button>
-                    </div>
-                  </div>
-                  {/* Loyalty badge */}
-                  {selectedClient.loyalty ? (
-                    <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
-                      <div>
-                        <p className="text-sm font-medium text-purple-800">
-                          Fidelite {tierLabel(selectedClient.loyalty.tier)}
+            ) : (
+              cart.map((item, idx) => {
+                const linePrice = item.price * item.quantity;
+                const afterDiscount = linePrice * (1 - item.discount / 100);
+                return (
+                  <div key={idx} className="p-2.5 bg-gray-50 rounded-xl border border-gray-100">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-black truncate">
+                          {item.name}
+                          {item.isManual && <span className="ml-1 text-xs text-gray-400">(man.)</span>}
                         </p>
-                        <p className="text-xs text-purple-600">{selectedClient.loyalty.points} points</p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-xs text-gray-500">{formatCurrency(item.price)}</span>
+                          {item.discount > 0 && <span className="text-xs text-red-500 font-medium">-{item.discount}%</span>}
+                          <span className="text-xs font-bold text-teal ml-auto">{formatCurrency(afterDiscount)}</span>
+                        </div>
                       </div>
-                      <span className={`ml-auto text-xs px-2 py-1 rounded-full font-medium ${tierColor(selectedClient.loyalty.tier)}`}>
-                        {tierLabel(selectedClient.loyalty.tier)}
-                      </span>
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
+                        <button onClick={() => updateQuantity(idx, -1)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-500">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        </button>
+                        <span className="w-6 text-center text-sm font-bold text-black">{item.quantity}</span>
+                        <button onClick={() => updateQuantity(idx, 1)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-500">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        </button>
+                        <button onClick={() => removeFromCart(idx)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 ml-1">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </div>
                     </div>
-                  ) : (
-                    <button
-                      onClick={activateLoyalty}
-                      className="w-full p-3 bg-purple-50 hover:bg-purple-100 rounded-lg text-sm text-purple-700 font-medium transition-colors text-left min-h-[44px]"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="inline mr-2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
-                      Proposer l&apos;adhesion fidelite
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="relative">
-                  <Input
-                    placeholder="Rechercher un client (nom, tel, email)..."
-                    value={clientSearch}
-                    onChange={(e) => setClientSearch(e.target.value)}
-                    icon={
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                    }
-                  />
-                  {clientResults.length > 0 && (
-                    <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                      {clientResults.map(c => (
-                        <button
-                          key={c.id}
-                          onClick={() => selectClient(c)}
-                          className="w-full text-left p-3 hover:bg-pink-50 transition-colors border-b border-gray-50 last:border-0 min-h-[44px]"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium text-black">{c.first_name} {c.last_name}</p>
-                              {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
-                            </div>
-                            {c.has_loyalty && (
-                              <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">Fidelite</span>
-                            )}
-                          </div>
+                    {/* Discount row */}
+                    <div className="flex items-center gap-1 mt-1.5">
+                      {[0, 5, 10, 15, 20, 30].map(d => (
+                        <button key={d} onClick={() => updateDiscount(idx, d)}
+                          className={`px-2 py-0.5 text-xs rounded-full transition-colors ${
+                            item.discount === d ? 'bg-red-500 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-red-300'
+                          }`}>
+                          {d === 0 ? '—' : `-${d}%`}
                         </button>
                       ))}
                     </div>
-                  )}
-                </div>
-              )}
-            </Card>
+                  </div>
+                );
+              })
+            )}
           </div>
 
-          {/* ── Right: Cart ───────────────────────────────────────── */}
-          <div className="lg:col-span-3">
-            <Card title="Panier">
-              {cart.length === 0 ? (
-                <p className="text-gray-400 text-center py-8">Aucun article dans le panier</p>
-              ) : (
-                <div className="space-y-3 mb-4">
-                  {cart.map((item, idx) => {
-                    const linePrice = item.price * item.quantity;
-                    const afterDiscount = linePrice * (1 - item.discount / 100);
-                    return (
-                      <div key={idx} className="p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <p className="font-medium text-black">
-                              {item.name}
-                              {item.isManual && <span className="ml-2 text-xs text-gray-400">(manuel)</span>}
-                            </p>
-                            <p className="text-sm text-teal font-bold">
-                              {formatCurrency(item.price)} x {item.quantity}
-                              {item.discount > 0 && <span className="text-red-500 ml-1">-{item.discount}%</span>}
-                              {' = '}
-                              <span className={item.discount > 0 ? 'text-red-600' : ''}>{formatCurrency(afterDiscount)}</span>
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => updateQuantity(idx, -1)} className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg hover:bg-gray-200 text-gray-600">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            </button>
-                            <span className="min-w-[24px] text-center font-bold text-black text-sm">{item.quantity}</span>
-                            <button onClick={() => updateQuantity(idx, 1)} className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg hover:bg-gray-200 text-gray-600">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            </button>
-                            <button onClick={() => removeFromCart(idx)} className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                            </button>
-                          </div>
-                        </div>
-                        {/* Discount row */}
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-xs text-gray-400">Remise :</span>
-                          <div className="flex gap-1">
-                            {[0, 5, 10, 15, 20, 30].map(d => (
-                              <button
-                                key={d}
-                                onClick={() => updateDiscount(idx, d)}
-                                className={`px-2 py-0.5 text-xs rounded-full min-h-[28px] transition-colors ${
-                                  item.discount === d
-                                    ? 'bg-red-500 text-white'
-                                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                                }`}
-                              >
-                                {d === 0 ? 'Aucune' : `-${d}%`}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Total */}
-              <div className="border-t border-gray-200 pt-4 mt-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-lg font-bold text-black">Total TTC</span>
-                  <span className="text-2xl font-bold text-teal">{formatCurrency(cartTotal)}</span>
-                </div>
-                {cart.some(i => i.discount > 0) && (
-                  <p className="text-xs text-red-500 text-right mt-1">
-                    Dont remises : -{formatCurrency(cart.reduce((s, i) => s + i.price * i.quantity * i.discount / 100, 0))}
-                  </p>
-                )}
+          {/* Footer: Total + Pay button */}
+          <div className="flex-shrink-0 border-t border-gray-200 bg-white px-4 py-3 space-y-3">
+            {/* Loyalty redemption */}
+            {selectedClient?.loyalty && loyaltyPoints > 0 && (
+              <div className="flex items-center justify-between p-2 bg-purple-50 rounded-lg">
+                <p className="text-xs font-medium text-purple-800">
+                  Fidélité ({loyaltyPoints} pts = {(loyaltyPoints * 0.10).toFixed(2)} €)
+                </p>
+                <button onClick={() => setRedeemPoints(prev => !prev)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${redeemPoints ? 'bg-purple-600' : 'bg-gray-300'}`}>
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${redeemPoints ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </button>
               </div>
+            )}
 
-              {/* Encaisser */}
-              <Button
-                size="lg"
-                className="w-full mt-6"
-                disabled={cart.length === 0}
-                onClick={() => {
-                  setPayments([]);
-                  setCashGiven('');
-                  setError('');
-                  setCbCheckoutId(null);
-                  setCbStatus('idle');
-                  if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
-                  setShowPayment(true);
-                }}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-                Encaisser {formatCurrency(cartTotal)}
-              </Button>
-            </Card>
+            <div className="flex items-center justify-between">
+              <span className="text-base font-bold text-black">Total TTC</span>
+              <div className="text-right">
+                {redeemPoints && loyaltyDiscount > 0 && (
+                  <p className="text-xs text-gray-400 line-through">{formatCurrency(cartTotal)}</p>
+                )}
+                <span className="text-2xl font-bold text-teal">{formatCurrency(cartTotalAfterLoyalty)}</span>
+              </div>
+            </div>
+            {cart.some(i => i.discount > 0) && (
+              <p className="text-xs text-red-500 text-right -mt-1">
+                Remises : -{formatCurrency(cart.reduce((s, i) => s + i.price * i.quantity * i.discount / 100, 0))}
+              </p>
+            )}
+
+            <button
+              disabled={cart.length === 0}
+              onClick={() => {
+                setPayments([]);
+                setCashGiven('');
+                setError('');
+                setCbCheckoutId(null);
+                setCbStatus('idle');
+                setNumpadTarget(null);
+                if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
+                setShowPayment(true);
+              }}
+              className={`w-full py-4 rounded-xl font-bold text-lg tracking-wide transition-colors flex items-center justify-center gap-3 ${
+                cart.length === 0
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : 'bg-teal text-white hover:bg-teal-700 active:bg-teal-800 shadow-lg'
+              }`}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+              Encaisser {cart.length > 0 ? formatCurrency(cartTotalAfterLoyalty) : ''}
+            </button>
           </div>
         </div>
-      </main>
+
+        {/* ── RIGHT PANEL: Product Search & Selection ─────────────── */}
+        <div className="flex-1 flex flex-col bg-gray-50 overflow-hidden">
+          {/* Search bar */}
+          <div className="flex-shrink-0 px-4 py-3 bg-white border-b border-gray-200 shadow-sm">
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-black text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal"
+                placeholder="Scanner code-barres ou rechercher un article..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+              {searchQuery && (
+                <button onClick={() => { setSearchQuery(''); setSearchResults([]); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              )}
+            </div>
+            {/* Quick action buttons */}
+            <div className="flex gap-2 mt-2">
+              <button onClick={addBag}
+                className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-black transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
+                Sac 0,25 €
+              </button>
+              <button onClick={() => setShowManualEntry(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-black transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Article manuel
+              </button>
+            </div>
+          </div>
+
+          {/* Product grid results */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {searchLoading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal" />
+              </div>
+            ) : searchQuery.trim() && searchResults.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <p className="text-sm">Aucun produit trouvé</p>
+              </div>
+            ) : searchResults.length > 0 ? (
+              <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+                {searchResults.map(product => (
+                  <button
+                    key={product.id}
+                    onClick={() => addProductToCart(product)}
+                    className="text-left p-4 bg-white rounded-xl border-2 border-transparent hover:border-teal hover:shadow-md transition-all group"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="w-10 h-10 rounded-lg bg-pink-50 flex items-center justify-center text-teal flex-shrink-0">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                      </div>
+                      <span className="text-lg font-bold text-teal">{formatCurrency(product.sale_price)}</span>
+                    </div>
+                    <p className="text-sm font-semibold text-black group-hover:text-teal leading-tight line-clamp-2">{product.name}</p>
+                    <p className="text-xs text-gray-400 mt-1">{product.barcode}{product.category ? ` · ${product.category}` : ''}</p>
+                    <div className="mt-2 flex items-center gap-1">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        product.status === 'display' ? 'bg-teal-50 text-teal' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {product.status === 'display' ? 'En vitrine' : 'En stock'}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-gray-300">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-4">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <p className="text-base text-gray-400">Scannez un article ou tapez son nom</p>
+                <p className="text-sm text-gray-300 mt-1">Les résultats s&apos;afficheront ici</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>
 
       {/* ── Client Popup Modal ──────────────────────────────────── */}
       <Modal
@@ -871,46 +976,59 @@ export default function POSPage() {
 
           {/* Payment lines */}
           {payments.map((payment, index) => (
-            <div key={index} className="p-4 bg-gray-50 rounded-lg space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{methodLabels[payment.method]}</span>
-                <button onClick={() => {
+            <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+              <span className="flex-1 font-semibold text-black text-sm">{methodLabels[payment.method]}</span>
+              {payment.method !== 'carte' ? (
+                <button
+                  type="button"
+                  onClick={() => setNumpadTarget({ type: payment.method === 'especes' ? 'cash' : 'payment', index })}
+                  className={`px-4 py-2.5 rounded-xl font-bold text-base transition-colors min-h-[44px] ${
+                    numpadTarget?.index === index
+                      ? 'bg-teal text-white'
+                      : 'bg-white border border-gray-200 text-black hover:bg-gray-100'
+                  }`}
+                >
+                  {payment.amount.toFixed(2)} €
+                </button>
+              ) : (
+                <span className="text-sm font-medium text-gray-500">{payment.amount.toFixed(2)} € CB</span>
+              )}
+              <button
+                type="button"
+                onClick={() => {
                   removePayment(index);
                   if (payment.method === 'carte') cancelCBPayment();
-                }} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-red-600">
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="4" x2="16" y2="16"/><line x1="16" y1="4" x2="4" y2="16"/></svg>
-                </button>
-              </div>
-              {payment.method !== 'carte' && (
-                <Input
-                  type="number"
-                  placeholder="Montant"
-                  value={payment.amount || ''}
-                  onChange={e => updatePaymentAmount(index, parseFloat(e.target.value) || 0)}
-                />
-              )}
-              {payment.method === 'carte' && (
-                <p className="text-sm text-gray-500">{formatCurrency(payment.amount)} via TPE</p>
-              )}
-              {payment.method === 'especes' && index === cashPaymentIndex && (
-                <div className="space-y-2">
-                  <Input
-                    label="Montant donne"
-                    type="number"
-                    placeholder="0.00"
-                    value={cashGiven}
-                    onChange={e => setCashGiven(e.target.value)}
-                  />
-                  {parseFloat(cashGiven) > 0 && (
-                    <p className="text-sm">
-                      Monnaie a rendre :{' '}
-                      <span className="font-bold text-teal">{formatCurrency(Math.max(0, parseFloat(cashGiven) - payment.amount))}</span>
-                    </p>
-                  )}
+                  if (numpadTarget?.index === index) setNumpadTarget(null);
+                }}
+                className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-red-600 rounded-xl hover:bg-red-50"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          ))}
+
+          {/* Numpad for active payment */}
+          {numpadTarget && (
+            <div className="space-y-2 border-t border-gray-100 pt-3">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                {numpadTarget.type === 'cash' ? 'Montant remis par le client' : 'Montant à encaisser'}
+              </p>
+              <NumPad
+                value={numpadTarget.type === 'cash' ? parseFloat(cashGiven) || 0 : payments[numpadTarget.index]?.amount || 0}
+                onChange={handleNumpadChange}
+                presets={getNumpadPresets()}
+              />
+              {numpadTarget.type === 'cash' && parseFloat(cashGiven) > 0 && payments[numpadTarget.index] && (
+                <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-200">
+                  <span className="text-sm font-semibold text-green-800">Monnaie à rendre</span>
+                  <span className="text-xl font-bold text-green-700">
+                    {formatCurrency(Math.max(0, parseFloat(cashGiven) - payments[numpadTarget.index].amount))}
+                  </span>
                 </div>
               )}
             </div>
-          ))}
+          )}
+
 
           {/* Remaining */}
           {payments.length > 0 && (
@@ -934,6 +1052,49 @@ export default function POSPage() {
         <div className="bg-gray-50 p-4 rounded-lg">
           <pre className="whitespace-pre-wrap text-sm font-mono text-black">{receiptText}</pre>
         </div>
+      </Modal>
+
+      {/* ── Open Drawer Modal ───────────────────────────────────── */}
+      <Modal open={showDrawerOpen} onClose={() => setShowDrawerOpen(false)} title="Initialiser la caisse"
+        actions={<Button size="lg" onClick={handleOpenDrawer} disabled={drawerSubmitting}>{drawerSubmitting ? 'En cours...' : 'Ouvrir la caisse'}</Button>}>
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500">Saisissez le fonds de caisse initial (monnaie disponible).</p>
+          <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[50, 100, 150, 200]} />
+        </div>
+      </Modal>
+
+      {/* ── Close Drawer Modal ──────────────────────────────────── */}
+      <Modal open={showDrawerClose} onClose={() => setShowDrawerClose(false)} title="Clôturer la caisse"
+        actions={<Button size="lg" onClick={handleCloseDrawer} disabled={drawerSubmitting}>{drawerSubmitting ? 'En cours...' : 'Générer le rapport Z'}</Button>}>
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500">Comptez les espèces en caisse et saisissez le montant total.</p>
+          <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[]} />
+        </div>
+      </Modal>
+
+      {/* ── Z Report Modal ───────────────────────────────────────── */}
+      <Modal open={!!zReport} onClose={() => setZReport(null)} title="Rapport Z — Clôture de caisse"
+        actions={<Button onClick={() => setZReport(null)}>Fermer</Button>}>
+        {zReport && (
+          <div className="space-y-3">
+            <div className="p-4 bg-teal-50 rounded-xl text-center">
+              <p className="text-xs text-gray-500 mb-1">Rapport Z n°{zReport.z_report_number}</p>
+              <p className="text-3xl font-bold text-teal">{formatCurrency(zReport.total_net)}</p>
+              <p className="text-sm text-gray-500 mt-1">Chiffre d&apos;affaires net</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 bg-gray-50 rounded-lg"><p className="text-xs text-gray-500">Ventes</p><p className="font-bold text-black">{formatCurrency(zReport.total_sales)}</p></div>
+              <div className="p-3 bg-gray-50 rounded-lg"><p className="text-xs text-gray-500">Remboursements</p><p className="font-bold text-black">{formatCurrency(zReport.total_refunds)}</p></div>
+              <div className="p-3 bg-gray-50 rounded-lg"><p className="text-xs text-gray-500">Transactions</p><p className="font-bold text-black">{zReport.transaction_count}</p></div>
+              <div className={`p-3 rounded-lg ${Math.abs(zReport.difference) < 0.01 ? 'bg-green-50' : 'bg-amber-50'}`}>
+                <p className="text-xs text-gray-500">Écart caisse</p>
+                <p className={`font-bold ${Math.abs(zReport.difference) < 0.01 ? 'text-green-700' : 'text-amber-700'}`}>
+                  {zReport.difference >= 0 ? '+' : ''}{formatCurrency(zReport.difference)}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
