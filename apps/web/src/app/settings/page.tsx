@@ -26,13 +26,54 @@ interface Zone {
 
 const ALL_PRODUCT_TYPES = ['Robes', 'Hauts', 'Pantalons', 'Jupes', 'Vestes', 'Manteaux', 'Accessoires', 'Chaussures', 'Sacs', 'Bijoux', 'Enfant'];
 
+interface SumUpConfig {
+  environment: string;
+  api_key_set: boolean;
+  merchant_code_set: boolean;
+  merchant_code_masked: string;
+  sandbox_auto_delay_sec: number;
+  api_base: string;
+}
+
+interface SandboxCheckout {
+  checkout_id: string;
+  checkout_reference: string;
+  amount: number;
+  currency: string;
+  description: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
+  auto_approve_in: number | null;
+  manual_override: boolean;
+}
+
+interface SandboxEvent {
+  timestamp: number;
+  iso_time: string;
+  kind: string;
+  checkout_id: string;
+  status: string;
+  payload: Record<string, unknown>;
+}
+
+interface SandboxSnapshot {
+  config: SumUpConfig;
+  checkouts: SandboxCheckout[];
+  events: SandboxEvent[];
+}
+
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'store' | 'categories' | 'zones' | 'system'>('store');
+  const [tab, setTab] = useState<'store' | 'payment' | 'categories' | 'zones' | 'system'>('store');
   const [categories, setCategories] = useState<Category[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+
+  // SumUp sandbox state
+  const [sandbox, setSandbox] = useState<SandboxSnapshot | null>(null);
+  const [sandboxTestAmount, setSandboxTestAmount] = useState('12.50');
 
   // New category form
   const [newCatName, setNewCatName] = useState('');
@@ -47,6 +88,52 @@ export default function SettingsPage() {
     if (tab === 'categories') loadCategories();
     if (tab === 'zones') loadZones();
   }, [tab]);
+
+  // ── SumUp sandbox: auto-refresh snapshot every 2s while payment tab is open ──
+  useEffect(() => {
+    if (tab !== 'payment') return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const res = await api.get('/api/pos/payments/cb/sandbox/state?limit=40');
+        if (!cancelled && res.ok) setSandbox(await res.json());
+      } catch { /* silent */ }
+    };
+    refresh();
+    const handle = setInterval(refresh, 2000);
+    return () => { cancelled = true; clearInterval(handle); };
+  }, [tab]);
+
+  const runSandboxTest = async () => {
+    setError('');
+    const amount = parseFloat(sandboxTestAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setError('Montant invalide');
+      return;
+    }
+    try {
+      const res = await api.post('/api/pos/payments/cb/sandbox/test', {
+        amount,
+        description: 'Test sandbox depuis Parametres',
+      });
+      if (!res.ok) setError('Erreur lors du test sandbox');
+    } catch { setError('Erreur de connexion'); }
+  };
+
+  const approveSandbox = async (checkoutId: string) => {
+    try { await api.post(`/api/pos/payments/cb/sandbox/${checkoutId}/approve`, {}); }
+    catch { setError('Erreur approbation'); }
+  };
+
+  const declineSandbox = async (checkoutId: string) => {
+    try { await api.post(`/api/pos/payments/cb/sandbox/${checkoutId}/decline`, {}); }
+    catch { setError('Erreur refus'); }
+  };
+
+  const clearSandbox = async () => {
+    try { await api.post('/api/pos/payments/cb/sandbox/clear', {}); }
+    catch { setError('Erreur reset'); }
+  };
 
   const loadCategories = async () => {
     setLoading(true);
@@ -193,6 +280,7 @@ export default function SettingsPage() {
 
   const tabs = [
     { key: 'store' as const, label: 'Boutique' },
+    { key: 'payment' as const, label: 'Paiement' },
     { key: 'categories' as const, label: 'Categories' },
     { key: 'zones' as const, label: 'Zones' },
     { key: 'system' as const, label: 'Systeme' },
@@ -280,6 +368,11 @@ export default function SettingsPage() {
                   <p className="font-medium text-black">CB, Especes, Cheque, Virement</p>
                 </div>
               </div>
+              <div className="mt-4">
+                <Button variant="outline" onClick={() => setTab('payment')}>
+                  Configurer / tester le sandbox SumUp
+                </Button>
+              </div>
             </Card>
 
             <Card title="Domaines">
@@ -297,6 +390,175 @@ export default function SettingsPage() {
                   <p className="font-medium text-teal">api.vintiz.fr</p>
                 </div>
               </div>
+            </Card>
+          </div>
+        )}
+
+        {/* PAYMENT TAB */}
+        {tab === 'payment' && (
+          <div className="space-y-6">
+            <Card title="Configuration SumUp">
+              {!sandbox ? (
+                <p className="text-sm text-gray-500">Chargement...</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-sm">
+                  <div>
+                    <p className="text-gray-500 mb-1">Environnement</p>
+                    <p className="font-medium text-black">
+                      <span
+                        className={`inline-block px-2 py-1 rounded ${
+                          sandbox.config.environment === 'production'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {sandbox.config.environment.toUpperCase()}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Base API</p>
+                    <p className="font-mono text-black text-xs">{sandbox.config.api_base}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Cle API</p>
+                    <p className="font-medium text-black">
+                      {sandbox.config.api_key_set ? 'Definie' : 'Non definie (mode simulation)'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Merchant code</p>
+                    <p className="font-mono text-black">
+                      {sandbox.config.merchant_code_set ? sandbox.config.merchant_code_masked : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Delai auto PAID (sandbox)</p>
+                    <p className="font-medium text-black">{sandbox.config.sandbox_auto_delay_sec} s</p>
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-gray-500 mt-4">
+                Variables d&apos;environnement : <code className="font-mono">SUMUP_ENVIRONMENT</code>,{' '}
+                <code className="font-mono">SUMUP_API_KEY</code>,{' '}
+                <code className="font-mono">SUMUP_MERCHANT_CODE</code>,{' '}
+                <code className="font-mono">SUMUP_SANDBOX_AUTO_DELAY_SEC</code>.
+              </p>
+            </Card>
+
+            <Card title="Simulation de paiement">
+              <p className="text-sm text-gray-500 mb-4">
+                Cree un checkout sandbox. Le flux reproduit ce qui se passe depuis la caisse
+                lorsque vous cliquez sur CB : envoi du montant et de la reference, puis polling
+                du statut toutes les 3 secondes jusqu&apos;a PAID ou FAILED.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <Input
+                    type="number"
+                    value={sandboxTestAmount}
+                    onChange={(e) => setSandboxTestAmount(e.target.value)}
+                    placeholder="Montant EUR"
+                  />
+                </div>
+                <Button onClick={runSandboxTest}>Lancer un paiement test</Button>
+                <Button variant="outline" onClick={clearSandbox}>Vider le journal</Button>
+              </div>
+            </Card>
+
+            <Card title="Checkouts actifs">
+              {!sandbox || sandbox.checkouts.length === 0 ? (
+                <p className="text-sm text-gray-400">Aucun checkout en cours.</p>
+              ) : (
+                <div className="space-y-2">
+                  {sandbox.checkouts.map((c) => (
+                    <div
+                      key={c.checkout_id}
+                      className="flex items-center justify-between border border-gray-200 rounded-lg p-3"
+                    >
+                      <div className="text-sm">
+                        <div className="font-mono text-black">{c.checkout_id}</div>
+                        <div className="text-gray-500">
+                          {c.amount.toFixed(2)} {c.currency} — {c.description}
+                        </div>
+                        <div className="mt-1">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                              c.status === 'PAID'
+                                ? 'bg-green-100 text-green-800'
+                                : c.status === 'FAILED' || c.status === 'CANCELLED'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {c.status}
+                          </span>
+                          {c.auto_approve_in != null && c.status === 'PENDING' && (
+                            <span className="text-xs text-gray-500 ml-2">
+                              auto-PAID dans {c.auto_approve_in}s
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {c.status === 'PENDING' && (
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => approveSandbox(c.checkout_id)}
+                          >
+                            Approuver
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => declineSandbox(c.checkout_id)}
+                          >
+                            Refuser
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            <Card title="Journal des evenements (live)">
+              <p className="text-xs text-gray-500 mb-3">
+                Rafraichi toutes les 2 secondes. Utile pour verifier que la caisse transmet bien
+                les bonnes informations (montant, reference, description, polling).
+              </p>
+              {!sandbox || sandbox.events.length === 0 ? (
+                <p className="text-sm text-gray-400">Aucun evenement.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-200 text-gray-500">
+                        <th className="py-2 pr-2">Heure</th>
+                        <th className="py-2 pr-2">Type</th>
+                        <th className="py-2 pr-2">Checkout</th>
+                        <th className="py-2 pr-2">Statut</th>
+                        <th className="py-2">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sandbox.events.map((e, i) => (
+                        <tr key={i} className="border-b border-gray-100">
+                          <td className="py-2 pr-2 font-mono text-gray-500">{e.iso_time}</td>
+                          <td className="py-2 pr-2 font-medium text-black">{e.kind}</td>
+                          <td className="py-2 pr-2 font-mono">{e.checkout_id}</td>
+                          <td className="py-2 pr-2">{e.status}</td>
+                          <td className="py-2 font-mono text-gray-600">
+                            {Object.keys(e.payload).length > 0
+                              ? JSON.stringify(e.payload)
+                              : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </Card>
           </div>
         )}
