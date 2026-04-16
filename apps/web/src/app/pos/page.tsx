@@ -252,6 +252,60 @@ export default function POSPage() {
     setSearchResults([]);
   };
 
+  // Barcode scanner (Inateck BCST-60 / 160B USB HID): types the code fast then
+  // sends Enter. We resolve the code → product and add it to the cart.
+  const handleBarcodeScan = useCallback(async (rawCode: string) => {
+    const code = rawCode.trim();
+    if (!code) return;
+    try {
+      const res = await api.get(`/api/inventory/products/search?q=${encodeURIComponent(code)}`);
+      if (!res.ok) { setError(`Produit introuvable pour ${code}`); return; }
+      const data: SearchProduct[] = await res.json();
+      const exact = data.find(p => p.barcode === code);
+      const hit = exact || (data.length === 1 ? data[0] : null);
+      if (!hit) { setError(`Aucune correspondance pour ${code}`); return; }
+      addProductToCart(hit);
+    } catch {
+      setError(`Erreur lecture code-barres ${code}`);
+    }
+  }, []);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const q = searchQuery.trim();
+    if (!q) return;
+    const exact = searchResults.find(p => p.barcode === q);
+    if (exact) { addProductToCart(exact); return; }
+    if (searchResults.length === 1) { addProductToCart(searchResults[0]); return; }
+    handleBarcodeScan(q);
+  };
+
+  // Open the receipt in a print-sized window and trigger the browser print
+  // dialog (AirPrint on iPad). Most thermal printers fire the cash-drawer
+  // kick pulse (RJ11) when a ticket prints — no extra trigger needed.
+  const printReceipt = useCallback((text: string) => {
+    const w = window.open('', '_blank', 'width=400,height=700');
+    if (!w) {
+      alert("Impossible d'ouvrir la fenêtre d'impression. Autorisez les pop-ups pour ce site.");
+      return;
+    }
+    const safe = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    w.document.write(`<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Ticket Vintiz</title>
+<style>
+  @page { size: 80mm auto; margin: 0; }
+  body { margin: 0; padding: 4mm 3mm; }
+  pre { font-family: 'Courier New', Consolas, monospace; font-size: 12px;
+        line-height: 1.35; white-space: pre-wrap; word-break: break-word; margin: 0; }
+  @media print { body { padding: 0 2mm; } }
+</style></head>
+<body><pre>${safe}</pre>
+<script>window.onload = function() { window.focus(); window.print(); };</script>
+</body></html>`);
+    w.document.close();
+  }, []);
+
   const addBag = () => {
     setCart(prev => {
       const existing = prev.find(i => i.name === 'Sac boutique Vintiz' && i.isManual);
@@ -688,6 +742,7 @@ export default function POSPage() {
                 placeholder="Scanner code-barres ou rechercher un article..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
                 autoFocus
               />
               {searchQuery && (
@@ -1047,7 +1102,15 @@ export default function POSPage() {
         open={showReceipt}
         onClose={handleReceiptClose}
         title="Ticket de caisse"
-        actions={<Button onClick={handleReceiptClose}>Fermer</Button>}
+        actions={
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" onClick={() => printReceipt(receiptText)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              Imprimer
+            </Button>
+            <Button onClick={handleReceiptClose}>Fermer</Button>
+          </div>
+        }
       >
         <div className="bg-gray-50 p-4 rounded-lg">
           <pre className="whitespace-pre-wrap text-sm font-mono text-black">{receiptText}</pre>
