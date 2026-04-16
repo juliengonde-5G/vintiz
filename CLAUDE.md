@@ -194,8 +194,23 @@ PYTHONPATH=apps/api python scripts/seed_data.py
 
 ## Git workflow
 
-Branche de travail : `claude/fix-product-features-LbqVr`
+Branche de travail : `claude/prepare-pos-software-stoSD`
 
 ```bash
-git push -u origin claude/fix-product-features-LbqVr
+git push -u origin claude/prepare-pos-software-stoSD
+```
+
+## Hardware POS — test de mise en service
+
+Voir `docs/POS_TEST_BARCODES.md` pour la série de 15 produits de test +
+codes-barres scannables (Code128), et la procédure complète de test avec
+iPad, douchette USB, imprimante 80 mm, tiroir RJ11 et TPE SumUp Solo.
+
+```bash
+# 1. Configurer SumUp sandbox
+SUMUP_ENVIRONMENT=sandbox
+SUMUP_API_KEY=<sandbox-key>     # vide → mode simulation auto
+
+# 2. Seeder les 15 produits de test et régénérer les codes-barres
+PYTHONPATH=apps/api python scripts/seed_test_products.py
 ```
