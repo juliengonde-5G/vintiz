@@ -3,9 +3,10 @@
 # Vintiz V3 — Script de deploiement production
 # ===========================================
 # Usage:
-#   ./scripts/deploy.sh              Mise a jour normale
-#   ./scripts/deploy.sh --first-run  Premier deploiement (migrations + seed)
-#   ./scripts/deploy.sh --rollback   Revenir a la version precedente
+#   ./scripts/deploy.sh                  Mise a jour normale
+#   ./scripts/deploy.sh --first-run      Premier deploiement (migrations + seed 300 produits)
+#   ./scripts/deploy.sh --test-products  Seed les 15 produits de test POS (TEST0001..TEST0015)
+#   ./scripts/deploy.sh --rollback       Revenir a la version precedente
 #
 # Pre-requis sur le serveur:
 #   - Docker Engine 24+ + Docker Compose v2 (docker compose, pas docker-compose)
@@ -35,14 +36,17 @@ step() { echo -e "\n${BLUE}[$1]${NC} $2"; }
 # Parse arguments
 FIRST_RUN=false
 ROLLBACK=false
+TEST_PRODUCTS=false
 for arg in "$@"; do
   case "$arg" in
-    --first-run) FIRST_RUN=true ;;
-    --rollback)  ROLLBACK=true ;;
+    --first-run)     FIRST_RUN=true ;;
+    --rollback)      ROLLBACK=true ;;
+    --test-products) TEST_PRODUCTS=true ;;
     --help|-h)
-      echo "Usage: $0 [--first-run | --rollback]"
-      echo "  --first-run  Lance migrations Alembic + seed data (300 produits, 50 clients)"
-      echo "  --rollback   Restaure la version du code precedant le dernier deploiement"
+      echo "Usage: $0 [--first-run | --rollback | --test-products]"
+      echo "  --first-run      Lance migrations Alembic + seed data (300 produits, 50 clients)"
+      echo "  --test-products  Seed les 15 produits de test POS (TEST0001..TEST0015)"
+      echo "  --rollback       Restaure la version du code precedant le dernier deploiement"
       exit 0
       ;;
   esac
@@ -229,6 +233,25 @@ if $FIRST_RUN; then
   else
     warn "Seed partiel. Relancer manuellement:"
     warn "  docker exec vintiz-api python scripts/seed_data.py"
+  fi
+fi
+
+# ============================================================
+# TEST PRODUCTS : 15 articles TEST0001..TEST0015 pour la mise en route materielle
+# ============================================================
+if $TEST_PRODUCTS; then
+  echo ""
+  echo "  ---- Seed produits de test POS ----"
+  echo "  Creation/mise a jour des 15 produits TEST0001..TEST0015..."
+  if docker exec vintiz-api python scripts/seed_test_products.py; then
+    log "Produits de test: OK"
+    echo ""
+    echo "  Les codes-barres scannables sont dans:"
+    echo "    docs/POS_TEST_BARCODES.md + docs/test_barcodes/*.png"
+    echo "  Afficher sur un 2e ecran (ou imprimer) et scanner depuis l'iPad."
+  else
+    warn "Seed test produits echoue. Relancer manuellement:"
+    warn "  docker exec vintiz-api python scripts/seed_test_products.py"
   fi
 fi
 
