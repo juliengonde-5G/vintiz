@@ -148,6 +148,10 @@ class SumUpService:
     def __init__(self) -> None:
         self.api_key = os.getenv("SUMUP_API_KEY", "").strip()
         self.merchant_code = os.getenv("SUMUP_MERCHANT_CODE", "").strip()
+        # Optional: target a specific SumUp Solo terminal via the Readers API.
+        # When set, card checkouts are pushed to this reader so the TPE Solo
+        # rings automatically without the cashier re-entering the amount.
+        self.reader_id = os.getenv("SUMUP_READER_ID", "").strip()
         env = os.getenv("SUMUP_ENVIRONMENT", "").strip().lower()
         # Auto-detect: sandbox whenever no API key is set
         if env not in ("sandbox", "production"):
@@ -172,6 +176,7 @@ class SumUpService:
             "api_key_set": bool(self.api_key),
             "merchant_code_set": bool(self.merchant_code),
             "merchant_code_masked": masked,
+            "reader_id_set": bool(self.reader_id),
             "sandbox_auto_delay_sec": self.sandbox_auto_delay,
             "api_base": SUMUP_API_BASE if self.environment == "production" else "sandbox (in-memory)",
         }
@@ -193,12 +198,33 @@ class SumUpService:
         description: str = "Vente Vintiz",
         reference: str | None = None,
     ) -> dict:
+        """Create a checkout.
+
+        - **Sandbox** — in-memory simulated flow with auto-approve delay.
+        - **Production + `SUMUP_READER_ID`** — push directly to the SumUp Solo
+          terminal via the Readers API. The TPE rings on the cashier's side;
+          the customer taps their card; no manual amount entry on the TPE.
+        - **Production without reader id** — classic Checkouts API; the
+          customer pays via a payment link or the Solo app on the same merchant
+          account (cashier types the amount on the TPE).
+
+        In production, API errors are surfaced to the caller (status
+        ``FAILED`` + ``error_detail``) so the cashier can retry or fall back to
+        a manual confirmation rather than seeing a silent fake success.
+        """
         ref = reference or str(uuid.uuid4())[:8].upper()
 
         if self.environment == "sandbox":
             return self._sandbox_create(amount, currency, description, ref)
 
-        # Production path
+        # Production: prefer the Readers API if a reader is configured.
+        if self.reader_id and self.merchant_code:
+            pushed = await self._push_to_reader(amount, currency, description, ref)
+            if pushed is not None:
+                return pushed
+            # _push_to_reader returned None → fall through to classic checkout
+
+        # Production: classic Checkouts API (customer pays via link/app).
         payload = {
             "checkout_reference": ref,
             "amount": round(amount, 2),
@@ -223,17 +249,89 @@ class SumUpService:
                     "status": data.get("status", "PENDING"),
                     "environment": "production",
                     "simulated": False,
+                    "mode": "checkout",
                 }
-            # Production error → surface a graceful error + fallback
-            return self._sandbox_create(
-                amount, currency, description, ref,
-                note=f"fallback after production error {resp.status_code}: {resp.text[:120]}",
-            )
+            return {
+                "checkout_id": f"ERR-{ref}",
+                "checkout_reference": ref,
+                "amount": amount,
+                "currency": currency,
+                "status": "FAILED",
+                "environment": "production",
+                "simulated": False,
+                "http_status": resp.status_code,
+                "error_detail": resp.text[:300],
+            }
         except Exception as e:
-            return self._sandbox_create(
-                amount, currency, description, ref,
-                note=f"fallback after network error: {e}",
-            )
+            return {
+                "checkout_id": f"ERR-{ref}",
+                "checkout_reference": ref,
+                "amount": amount,
+                "currency": currency,
+                "status": "FAILED",
+                "environment": "production",
+                "simulated": False,
+                "error_detail": f"network error: {e}",
+            }
+
+    async def _push_to_reader(
+        self,
+        amount: float,
+        currency: str,
+        description: str,
+        ref: str,
+    ) -> dict | None:
+        """Push a payment to a SumUp Solo terminal via the Readers API.
+
+        SumUp expects the amount as integer **minor units** (cents) in the
+        reader payload, unlike the top-level Checkouts API which takes a float.
+        Returns ``None`` on unexpected error to let the caller fall back.
+        """
+        url = (
+            f"{SUMUP_API_BASE}/merchants/{self.merchant_code}"
+            f"/readers/{self.reader_id}/checkout"
+        )
+        payload = {
+            "total_amount": {
+                "value": int(round(amount * 100)),
+                "currency": currency,
+                "minor_unit": 2,
+            },
+            "description": description,
+            "return_url": os.getenv("SUMUP_RETURN_URL", "") or None,
+        }
+        payload = {k: v for k, v in payload.items() if v is not None}
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(url, json=payload, headers=self._headers)
+            if resp.status_code in (200, 201, 202):
+                data = resp.json() if resp.content else {}
+                return {
+                    "checkout_id": data.get("data", {}).get("client_transaction_id") or ref,
+                    "checkout_reference": ref,
+                    "amount": amount,
+                    "currency": currency,
+                    "status": "PENDING",
+                    "environment": "production",
+                    "simulated": False,
+                    "mode": "reader",
+                    "reader_id": self.reader_id,
+                }
+            # Non-2xx from the Readers API — surface but signal failure.
+            return {
+                "checkout_id": f"ERR-{ref}",
+                "checkout_reference": ref,
+                "amount": amount,
+                "currency": currency,
+                "status": "FAILED",
+                "environment": "production",
+                "simulated": False,
+                "mode": "reader",
+                "http_status": resp.status_code,
+                "error_detail": resp.text[:300],
+            }
+        except Exception:
+            return None
 
     def _sandbox_create(
         self,
