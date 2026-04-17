@@ -599,10 +599,18 @@ export default function POSPage() {
                   : 'Caisse non initialisée'}
               </span>
               {drawer.open ? (
-                <button onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
-                  className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
-                  Clôturer
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={kickDrawer}
+                    title="Ouvrir le tiroir-caisse manuellement"
+                    className="text-xs px-2 py-1 rounded bg-teal text-white hover:bg-teal-700 transition-colors flex items-center gap-1">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="10" width="18" height="10" rx="1"/><path d="M3 10V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"/><line x1="10" y1="15" x2="14" y2="15"/></svg>
+                    Ouvrir tiroir
+                  </button>
+                  <button onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
+                    className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
+                    Clôturer
+                  </button>
+                </div>
               ) : (
                 <button onClick={() => { setDrawerAmount(0); setShowDrawerOpen(true); }}
                   className="text-xs px-2 py-1 rounded bg-teal text-white hover:bg-teal-700 transition-colors">
