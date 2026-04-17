@@ -1,6 +1,22 @@
 import type { Metadata } from "next";
+import { Lexend_Mega, Poppins } from "next/font/google";
 import "./globals.css";
 import CookieBanner from "@/components/CookieBanner";
+
+// Charte graphique Vintiz v2 : Lexend Mega (titres) + Poppins (texte).
+const lexendMega = Lexend_Mega({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-body",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Vintiz | Boutique seconde main premium - Vernon",
@@ -36,21 +52,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr">
+    <html lang="fr" className={`${lexendMega.variable} ${poppins.variable}`}>
       <head>
-        <link rel="icon" href="/logo-rose.png" type="image/png" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap"
-          rel="stylesheet"
-        />
+        <link rel="icon" href="/logo-teal.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/logo-teal.png" />
       </head>
-      <body className="font-sans antialiased">
+      <body className="font-sans antialiased bg-cream text-black">
         {children}
         <CookieBanner />
       </body>

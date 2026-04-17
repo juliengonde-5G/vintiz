@@ -19,9 +19,8 @@ export default function Navbar() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-vintiz-bg/90 backdrop-blur-md border-b border-vintiz-pink/20">
       <nav className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-3">
-          <Image src="/logo-rose.png" alt="Vintiz" width={36} height={36} />
-          <span className="font-serif text-xl tracking-[0.2em] text-vintiz-black">VINTIZ</span>
+        <Link href="/" className="flex items-center gap-2">
+          <Image src="/logo-teal.png" alt="Vintiz" width={44} height={44} className="h-10 w-auto" />
         </Link>
 
         {/* Desktop nav */}

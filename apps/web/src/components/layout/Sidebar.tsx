@@ -117,9 +117,14 @@ export default function Sidebar() {
         } md:translate-x-0`}
       >
         {/* Brand */}
-        <div className="p-6 border-b border-gray-100">
-          <h1 className="font-serif text-2xl font-bold text-pink">Vintiz</h1>
-          <p className="text-xs text-gray-400 mt-1">Back Office</p>
+        <div className="px-6 pt-6 pb-5 border-b border-gray-100 flex flex-col items-center">
+          <img
+            src="/logo-teal.png"
+            alt="Vintiz"
+            className="h-16 w-auto mb-1 select-none"
+            draggable={false}
+          />
+          <p className="text-[10px] tracking-[0.25em] text-gray-400 uppercase">Back Office</p>
         </div>
 
         {/* Navigation */}

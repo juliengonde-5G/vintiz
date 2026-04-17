@@ -8,11 +8,10 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
           {/* Brand */}
           <div className="md:col-span-1">
-            <div className="flex items-center gap-3 mb-4">
-              <Image src="/logo-rose.png" alt="Vintiz" width={32} height={32} />
-              <span className="font-serif text-lg tracking-[0.2em]">VINTIZ</span>
+            <div className="mb-4">
+              <Image src="/logo-rose.png" alt="Vintiz" width={88} height={88} className="h-16 w-auto" />
             </div>
-            <p className="text-sm text-white/50 leading-relaxed">
+            <p className="text-sm text-white/60 leading-relaxed">
               Votre boutique de vetements de seconde main premium a Vernon.
             </p>
           </div>

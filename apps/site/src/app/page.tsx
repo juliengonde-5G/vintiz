@@ -93,12 +93,12 @@ export default function Home() {
         <div className="max-w-4xl mx-auto text-center">
           <div className="animate-fade-in-up">
             <Image
-              src="/logo-rose.png"
+              src="/logo-teal.png"
               alt="Vintiz"
-              width={80}
-              height={80}
+              width={180}
+              height={180}
               priority
-              className="mx-auto mb-6"
+              className="mx-auto mb-6 h-32 w-auto sm:h-40"
             />
           </div>
           <h1 className="animate-fade-in-up animation-delay-200 font-serif text-5xl sm:text-6xl lg:text-7xl text-vintiz-black mb-6 leading-tight">
