@@ -23,10 +23,15 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-# Ensure the api app is importable
-api_root = Path(__file__).resolve().parent.parent / "apps" / "api"
-if str(api_root) not in sys.path:
-    sys.path.insert(0, str(api_root))
+# Ensure the api app is importable. Two layouts supported:
+#   - Monorepo dev : /repo/apps/api/app/… → add /repo/apps/api to sys.path
+#   - Docker image : /app/app/…           → add /app to sys.path
+_here = Path(__file__).resolve().parent
+for candidate in (_here.parent / "apps" / "api", _here.parent):
+    if (candidate / "app" / "core" / "database.py").exists():
+        if str(candidate) not in sys.path:
+            sys.path.insert(0, str(candidate))
+        break
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
