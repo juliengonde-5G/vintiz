@@ -86,6 +86,8 @@ OPENWEATHER_API_KEY=votre-cle-openweather
 SUMUP_ENVIRONMENT=sandbox
 SUMUP_API_KEY=
 SUMUP_MERCHANT_CODE=
+SUMUP_READER_ID=                  # optionnel: push direct vers un TPE Solo
+SUMUP_RETURN_URL=                 # optionnel: callback après paiement reader
 SUMUP_SANDBOX_AUTO_DELAY_SEC=5    # 0 = approbation manuelle requise
 
 # Email SMTP (sans ces clés, simulation)
@@ -128,7 +130,7 @@ Base URL: `http://localhost:8000`
 ```
 POST /api/auth/login                         Connexion
 GET  /api/inventory/products                 Liste produits (paginée)
-GET  /api/inventory/products/search?q=…      Recherche (utilisé par douchette)
+GET  /api/inventory/products/search?q=…      Recherche (filtre stock+display par défaut, &include_sold=true sinon)
 GET  /api/inventory/products/{id}            Fiche produit
 GET  /api/inventory/products/{id}/label      Étiquette PNG
 GET  /api/inventory/products/{id}/score      Score détaillé
@@ -164,20 +166,25 @@ GET  /api/crm/clients/personal-shopper?email=…  Personal shopper
 - Bouton "Générer étiquette" → PNG téléchargeable/imprimable
 
 ### 2. POS (Caisse) — prêt pour matériel
-- Interface tactile optimisée iPad (Safari), champ recherche auto-focus
+- Interface tactile compacte iPad 1024×768 (tout sur 1 écran sans scroll,
+  jusqu'à 5-6 articles au panier avant scroll du panier)
+- Champ recherche auto-focus, résultats filtrés (produits vendus/retournés exclus)
 - **Douchette USB HID** (Inateck 160B) : scan → Entrée → ajout auto au panier
   (résolution via exact match sur `barcode`, fallback recherche 1 résultat)
 - **Numpad tactile** pour saisies de montants (espèces, fond de caisse)
-- Remises par article (0-30 %)
+- Remises par article (0, 5, 10, 15, 20, 30 %) — masquées par défaut, chip `-%` pour les ouvrir
 - 3 modes de paiement :
-  - *Espèces* : rendu monnaie calculé
-  - *CB SumUp* : TPE Solo + polling checkout + approve/decline manuel
-  - *Chèque* : saisie libre
+  - *Espèces* — rendu monnaie calculé, **ouverture auto du tiroir** à la validation
+  - *CB SumUp* — TPE Solo + polling + approve/decline manuel ; si `SUMUP_READER_ID`
+    configuré, push direct sur le TPE (sonne tout seul, pas de saisie TPE)
+  - *Chèque* — saisie libre
 - Fidélité : affichage points, toggle rachat (1 pt = 0,10 €, max 50 % panier)
 - **Ouverture / fermeture caisse** : fond initial, clôture avec rapport Z
   (écart attendu vs compté, totaux par méthode)
-- **Ticket 80 mm** : bouton *Imprimer* → `window.print()` AirPrint → ouverture
-  automatique tiroir (option driver imprimante "open drawer on print")
+- **Ticket à la demande** : après la vente, modal *Imprimer le ticket* /
+  *Fermer sans ticket*. L'impression utilise `window.print()` AirPrint 80 mm ;
+  l'imprimante thermique ouvre le tiroir via impulsion RJ11 (option driver
+  "open drawer on print")
 - Reçu renvoyable par email/SMS
 
 ### 3. IA Booster
@@ -253,6 +260,7 @@ Procédure complète + 15 codes-barres scannables : `docs/POS_TEST_BARCODES.md`.
 SUMUP_ENVIRONMENT=sandbox       # sandbox | production
 SUMUP_API_KEY=                  # vide → simulation en mémoire
 SUMUP_MERCHANT_CODE=
+SUMUP_READER_ID=                # optionnel: push direct vers TPE Solo
 SUMUP_SANDBOX_AUTO_DELAY_SEC=5  # 0 = approbation manuelle via Settings
 
 # 2. Seeder les 15 produits de test + régénérer les PNG codes-barres
@@ -263,6 +271,22 @@ python scripts/seed_test_products.py --docs-only
 # 3. En prod (sur le VPS)
 ./scripts/deploy.sh --test-products
 ```
+
+**Autoriser les pop-ups pour le domaine** sur l'iPad (Safari → Réglages →
+Sites web → Fenêtres pop-up → Autoriser pour app.vintiz.fr) — sinon le
+kick-tiroir automatique sur les paiements espèces sera bloqué (le bouton
+*Imprimer le ticket* continuera de fonctionner car il provient d'un clic
+direct).
+
+**Récupérer un `SUMUP_READER_ID`** : une fois la clé API configurée,
+
+```
+GET https://api.sumup.com/v0.1/merchants/{MERCHANT_CODE}/readers
+Authorization: Bearer <SUMUP_API_KEY>
+```
+
+Renvoie la liste des TPE enrôlés sur le compte. Le champ `id` du Solo
+souhaité va dans `SUMUP_READER_ID`.
 
 ### Modes SumUp
 
