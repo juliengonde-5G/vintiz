@@ -205,13 +205,27 @@ GET  /api/crm/clients/personal-shopper?email=…  Personal shopper
 
 ## Design tokens (Tailwind)
 
+Charte v2 (2026-04) — voir `docs/DESIGN_SYSTEM.md` pour le détail complet.
+
 ```css
-teal:      #1A7A6A  (couleur principale)
-rose/pink: #F4A7B9  (accent)
-cream/bg:  #FAF8F5  (fond)
-charcoal:  #2C2C2C  (texte)
-gold:      #C9A84C  (fidélité Gold)
+teal:  #008678  (couleur signature — CTA, liens, actions primaires)
+pink:  #FFC5DF  (accent — fidélité, badges, tags)
+black: #000000  (texte structurel)
+cream: #FFF3ED  (fond chaud — sert de background)
+white: #FFFFFF  (cartes, surfaces)
 ```
+
+Typographie : **Lexend Mega** (titres, `font-display`) + **Poppins** (texte,
+`font-sans`), chargées via `next/font/google` dans les layouts.
+
+Logos (copiés dans `apps/{web,site}/public/`) :
+
+| Fichier | Usage |
+|---|---|
+| `/logo-teal.png` | Monogramme VL teal — logo par défaut (navbar, sidebar, login) |
+| `/logo-rose.png` | Monogramme rose — fonds sombres (footer noir) |
+| `/lettrage-noir.png` | Mot « VINTIZ » noir — factures, emails |
+| `/receipt-logo.png` | Version ticket de caisse (forcée noir via CSS filter) |
 
 ## Moteur prédictif
 
