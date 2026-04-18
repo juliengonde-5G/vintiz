@@ -7,6 +7,38 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
 
+type BriefingPriority = { title: string; body: string; action_url: string; type: string; priority: number };
+type DashboardBriefing = { greeting: string; priorities: BriefingPriority[] } | null;
+
+function BriefingWidget() {
+  const [b, setB] = React.useState<DashboardBriefing>(null);
+  React.useEffect(() => {
+    api.get('/api/ai/briefing').then(async (res) => {
+      if (res.ok) setB(await res.json());
+    }).catch(() => {});
+  }, []);
+  if (!b) return null;
+  return (
+    <div className="rounded-2xl bg-gradient-teal text-white p-5 md:p-6 shadow-depth mb-8 relative overflow-hidden">
+      <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-3 gap-3">
+          <p className="text-sm font-medium opacity-90">{b.greeting}</p>
+          <Link href="/ia" className="text-xs underline hover:opacity-80">Ouvrir le compagnon</Link>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {b.priorities.slice(0, 3).map((p, i) => (
+            <Link key={i} href={p.action_url} className="rounded-xl bg-white/15 hover:bg-white/25 p-3 backdrop-blur-sm transition-colors block">
+              <p className="text-xs font-semibold opacity-90 uppercase tracking-wider">{p.type.replace('_', ' ')}</p>
+              <p className="font-display font-semibold text-sm mt-1 leading-snug">{p.title}</p>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface DashboardData {
   today: { revenue: number; transaction_count: number; avg_basket: number };
   stock: { count: number; value: number };
@@ -428,6 +460,8 @@ export default function DashboardPage() {
             {error}
           </div>
         )}
+
+        <BriefingWidget />
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
