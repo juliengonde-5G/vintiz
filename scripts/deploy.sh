@@ -216,9 +216,67 @@ fi
 log "API: OK"
 
 # ============================================================
-# 6. ETAT FINAL
+# 6. SMOKE TESTS SEO (landing page + robots + sitemap + JSON-LD)
 # ============================================================
-step "6/6" "Etat des services:"
+step "6/7" "Smoke tests SEO (landing, robots.txt, sitemap.xml, JSON-LD)..."
+
+# Les tests hittent le container site en interne (reseau Docker) via l'API
+# (qui a python + urllib). Evite les dependances DNS/TLS externes.
+SITE_INTERNAL_URL="http://vintiz-site:3001"
+
+check_seo_url() {
+  local path="$1"; local label="$2"
+  if docker exec vintiz-api python -c "
+import sys, urllib.request
+try:
+    r = urllib.request.urlopen('$SITE_INTERNAL_URL$path', timeout=5)
+    sys.exit(0 if r.status == 200 else 1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null; then
+    log "$label: HTTP 200"
+  else
+    warn "$label: KO (non bloquant)"
+  fi
+}
+
+check_seo_url "/" "Landing page /"
+check_seo_url "/robots.txt" "robots.txt"
+check_seo_url "/sitemap.xml" "sitemap.xml"
+
+# Verification JSON-LD + meta description sur la landing
+if docker exec vintiz-api python -c "
+import urllib.request, sys
+html = urllib.request.urlopen('$SITE_INTERNAL_URL/', timeout=5).read().decode('utf-8', 'ignore')
+ok = 'application/ld+json' in html and 'name=\"description\"' in html.lower()
+sys.exit(0 if ok else 1)
+" 2>/dev/null; then
+  log "Metadata SEO (JSON-LD + description) OK"
+else
+  warn "Metadata SEO incomplete (non bloquant)"
+fi
+
+# GA4 configure ? (lu depuis le .env sans sourcing pour eviter les side-effects)
+GA_ID_VALUE=$(grep -E '^NEXT_PUBLIC_GA_ID=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" | xargs || true)
+if [ -n "$GA_ID_VALUE" ]; then
+  log "GA4 configure : $GA_ID_VALUE"
+else
+  warn "GA4 non configure (NEXT_PUBLIC_GA_ID vide) — aucun marqueur injecte."
+  warn "Pour activer : renseigner NEXT_PUBLIC_GA_ID dans .env + relancer ce script."
+fi
+
+# Search Console configure ?
+GSC_VALUE=$(grep -E '^NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" | xargs || true)
+if [ -n "$GSC_VALUE" ]; then
+  log "Search Console : verification configuree"
+else
+  warn "Search Console non verifiee (NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION vide)"
+fi
+
+# ============================================================
+# 7. ETAT FINAL
+# ============================================================
+step "7/7" "Etat des services:"
 docker compose -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
 # ============================================================
@@ -267,6 +325,9 @@ echo "  Site vitrine:  https://vintiz.fr"
 echo "  Back-office:   https://app.vintiz.fr"
 echo "  API:           https://api.vintiz.fr"
 echo "  Health check:  https://api.vintiz.fr/api/health"
+echo "  Panel SEO:     https://app.vintiz.fr/seo"
+echo "  Sitemap:       https://vintiz.fr/sitemap.xml"
+echo "  Robots:        https://vintiz.fr/robots.txt"
 echo ""
 echo "  Commandes utiles:"
 echo "    Logs:     docker compose -f $COMPOSE_FILE logs -f"
