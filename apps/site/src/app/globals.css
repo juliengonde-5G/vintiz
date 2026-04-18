@@ -2,9 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Charte graphique Vintiz v2 (2026-04) */
 :root {
-  --background: #FFF5F8;
-  --foreground: #1A1A1A;
+  --background: #FFF3ED; /* cream */
+  --foreground: #000000; /* black */
+  --teal: #008678;
+  --pink: #FFC5DF;
 }
 
 body {

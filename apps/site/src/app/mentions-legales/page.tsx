@@ -3,7 +3,9 @@ import Footer from "@/components/Footer";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Mentions Legales | Vintiz",
+  title: "Mentions légales",
+  description: "Mentions légales de la boutique Vintiz, Vernon (27200).",
+  robots: { index: false, follow: true },
 };
 
 export default function MentionsLegalesPage() {

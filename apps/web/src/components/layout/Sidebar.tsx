@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 const navItems = [
   {
@@ -72,6 +72,18 @@ const navItems = [
     ),
   },
   {
+    label: 'SEO',
+    href: '/seo',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        <line x1="8" y1="11" x2="14" y2="11" />
+        <line x1="11" y1="8" x2="11" y2="14" />
+      </svg>
+    ),
+  },
+  {
     label: 'Parametres',
     href: '/settings',
     icon: (
@@ -85,7 +97,15 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+
+  // Auth guard: any admin page rendering the sidebar requires a token.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const token = localStorage.getItem('token');
+    if (!token) router.replace('/login');
+  }, [router]);
 
   return (
     <>
