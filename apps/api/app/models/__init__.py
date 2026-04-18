@@ -7,6 +7,7 @@ from app.models.client import Client, LoyaltyAccount, LoyaltyTransaction
 from app.models.store import StoreZone, ZoneProduct, TrendAnalysis, StoreArrangement, AIRecommendation
 from app.models.reporting import DailyReport, CommercialAction, ActionResult
 from app.models.audit import AuditLog, Settings
+from app.models.ai_task import AITask
 
 __all__ = [
     "Base",
@@ -18,4 +19,5 @@ __all__ = [
     "StoreZone", "ZoneProduct", "TrendAnalysis", "StoreArrangement", "AIRecommendation",
     "DailyReport", "CommercialAction", "ActionResult",
     "AuditLog", "Settings",
+    "AITask",
 ]

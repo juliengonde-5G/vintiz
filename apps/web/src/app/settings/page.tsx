@@ -286,6 +286,13 @@ export default function SettingsPage() {
     { key: 'system' as const, label: 'Systeme' },
   ];
 
+  // Zones tab now redirects to dedicated /zones page (plan 2D + dashboards per zone).
+  useEffect(() => {
+    if (tab === 'zones' && typeof window !== 'undefined') {
+      window.location.href = '/zones';
+    }
+  }, [tab]);
+
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />

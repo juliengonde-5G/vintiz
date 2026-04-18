@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Lexend_Mega, Poppins } from "next/font/google";
+import CompanionDrawer from "@/components/ai/CompanionDrawer";
 import "./globals.css";
 
 // Charte graphique Vintiz v2 : Lexend Mega (titres) + Poppins (texte).
@@ -48,6 +49,7 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased bg-background text-foreground">
         {children}
+        <CompanionDrawer />
       </body>
     </html>
   );

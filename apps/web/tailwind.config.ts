@@ -55,6 +55,37 @@ const config: Config = {
       minWidth: {
         touch: "44px",
       },
+      boxShadow: {
+        soft: "0 1px 2px rgba(0, 134, 120, 0.04), 0 4px 16px rgba(0, 134, 120, 0.06)",
+        depth: "0 2px 4px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 134, 120, 0.10)",
+        glow: "0 0 0 3px rgba(0, 134, 120, 0.12)",
+        card: "0 1px 3px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04)",
+      },
+      backgroundImage: {
+        "gradient-teal": "linear-gradient(135deg, #008678 0%, #26A695 100%)",
+        "gradient-warm": "linear-gradient(135deg, #FFF3ED 0%, #FFEAF3 100%)",
+        "gradient-signature": "linear-gradient(135deg, #008678 0%, #FFC5DF 100%)",
+        "gradient-card": "linear-gradient(180deg, #FFFFFF 0%, #FFF9F5 100%)",
+      },
+      keyframes: {
+        "slide-up": {
+          "0%": { opacity: "0", transform: "translateY(8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "slide-in-right": {
+          "0%": { opacity: "0", transform: "translateX(16px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
+      },
+      animation: {
+        "slide-up": "slide-up 220ms ease-out both",
+        "slide-in-right": "slide-in-right 220ms ease-out both",
+        shimmer: "shimmer 2s linear infinite",
+      },
     },
   },
   plugins: [],

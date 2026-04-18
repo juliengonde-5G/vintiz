@@ -25,14 +25,43 @@ from app.models.store import (
 logger = logging.getLogger("vintiz.ai.mapping")
 
 # Default zones for Vintiz boutique (from architectural analysis)
+# pos_x / pos_y / width / height : percentage of canvas (0-100), positioned on a L-shape floor plan.
 DEFAULT_ZONES = [
-    {"name": "Vitrine gauche", "description": "Exposition exterieure cote gauche", "capacity": 6},
-    {"name": "Podium entree", "description": "Zone mise en avant a l'entree (6.5m2)", "capacity": 10},
-    {"name": "Mur gauche", "description": "Barres murales portants lineaires", "capacity": 30},
-    {"name": "Mur droit", "description": "Zone meuble caisse + stockage", "capacity": 15},
-    {"name": "Mur fond", "description": "Barres murales + etageres bois", "capacity": 25},
-    {"name": "Zone centrale", "description": "Autour du pilier - portants libres", "capacity": 20},
-    {"name": "Cabine essayage", "description": "Zone fond boutique - suggestions", "capacity": 0},
+    {
+        "name": "Vitrine gauche", "description": "Exposition exterieure cote gauche",
+        "capacity": 6, "color_code": "#008678", "icon": "sparkles",
+        "pos_x": 4, "pos_y": 4, "width": 28, "height": 14, "shape": "rounded", "display_order": 1,
+    },
+    {
+        "name": "Podium entree", "description": "Zone mise en avant a l'entree (6.5m2)",
+        "capacity": 10, "color_code": "#FFC5DF", "icon": "star",
+        "pos_x": 36, "pos_y": 8, "width": 20, "height": 20, "shape": "rounded", "display_order": 2,
+    },
+    {
+        "name": "Mur gauche", "description": "Barres murales portants lineaires",
+        "capacity": 30, "color_code": "#26A695", "icon": "shirt",
+        "pos_x": 4, "pos_y": 22, "width": 14, "height": 50, "shape": "rect", "display_order": 3,
+    },
+    {
+        "name": "Mur droit", "description": "Zone meuble caisse + stockage",
+        "capacity": 15, "color_code": "#CC4889", "icon": "cash",
+        "pos_x": 78, "pos_y": 32, "width": 18, "height": 30, "shape": "rect", "display_order": 4,
+    },
+    {
+        "name": "Mur fond", "description": "Barres murales + etageres bois",
+        "capacity": 25, "color_code": "#006B61", "icon": "bag",
+        "pos_x": 22, "pos_y": 78, "width": 54, "height": 14, "shape": "rect", "display_order": 5,
+    },
+    {
+        "name": "Zone centrale", "description": "Autour du pilier - portants libres",
+        "capacity": 20, "color_code": "#FF97C0", "icon": "grid",
+        "pos_x": 34, "pos_y": 40, "width": 34, "height": 28, "shape": "rounded", "display_order": 6,
+    },
+    {
+        "name": "Cabine essayage", "description": "Zone fond boutique - suggestions",
+        "capacity": 0, "color_code": "#B3DDD8", "icon": "door",
+        "pos_x": 82, "pos_y": 6, "width": 14, "height": 18, "shape": "rounded", "display_order": 7,
+    },
 ]
 
 
