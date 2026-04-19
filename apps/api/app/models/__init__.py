@@ -8,6 +8,7 @@ from app.models.store import StoreZone, ZoneProduct, TrendAnalysis, StoreArrange
 from app.models.reporting import DailyReport, CommercialAction, ActionResult
 from app.models.audit import AuditLog, Settings
 from app.models.ai_task import AITask
+from app.models.newsletter import NewsletterSubscriber
 
 __all__ = [
     "Base",
@@ -20,4 +21,5 @@ __all__ = [
     "DailyReport", "CommercialAction", "ActionResult",
     "AuditLog", "Settings",
     "AITask",
+    "NewsletterSubscriber",
 ]

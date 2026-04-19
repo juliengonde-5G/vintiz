@@ -10,26 +10,33 @@ const TIKTOK_URL = "https://www.tiktok.com/@vintiz.vernon";
 
 export default function Home() {
   const [email, setEmail] = useState("");
+  const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!consent) {
+      setStatus("error");
+      setMessage("Merci de cocher la case de consentement pour recevoir nos e-mails.");
+      return;
+    }
     setStatus("loading");
     try {
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, consent, source: "site_landing" }),
       });
       const data = await res.json();
       if (res.ok) {
         setStatus("success");
         setMessage(data.message);
         setEmail("");
+        setConsent(false);
       } else {
         setStatus("error");
-        setMessage(data.error);
+        setMessage(data.error || data.detail || "Une erreur est survenue.");
       }
     } catch {
       setStatus("error");
@@ -95,38 +102,52 @@ export default function Home() {
                 {message}
               </div>
             ) : (
-              <form
-                onSubmit={handleSubmit}
-                className="flex flex-col sm:flex-row gap-3"
-              >
-                <label htmlFor="email" className="sr-only">
-                  Adresse email
+              <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <label htmlFor="email" className="sr-only">
+                    Adresse email
+                  </label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    placeholder="votre@email.fr"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="flex-1 px-4 py-3 rounded-lg bg-cream/50 border border-black/10 text-black placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-teal"
+                  />
+                  <button
+                    type="submit"
+                    disabled={status === "loading" || !consent}
+                    className="px-6 py-3 bg-teal text-white font-medium rounded-lg hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                  >
+                    {status === "loading" ? "Envoi…" : "Me prévenir"}
+                  </button>
+                </div>
+                <label className="flex items-start gap-2 text-left text-xs text-black/60 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    required
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-black/30 text-teal focus:ring-teal"
+                  />
+                  <span>
+                    J&apos;accepte de recevoir par e-mail les actualités de Vintiz
+                    (ouverture, ventes privées, nouveautés). Je peux me désinscrire
+                    à tout moment via le lien présent dans chaque e-mail.
+                  </span>
                 </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  placeholder="votre@email.fr"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="flex-1 px-4 py-3 rounded-lg bg-cream/50 border border-black/10 text-black placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-teal"
-                />
-                <button
-                  type="submit"
-                  disabled={status === "loading"}
-                  className="px-6 py-3 bg-teal text-white font-medium rounded-lg hover:bg-teal-600 disabled:opacity-50 transition-colors whitespace-nowrap"
-                >
-                  {status === "loading" ? "Envoi…" : "Me prévenir"}
-                </button>
               </form>
             )}
             {status === "error" && (
               <p className="mt-3 text-sm text-red-600">{message}</p>
             )}
             <p className="mt-4 text-xs text-black/40">
-              Aucun spam. Désinscription en un clic. Voir la{" "}
+              Données conservées 3 ans sans interaction. Base légale : consentement
+              (RGPD art. 6.1.a). Voir la{" "}
               <Link href="/confidentialite" className="underline hover:text-teal">
                 politique de confidentialité
               </Link>
