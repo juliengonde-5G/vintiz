@@ -145,14 +145,6 @@ export default function Home() {
             {status === "error" && (
               <p className="mt-3 text-sm text-red-600">{message}</p>
             )}
-            <p className="mt-4 text-xs text-black/40">
-              Données conservées 3 ans sans interaction. Base légale : consentement
-              (RGPD art. 6.1.a). Voir la{" "}
-              <Link href="/confidentialite" className="underline hover:text-teal">
-                politique de confidentialité
-              </Link>
-              .
-            </p>
           </div>
 
           <div className="animate-fade-in-up animation-delay-1000">
