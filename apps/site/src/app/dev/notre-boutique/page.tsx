@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Placeholder from "../_components/Placeholder";
+import Image from "next/image";
 import AddressBlock from "../_components/AddressBlock";
 
 const REVIEWS = [
@@ -21,20 +21,27 @@ export default function NotreBoutique() {
   return (
     <main className="bg-cream">
       {/* HERO STOREFRONT */}
-      <section className="relative">
-        <Placeholder tone="storefront" label="Façade NAF NAF — future Vintiz" className="h-[420px] md:h-[520px] w-full">
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
-            <h1 className="font-mockSerif italic text-white text-5xl md:text-7xl drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)]">
-              Notre boutique
-            </h1>
-            <Link
-              href="https://www.google.com/maps/place/6+Rue+St+Jacques,+27200+Vernon"
-              className="mt-8 inline-flex items-center rounded-full bg-cream/95 px-8 py-3.5 text-sm tracking-widest text-black hover:bg-white transition-colors"
-            >
-              6 RUE ST JACQUES, 27200 VERNON
-            </Link>
-          </div>
-        </Placeholder>
+      <section className="relative h-[460px] md:h-[560px] w-full overflow-hidden">
+        <Image
+          src="/dev/storefront-naf-naf.jpg"
+          alt="Future boutique Vintiz — 6 rue St Jacques, Vernon"
+          fill
+          sizes="100vw"
+          priority
+          className="object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/10 to-black/40" />
+        <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6">
+          <h1 className="font-mockSerif italic text-white text-5xl md:text-7xl drop-shadow-[0_2px_12px_rgba(0,0,0,0.55)]">
+            Notre boutique
+          </h1>
+          <Link
+            href="https://www.google.com/maps/place/6+Rue+St+Jacques,+27200+Vernon"
+            className="mt-8 inline-flex items-center rounded-full bg-cream/95 px-8 py-3.5 text-sm tracking-widest text-black hover:bg-white transition-colors"
+          >
+            6 RUE ST JACQUES, 27200 VERNON
+          </Link>
+        </div>
       </section>
 
       {/* NOTRE CONCEPT */}
@@ -68,7 +75,15 @@ export default function NotreBoutique() {
       {/* UNE MODE QUI A DU SENS — 1 */}
       <section className="bg-cream">
         <div className="grid lg:grid-cols-2">
-          <Placeholder tone="model-brown" label="Chemise marron — look Vintiz" className="aspect-[4/5]" />
+          <div className="relative aspect-[4/5] bg-stone-200">
+            <Image
+              src="/dev/model-brown-shirt.jpg"
+              alt="Chemise marron — look Vintiz"
+              fill
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              className="object-cover"
+            />
+          </div>
           <div className="flex flex-col justify-center px-8 md:px-16 py-16 text-center lg:text-left">
             <h2 className="font-mockSerif text-5xl text-teal leading-tight">
               Une mode qui
@@ -113,7 +128,15 @@ export default function NotreBoutique() {
               DÉCOUVRIR SOLIDARITÉ TEXTILES
             </Link>
           </div>
-          <Placeholder tone="model-white" label="Polo blanc — partenaire" className="aspect-[4/5] lg:order-2" />
+          <div className="relative aspect-[4/5] lg:order-2 bg-stone-200">
+            <Image
+              src="/dev/model-white-polo.jpg"
+              alt="Polo blanc — partenaire Solidarité Textiles"
+              fill
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              className="object-cover"
+            />
+          </div>
         </div>
       </section>
 
@@ -157,8 +180,12 @@ export default function NotreBoutique() {
               <AddressBlock />
             </div>
           </div>
-          <Placeholder tone="pink-shop" label="Boutique rose" className="aspect-[3/4] rounded-md" />
-          <Placeholder tone="mirrors" label="Cabines d'essayage" className="aspect-[3/4] rounded-md" />
+          <div className="relative aspect-[3/4] rounded-md overflow-hidden bg-stone-200">
+            <Image src="/dev/shop-pink-racks.jpg" alt="Boutique rose" fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover" />
+          </div>
+          <div className="relative aspect-[3/4] rounded-md overflow-hidden bg-stone-200">
+            <Image src="/dev/shop-mirrors.jpg" alt="Cabines d'essayage" fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover" />
+          </div>
         </div>
       </section>
     </main>

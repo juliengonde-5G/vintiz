@@ -1,15 +1,15 @@
 import Link from "next/link";
-import Placeholder from "../_components/Placeholder";
+import Image from "next/image";
 
 const PRODUCTS = [
-  { name: "Bonnet en crochet", price: "18,00 €", tone: "product" as const },
-  { name: "Foulard en dentelle", price: "14,00 €", tone: "rack" as const },
-  { name: "Foulard en crochet", price: "18,00 €", tone: "counter" as const },
-  { name: "Pantalon « gigi »", price: "49,00 €", tone: "model-brown" as const },
-  { name: "Chemise en lin", price: "24,00 €", tone: "model-white" as const },
-  { name: "Veste en cuir", price: "69,00 €", tone: "street-male" as const },
-  { name: "Robe longue", price: "39,00 €", tone: "pink-shop" as const },
-  { name: "Trench beige", price: "55,00 €", tone: "street-female" as const },
+  { name: "Bonnet en crochet", price: "18,00 €", src: "/dev/product-bonnet.jpg" },
+  { name: "Foulard en dentelle", price: "14,00 €", src: "/dev/product-foulard-dentelle.jpg" },
+  { name: "Foulard en crochet", price: "18,00 €", src: "/dev/product-foulard-crochet.jpg" },
+  { name: "Pantalon « gigi »", price: "49,00 €", src: "/dev/product-pantalon-gigi.jpg" },
+  { name: "Chemise en lin", price: "24,00 €", src: "/dev/model-brown-shirt.jpg" },
+  { name: "Polo blanc", price: "18,00 €", src: "/dev/model-white-polo.jpg" },
+  { name: "Look veste tweed", price: "45,00 €", src: "/dev/look-femme.jpg" },
+  { name: "Veste en cuir", price: "69,00 €", src: "/dev/look-homme.jpg" },
 ];
 
 export default function NosProduits() {
@@ -25,7 +25,9 @@ export default function NosProduits() {
         <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
           {PRODUCTS.map((p) => (
             <article key={p.name}>
-              <Placeholder tone={p.tone} label={p.name} className="aspect-[3/4] rounded-md" />
+              <div className="relative aspect-[3/4] rounded-md overflow-hidden bg-stone-100">
+                <Image src={p.src} alt={p.name} fill sizes="(max-width: 768px) 50vw, 25vw" className="object-cover" />
+              </div>
               <div className="mt-3">
                 <p className="text-sm text-black">{p.name}</p>
                 <p className="text-sm text-black/60">{p.price}</p>

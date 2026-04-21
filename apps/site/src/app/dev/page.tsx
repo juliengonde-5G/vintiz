@@ -1,13 +1,20 @@
 import Link from "next/link";
-import Placeholder from "./_components/Placeholder";
+import Image from "next/image";
 import NewsletterCard from "./_components/NewsletterCard";
 import AddressBlock from "./_components/AddressBlock";
 
 const PRODUCTS = [
-  { name: "Bonnet en crochet", price: "18,00 €", tone: "product" as const },
-  { name: "Foulard en dentelle", price: "14,00 €", tone: "rack" as const },
-  { name: "Foulard en crochet", price: "18,00 €", tone: "counter" as const },
-  { name: "Pantalon « gigi »", price: "49,00 €", tone: "model-brown" as const },
+  { name: "Bonnet en crochet", price: "18,00 €", src: "/dev/product-bonnet.jpg" },
+  { name: "Foulard en dentelle", price: "14,00 €", src: "/dev/product-foulard-dentelle.jpg" },
+  { name: "Foulard en crochet", price: "18,00 €", src: "/dev/product-foulard-crochet.jpg" },
+  { name: "Pantalon « gigi »", price: "49,00 €", src: "/dev/product-pantalon-gigi.jpg" },
+];
+
+const MOSAIC = [
+  { src: "/dev/shop-pink-racks.jpg", alt: "Portants de la boutique rose" },
+  { src: "/dev/shop-mirrors.jpg", alt: "Cabines d'essayage — miroirs rose et vert" },
+  { src: "/dev/shop-counter.jpg", alt: "Comptoir caisse rose" },
+  { src: "/dev/shop-showroom.jpg", alt: "Showroom intérieur Vintiz" },
 ];
 
 export default function DevHome() {
@@ -37,32 +44,27 @@ export default function DevHome() {
               Découvrir la boutique
             </Link>
           </div>
-          <Placeholder
-            tone="storefront"
-            label="Devanture Vintiz — 6 rue St Jacques"
-            className="aspect-[4/3] rounded-xl"
-          >
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="bg-white/90 px-6 py-4 rounded-lg shadow text-center">
-                <p className="font-mockSerif text-3xl text-teal">VINTIZ</p>
-                <p className="text-xs tracking-widest text-black/70 mt-1">OUVERTURE PROCHAINE</p>
-                <p className="text-[10px] text-black/50 mt-1">
-                  VOTRE NOUVELLE DESTINATION
-                  <br />SLOW FASHION
-                </p>
-              </div>
-            </div>
-          </Placeholder>
+          <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-slate-900">
+            <Image
+              src="/dev/storefront-vintiz.jpg"
+              alt="Devanture Vintiz — 6 rue St Jacques, Vernon"
+              fill
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              className="object-cover"
+              priority
+            />
+          </div>
         </div>
       </section>
 
       {/* MOSAIQUE 4 BOUTIQUE */}
       <section className="w-full">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 px-2 md:px-3">
-          <Placeholder tone="pink-shop" label="Showroom rose" className="aspect-[3/4]" />
-          <Placeholder tone="rack" label="Portants accessoires" className="aspect-[3/4]" />
-          <Placeholder tone="counter" label="Comptoir caisse" className="aspect-[3/4]" />
-          <Placeholder tone="mirrors" label="Cabines d'essayage" className="aspect-[3/4]" />
+          {MOSAIC.map((m) => (
+            <div key={m.src} className="relative aspect-[3/4] overflow-hidden bg-stone-200">
+              <Image src={m.src} alt={m.alt} fill sizes="(max-width: 768px) 50vw, 25vw" className="object-cover" />
+            </div>
+          ))}
         </div>
       </section>
 
@@ -79,7 +81,9 @@ export default function DevHome() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
           {PRODUCTS.map((p) => (
             <article key={p.name} className="group">
-              <Placeholder tone={p.tone} label={p.name} className="aspect-square rounded-md" />
+              <div className="relative aspect-square rounded-md overflow-hidden bg-stone-100">
+                <Image src={p.src} alt={p.name} fill sizes="(max-width: 768px) 50vw, 25vw" className="object-cover" />
+              </div>
               <div className="mt-3">
                 <p className="text-sm text-black">{p.name}</p>
                 <p className="text-sm text-black/60">{p.price}</p>
@@ -120,7 +124,9 @@ export default function DevHome() {
         <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-start">
           <div>
             <h2 className="font-mockSerif text-4xl md:text-5xl text-teal mb-6">Notre concept</h2>
-            <Placeholder tone="shop-interior" label="Intérieur boutique" className="aspect-[4/3] rounded-md" />
+            <div className="relative aspect-[4/3] rounded-md overflow-hidden bg-stone-200">
+              <Image src="/dev/shop-local.jpg" alt="Intérieur boutique Vintiz" fill sizes="(max-width: 1024px) 100vw, 50vw" className="object-cover" />
+            </div>
           </div>
           <div className="pt-6 lg:pt-20 text-center lg:text-left">
             <p className="text-base md:text-lg text-black/80 leading-relaxed">
@@ -156,8 +162,12 @@ export default function DevHome() {
               <AddressBlock />
             </div>
           </div>
-          <Placeholder tone="street-female" label="Look femme Vintiz" className="aspect-[3/4] rounded-md" />
-          <Placeholder tone="street-male" label="Look homme Vintiz" className="aspect-[3/4] rounded-md" />
+          <div className="relative aspect-[3/4] rounded-md overflow-hidden bg-stone-200">
+            <Image src="/dev/look-femme.jpg" alt="Look femme Vintiz" fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover" />
+          </div>
+          <div className="relative aspect-[3/4] rounded-md overflow-hidden bg-stone-200">
+            <Image src="/dev/look-homme.jpg" alt="Look homme Vintiz" fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover" />
+          </div>
         </div>
       </section>
     </main>
