@@ -70,13 +70,10 @@ export default function DevHome() {
 
       {/* COUPS DE COEUR */}
       <section className="max-w-7xl mx-auto px-6 py-16 lg:py-20">
-        <div className="flex items-end justify-between mb-6">
+        <div className="mb-6">
           <h2 className="font-mockSerif text-3xl md:text-4xl text-teal flex items-center gap-3">
             <span aria-hidden>❤️</span> Nos coups de cœur en boutique
           </h2>
-          <Link href="/dev/nos-produits" className="text-xs uppercase tracking-widest text-black/70 hover:text-teal underline underline-offset-4">
-            Voir toutes les nouveautés →
-          </Link>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
           {PRODUCTS.map((p) => (

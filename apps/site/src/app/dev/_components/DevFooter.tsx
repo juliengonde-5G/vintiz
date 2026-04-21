@@ -46,7 +46,6 @@ export default function DevFooter() {
 
         <ul className="text-sm text-black/80 space-y-2 md:text-right">
           <li><Link href="/dev/notre-boutique" className="hover:text-teal underline underline-offset-4">Notre boutique</Link></li>
-          <li><Link href="/dev/nos-produits" className="hover:text-teal underline underline-offset-4">Nos produits</Link></li>
           <li><Link href="/dev/contact" className="hover:text-teal underline underline-offset-4">Nous contacter</Link></li>
           <li><Link href="/mentions-legales" className="hover:text-teal underline underline-offset-4">Mentions légales</Link></li>
         </ul>
