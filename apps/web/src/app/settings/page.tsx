@@ -64,7 +64,22 @@ interface SandboxSnapshot {
 }
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'store' | 'payment' | 'categories' | 'zones' | 'system'>('store');
+  const [tab, setTab] = useState<'store' | 'payment' | 'cahier' | 'categories' | 'zones' | 'system'>('store');
+
+  // Cahier de Travail state
+  const now = new Date();
+  const [cahierYear, setCahierYear] = useState(now.getFullYear());
+  const [cahierMonth, setCahierMonth] = useState(now.getMonth() + 1);
+  const [cahierTarget, setCahierTarget] = useState('');
+  const [cahierNotes, setCahierNotes] = useState('');
+  const [cahierWeights, setCahierWeights] = useState<{
+    weights: number[];
+    weekdays: string[];
+    source: string;
+    sample_size_weeks: number;
+    computed_at: string;
+  } | null>(null);
+  const [cahierLoading, setCahierLoading] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(false);
@@ -87,6 +102,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (tab === 'categories') loadCategories();
     if (tab === 'zones') loadZones();
+    if (tab === 'cahier') loadCahierData();
   }, [tab]);
 
   // ── SumUp sandbox: auto-refresh snapshot every 2s while payment tab is open ──
@@ -267,6 +283,59 @@ export default function SettingsPage() {
     setLoading(false);
   };
 
+  const loadCahierData = async () => {
+    setCahierLoading(true);
+    try {
+      const [targetRes, weightsRes] = await Promise.all([
+        api.get(`/api/cahier/monthly-target/${cahierYear}/${cahierMonth}`),
+        api.get('/api/cahier/weekday-weights'),
+      ]);
+      if (targetRes.ok) {
+        const t = await targetRes.json();
+        setCahierTarget(t.target_eur != null ? String(t.target_eur) : '');
+        setCahierNotes(t.notes || '');
+      }
+      if (weightsRes.ok) {
+        setCahierWeights(await weightsRes.json());
+      }
+    } finally {
+      setCahierLoading(false);
+    }
+  };
+
+  const saveCahierTarget = async () => {
+    const value = parseFloat(cahierTarget);
+    if (!Number.isFinite(value) || value < 0) {
+      setError("Montant invalide");
+      return;
+    }
+    setCahierLoading(true);
+    const res = await api.put('/api/cahier/monthly-target', {
+      year: cahierYear,
+      month: cahierMonth,
+      target_eur: value,
+      notes: cahierNotes || null,
+    });
+    if (res.ok) {
+      setMessage(`Objectif ${cahierMonth}/${cahierYear} enregistre : ${value.toLocaleString('fr-FR')} €`);
+      setTimeout(() => setMessage(''), 3000);
+    } else {
+      setError('Erreur enregistrement objectif');
+    }
+    setCahierLoading(false);
+  };
+
+  const recomputeWeights = async () => {
+    setCahierLoading(true);
+    const res = await api.get('/api/cahier/weekday-weights?recompute=1');
+    if (res.ok) {
+      setCahierWeights(await res.json());
+      setMessage('Poids recalcules');
+      setTimeout(() => setMessage(''), 3000);
+    }
+    setCahierLoading(false);
+  };
+
   const initZones = async () => {
     setLoading(true);
     const res = await api.post('/api/ai/mapping/init-zones', {});
@@ -281,6 +350,7 @@ export default function SettingsPage() {
   const tabs = [
     { key: 'store' as const, label: 'Boutique' },
     { key: 'payment' as const, label: 'Paiement' },
+    { key: 'cahier' as const, label: 'Cahier de travail' },
     { key: 'categories' as const, label: 'Categories' },
     { key: 'zones' as const, label: 'Zones' },
     { key: 'system' as const, label: 'Systeme' },
@@ -719,6 +789,147 @@ export default function SettingsPage() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* CAHIER TAB */}
+        {tab === 'cahier' && (
+          <div className="space-y-6">
+            <Card title="Objectif mensuel de CA">
+              <p className="text-sm text-gray-500 mb-4">
+                Saisissez l&apos;objectif de chiffre d&apos;affaires du mois. Il est
+                automatiquement reparti sur chaque journee selon le poids
+                historique des jours de la semaine.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-500 mb-1">Annee</label>
+                  <Input
+                    type="number"
+                    value={cahierYear}
+                    onChange={(e) => setCahierYear(parseInt(e.target.value) || now.getFullYear())}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-500 mb-1">Mois</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={cahierMonth}
+                    onChange={(e) => setCahierMonth(parseInt(e.target.value))}
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <option key={m} value={m}>
+                        {new Date(2000, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long' })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-500 mb-1">Objectif CA (€)</label>
+                  <Input
+                    type="number"
+                    value={cahierTarget}
+                    onChange={(e) => setCahierTarget(e.target.value)}
+                    placeholder="ex : 8000"
+                  />
+                </div>
+              </div>
+              <div className="mt-4">
+                <label className="block text-sm text-gray-500 mb-1">Notes (optionnel)</label>
+                <Input
+                  type="text"
+                  value={cahierNotes}
+                  onChange={(e) => setCahierNotes(e.target.value)}
+                  placeholder="ex : boost printemps"
+                />
+              </div>
+              <div className="mt-4 flex gap-2">
+                <Button onClick={saveCahierTarget} disabled={cahierLoading}>
+                  {cahierLoading ? 'Enregistrement...' : 'Enregistrer'}
+                </Button>
+                <Button variant="outline" onClick={loadCahierData} disabled={cahierLoading}>
+                  Recharger
+                </Button>
+              </div>
+            </Card>
+
+            <Card title="Distribution des ventes par jour de la semaine">
+              <p className="text-sm text-gray-500 mb-4">
+                Poids calcules automatiquement a partir des 12 dernieres semaines
+                de ventes. En cas de donnees insuffisantes, un profil par defaut
+                retail mode est applique.
+              </p>
+              {cahierWeights && (
+                <>
+                  <div className="flex items-end gap-2 h-32 mb-4">
+                    {cahierWeights.weights.map((w, i) => (
+                      <div key={i} className="flex-1 flex flex-col items-center">
+                        <div className="flex-1 w-full flex items-end">
+                          <div
+                            className="w-full bg-teal rounded-t"
+                            style={{ height: `${Math.max(4, w * 300)}%` }}
+                            title={`${(w * 100).toFixed(1)}%`}
+                          />
+                        </div>
+                        <div className="text-[10px] text-gray-500 mt-1 capitalize">
+                          {cahierWeights.weekdays[i].slice(0, 3)}
+                        </div>
+                        <div className="text-[10px] font-medium text-black">
+                          {(w * 100).toFixed(0)}%
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between items-center text-xs text-gray-500">
+                    <span>
+                      Source :{' '}
+                      <span className={cahierWeights.source === 'historical' ? 'text-teal font-medium' : 'text-amber-600 font-medium'}>
+                        {cahierWeights.source === 'historical'
+                          ? `${cahierWeights.sample_size_weeks} semaines historiques`
+                          : 'Profil par defaut (pas assez de donnees)'}
+                      </span>
+                    </span>
+                    <Button variant="outline" onClick={recomputeWeights} disabled={cahierLoading}>
+                      Recalculer
+                    </Button>
+                  </div>
+                </>
+              )}
+            </Card>
+
+            <Card title="Apercu des objectifs du mois">
+              <p className="text-sm text-gray-500 mb-3">
+                Somme des objectifs journaliers = objectif mensuel. Samedi
+                concentre le plus gros de l&apos;objectif, lundi le moins.
+              </p>
+              {cahierWeights && cahierTarget && (() => {
+                const monthlyTarget = parseFloat(cahierTarget) || 0;
+                const daysInMonth = new Date(cahierYear, cahierMonth, 0).getDate();
+                const occurrences = [0, 0, 0, 0, 0, 0, 0];
+                for (let d = 1; d <= daysInMonth; d++) {
+                  const jsWd = new Date(cahierYear, cahierMonth - 1, d).getDay();
+                  const wd = (jsWd + 6) % 7; // convert JS Sunday=0 to Monday=0
+                  occurrences[wd]++;
+                }
+                const totalWeight = cahierWeights.weights.reduce(
+                  (acc, w, i) => acc + w * occurrences[i],
+                  0,
+                ) || 1;
+                return (
+                  <div className="grid grid-cols-7 gap-2 text-xs">
+                    {cahierWeights.weekdays.map((label, i) => {
+                      const dailyTarget = monthlyTarget * cahierWeights.weights[i] / totalWeight;
+                      return (
+                        <div key={i} className="text-center">
+                          <div className="text-gray-500 capitalize">{label.slice(0, 3)}</div>
+                          <div className="text-teal font-bold font-mono">{dailyTarget.toFixed(0)} €</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </Card>
           </div>
         )}
 
