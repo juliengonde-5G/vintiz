@@ -46,6 +46,8 @@ const config: Config = {
         sans: ["var(--font-body)", "Poppins", "system-ui", "sans-serif"],
         // Alias historique
         serif: ["var(--font-display)", "Lexend Mega", "serif"],
+        // Mockup preview (DM Serif Display chargé sur /dev/*)
+        mockSerif: ["var(--font-mock-serif)", "DM Serif Display", "Georgia", "serif"],
       },
       keyframes: {
         "fade-in-up": {

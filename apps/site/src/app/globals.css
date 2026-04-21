@@ -54,3 +54,9 @@ body {
   animation-delay: 1.0s;
   opacity: 0;
 }
+
+/* Marquee (dev mockup preview) */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
