@@ -18,6 +18,7 @@ from app.api.admin.router import router as admin_router
 from app.api.ai.router import router as ai_router
 from app.api.seo.router import router as seo_router
 from app.api.newsletter.router import router as newsletter_router
+from app.api.cahier.router import router as cahier_router
 
 logger = logging.getLogger("vintiz")
 
@@ -146,6 +147,7 @@ app.include_router(admin_router, prefix="/api")
 app.include_router(ai_router, prefix="/api")
 app.include_router(seo_router, prefix="/api")
 app.include_router(newsletter_router, prefix="/api")
+app.include_router(cahier_router, prefix="/api")
 
 
 @app.get("/api/health")

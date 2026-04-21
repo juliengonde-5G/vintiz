@@ -349,6 +349,155 @@ function WeatherWidget({ data }: { data: WeatherData }) {
   );
 }
 
+// ── Cahier / Objectif widget ────────────────────────────────────────────────
+
+interface CahierSummary {
+  header: { message_du_jour: string | null };
+  objectifs_valeur: {
+    ca_objectif_jour: number | null;
+    ca_n1_jour: number;
+    reste_a_faire_mois: number | null;
+  };
+  performance: {
+    ca: number;
+    prog_vs_obj_pct: number | null;
+    delta_vs_n1_pct: number | null;
+  };
+}
+
+function CahierStrip() {
+  const [summary, setSummary] = useState<CahierSummary | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const load = useCallback(() => {
+    api.get(`/api/cahier/${today}`).then(async (res) => {
+      if (res.ok) {
+        const payload = await res.json();
+        setSummary(payload);
+        setDraft(payload.header?.message_du_jour || '');
+      }
+    }).catch(() => {});
+  }, [today]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const saveMsg = async () => {
+    setSaving(true);
+    const res = await api.put('/api/cahier/daily-text', {
+      date: today,
+      message_du_jour: draft,
+    });
+    setSaving(false);
+    if (res.ok) {
+      setEditing(false);
+      load();
+    }
+  };
+
+  if (!summary) return null;
+
+  const ca = summary.performance.ca;
+  const obj = summary.objectifs_valeur.ca_objectif_jour;
+  const progPct = summary.performance.prog_vs_obj_pct;
+  const deltaN1 = summary.performance.delta_vs_n1_pct;
+
+  return (
+    <div className="mb-6 space-y-3">
+      {/* Message du jour */}
+      <div className="rounded-2xl border border-teal-100 bg-white p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-teal flex-shrink-0">
+              Message du jour
+            </span>
+            {editing ? (
+              <input
+                autoFocus
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded text-sm"
+                placeholder="ex : Tres calme, mise en avant robes"
+              />
+            ) : (
+              <span className="text-sm text-black truncate">
+                {summary.header.message_du_jour || <span className="text-gray-400 italic">Aucun message — cliquez pour ajouter</span>}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {editing ? (
+              <>
+                <Button size="sm" onClick={saveMsg} disabled={saving}>
+                  {saving ? '...' : 'OK'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { setEditing(false); setDraft(summary.header.message_du_jour || ''); }}>
+                  Annuler
+                </Button>
+              </>
+            ) : (
+              <button onClick={() => setEditing(true)} className="text-xs text-teal underline">
+                Modifier
+              </button>
+            )}
+            <Link href="/dashboard/cahier-du-jour" className="text-xs text-teal underline">
+              Voir le cahier
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Strip Objectif */}
+      <div className="rounded-2xl bg-gradient-teal text-white p-5 shadow-depth">
+        <div className="flex flex-wrap items-center gap-6">
+          <div>
+            <p className="text-xs uppercase tracking-wider opacity-80">CA du jour</p>
+            <p className="font-display font-bold text-3xl">
+              {ca.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+            </p>
+          </div>
+          <div className="flex-1 min-w-[160px]">
+            {obj != null ? (
+              <>
+                <div className="flex justify-between text-xs opacity-90 mb-1">
+                  <span>Objectif {obj.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}</span>
+                  <span>{progPct != null ? `${progPct}%` : '—'}</span>
+                </div>
+                <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-white transition-all"
+                    style={{ width: `${Math.min(100, Math.max(0, progPct || 0))}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <Link href="/settings" className="text-sm underline">
+                Definir un objectif mensuel
+              </Link>
+            )}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {deltaN1 != null && (
+              <span className={`px-3 py-1.5 rounded-full text-xs font-semibold ${deltaN1 >= 0 ? 'bg-white/20' : 'bg-red-500/30'}`}>
+                {deltaN1 >= 0 ? '+' : ''}{deltaN1}% vs N-1
+              </span>
+            )}
+            {summary.objectifs_valeur.reste_a_faire_mois != null && (
+              <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-white/20">
+                Reste {summary.objectifs_valeur.reste_a_faire_mois.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })} ce mois
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -462,6 +611,8 @@ export default function DashboardPage() {
         )}
 
         <BriefingWidget />
+
+        <CahierStrip />
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
