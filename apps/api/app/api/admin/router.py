@@ -671,7 +671,7 @@ async def get_weather(
 
         await db.commit()
     except Exception:
-        pass  # History storage is non-critical
+        await db.rollback()  # prevent aborted-transaction state on the session
 
     return weather_data
 

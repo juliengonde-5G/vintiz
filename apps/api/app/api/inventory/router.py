@@ -200,6 +200,56 @@ async def get_product_label(
     return Response(content=label_png, media_type="image/png")
 
 
+@router.post("/products/{product_id}/print-label")
+async def print_product_label(
+    product_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    quantity: int = Query(1, ge=1, le=20),
+):
+    """Send the product label to the SATO CT4-LX (SBPL, TCP 9100)."""
+    from app.services import sato_service
+    from app.services.barcode import generate_barcode
+    from app.services.hardware_config import load_config
+    from app.services.label import generate_label
+
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    cfg = load_config()["label_printer"]
+    if not cfg.get("enabled"):
+        raise HTTPException(status_code=400, detail="Imprimante SATO desactivee dans les parametres")
+    host = cfg.get("host") or ""
+    port = int(cfg.get("port") or 9100)
+    if not host:
+        raise HTTPException(status_code=400, detail="Adresse IP SATO non configuree")
+
+    category_name = product.category.name if product.category else "Article"
+    week = product.week_number or 1
+    try:
+        barcode_png = generate_barcode(week, category_name[:4].upper(), 1, int(product.sale_price * 100))
+    except Exception:  # noqa: BLE001
+        barcode_png = None
+
+    label_png = generate_label(
+        product_name=product.name,
+        category=category_name,
+        barcode_data=product.barcode,
+        price=f"{float(product.sale_price):.2f} €",
+        week=week,
+        barcode_image=barcode_png,
+    )
+
+    try:
+        sato_service.print_label(label_png, host=host, port=port, quantity=quantity)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Imprimante SATO injoignable : {exc}") from exc
+
+    return {"success": True, "quantity": quantity, "product_id": str(product_id)}
+
+
 @router.get("/products/{product_id}/score")
 async def get_product_score(
     product_id: uuid.UUID,

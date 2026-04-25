@@ -18,6 +18,7 @@ from app.api.crm.router import router as crm_router
 from app.api.reporting.router import router as reporting_router
 from app.api.admin.router import router as admin_router
 from app.api.ai.router import router as ai_router
+from app.api.hardware.router import router as hardware_router
 from app.api.seo.router import router as seo_router
 from app.api.newsletter.router import router as newsletter_router
 from app.api.cahier.router import router as cahier_router
@@ -169,6 +170,7 @@ app.include_router(crm_router, prefix="/api")
 app.include_router(reporting_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
 app.include_router(ai_router, prefix="/api")
+app.include_router(hardware_router, prefix="/api")
 app.include_router(seo_router, prefix="/api")
 app.include_router(newsletter_router, prefix="/api")
 app.include_router(cahier_router, prefix="/api")

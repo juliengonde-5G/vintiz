@@ -96,6 +96,9 @@ export default function POSPage() {
   // Receipt
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptText, setReceiptText] = useState('');
+  const [receiptTxId, setReceiptTxId] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [printMsg, setPrintMsg] = useState('');
 
   // CB / SumUp
   const [cbCheckoutId, setCbCheckoutId] = useState<string | null>(null);
@@ -529,6 +532,7 @@ export default function POSPage() {
         throw new Error(err?.detail || 'Erreur lors de la creation');
       }
       const transaction = await res.json();
+      setReceiptTxId(transaction.id);
 
       // Fetch receipt
       try {
@@ -558,9 +562,29 @@ export default function POSPage() {
     setSubmitting(false);
   };
 
+  const printReceiptOnPrinter = async () => {
+    if (!receiptTxId) return;
+    setPrinting(true);
+    setPrintMsg('');
+    try {
+      const res = await api.post(`/api/pos/transactions/${receiptTxId}/print`, {});
+      if (res.ok) {
+        setPrintMsg('Ticket imprime sur la MUNBYN');
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setPrintMsg(e.detail || 'Echec de l\'impression');
+      }
+    } catch {
+      setPrintMsg('Erreur de connexion imprimante');
+    }
+    setPrinting(false);
+  };
+
   const handleReceiptClose = () => {
     setShowReceipt(false);
     setReceiptText('');
+    setReceiptTxId(null);
+    setPrintMsg('');
     setCart([]);
     setPayments([]);
     setCashGiven('');
@@ -1177,9 +1201,12 @@ export default function POSPage() {
             <Button variant="outline" onClick={handleReceiptClose}>
               Fermer sans ticket
             </Button>
+            <Button onClick={printReceiptOnPrinter} disabled={printing || !receiptTxId} variant="secondary">
+              {printing ? 'Impression...' : 'Imprimer (MUNBYN)'}
+            </Button>
             <Button onClick={() => { printReceipt(receiptText); handleReceiptClose(); }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-              Imprimer le ticket
+              Imprimer (AirPrint)
             </Button>
           </div>
         }
@@ -1187,6 +1214,9 @@ export default function POSPage() {
         <div className="bg-gray-50 p-4 rounded-lg">
           <pre className="whitespace-pre-wrap text-sm font-mono text-black">{receiptText}</pre>
         </div>
+        {printMsg && (
+          <p className="mt-3 text-sm text-teal">{printMsg}</p>
+        )}
       </Modal>
 
       {/* ── Open Drawer Modal ───────────────────────────────────── */}
