@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Float, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,17 @@ class StoreZone(Base):
     capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     product_types: Mapped[str | None] = mapped_column(Text, nullable=True)
     color_code: Mapped[str | None] = mapped_column(String(20), nullable=True, default="#1A7A6A")
+
+    # Plan 2D layout (values in % of canvas, 0-100)
+    pos_x: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    pos_y: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    width: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    height: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    shape: Mapped[str] = mapped_column(String(20), nullable=False, default="rounded")
+    icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    sales_target_monthly: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     zone_products: Mapped[list["ZoneProduct"]] = relationship(
         "ZoneProduct", back_populates="zone", lazy="selectin"

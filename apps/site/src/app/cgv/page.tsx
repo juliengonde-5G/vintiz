@@ -3,7 +3,9 @@ import Footer from "@/components/Footer";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Conditions Generales de Vente | Vintiz",
+  title: "Conditions générales de vente",
+  description: "Conditions générales de vente de la boutique Vintiz, Vernon (27200).",
+  robots: { index: false, follow: true },
 };
 
 export default function CGVPage() {

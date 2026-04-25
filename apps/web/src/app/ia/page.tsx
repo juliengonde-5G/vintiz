@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import CompanionHero from '@/components/ai/CompanionHero';
 import { api } from '@/lib/api';
 
 interface TrendItem {
@@ -256,7 +258,20 @@ interface ChecklistItem {
   priority: string;
   title: string;
   description: string;
-  products?: Array<{ name: string; barcode?: string }>;
+  products?: Array<{ id?: string; name: string; barcode?: string; sale_price?: number; trend_score?: number }>;
+}
+
+interface ZoneProductItem {
+  id: string;
+  barcode: string;
+  name: string;
+  brand: string | null;
+  size: string | null;
+  color: string | null;
+  sale_price: number;
+  status: string;
+  trend_score: number | null;
+  photo_url: string | null;
 }
 
 interface WeeklyChecklist {
@@ -290,13 +305,36 @@ export default function IAPage() {
   const [aiReco, setAiReco] = useState<AIRecoResult | null>(null);
   const [recoLoading, setRecoLoading] = useState(false);
   const [selectedZone, setSelectedZone] = useState<ZoneStat | null>(null);
+  const [zoneProducts, setZoneProducts] = useState<ZoneProductItem[]>([]);
+  const [zoneProductsLoading, setZoneProductsLoading] = useState(false);
 
-  // New tab states
+  // Checklist states
   const [checklist, setChecklist] = useState<WeeklyChecklist | null>(null);
   const [checklistLoading, setChecklistLoading] = useState(false);
+  const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
+
+  // Tendances mode states
   const [trendsMode, setTrendsMode] = useState<TrendsMode | null>(null);
   const [trendsModeLoading, setTrendsModeLoading] = useState(false);
   const [trendsModeTab, setTrendsModeTab] = useState<'reseaux_sociaux' | 'vinted' | 'retail'>('reseaux_sociaux');
+
+  // Load checklist checkbox states from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('vintiz_checklist_checks');
+      if (saved) setCheckedItems(JSON.parse(saved));
+    } catch { /* ignore */ }
+  }, []);
+
+  const toggleChecklistItem = (key: string) => {
+    setCheckedItems((prev: Record<string, boolean>) => {
+      const updated = { ...prev, [key]: !prev[key] };
+      try { localStorage.setItem('vintiz_checklist_checks', JSON.stringify(updated)); } catch { /* ignore */ }
+      return updated;
+    });
+  };
+
+  const isMonday = new Date().getDay() === 1;
 
   const loadTrends = useCallback(async () => {
     setLoading(true);
@@ -337,24 +375,39 @@ export default function IAPage() {
     setLoading(false);
   }, []);
 
-  const loadChecklist = useCallback(async () => {
+  const loadChecklist = useCallback(async (forceRefresh = false) => {
     setChecklistLoading(true);
     try {
-      const res = await api.get('/api/ai/weekly-checklist');
+      const url = forceRefresh ? '/api/ai/weekly-checklist?force_refresh=true' : '/api/ai/weekly-checklist';
+      const res = await api.get(url);
       if (res.ok) setChecklist(await res.json());
       else setError('Erreur chargement checklist');
     } catch { setError('Erreur chargement checklist'); }
     setChecklistLoading(false);
   }, []);
 
-  const loadTrendsMode = useCallback(async () => {
+  const loadTrendsMode = useCallback(async (forceRefresh = false) => {
     setTrendsModeLoading(true);
     try {
-      const res = await api.get('/api/ai/trends');
+      const url = forceRefresh ? '/api/ai/trends?force_refresh=true' : '/api/ai/trends';
+      const res = await api.get(url);
       if (res.ok) setTrendsMode(await res.json());
       else setError('Erreur chargement tendances');
     } catch { setError('Erreur chargement tendances'); }
     setTrendsModeLoading(false);
+  }, []);
+
+  const loadZoneProducts = useCallback(async (zoneId: string) => {
+    setZoneProductsLoading(true);
+    setZoneProducts([]);
+    try {
+      const res = await api.get(`/api/ai/mapping/zones/${zoneId}/products`);
+      if (res.ok) {
+        const data = await res.json();
+        setZoneProducts(data.products || []);
+      }
+    } catch { /* silent */ }
+    setZoneProductsLoading(false);
   }, []);
 
 
@@ -419,6 +472,12 @@ export default function IAPage() {
     setLoading(false);
   };
 
+  const handleSelectZone = (z: ZoneStat | null) => {
+    setSelectedZone(z);
+    if (z) loadZoneProducts(z.zone_id);
+    else setZoneProducts([]);
+  };
+
   const tabs = [
     { key: 'vision' as const, label: 'Analyse Photo', icon: '📷' },
     { key: 'trends' as const, label: 'Tendances', icon: '📈' },
@@ -429,37 +488,49 @@ export default function IAPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-cream">
       <Sidebar />
-      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-black">IA Booster</h1>
-          <p className="text-gray-500 mt-1">Intelligence artificielle au service de votre boutique</p>
-        </div>
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8 max-w-7xl">
+        <CompanionHero />
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+          <div className="mb-4 p-3 bg-pink-50 text-pink-700 rounded-lg text-sm">
             {error}
             <button onClick={() => setError('')} className="ml-2 font-bold">&times;</button>
           </div>
         )}
 
-        {/* Tab bar */}
+        {/* Skills */}
+        <div className="mb-4">
+          <p className="text-[11px] tracking-[0.22em] uppercase text-teal font-medium">
+            Tes outils IA
+          </p>
+          <h2 className="font-display font-semibold text-lg text-black mt-0.5">
+            Explorer un domaine
+          </h2>
+        </div>
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
           {tabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg min-h-[44px] whitespace-nowrap transition-colors ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl min-h-[44px] whitespace-nowrap transition-colors ${
                 tab === t.key
-                  ? 'bg-teal text-white font-medium'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                  ? 'bg-teal text-white font-medium shadow-soft'
+                  : 'bg-white text-gray-600 hover:bg-teal-50 hover:text-teal border border-gray-100'
               }`}
             >
               <span>{t.icon}</span>
               <span>{t.label}</span>
             </button>
           ))}
+          <Link
+            href="/ia/marketing"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl min-h-[44px] whitespace-nowrap bg-gradient-signature text-white font-medium shadow-soft hover:shadow-depth transition-all"
+          >
+            <span>📣</span>
+            <span>Rapport marketing</span>
+          </Link>
         </div>
 
         {/* VISION TAB */}
@@ -584,9 +655,10 @@ export default function IAPage() {
                     </thead>
                     <tbody>
                       {trends.map((t, i) => (
-                        <tr key={t.product_id} className="border-b border-gray-50">
+                        <tr key={t.product_id} className="border-b border-gray-50 hover:bg-pink-50 transition-colors cursor-pointer"
+                          onClick={() => window.location.href = `/inventory/${t.product_id}`}>
                           <td className="py-3 text-sm text-gray-400">{i + 1}</td>
-                          <td className="py-3 text-sm text-black font-medium">{t.product_name}</td>
+                          <td className="py-3 text-sm text-black font-medium hover:text-teal">{t.product_name}</td>
                           <td className="py-3 text-sm text-gray-500 font-mono">{t.barcode}</td>
                           <td className={`py-3 text-sm text-right font-bold ${scoreColor(t.score)}`}>
                             {t.score}/{t.max_score}
@@ -685,67 +757,92 @@ export default function IAPage() {
                     <Card title="Plan de la boutique">
                       <FloorPlan
                         zones={zones}
-                        onSelectZone={(z) => setSelectedZone(z)}
+                        onSelectZone={handleSelectZone}
                         selectedZoneId={selectedZone?.zone_id ?? null}
                       />
                     </Card>
                   </div>
-                  <div className="lg:col-span-2">
+                  <div className="lg:col-span-2 space-y-4">
                     {selectedZone ? (
-                      <Card>
-                        <div className="flex items-start justify-between mb-4">
-                          <div>
-                            <h3 className="text-lg font-semibold text-black">{selectedZone.zone_name}</h3>
-                            <p className="text-xs text-gray-400 mt-1">{selectedZone.description}</p>
+                      <>
+                        <Card>
+                          <div className="flex items-start justify-between mb-4">
+                            <div>
+                              <h3 className="text-lg font-semibold text-black">{selectedZone.zone_name}</h3>
+                              <p className="text-xs text-gray-400 mt-1">{selectedZone.description}</p>
+                            </div>
+                            <button
+                              onClick={() => handleSelectZone(null)}
+                              className="text-gray-400 hover:text-gray-600 min-h-[36px] min-w-[36px] flex items-center justify-center"
+                            >
+                              &times;
+                            </button>
                           </div>
-                          <button
-                            onClick={() => setSelectedZone(null)}
-                            className="text-gray-400 hover:text-gray-600 min-h-[36px] min-w-[36px] flex items-center justify-center"
-                          >
-                            &times;
-                          </button>
-                        </div>
-                        <div className="space-y-3 text-sm">
-                          <div className="flex justify-between py-2 border-b border-gray-100">
-                            <span className="text-gray-500">Occupation</span>
-                            <span className="font-medium text-black">{selectedZone.product_count} / {selectedZone.capacity} produits</span>
+                          <div className="space-y-3 text-sm">
+                            <div className="flex justify-between py-2 border-b border-gray-100">
+                              <span className="text-gray-500">Occupation</span>
+                              <span className="font-medium text-black">{selectedZone.product_count} / {selectedZone.capacity} produits</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-3">
+                              <div
+                                className={`h-3 rounded-full transition-all ${
+                                  selectedZone.occupancy_percent > 80 ? 'bg-red-400' :
+                                  selectedZone.occupancy_percent > 50 ? 'bg-yellow-400' :
+                                  'bg-green-400'
+                                }`}
+                                style={{ width: `${Math.min(100, selectedZone.occupancy_percent)}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between py-2 border-b border-gray-100">
+                              <span className="text-gray-500">Valeur en rayon</span>
+                              <span className="font-medium text-teal">{formatCurrency(selectedZone.total_value)}</span>
+                            </div>
+                            <div className="flex justify-between py-2">
+                              <span className="text-gray-500">Score tendance moyen</span>
+                              <span className={`font-bold ${scoreColor(selectedZone.avg_trend_score)}`}>
+                                {selectedZone.avg_trend_score}/100
+                              </span>
+                            </div>
                           </div>
-                          <div className="w-full bg-gray-100 rounded-full h-3">
-                            <div
-                              className={`h-3 rounded-full transition-all ${
-                                selectedZone.occupancy_percent > 80 ? 'bg-red-400' :
-                                selectedZone.occupancy_percent > 50 ? 'bg-yellow-400' :
-                                'bg-green-400'
-                              }`}
-                              style={{ width: `${Math.min(100, selectedZone.occupancy_percent)}%` }}
-                            />
-                          </div>
-                          <div className="flex justify-between py-2 border-b border-gray-100">
-                            <span className="text-gray-500">Taux d&apos;occupation</span>
-                            <span className={`font-bold ${
-                              selectedZone.occupancy_percent > 80 ? 'text-red-600' :
-                              selectedZone.occupancy_percent > 50 ? 'text-yellow-600' :
-                              'text-green-600'
-                            }`}>
-                              {selectedZone.occupancy_percent}%
-                            </span>
-                          </div>
-                          <div className="flex justify-between py-2 border-b border-gray-100">
-                            <span className="text-gray-500">Valeur en rayon</span>
-                            <span className="font-medium text-teal">{formatCurrency(selectedZone.total_value)}</span>
-                          </div>
-                          <div className="flex justify-between py-2 border-b border-gray-100">
-                            <span className="text-gray-500">Score tendance moyen</span>
-                            <span className={`font-bold ${scoreColor(selectedZone.avg_trend_score)}`}>
-                              {selectedZone.avg_trend_score}/100
-                            </span>
-                          </div>
-                          <div className="flex justify-between py-2">
-                            <span className="text-gray-500">Places disponibles</span>
-                            <span className="font-medium text-black">{selectedZone.capacity - selectedZone.product_count}</span>
-                          </div>
-                        </div>
-                      </Card>
+                        </Card>
+
+                        {/* Products in zone */}
+                        <Card title={`Produits dans cette zone (${zoneProducts.length})`}>
+                          {zoneProductsLoading ? (
+                            <div className="flex justify-center py-4"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal" /></div>
+                          ) : zoneProducts.length === 0 ? (
+                            <p className="text-gray-400 text-sm text-center py-4">Aucun produit dans cette zone</p>
+                          ) : (
+                            <div className="space-y-2 max-h-80 overflow-y-auto">
+                              {zoneProducts.map((p) => (
+                                <Link key={p.id} href={`/inventory/${p.id}`}
+                                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-pink-50 transition-colors border border-gray-100 group">
+                                  <div className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden">
+                                    {p.photo_url ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img src={p.photo_url} alt={p.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-black truncate group-hover:text-teal">{p.name}</p>
+                                    <p className="text-xs text-gray-400">{p.brand || ''}{p.brand && p.size ? ' · ' : ''}{p.size || ''}</p>
+                                  </div>
+                                  <div className="text-right flex-shrink-0">
+                                    <p className="text-sm font-bold text-teal">{formatCurrency(p.sale_price)}</p>
+                                    {p.trend_score != null && (
+                                      <p className={`text-xs font-medium ${scoreColor(p.trend_score)}`}>{p.trend_score}</p>
+                                    )}
+                                  </div>
+                                </Link>
+                              ))}
+                            </div>
+                          )}
+                        </Card>
+                      </>
                     ) : (
                       <Card>
                         <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -754,7 +851,7 @@ export default function IAPage() {
                             <line x1="12" y1="16" x2="12" y2="12" />
                             <line x1="12" y1="8" x2="12.01" y2="8" />
                           </svg>
-                          <p className="text-gray-400 text-sm">Cliquez sur une zone du plan pour voir ses details</p>
+                          <p className="text-gray-400 text-sm">Cliquez sur une zone du plan pour voir ses détails et produits</p>
                         </div>
                       </Card>
                     )}
@@ -869,16 +966,39 @@ export default function IAPage() {
               <div>
                 <h2 className="text-lg font-semibold text-black">Checklist de la semaine</h2>
                 {checklist && <p className="text-sm text-gray-500">Semaine {checklist.week} — {checklist.year} · Générée le {new Date(checklist.generated_at).toLocaleDateString('fr-FR')}</p>}
+                {!isMonday && <p className="text-xs text-gray-400 mt-1">La checklist est actualisée chaque lundi par l&apos;IA</p>}
               </div>
-              <button onClick={loadChecklist} disabled={checklistLoading} className="min-h-[44px] px-4 py-2 rounded-lg border border-teal text-teal hover:bg-teal-50 text-sm font-medium transition-colors">
-                {checklistLoading ? 'Génération...' : '🔄 Régénérer'}
-              </button>
+              <div className="flex items-center gap-2">
+                {isMonday && (
+                  <button onClick={() => loadChecklist(true)} disabled={checklistLoading}
+                    className="min-h-[44px] px-4 py-2 rounded-lg bg-teal text-white hover:bg-teal-700 text-sm font-medium transition-colors">
+                    {checklistLoading ? 'Génération...' : '🔄 Actualiser (lundi)'}
+                  </button>
+                )}
+                <button onClick={() => loadChecklist(false)} disabled={checklistLoading}
+                  className="min-h-[44px] px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium transition-colors">
+                  {checklistLoading ? '...' : 'Charger'}
+                </button>
+              </div>
             </div>
             {checklistLoading ? (
               <Card><div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal" /></div></Card>
             ) : !checklist ? (
-              <Card><p className="text-gray-400 text-center py-8">Cliquez &quot;Régénérer&quot; pour générer la checklist de la semaine.</p></Card>
+              <Card><p className="text-gray-400 text-center py-8">Cliquez &quot;Charger&quot; pour afficher la checklist de la semaine.</p></Card>
             ) : (
+              <>
+                {/* Progress summary */}
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-teal h-2 rounded-full transition-all"
+                        style={{ width: `${checklist.checklist.length > 0 ? Math.round(checklist.checklist.filter((_, i) => checkedItems[`${checklist.week}-${checklist.year}-${i}`]).length / checklist.checklist.length * 100) : 0}%` }} />
+                    </div>
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">
+                    {checklist.checklist.filter((_, i) => checkedItems[`${checklist.week}-${checklist.year}-${i}`]).length}/{checklist.checklist.length} fait
+                  </span>
+                </div>
               <div className="space-y-4">
                 {checklist.checklist.map((item, i) => {
                   const typeConfig: Record<string, { icon: string; bg: string; border: string }> = {
@@ -889,13 +1009,21 @@ export default function IAPage() {
                   };
                   const cfg = typeConfig[item.type] || { icon: '•', bg: 'bg-gray-50', border: 'border-gray-200' };
                   const priorityColor = item.priority === 'haute' ? 'bg-red-100 text-red-700' : item.priority === 'moyenne' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600';
+                  const itemKey = `${checklist.week}-${checklist.year}-${i}`;
+                  const isDone = !!checkedItems[itemKey];
                   return (
-                    <div key={i} className={`rounded-xl border p-4 ${cfg.bg} ${cfg.border}`}>
+                    <div key={i} className={`rounded-xl border p-4 transition-opacity ${cfg.bg} ${cfg.border} ${isDone ? 'opacity-60' : ''}`}>
                       <div className="flex items-start gap-3">
+                        <button
+                          onClick={() => toggleChecklistItem(itemKey)}
+                          className={`mt-0.5 flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${isDone ? 'bg-teal border-teal text-white' : 'border-gray-300 hover:border-teal'}`}
+                        >
+                          {isDone && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                        </button>
                         <span className="text-2xl">{cfg.icon}</span>
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-semibold text-black">{item.title}</h3>
+                            <h3 className={`font-semibold ${isDone ? 'line-through text-gray-400' : 'text-black'}`}>{item.title}</h3>
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${priorityColor}`}>{item.priority}</span>
                           </div>
                           <p className="text-sm text-gray-600">{item.description}</p>
@@ -912,8 +1040,9 @@ export default function IAPage() {
                   );
                 })}
               </div>
-            )}
-          </div>
+            </>
+          )}
+        </div>
         )}
 
         {/* TENDANCES MODE TAB */}
@@ -923,10 +1052,20 @@ export default function IAPage() {
               <div>
                 <h2 className="text-lg font-semibold text-black">Tendances Mode</h2>
                 {trendsMode && <p className="text-sm text-gray-500">Semaine {trendsMode.week} — {trendsMode.year} · Actualisées le {new Date(trendsMode.generated_at).toLocaleDateString('fr-FR')}</p>}
+                {!isMonday && <p className="text-xs text-gray-400 mt-1">Les tendances sont actualisées chaque lundi par l&apos;IA</p>}
               </div>
-              <button onClick={loadTrendsMode} disabled={trendsModeLoading} className="min-h-[44px] px-4 py-2 rounded-lg border border-teal text-teal hover:bg-teal-50 text-sm font-medium transition-colors">
-                {trendsModeLoading ? 'Chargement...' : '🔄 Actualiser'}
-              </button>
+              <div className="flex items-center gap-2">
+                {isMonday && (
+                  <button onClick={() => loadTrendsMode(true)} disabled={trendsModeLoading}
+                    className="min-h-[44px] px-4 py-2 rounded-lg bg-teal text-white hover:bg-teal-700 text-sm font-medium transition-colors">
+                    {trendsModeLoading ? 'Actualisation IA...' : '🔄 Actualiser (lundi)'}
+                  </button>
+                )}
+                <button onClick={() => loadTrendsMode(false)} disabled={trendsModeLoading}
+                  className="min-h-[44px] px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium transition-colors">
+                  {trendsModeLoading ? '...' : 'Charger'}
+                </button>
+              </div>
             </div>
             {trendsModeLoading ? (
               <Card><div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal" /></div></Card>

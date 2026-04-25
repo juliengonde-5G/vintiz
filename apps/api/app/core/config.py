@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = False
 
+    # SEO / Analytics
+    PUBLIC_SITE_URL: str = "https://vintiz.fr"
+    GA_MEASUREMENT_ID: str | None = None
+    GOOGLE_SITE_VERIFICATION: str | None = None
+    GSC_PROPERTY: str | None = None
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [s.strip() for s in self.CORS_ORIGINS.split(",") if s.strip()]

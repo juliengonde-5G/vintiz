@@ -23,10 +23,15 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-# Ensure the api app is importable
-api_root = Path(__file__).resolve().parent.parent / "apps" / "api"
-if str(api_root) not in sys.path:
-    sys.path.insert(0, str(api_root))
+# Ensure the api app is importable. Two layouts supported:
+#   - Monorepo dev : /repo/apps/api/app/… → add /repo/apps/api to sys.path
+#   - Docker image : /app/app/…           → add /app to sys.path
+_here = Path(__file__).resolve().parent
+for candidate in (_here.parent / "apps" / "api", _here.parent):
+    if (candidate / "app" / "core" / "database.py").exists():
+        if str(candidate) not in sys.path:
+            sys.path.insert(0, str(candidate))
+        break
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,19 +189,21 @@ async def seed_store_zones(db: AsyncSession) -> list[StoreZone]:
         return list(result.scalars().all())
 
     zones_data = [
-        ("Vitrine gauche", "Zone vitrine avant gauche", 15, '["Robe", "Haut femme", "Accessoire"]', "#E8F4F8"),
-        ("Podium entree", "Podium d'entrée avec les nouvelles arrivées", 20, '["Tout type"]', "#F0E8F8"),
-        ("Mur gauche", "Mur gauche — hauts et robes", 60, '["Haut femme", "Robe", "Jupe"]', "#E8F8EC"),
-        ("Mur droit / Caisse", "Zone caisse et accessoires", 30, '["Accessoire", "Sac", "Chaussures"]', "#F8F0E8"),
-        ("Zone centrale", "Portants centraux — mixte", 80, '["Manteau", "Veste", "Pantalon"]', "#F8E8E8"),
-        ("Mur fond", "Mur du fond — hommes et enfants", 60, '["Homme", "Enfant"]', "#E8EAF8"),
-        ("Cabine essayage", "Espace cabines d'essayage", 5, '["Réservé essayage"]', "#F5F5F5"),
+        ("Vitrine gauche", "Zone vitrine avant gauche", 15, '["Robe", "Haut femme", "Accessoire"]', "#008678", 4, 4, 28, 14, "rounded", "sparkles", 1),
+        ("Podium entree", "Podium d'entrée avec les nouvelles arrivées", 20, '["Tout type"]', "#FFC5DF", 36, 8, 20, 20, "rounded", "star", 2),
+        ("Mur gauche", "Mur gauche — hauts et robes", 60, '["Haut femme", "Robe", "Jupe"]', "#26A695", 4, 22, 14, 50, "rect", "shirt", 3),
+        ("Mur droit / Caisse", "Zone caisse et accessoires", 30, '["Accessoire", "Sac", "Chaussures"]', "#CC4889", 78, 32, 18, 30, "rect", "cash", 4),
+        ("Zone centrale", "Portants centraux — mixte", 80, '["Manteau", "Veste", "Pantalon"]', "#FF97C0", 34, 40, 34, 28, "rounded", "grid", 5),
+        ("Mur fond", "Mur du fond — hommes et enfants", 60, '["Homme", "Enfant"]', "#006B61", 22, 78, 54, 14, "rect", "bag", 6),
+        ("Cabine essayage", "Espace cabines d'essayage", 5, '["Réservé essayage"]', "#B3DDD8", 82, 6, 14, 18, "rounded", "door", 7),
     ]
 
     result_zones = []
-    for name, desc, cap, ptypes, color in zones_data:
+    for name, desc, cap, ptypes, color, px, py, w, h, shape, icon, order in zones_data:
         zone = StoreZone(name=name, description=desc, capacity=cap,
-                         product_types=ptypes, color_code=color)
+                         product_types=ptypes, color_code=color,
+                         pos_x=px, pos_y=py, width=w, height=h,
+                         shape=shape, icon=icon, display_order=order)
         db.add(zone)
         result_zones.append(zone)
         print(f"  [+] Zone: {name}")

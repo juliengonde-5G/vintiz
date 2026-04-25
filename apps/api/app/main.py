@@ -18,6 +18,9 @@ from app.api.crm.router import router as crm_router
 from app.api.reporting.router import router as reporting_router
 from app.api.admin.router import router as admin_router
 from app.api.ai.router import router as ai_router
+from app.api.seo.router import router as seo_router
+from app.api.newsletter.router import router as newsletter_router
+from app.api.cahier.router import router as cahier_router
 
 setup_logging()
 logger = logging.getLogger("vintiz")
@@ -61,11 +64,32 @@ async def _run_monthly_scoring() -> None:
         logger.error("Monthly scoring job failed: %s", exc)
 
 
+_RUNTIME_MIGRATIONS = [
+    # Store zones — plan 2D layout columns (added 2026-04)
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS pos_x INTEGER NOT NULL DEFAULT 10",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS pos_y INTEGER NOT NULL DEFAULT 10",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS width INTEGER NOT NULL DEFAULT 20",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS height INTEGER NOT NULL DEFAULT 20",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS shape VARCHAR(20) NOT NULL DEFAULT 'rounded'",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS icon VARCHAR(50)",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS photo_url VARCHAR(500)",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS sales_target_monthly NUMERIC(10, 2)",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0",
+]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create all DB tables on startup (idempotent — safe to run on every restart)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Apply lightweight runtime migrations for columns added after initial release.
+        from sqlalchemy import text
+        for stmt in _RUNTIME_MIGRATIONS:
+            try:
+                await conn.execute(text(stmt))
+            except Exception as exc:
+                logger.warning("Runtime migration skipped (%s): %s", stmt, exc)
 
     # Start APScheduler for monthly scoring (1st Wednesday of month at 06:00)
     try:
@@ -145,6 +169,9 @@ app.include_router(crm_router, prefix="/api")
 app.include_router(reporting_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
 app.include_router(ai_router, prefix="/api")
+app.include_router(seo_router, prefix="/api")
+app.include_router(newsletter_router, prefix="/api")
+app.include_router(cahier_router, prefix="/api")
 
 
 @app.get("/api/health")

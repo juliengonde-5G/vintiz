@@ -3,80 +3,40 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState, FormEvent } from "react";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 
-const values = [
-  {
-    icon: (
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-      </svg>
-    ),
-    title: "Selection Premium",
-    desc: "Chaque piece est choisie avec soin pour sa qualite, son style et son etat impeccable.",
-  },
-  {
-    icon: (
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
-        <path d="M14.31 8l5.74 9.94M9.69 8h11.48M7.38 12l5.74-9.94M9.69 16L3.95 6.06M14.31 16H2.83M16.62 12l-5.74 9.94" />
-      </svg>
-    ),
-    title: "Mode Responsable",
-    desc: "Donnez une seconde vie aux vetements. Un geste pour votre style et pour la planete.",
-  },
-  {
-    icon: (
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-      </svg>
-    ),
-    title: "Marques Recherchees",
-    desc: "Sandro, Maje, Isabel Marant, Ba&sh, The Kooples et bien d'autres a prix doux.",
-  },
-  {
-    icon: (
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-        <line x1="9" y1="9" x2="9.01" y2="9" />
-        <line x1="15" y1="9" x2="15.01" y2="9" />
-      </svg>
-    ),
-    title: "Experience Boutique",
-    desc: "Un accueil chaleureux, des conseils personnalises dans un ecrin elegant.",
-  },
-];
-
-const brands = [
-  "Sandro", "Maje", "Isabel Marant", "Ba&sh", "The Kooples",
-  "Claudie Pierlot", "Zadig & Voltaire", "IRO", "Comptoir des Cotonniers",
-  "Gerard Darel", "Vanessa Bruno", "American Vintage", "COS",
-];
+const INSTAGRAM_URL = "https://www.instagram.com/vintiz.vernon/";
+const FACEBOOK_URL = "https://www.facebook.com/vintiz.vernon";
+const TIKTOK_URL = "https://www.tiktok.com/@vintiz.vernon";
 
 export default function Home() {
   const [email, setEmail] = useState("");
+  const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!consent) {
+      setStatus("error");
+      setMessage("Merci de cocher la case de consentement pour recevoir nos e-mails.");
+      return;
+    }
     setStatus("loading");
     try {
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, consent, source: "site_landing" }),
       });
       const data = await res.json();
       if (res.ok) {
         setStatus("success");
         setMessage(data.message);
         setEmail("");
+        setConsent(false);
       } else {
         setStatus("error");
-        setMessage(data.error);
+        setMessage(data.error || data.detail || "Une erreur est survenue.");
       }
     } catch {
       setStatus("error");
@@ -85,181 +45,213 @@ export default function Home() {
   }
 
   return (
-    <>
-      <Navbar />
-
-      {/* Hero */}
-      <section className="min-h-screen flex items-center justify-center px-6 pt-16 bg-vintiz-bg">
-        <div className="max-w-4xl mx-auto text-center">
+    <main className="min-h-screen flex flex-col">
+      <section className="flex-1 flex items-center justify-center px-6 py-16 bg-cream">
+        <div className="max-w-2xl mx-auto text-center">
           <div className="animate-fade-in-up">
             <Image
-              src="/logo-rose.png"
-              alt="Vintiz"
-              width={80}
-              height={80}
+              src="/logo-teal.png"
+              alt="Vintiz - Boutique seconde main premium Vernon"
+              width={200}
+              height={200}
               priority
-              className="mx-auto mb-6"
+              className="mx-auto mb-8 h-32 w-auto sm:h-40"
             />
           </div>
-          <h1 className="animate-fade-in-up animation-delay-200 font-serif text-5xl sm:text-6xl lg:text-7xl text-vintiz-black mb-6 leading-tight">
-            Mode <em className="text-vintiz-teal">Premium</em>,<br />
-            Seconde Vie
+
+          <h1 className="animate-fade-in-up animation-delay-200 font-display text-4xl sm:text-5xl lg:text-6xl text-black mb-6 leading-tight">
+            Mode <em className="text-teal not-italic">Premium</em>,
+            <br />
+            Seconde Vie.
           </h1>
-          <p className="animate-fade-in-up animation-delay-400 text-lg sm:text-xl text-vintiz-black/60 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Des pieces uniques selectionnees avec soin. Marques recherchees, qualite irreprochable, prix justes. Bienvenue chez Vintiz.
+
+          <p className="animate-fade-in-up animation-delay-400 text-lg sm:text-xl text-black/70 max-w-xl mx-auto mb-10 leading-relaxed">
+            Des pièces uniques sélectionnées avec soin. Marques recherchées,
+            qualité irréprochable, prix justes.
           </p>
-          <div className="animate-fade-in-up animation-delay-600 flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              href="/boutique"
-              className="px-8 py-4 bg-vintiz-teal text-white font-medium rounded-lg hover:bg-vintiz-teal/90 transition-colors text-center"
+
+          <div className="animate-fade-in-up animation-delay-600 inline-flex flex-col items-center gap-2 bg-white/70 rounded-2xl px-8 py-6 border border-pink/30 backdrop-blur-sm mb-8">
+            <p className="text-xs uppercase tracking-[0.25em] text-teal font-medium">
+              Ouverture prochaine
+            </p>
+            <p className="text-xl font-display text-black">
+              6 rue Saint-Jacques
+            </p>
+            <p className="text-sm text-black/60">27200 Vernon — Normandie</p>
+            <a
+              href="#newsletter"
+              className="mt-3 text-sm font-medium text-teal hover:underline"
             >
-              Decouvrir la boutique
+              Être prévenue de l&apos;ouverture ↓
+            </a>
+          </div>
+
+          <div
+            id="newsletter"
+            className="animate-fade-in-up animation-delay-800 max-w-lg mx-auto bg-white rounded-2xl shadow-sm border border-pink/30 px-6 py-7 mb-10"
+          >
+            <h2 className="font-display text-xl text-black mb-1">
+              Soyez la première informée
+            </h2>
+            <p className="text-sm text-black/60 mb-5">
+              Laissez votre e-mail : vous serez prévenue en avant-première de
+              l&apos;ouverture, des ventes privées et des nouveautés.
+            </p>
+            {status === "success" ? (
+              <div className="bg-teal/10 border border-teal/30 rounded-lg p-4 text-teal">
+                {message}
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <label htmlFor="email" className="sr-only">
+                    Adresse email
+                  </label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    placeholder="votre@email.fr"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="flex-1 px-4 py-3 rounded-lg bg-cream/50 border border-black/10 text-black placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-teal"
+                  />
+                  <button
+                    type="submit"
+                    disabled={status === "loading" || !consent}
+                    className="px-6 py-3 bg-teal text-white font-medium rounded-lg hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                  >
+                    {status === "loading" ? "Envoi…" : "Me prévenir"}
+                  </button>
+                </div>
+                <label className="flex items-start gap-2 text-left text-xs text-black/60 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    required
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-black/30 text-teal focus:ring-teal"
+                  />
+                  <span>
+                    J&apos;accepte de recevoir par e-mail les actualités de Vintiz
+                    (ouverture, ventes privées, nouveautés). Je peux me désinscrire
+                    à tout moment via le lien présent dans chaque e-mail.
+                  </span>
+                </label>
+              </form>
+            )}
+            {status === "error" && (
+              <p className="mt-3 text-sm text-red-600">{message}</p>
+            )}
+          </div>
+
+          <div className="animate-fade-in-up animation-delay-1000">
+            <p className="text-xs uppercase tracking-[0.25em] text-black/50 mb-4">
+              Suivez-nous
+            </p>
+            <div className="flex gap-3 justify-center">
+              <a
+                href={INSTAGRAM_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Instagram Vintiz"
+                className="w-11 h-11 rounded-full border border-teal/30 flex items-center justify-center text-teal hover:bg-teal hover:text-white transition-colors"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+                </svg>
+              </a>
+              <a
+                href={FACEBOOK_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Facebook Vintiz"
+                className="w-11 h-11 rounded-full border border-teal/30 flex items-center justify-center text-teal hover:bg-teal hover:text-white transition-colors"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+                </svg>
+              </a>
+              <a
+                href={TIKTOK_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="TikTok Vintiz"
+                className="w-11 h-11 rounded-full border border-teal/30 flex items-center justify-center text-teal hover:bg-teal hover:text-white transition-colors"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+                </svg>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer className="bg-black text-white">
+        <div className="max-w-4xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Image
+              src="/logo-rose.png"
+              alt=""
+              width={44}
+              height={44}
+              className="h-8 w-auto"
+            />
+            <p className="text-xs text-white/40">
+              &copy; 2026 Vintiz — Vernon, Normandie
+            </p>
+          </div>
+          <div className="flex gap-5 text-xs text-white/40">
+            <Link
+              href="/mentions-legales"
+              className="hover:text-pink transition-colors"
+            >
+              Mentions légales
+            </Link>
+            <Link href="/cgv" className="hover:text-pink transition-colors">
+              CGV
             </Link>
             <Link
-              href="/espace-client"
-              className="px-8 py-4 border-2 border-vintiz-teal text-vintiz-teal font-medium rounded-lg hover:bg-vintiz-teal hover:text-white transition-colors text-center"
+              href="/confidentialite"
+              className="hover:text-pink transition-colors"
             >
-              Espace Client
+              Confidentialité
             </Link>
           </div>
         </div>
-      </section>
-
-      {/* Values */}
-      <section className="py-24 px-6 bg-white">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="font-serif text-3xl sm:text-4xl text-center text-vintiz-black mb-4">
-            Pourquoi <em className="text-vintiz-teal">Vintiz</em> ?
-          </h2>
-          <p className="text-center text-vintiz-black/50 mb-16 max-w-xl mx-auto">
-            Une experience shopping unique, pensee pour les amoureuses de belles pieces.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-            {values.map((v) => (
-              <div key={v.title} className="text-center p-6 rounded-2xl hover:bg-vintiz-bg transition-colors">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-vintiz-pink/20 flex items-center justify-center text-vintiz-teal">
-                  {v.icon}
-                </div>
-                <h3 className="font-serif text-lg font-semibold text-vintiz-black mb-2">{v.title}</h3>
-                <p className="text-sm text-vintiz-black/50 leading-relaxed">{v.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Brands */}
-      <section className="py-20 px-6 bg-vintiz-bg">
-        <div className="max-w-6xl mx-auto text-center">
-          <h2 className="font-serif text-3xl sm:text-4xl text-vintiz-black mb-4">
-            Nos <em className="text-vintiz-teal">Marques</em>
-          </h2>
-          <p className="text-vintiz-black/50 mb-12 max-w-xl mx-auto">
-            Une selection exigeante de marques milieu et haut de gamme.
-          </p>
-          <div className="flex flex-wrap justify-center gap-4">
-            {brands.map((b) => (
-              <span
-                key={b}
-                className="px-5 py-2.5 bg-white rounded-full text-sm font-medium text-vintiz-black/70 border border-vintiz-pink/30 hover:border-vintiz-teal hover:text-vintiz-teal transition-colors"
-              >
-                {b}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Location */}
-      <section className="py-24 px-6 bg-white">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="font-serif text-3xl sm:text-4xl text-vintiz-black mb-4">
-                Venez nous <em className="text-vintiz-teal">rendre visite</em>
-              </h2>
-              <p className="text-vintiz-black/60 mb-8 leading-relaxed">
-                Situee en plein coeur de Vernon, notre boutique vous accueille dans un cadre chaleureux et elegant. Poussez la porte, decouvrez nos trouvailles du moment.
-              </p>
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2A8B8B" strokeWidth="2" className="mt-1 shrink-0">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                    <circle cx="12" cy="10" r="3" />
-                  </svg>
-                  <div>
-                    <p className="font-medium text-vintiz-black">6 rue Saint-Jacques</p>
-                    <p className="text-sm text-vintiz-black/50">27200 Vernon</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2A8B8B" strokeWidth="2" className="mt-1 shrink-0">
-                    <circle cx="12" cy="12" r="10" />
-                    <polyline points="12 6 12 12 16 14" />
-                  </svg>
-                  <div>
-                    <p className="font-medium text-vintiz-black">Horaires</p>
-                    <p className="text-sm text-vintiz-black/50">Mardi - Samedi : 10h - 19h</p>
-                    <p className="text-sm text-vintiz-black/50">Dimanche &amp; Lundi : Ferme</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-2xl overflow-hidden shadow-lg h-80 bg-vintiz-pink/10 flex items-center justify-center">
-              <iframe
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2608.5!2d1.4773!3d49.0926!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x47e6b6c0d0d0d0d%3A0x0!2s6+Rue+Saint-Jacques%2C+27200+Vernon!5e0!3m2!1sfr!2sfr!4v1"
-                width="100%"
-                height="100%"
-                style={{ border: 0 }}
-                allowFullScreen
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                title="Vintiz Vernon"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Newsletter */}
-      <section className="py-20 px-6 bg-vintiz-teal">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="font-serif text-3xl sm:text-4xl text-white mb-4">
-            Restez informee
-          </h2>
-          <p className="text-white/70 mb-8">
-            Recevez nos nouveautes, ventes privees et bons plans directement dans votre boite mail.
-          </p>
-          {status === "success" ? (
-            <div className="bg-white/10 border border-white/30 rounded-lg p-4 text-white">
-              {message}
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 max-w-lg mx-auto">
-              <input
-                type="email"
-                required
-                placeholder="Votre adresse email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="flex-1 px-4 py-3 rounded-lg bg-white/10 border border-white/30 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/40"
-              />
-              <button
-                type="submit"
-                disabled={status === "loading"}
-                className="px-6 py-3 bg-white text-vintiz-teal font-medium rounded-lg hover:bg-white/90 disabled:opacity-50 transition-colors whitespace-nowrap"
-              >
-                {status === "loading" ? "Envoi..." : "S'inscrire"}
-              </button>
-            </form>
-          )}
-          {status === "error" && (
-            <p className="mt-3 text-sm text-red-200">{message}</p>
-          )}
-        </div>
-      </section>
-
-      <Footer />
-    </>
+      </footer>
+    </main>
   );
 }

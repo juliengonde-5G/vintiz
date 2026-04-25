@@ -26,13 +26,69 @@ interface Zone {
 
 const ALL_PRODUCT_TYPES = ['Robes', 'Hauts', 'Pantalons', 'Jupes', 'Vestes', 'Manteaux', 'Accessoires', 'Chaussures', 'Sacs', 'Bijoux', 'Enfant'];
 
+interface SumUpConfig {
+  environment: string;
+  api_key_set: boolean;
+  merchant_code_set: boolean;
+  merchant_code_masked: string;
+  sandbox_auto_delay_sec: number;
+  api_base: string;
+}
+
+interface SandboxCheckout {
+  checkout_id: string;
+  checkout_reference: string;
+  amount: number;
+  currency: string;
+  description: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
+  auto_approve_in: number | null;
+  manual_override: boolean;
+}
+
+interface SandboxEvent {
+  timestamp: number;
+  iso_time: string;
+  kind: string;
+  checkout_id: string;
+  status: string;
+  payload: Record<string, unknown>;
+}
+
+interface SandboxSnapshot {
+  config: SumUpConfig;
+  checkouts: SandboxCheckout[];
+  events: SandboxEvent[];
+}
+
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'store' | 'categories' | 'zones' | 'system'>('store');
+  const [tab, setTab] = useState<'store' | 'payment' | 'cahier' | 'categories' | 'zones' | 'system'>('store');
+
+  // Cahier de Travail state
+  const now = new Date();
+  const [cahierYear, setCahierYear] = useState(now.getFullYear());
+  const [cahierMonth, setCahierMonth] = useState(now.getMonth() + 1);
+  const [cahierTarget, setCahierTarget] = useState('');
+  const [cahierNotes, setCahierNotes] = useState('');
+  const [cahierWeights, setCahierWeights] = useState<{
+    weights: number[];
+    weekdays: string[];
+    source: string;
+    sample_size_weeks: number;
+    computed_at: string;
+  } | null>(null);
+  const [cahierLoading, setCahierLoading] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+
+  // SumUp sandbox state
+  const [sandbox, setSandbox] = useState<SandboxSnapshot | null>(null);
+  const [sandboxTestAmount, setSandboxTestAmount] = useState('12.50');
 
   // New category form
   const [newCatName, setNewCatName] = useState('');
@@ -46,7 +102,54 @@ export default function SettingsPage() {
   useEffect(() => {
     if (tab === 'categories') loadCategories();
     if (tab === 'zones') loadZones();
+    if (tab === 'cahier') loadCahierData();
   }, [tab]);
+
+  // ── SumUp sandbox: auto-refresh snapshot every 2s while payment tab is open ──
+  useEffect(() => {
+    if (tab !== 'payment') return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const res = await api.get('/api/pos/payments/cb/sandbox/state?limit=40');
+        if (!cancelled && res.ok) setSandbox(await res.json());
+      } catch { /* silent */ }
+    };
+    refresh();
+    const handle = setInterval(refresh, 2000);
+    return () => { cancelled = true; clearInterval(handle); };
+  }, [tab]);
+
+  const runSandboxTest = async () => {
+    setError('');
+    const amount = parseFloat(sandboxTestAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setError('Montant invalide');
+      return;
+    }
+    try {
+      const res = await api.post('/api/pos/payments/cb/sandbox/test', {
+        amount,
+        description: 'Test sandbox depuis Parametres',
+      });
+      if (!res.ok) setError('Erreur lors du test sandbox');
+    } catch { setError('Erreur de connexion'); }
+  };
+
+  const approveSandbox = async (checkoutId: string) => {
+    try { await api.post(`/api/pos/payments/cb/sandbox/${checkoutId}/approve`, {}); }
+    catch { setError('Erreur approbation'); }
+  };
+
+  const declineSandbox = async (checkoutId: string) => {
+    try { await api.post(`/api/pos/payments/cb/sandbox/${checkoutId}/decline`, {}); }
+    catch { setError('Erreur refus'); }
+  };
+
+  const clearSandbox = async () => {
+    try { await api.post('/api/pos/payments/cb/sandbox/clear', {}); }
+    catch { setError('Erreur reset'); }
+  };
 
   const loadCategories = async () => {
     setLoading(true);
@@ -180,6 +283,59 @@ export default function SettingsPage() {
     setLoading(false);
   };
 
+  const loadCahierData = async () => {
+    setCahierLoading(true);
+    try {
+      const [targetRes, weightsRes] = await Promise.all([
+        api.get(`/api/cahier/monthly-target/${cahierYear}/${cahierMonth}`),
+        api.get('/api/cahier/weekday-weights'),
+      ]);
+      if (targetRes.ok) {
+        const t = await targetRes.json();
+        setCahierTarget(t.target_eur != null ? String(t.target_eur) : '');
+        setCahierNotes(t.notes || '');
+      }
+      if (weightsRes.ok) {
+        setCahierWeights(await weightsRes.json());
+      }
+    } finally {
+      setCahierLoading(false);
+    }
+  };
+
+  const saveCahierTarget = async () => {
+    const value = parseFloat(cahierTarget);
+    if (!Number.isFinite(value) || value < 0) {
+      setError("Montant invalide");
+      return;
+    }
+    setCahierLoading(true);
+    const res = await api.put('/api/cahier/monthly-target', {
+      year: cahierYear,
+      month: cahierMonth,
+      target_eur: value,
+      notes: cahierNotes || null,
+    });
+    if (res.ok) {
+      setMessage(`Objectif ${cahierMonth}/${cahierYear} enregistre : ${value.toLocaleString('fr-FR')} €`);
+      setTimeout(() => setMessage(''), 3000);
+    } else {
+      setError('Erreur enregistrement objectif');
+    }
+    setCahierLoading(false);
+  };
+
+  const recomputeWeights = async () => {
+    setCahierLoading(true);
+    const res = await api.get('/api/cahier/weekday-weights?recompute=1');
+    if (res.ok) {
+      setCahierWeights(await res.json());
+      setMessage('Poids recalcules');
+      setTimeout(() => setMessage(''), 3000);
+    }
+    setCahierLoading(false);
+  };
+
   const initZones = async () => {
     setLoading(true);
     const res = await api.post('/api/ai/mapping/init-zones', {});
@@ -193,10 +349,19 @@ export default function SettingsPage() {
 
   const tabs = [
     { key: 'store' as const, label: 'Boutique' },
+    { key: 'payment' as const, label: 'Paiement' },
+    { key: 'cahier' as const, label: 'Cahier de travail' },
     { key: 'categories' as const, label: 'Categories' },
     { key: 'zones' as const, label: 'Zones' },
     { key: 'system' as const, label: 'Systeme' },
   ];
+
+  // Zones tab now redirects to dedicated /zones page (plan 2D + dashboards per zone).
+  useEffect(() => {
+    if (tab === 'zones' && typeof window !== 'undefined') {
+      window.location.href = '/zones';
+    }
+  }, [tab]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -280,6 +445,11 @@ export default function SettingsPage() {
                   <p className="font-medium text-black">CB, Especes, Cheque, Virement</p>
                 </div>
               </div>
+              <div className="mt-4">
+                <Button variant="outline" onClick={() => setTab('payment')}>
+                  Configurer / tester le sandbox SumUp
+                </Button>
+              </div>
             </Card>
 
             <Card title="Domaines">
@@ -297,6 +467,175 @@ export default function SettingsPage() {
                   <p className="font-medium text-teal">api.vintiz.fr</p>
                 </div>
               </div>
+            </Card>
+          </div>
+        )}
+
+        {/* PAYMENT TAB */}
+        {tab === 'payment' && (
+          <div className="space-y-6">
+            <Card title="Configuration SumUp">
+              {!sandbox ? (
+                <p className="text-sm text-gray-500">Chargement...</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-sm">
+                  <div>
+                    <p className="text-gray-500 mb-1">Environnement</p>
+                    <p className="font-medium text-black">
+                      <span
+                        className={`inline-block px-2 py-1 rounded ${
+                          sandbox.config.environment === 'production'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {sandbox.config.environment.toUpperCase()}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Base API</p>
+                    <p className="font-mono text-black text-xs">{sandbox.config.api_base}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Cle API</p>
+                    <p className="font-medium text-black">
+                      {sandbox.config.api_key_set ? 'Definie' : 'Non definie (mode simulation)'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Merchant code</p>
+                    <p className="font-mono text-black">
+                      {sandbox.config.merchant_code_set ? sandbox.config.merchant_code_masked : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 mb-1">Delai auto PAID (sandbox)</p>
+                    <p className="font-medium text-black">{sandbox.config.sandbox_auto_delay_sec} s</p>
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-gray-500 mt-4">
+                Variables d&apos;environnement : <code className="font-mono">SUMUP_ENVIRONMENT</code>,{' '}
+                <code className="font-mono">SUMUP_API_KEY</code>,{' '}
+                <code className="font-mono">SUMUP_MERCHANT_CODE</code>,{' '}
+                <code className="font-mono">SUMUP_SANDBOX_AUTO_DELAY_SEC</code>.
+              </p>
+            </Card>
+
+            <Card title="Simulation de paiement">
+              <p className="text-sm text-gray-500 mb-4">
+                Cree un checkout sandbox. Le flux reproduit ce qui se passe depuis la caisse
+                lorsque vous cliquez sur CB : envoi du montant et de la reference, puis polling
+                du statut toutes les 3 secondes jusqu&apos;a PAID ou FAILED.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <Input
+                    type="number"
+                    value={sandboxTestAmount}
+                    onChange={(e) => setSandboxTestAmount(e.target.value)}
+                    placeholder="Montant EUR"
+                  />
+                </div>
+                <Button onClick={runSandboxTest}>Lancer un paiement test</Button>
+                <Button variant="outline" onClick={clearSandbox}>Vider le journal</Button>
+              </div>
+            </Card>
+
+            <Card title="Checkouts actifs">
+              {!sandbox || sandbox.checkouts.length === 0 ? (
+                <p className="text-sm text-gray-400">Aucun checkout en cours.</p>
+              ) : (
+                <div className="space-y-2">
+                  {sandbox.checkouts.map((c) => (
+                    <div
+                      key={c.checkout_id}
+                      className="flex items-center justify-between border border-gray-200 rounded-lg p-3"
+                    >
+                      <div className="text-sm">
+                        <div className="font-mono text-black">{c.checkout_id}</div>
+                        <div className="text-gray-500">
+                          {c.amount.toFixed(2)} {c.currency} — {c.description}
+                        </div>
+                        <div className="mt-1">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                              c.status === 'PAID'
+                                ? 'bg-green-100 text-green-800'
+                                : c.status === 'FAILED' || c.status === 'CANCELLED'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {c.status}
+                          </span>
+                          {c.auto_approve_in != null && c.status === 'PENDING' && (
+                            <span className="text-xs text-gray-500 ml-2">
+                              auto-PAID dans {c.auto_approve_in}s
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {c.status === 'PENDING' && (
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => approveSandbox(c.checkout_id)}
+                          >
+                            Approuver
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => declineSandbox(c.checkout_id)}
+                          >
+                            Refuser
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            <Card title="Journal des evenements (live)">
+              <p className="text-xs text-gray-500 mb-3">
+                Rafraichi toutes les 2 secondes. Utile pour verifier que la caisse transmet bien
+                les bonnes informations (montant, reference, description, polling).
+              </p>
+              {!sandbox || sandbox.events.length === 0 ? (
+                <p className="text-sm text-gray-400">Aucun evenement.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-200 text-gray-500">
+                        <th className="py-2 pr-2">Heure</th>
+                        <th className="py-2 pr-2">Type</th>
+                        <th className="py-2 pr-2">Checkout</th>
+                        <th className="py-2 pr-2">Statut</th>
+                        <th className="py-2">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sandbox.events.map((e, i) => (
+                        <tr key={i} className="border-b border-gray-100">
+                          <td className="py-2 pr-2 font-mono text-gray-500">{e.iso_time}</td>
+                          <td className="py-2 pr-2 font-medium text-black">{e.kind}</td>
+                          <td className="py-2 pr-2 font-mono">{e.checkout_id}</td>
+                          <td className="py-2 pr-2">{e.status}</td>
+                          <td className="py-2 font-mono text-gray-600">
+                            {Object.keys(e.payload).length > 0
+                              ? JSON.stringify(e.payload)
+                              : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </Card>
           </div>
         )}
@@ -450,6 +789,147 @@ export default function SettingsPage() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* CAHIER TAB */}
+        {tab === 'cahier' && (
+          <div className="space-y-6">
+            <Card title="Objectif mensuel de CA">
+              <p className="text-sm text-gray-500 mb-4">
+                Saisissez l&apos;objectif de chiffre d&apos;affaires du mois. Il est
+                automatiquement reparti sur chaque journee selon le poids
+                historique des jours de la semaine.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-500 mb-1">Annee</label>
+                  <Input
+                    type="number"
+                    value={cahierYear}
+                    onChange={(e) => setCahierYear(parseInt(e.target.value) || now.getFullYear())}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-500 mb-1">Mois</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={cahierMonth}
+                    onChange={(e) => setCahierMonth(parseInt(e.target.value))}
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <option key={m} value={m}>
+                        {new Date(2000, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long' })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-500 mb-1">Objectif CA (€)</label>
+                  <Input
+                    type="number"
+                    value={cahierTarget}
+                    onChange={(e) => setCahierTarget(e.target.value)}
+                    placeholder="ex : 8000"
+                  />
+                </div>
+              </div>
+              <div className="mt-4">
+                <label className="block text-sm text-gray-500 mb-1">Notes (optionnel)</label>
+                <Input
+                  type="text"
+                  value={cahierNotes}
+                  onChange={(e) => setCahierNotes(e.target.value)}
+                  placeholder="ex : boost printemps"
+                />
+              </div>
+              <div className="mt-4 flex gap-2">
+                <Button onClick={saveCahierTarget} disabled={cahierLoading}>
+                  {cahierLoading ? 'Enregistrement...' : 'Enregistrer'}
+                </Button>
+                <Button variant="outline" onClick={loadCahierData} disabled={cahierLoading}>
+                  Recharger
+                </Button>
+              </div>
+            </Card>
+
+            <Card title="Distribution des ventes par jour de la semaine">
+              <p className="text-sm text-gray-500 mb-4">
+                Poids calcules automatiquement a partir des 12 dernieres semaines
+                de ventes. En cas de donnees insuffisantes, un profil par defaut
+                retail mode est applique.
+              </p>
+              {cahierWeights && (
+                <>
+                  <div className="flex items-end gap-2 h-32 mb-4">
+                    {cahierWeights.weights.map((w, i) => (
+                      <div key={i} className="flex-1 flex flex-col items-center">
+                        <div className="flex-1 w-full flex items-end">
+                          <div
+                            className="w-full bg-teal rounded-t"
+                            style={{ height: `${Math.max(4, w * 300)}%` }}
+                            title={`${(w * 100).toFixed(1)}%`}
+                          />
+                        </div>
+                        <div className="text-[10px] text-gray-500 mt-1 capitalize">
+                          {cahierWeights.weekdays[i].slice(0, 3)}
+                        </div>
+                        <div className="text-[10px] font-medium text-black">
+                          {(w * 100).toFixed(0)}%
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between items-center text-xs text-gray-500">
+                    <span>
+                      Source :{' '}
+                      <span className={cahierWeights.source === 'historical' ? 'text-teal font-medium' : 'text-amber-600 font-medium'}>
+                        {cahierWeights.source === 'historical'
+                          ? `${cahierWeights.sample_size_weeks} semaines historiques`
+                          : 'Profil par defaut (pas assez de donnees)'}
+                      </span>
+                    </span>
+                    <Button variant="outline" onClick={recomputeWeights} disabled={cahierLoading}>
+                      Recalculer
+                    </Button>
+                  </div>
+                </>
+              )}
+            </Card>
+
+            <Card title="Apercu des objectifs du mois">
+              <p className="text-sm text-gray-500 mb-3">
+                Somme des objectifs journaliers = objectif mensuel. Samedi
+                concentre le plus gros de l&apos;objectif, lundi le moins.
+              </p>
+              {cahierWeights && cahierTarget && (() => {
+                const monthlyTarget = parseFloat(cahierTarget) || 0;
+                const daysInMonth = new Date(cahierYear, cahierMonth, 0).getDate();
+                const occurrences = [0, 0, 0, 0, 0, 0, 0];
+                for (let d = 1; d <= daysInMonth; d++) {
+                  const jsWd = new Date(cahierYear, cahierMonth - 1, d).getDay();
+                  const wd = (jsWd + 6) % 7; // convert JS Sunday=0 to Monday=0
+                  occurrences[wd]++;
+                }
+                const totalWeight = cahierWeights.weights.reduce(
+                  (acc, w, i) => acc + w * occurrences[i],
+                  0,
+                ) || 1;
+                return (
+                  <div className="grid grid-cols-7 gap-2 text-xs">
+                    {cahierWeights.weekdays.map((label, i) => {
+                      const dailyTarget = monthlyTarget * cahierWeights.weights[i] / totalWeight;
+                      return (
+                        <div key={i} className="text-center">
+                          <div className="text-gray-500 capitalize">{label.slice(0, 3)}</div>
+                          <div className="text-teal font-bold font-mono">{dailyTarget.toFixed(0)} €</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </Card>
           </div>
         )}
 

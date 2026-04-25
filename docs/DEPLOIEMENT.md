@@ -1,4 +1,4 @@
-# Guide de deploiement Vintiz V3
+# Guide de deploiement Vintiz
 
 ## Pre-requis serveur (VPS Scaleway)
 
@@ -32,6 +32,7 @@ nano .env
 # → Remplir SECRET_KEY (openssl rand -hex 32)
 # → Remplir ANTHROPIC_API_KEY
 # → Mettre a jour DATABASE_URL avec le mot de passe choisi
+# → Configurer SumUp (voir section « Hardware POS » ci-dessous)
 
 # 3. Premier deploiement
 chmod +x scripts/deploy.sh scripts/backup.sh
@@ -64,8 +65,69 @@ docker compose -f docker/docker-compose.prod.yml logs -f
 
 ```bash
 cd /opt/vintiz
-./scripts/deploy.sh
+./scripts/deploy.sh                   # maj code + migrations Alembic
+./scripts/deploy.sh --test-products   # maj + seed 15 produits de test POS
+./scripts/deploy.sh --first-run       # premier deploiement (+ seed 300 produits)
+./scripts/deploy.sh --rollback        # retour version precedente
 ```
+
+## Hardware POS — mise en service boutique
+
+### 1. Configuration SumUp (`.env`)
+
+```env
+SUMUP_ENVIRONMENT=sandbox         # sandbox | production
+SUMUP_API_KEY=                    # vide → simulation en memoire
+SUMUP_MERCHANT_CODE=
+SUMUP_SANDBOX_AUTO_DELAY_SEC=5    # 0 = approbation manuelle
+```
+
+Trois modes :
+
+- **production** — appels reels api.sumup.com (frais SumUp). Necessite cle
+  production + merchant code.
+- **sandbox** — cle SumUp sandbox, appels API reels en mode test.
+- **simulation** (defaut sans cle) — sandbox en memoire. Event log visible
+  dans `/settings > Paiement`, approve/decline manuel par checkout, transition
+  PENDING → PAID apres `SUMUP_SANDBOX_AUTO_DELAY_SEC` secondes.
+
+### 2. Seeder les 15 produits de test
+
+```bash
+# Sur le VPS
+cd /opt/vintiz
+./scripts/deploy.sh --test-products
+# ou directement dans le conteneur
+docker exec vintiz-api python scripts/seed_test_products.py
+```
+
+Les 15 codes-barres Code 128 (TEST0001 → TEST0015) sont dans le repo :
+`docs/POS_TEST_BARCODES.md` + `docs/test_barcodes/*.png`.
+
+### 3. Cote physique (boutique)
+
+| Materiel | Branchement |
+|---|---|
+| iPad | Safari → `https://app.vintiz.fr/pos` |
+| Douchette Inateck 160B | USB HID (adaptateur Lightning/USB-C sur iPad) |
+| Imprimante 80 mm | AirPrint (Wi-Fi) + option « open drawer on print » |
+| Tiroir-caisse | RJ11 branche sur l'imprimante |
+| TPE SumUp Solo | Compte SumUp (sandbox ou production) |
+
+### 4. Verification
+
+```bash
+# Config SumUp active (necessite authentification)
+curl -H "Authorization: Bearer <TOKEN>" https://api.vintiz.fr/api/pos/payments/cb/sandbox/config
+# → { "environment": "sandbox", "api_key_set": false, ... }
+
+# Produit test present
+curl https://api.vintiz.fr/api/inventory/products/search?q=TEST0001 \
+     -H "Authorization: Bearer <TOKEN>"
+```
+
+Sur l'iPad : scanner `TEST0001` → produit ajoute au panier → *Encaisser*
+especes → *Imprimer* → ticket papier + ouverture tiroir = OK.
 
 ## Acces par defaut
 

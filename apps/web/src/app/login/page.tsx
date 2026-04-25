@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -11,6 +11,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // If already authenticated, skip login.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (localStorage.getItem('token')) router.replace('/dashboard');
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,8 +50,15 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="font-serif text-4xl font-bold text-pink mb-2">Vintiz</h1>
-          <p className="text-gray-500">Connexion au back-office</p>
+          <img
+            src="/logo-teal.png"
+            alt="Vintiz"
+            className="h-28 w-auto mx-auto mb-3 select-none"
+            draggable={false}
+          />
+          <p className="font-display text-xs tracking-[0.3em] text-gray-500 uppercase">
+            Connexion au back-office
+          </p>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm p-8">

@@ -38,6 +38,7 @@ interface Product {
   week_number: number | null;
   shelf_date: string | null;
   zone_name: string | null;
+  photo_url?: string | null;
 }
 
 function formatShelfDate(dateStr: string | null): string {
@@ -208,6 +209,7 @@ export default function InventoryPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-3 py-3 text-sm font-semibold text-gray-600 w-14">Photo</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Nom</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Code</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Categorie</th>
@@ -231,6 +233,22 @@ export default function InventoryPage() {
                       className="border-b border-gray-100 hover:bg-pink-50 transition-colors cursor-pointer"
                       onClick={() => router.push('/inventory/' + p.id)}
                     >
+                      <td className="px-3 py-2">
+                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0">
+                          {p.photo_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={p.photo_url} alt={p.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                          ) : (
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="1.5">
+                              <rect x="3" y="3" width="18" height="18" rx="2"/>
+                              <circle cx="8.5" cy="8.5" r="1.5"/>
+                              <polyline points="21 15 16 10 5 21"/>
+                            </svg>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-sm font-medium text-black">{p.name}</td>
                       <td className="px-4 py-3 text-sm text-gray-500 font-mono text-xs">{p.barcode}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{getCategoryName(p)}</td>

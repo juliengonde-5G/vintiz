@@ -1,11 +1,28 @@
 import type { Metadata, Viewport } from "next";
+import { Lexend_Mega, Poppins } from "next/font/google";
+import CompanionDrawer from "@/components/ai/CompanionDrawer";
 import "./globals.css";
+
+// Charte graphique Vintiz v2 : Lexend Mega (titres) + Poppins (texte).
+const lexendMega = Lexend_Mega({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-body",
+  display: "swap",
+});
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#E8B4D0",
+  themeColor: "#008678",
 };
 
 export const metadata: Metadata = {
@@ -25,13 +42,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr">
+    <html lang="fr" className={`${lexendMega.variable} ${poppins.variable}`}>
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
       </head>
       <body className="font-sans antialiased bg-background text-foreground">
         {children}
+        <CompanionDrawer />
       </body>
     </html>
   );

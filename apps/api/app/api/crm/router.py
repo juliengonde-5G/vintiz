@@ -168,8 +168,11 @@ async def list_clients(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List clients with optional search."""
-    query = select(Client)
+    """List clients with optional search. Uses an outerjoin to avoid selectin chain."""
+    query = (
+        select(Client, LoyaltyAccount.points, LoyaltyAccount.tier)
+        .outerjoin(LoyaltyAccount, LoyaltyAccount.client_id == Client.id)
+    )
     if search:
         pattern = f"%{search}%"
         query = query.where(
@@ -182,17 +185,21 @@ async def list_clients(
         )
     query = query.order_by(Client.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(query)
-    clients = result.scalars().all()
+    rows = result.all()
     return [
         {
-            "id": str(c.id),
-            "first_name": c.first_name,
-            "last_name": c.last_name,
-            "phone": c.phone,
-            "email": c.email,
-            "has_loyalty": c.loyalty_account is not None,
+            "id": str(row.Client.id),
+            "first_name": row.Client.first_name,
+            "last_name": row.Client.last_name,
+            "phone": row.Client.phone,
+            "email": row.Client.email,
+            "email_optin": row.Client.email_optin,
+            "sms_optin": row.Client.sms_optin,
+            "loyalty_active": row.points is not None,
+            "loyalty_points": row.points or 0,
+            "loyalty_tier": row.tier or "bronze",
         }
-        for c in clients
+        for row in rows
     ]
 
 

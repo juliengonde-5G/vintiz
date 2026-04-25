@@ -158,28 +158,15 @@ async def seed_data(
         messages.append("[done] Created supplier: Frip and Co")
 
     # --- Store zones (aligned with ai_mapping DEFAULT_ZONES + floor plan) ---
+    from app.services.ai_mapping import DEFAULT_ZONES
     zone_result = await db.execute(select(StoreZone).limit(1))
     if zone_result.scalar_one_or_none():
         messages.append("[skip] Store zones already exist.")
     else:
-        zones = [
-            ("Vitrine gauche", "Exposition exterieure cote gauche", 6),
-            ("Podium entree", "Zone mise en avant a l'entree (6.5m2)", 10),
-            ("Mur gauche", "Barres murales portants lineaires", 30),
-            ("Mur droit", "Zone meuble caisse + stockage", 15),
-            ("Mur fond", "Barres murales + etageres bois", 25),
-            ("Zone centrale", "Autour du pilier - portants libres", 20),
-            ("Cabine essayage", "Zone fond boutique - suggestions", 0),
-        ]
-        for name, description, capacity in zones:
-            zone = StoreZone(
-                name=name,
-                description=description,
-                capacity=capacity,
-            )
-            db.add(zone)
+        for zone_data in DEFAULT_ZONES:
+            db.add(StoreZone(**zone_data))
         await db.flush()
-        messages.append(f"[done] Created {len(zones)} store zones.")
+        messages.append(f"[done] Created {len(DEFAULT_ZONES)} store zones.")
 
     await db.commit()
     return {"status": "ok", "messages": messages}
@@ -638,11 +625,77 @@ async def _reset_data_impl(db: AsyncSession):
 # ---------------------------------------------------------------------------
 
 @router.get("/weather")
-async def get_weather(current_user: Annotated[User, Depends(get_current_user)]):
-    """Get current weather and forecast for Vernon."""
+async def get_weather(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Get current weather and forecast for Vernon. Saves snapshot to history."""
     from app.services.weather_service import get_current_weather, get_weather_forecast
+    from app.models.audit import Settings
+
     current, forecast = await asyncio.gather(get_current_weather(), get_weather_forecast())
-    return {"current": current, "forecast": forecast}
+
+    # Save weather snapshot to history (stored in Settings as JSON array)
+    import json as _json
+    from datetime import date as _date
+
+    weather_data = {"current": current, "forecast": forecast}
+
+    try:
+        # Load existing history
+        history_setting = await db.execute(select(Settings).where(Settings.key == "weather_history"))
+        setting = history_setting.scalar_one_or_none()
+
+        today_str = str(_date.today())
+        snapshot = {
+            "date": today_str,
+            "temp": current.get("temp", 0),
+            "description": current.get("description", ""),
+            "icon": current.get("icon", "01d"),
+            "temp_min": current.get("temp_min", current.get("temp", 0)),
+            "temp_max": current.get("temp_max", current.get("temp", 0)),
+            "humidity": current.get("humidity", 0),
+            "wind_speed": current.get("wind_speed", 0),
+        }
+
+        if setting:
+            history = _json.loads(setting.value or "[]")
+            # Update today's snapshot or append
+            history = [h for h in history if h.get("date") != today_str]
+            history.append(snapshot)
+            # Keep last 30 days
+            history = sorted(history, key=lambda x: x["date"])[-30:]
+            setting.value = _json.dumps(history)
+        else:
+            db.add(Settings(key="weather_history", value=_json.dumps([snapshot])))
+
+        await db.commit()
+    except Exception:
+        pass  # History storage is non-critical
+
+    return weather_data
+
+
+@router.get("/weather/history")
+async def get_weather_history(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Get historical weather snapshots for Vernon (last 30 days)."""
+    import json as _json
+    from app.models.audit import Settings
+
+    setting_result = await db.execute(select(Settings).where(Settings.key == "weather_history"))
+    setting = setting_result.scalar_one_or_none()
+
+    if not setting or not setting.value:
+        return {"history": []}
+
+    try:
+        history = _json.loads(setting.value)
+        return {"history": history}
+    except Exception:
+        return {"history": []}
 
 
 # ---------------------------------------------------------------------------
@@ -655,6 +708,15 @@ class ZoneCreate(BaseModel):
     capacity: int = 0
     product_types: List[str] | None = None
     color_code: str | None = "#1A7A6A"
+    pos_x: int | None = None
+    pos_y: int | None = None
+    width: int | None = None
+    height: int | None = None
+    shape: str | None = None
+    icon: str | None = None
+    photo_url: str | None = None
+    sales_target_monthly: float | None = None
+    display_order: int | None = None
 
 
 class ZoneUpdate(BaseModel):
@@ -663,6 +725,56 @@ class ZoneUpdate(BaseModel):
     capacity: int | None = None
     product_types: List[str] | None = None
     color_code: str | None = None
+    pos_x: int | None = None
+    pos_y: int | None = None
+    width: int | None = None
+    height: int | None = None
+    shape: str | None = None
+    icon: str | None = None
+    photo_url: str | None = None
+    sales_target_monthly: float | None = None
+    display_order: int | None = None
+
+
+class ZoneLayoutItem(BaseModel):
+    id: uuid.UUID
+    pos_x: int
+    pos_y: int
+    width: int
+    height: int
+
+
+class ZoneLayoutPayload(BaseModel):
+    items: List[ZoneLayoutItem]
+
+
+def _serialize_zone(zone: StoreZone, product_count: int | None = None) -> dict:
+    parsed_types = None
+    if zone.product_types:
+        try:
+            parsed_types = json.loads(zone.product_types)
+        except Exception:
+            parsed_types = [zone.product_types]
+    out = {
+        "id": str(zone.id),
+        "name": zone.name,
+        "description": zone.description,
+        "capacity": zone.capacity,
+        "product_types": parsed_types,
+        "color_code": zone.color_code,
+        "pos_x": zone.pos_x,
+        "pos_y": zone.pos_y,
+        "width": zone.width,
+        "height": zone.height,
+        "shape": zone.shape,
+        "icon": zone.icon,
+        "photo_url": zone.photo_url,
+        "sales_target_monthly": float(zone.sales_target_monthly) if zone.sales_target_monthly is not None else None,
+        "display_order": zone.display_order,
+    }
+    if product_count is not None:
+        out["product_count"] = product_count
+    return out
 
 
 @router.get("/zones")
@@ -670,36 +782,19 @@ async def list_zones(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    """List all zones with product count and product types."""
-    result = await db.execute(select(StoreZone))
+    """List all zones with product count and full layout metadata."""
+    result = await db.execute(
+        select(StoreZone).order_by(StoreZone.display_order, StoreZone.name)
+    )
     zones = result.scalars().all()
 
     output = []
     for zone in zones:
-        # Count products assigned to this zone directly via Product.zone_id
         count_result = await db.execute(
             select(func.count(Product.id)).where(Product.zone_id == zone.id)
         )
         product_count = count_result.scalar_one() or 0
-
-        # Parse product_types JSON string back to list
-        parsed_types = None
-        if zone.product_types:
-            try:
-                parsed_types = json.loads(zone.product_types)
-            except Exception:
-                parsed_types = [zone.product_types]
-
-        output.append({
-            "id": str(zone.id),
-            "name": zone.name,
-            "description": zone.description,
-            "capacity": zone.capacity,
-            "product_types": parsed_types,
-            "color_code": zone.color_code,
-            "product_count": product_count,
-        })
-
+        output.append(_serialize_zone(zone, product_count=product_count))
     return output
 
 
@@ -717,19 +812,21 @@ async def create_zone(
         capacity=zone_in.capacity,
         product_types=product_types_json,
         color_code=zone_in.color_code or "#1A7A6A",
+        pos_x=zone_in.pos_x if zone_in.pos_x is not None else 10,
+        pos_y=zone_in.pos_y if zone_in.pos_y is not None else 10,
+        width=zone_in.width if zone_in.width is not None else 20,
+        height=zone_in.height if zone_in.height is not None else 20,
+        shape=zone_in.shape or "rounded",
+        icon=zone_in.icon,
+        photo_url=zone_in.photo_url,
+        sales_target_monthly=zone_in.sales_target_monthly,
+        display_order=zone_in.display_order if zone_in.display_order is not None else 0,
     )
     db.add(zone)
     await db.flush()
     await db.refresh(zone)
     await db.commit()
-    return {
-        "id": str(zone.id),
-        "name": zone.name,
-        "description": zone.description,
-        "capacity": zone.capacity,
-        "product_types": zone_in.product_types,
-        "color_code": zone.color_code,
-    }
+    return _serialize_zone(zone, product_count=0)
 
 
 @router.put("/zones/{zone_id}")
@@ -745,36 +842,233 @@ async def update_zone(
     if zone is None:
         raise HTTPException(status_code=404, detail="Zone not found")
 
-    if zone_in.name is not None:
-        zone.name = zone_in.name
-    if zone_in.description is not None:
-        zone.description = zone_in.description
-    if zone_in.capacity is not None:
-        zone.capacity = zone_in.capacity
-    if zone_in.color_code is not None:
-        zone.color_code = zone_in.color_code
-    if zone_in.product_types is not None:
-        zone.product_types = json.dumps(zone_in.product_types)
+    data = zone_in.model_dump(exclude_unset=True)
+    for field in ("name", "description", "capacity", "color_code", "pos_x", "pos_y",
+                  "width", "height", "shape", "icon", "photo_url",
+                  "sales_target_monthly", "display_order"):
+        if field in data:
+            setattr(zone, field, data[field])
+    if "product_types" in data and data["product_types"] is not None:
+        zone.product_types = json.dumps(data["product_types"])
 
     await db.flush()
     await db.refresh(zone)
     await db.commit()
+    return _serialize_zone(zone)
 
-    parsed_types = None
-    if zone.product_types:
-        try:
-            parsed_types = json.loads(zone.product_types)
-        except Exception:
-            parsed_types = [zone.product_types]
+
+@router.post("/zones/layout")
+async def update_zones_layout(
+    payload: ZoneLayoutPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Batch update zone positions/sizes after drag & drop on the 2D plan."""
+    updated = 0
+    for item in payload.items:
+        result = await db.execute(select(StoreZone).where(StoreZone.id == item.id))
+        zone = result.scalar_one_or_none()
+        if zone is None:
+            continue
+        zone.pos_x = max(0, min(100, item.pos_x))
+        zone.pos_y = max(0, min(100, item.pos_y))
+        zone.width = max(4, min(100, item.width))
+        zone.height = max(4, min(100, item.height))
+        updated += 1
+    await db.commit()
+    return {"updated": updated}
+
+
+@router.get("/zones/{zone_id}/analytics")
+async def zone_analytics(
+    zone_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Return 30-day analytics for a zone: CA, rotation, top products, alerts."""
+    result = await db.execute(select(StoreZone).where(StoreZone.id == zone_id))
+    zone = result.scalar_one_or_none()
+    if zone is None:
+        raise HTTPException(status_code=404, detail="Zone not found")
+
+    now = datetime.now(timezone.utc)
+    start_30 = now - timedelta(days=30)
+    start_60 = now - timedelta(days=60)
+
+    # Active products in zone (stock or display)
+    active_res = await db.execute(
+        select(func.count(Product.id)).where(
+            Product.zone_id == zone_id,
+            Product.status.in_([ProductStatus.stock, ProductStatus.display]),
+        )
+    )
+    active_count = active_res.scalar_one() or 0
+
+    # Products sold from this zone in last 30 days
+    sold_30 = await db.execute(
+        select(
+            func.count(TransactionItem.id),
+            func.coalesce(func.sum(TransactionItem.price), 0),
+        )
+        .join(Product, Product.id == TransactionItem.product_id)
+        .join(Transaction, Transaction.id == TransactionItem.transaction_id)
+        .where(
+            Product.zone_id == zone_id,
+            Transaction.created_at >= start_30,
+            Transaction.type == TransactionType.sale,
+        )
+    )
+    sold_count, sold_revenue = sold_30.one()
+
+    # Previous 30 days (30 → 60) for delta
+    sold_prev = await db.execute(
+        select(
+            func.count(TransactionItem.id),
+            func.coalesce(func.sum(TransactionItem.price), 0),
+        )
+        .join(Product, Product.id == TransactionItem.product_id)
+        .join(Transaction, Transaction.id == TransactionItem.transaction_id)
+        .where(
+            Product.zone_id == zone_id,
+            Transaction.created_at >= start_60,
+            Transaction.created_at < start_30,
+            Transaction.type == TransactionType.sale,
+        )
+    )
+    prev_count, prev_revenue = sold_prev.one()
+
+    # Top 5 products sold from zone
+    top_res = await db.execute(
+        select(
+            Product.id,
+            Product.name,
+            Product.brand,
+            func.count(TransactionItem.id).label("units"),
+            func.coalesce(func.sum(TransactionItem.price), 0).label("revenue"),
+        )
+        .join(TransactionItem, TransactionItem.product_id == Product.id)
+        .join(Transaction, Transaction.id == TransactionItem.transaction_id)
+        .where(
+            Product.zone_id == zone_id,
+            Transaction.created_at >= start_30,
+            Transaction.type == TransactionType.sale,
+        )
+        .group_by(Product.id, Product.name, Product.brand)
+        .order_by(func.count(TransactionItem.id).desc())
+        .limit(5)
+    )
+    top_products = [
+        {
+            "id": str(row.id),
+            "name": row.name,
+            "brand": row.brand,
+            "units": int(row.units),
+            "revenue": float(row.revenue),
+        }
+        for row in top_res
+    ]
+
+    # Alerts
+    alerts: list[dict] = []
+    occupancy_pct = (active_count / zone.capacity * 100.0) if zone.capacity else 0.0
+    if zone.capacity and occupancy_pct < 40:
+        alerts.append({
+            "level": "warning",
+            "code": "sous_occupation",
+            "message": f"Zone sous-remplie ({occupancy_pct:.0f}% de la capacite)",
+        })
+    if zone.capacity and occupancy_pct > 95:
+        alerts.append({
+            "level": "info",
+            "code": "saturation",
+            "message": "Zone satureee — envisage de redistribuer",
+        })
+    stale_cutoff = now - timedelta(days=60)
+    stale_res = await db.execute(
+        select(func.count(Product.id)).where(
+            Product.zone_id == zone_id,
+            Product.status == ProductStatus.display,
+            Product.shelf_date < stale_cutoff,
+        )
+    )
+    stale_count = stale_res.scalar_one() or 0
+    if stale_count > 0:
+        alerts.append({
+            "level": "warning",
+            "code": "stock_age",
+            "message": f"{stale_count} article(s) en rayon depuis plus de 60 jours",
+        })
+
+    # 30-day revenue sparkline (one value per day)
+    spark: list[float] = []
+    for day_offset in range(30, 0, -1):
+        day_start = now - timedelta(days=day_offset)
+        day_end = day_start + timedelta(days=1)
+        day_res = await db.execute(
+            select(func.coalesce(func.sum(TransactionItem.price), 0))
+            .join(Transaction, Transaction.id == TransactionItem.transaction_id)
+            .join(Product, Product.id == TransactionItem.product_id)
+            .where(
+                Product.zone_id == zone_id,
+                Transaction.created_at >= day_start,
+                Transaction.created_at < day_end,
+                Transaction.type == TransactionType.sale,
+            )
+        )
+        spark.append(float(day_res.scalar_one() or 0))
+
+    def _pct_delta(curr: float, prev: float) -> float | None:
+        if prev <= 0:
+            return None
+        return (curr - prev) / prev * 100.0
 
     return {
-        "id": str(zone.id),
-        "name": zone.name,
-        "description": zone.description,
+        "zone_id": str(zone.id),
+        "zone_name": zone.name,
+        "active_products": active_count,
         "capacity": zone.capacity,
-        "product_types": parsed_types,
-        "color_code": zone.color_code,
+        "occupancy_pct": round(occupancy_pct, 1),
+        "revenue_30d": float(sold_revenue or 0),
+        "revenue_prev_30d": float(prev_revenue or 0),
+        "revenue_delta_pct": _pct_delta(float(sold_revenue or 0), float(prev_revenue or 0)),
+        "units_30d": int(sold_count or 0),
+        "units_prev_30d": int(prev_count or 0),
+        "top_products": top_products,
+        "alerts": alerts,
+        "sparkline_30d": spark,
+        "sales_target_monthly": float(zone.sales_target_monthly) if zone.sales_target_monthly else None,
+        "target_reached_pct": (
+            round(float(sold_revenue or 0) / float(zone.sales_target_monthly) * 100.0, 1)
+            if zone.sales_target_monthly and float(zone.sales_target_monthly) > 0
+            else None
+        ),
     }
+
+
+@router.get("/zones/{zone_id}/products")
+async def zone_products(
+    zone_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """List products currently assigned to a zone."""
+    result = await db.execute(
+        select(Product).where(Product.zone_id == zone_id).order_by(Product.shelf_date.desc().nullslast())
+    )
+    products = result.scalars().all()
+    return [
+        {
+            "id": str(p.id),
+            "name": p.name,
+            "brand": p.brand,
+            "status": p.status.value if hasattr(p.status, "value") else str(p.status),
+            "sale_price": float(p.sale_price) if p.sale_price is not None else None,
+            "shelf_date": p.shelf_date.isoformat() if p.shelf_date else None,
+            "photo_url": p.photo_url,
+            "trend_score": float(p.trend_score) if p.trend_score is not None else None,
+        }
+        for p in products
+    ]
 
 
 # ---------------------------------------------------------------------------
