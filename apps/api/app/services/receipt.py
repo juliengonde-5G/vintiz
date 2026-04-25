@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from app.models.pos import Transaction
 
@@ -32,8 +31,17 @@ class ReceiptService:
 
         # Items
         for item in (transaction.items or []):
-            name = f"Article"
-            qty_price = f"{item.quantity} x {float(item.unit_price):.2f}"
+            # Use the linked product's name when available, otherwise fall back
+            # to a generic label (e.g. for free-form quick-sale lines).
+            name = "Article"
+            product = getattr(item, "product", None)
+            if product and getattr(product, "name", None):
+                name = product.name
+            # Truncate long names so the line stays within the receipt width
+            if len(name) > 28:
+                name = name[:27] + "…"
+            lines.append(f"{name:<28}{'':>14}")
+            qty_price = f"  {item.quantity} x {float(item.unit_price):.2f}"
             total = f"{float(item.line_total):.2f} EUR"
             lines.append(f"{qty_price:<28}{total:>14}")
 

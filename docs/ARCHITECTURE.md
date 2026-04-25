@@ -1,4 +1,4 @@
-# Architecture Vintiz V2
+# Architecture Vintiz
 
 ## Vue d'ensemble
 
@@ -14,6 +14,8 @@ Vintiz V2 est le systeme de gestion complet pour la boutique Vintiz a Vernon, sp
 | Back-office  | Next.js 14, React 18, TypeScript   |
 | Site vitrine | Next.js 14, React 18, TypeScript   |
 | IA           | Anthropic Claude (API)             |
+| Paiement CB  | SumUp (production / sandbox / simulation) |
+| Barcode      | python-barcode + Pillow (Code 128) |
 | Infra        | Docker Compose, Scaleway VPS       |
 
 ## Structure monorepo
@@ -76,6 +78,41 @@ Docker Compose orchestre cinq services :
 ./scripts/deploy.sh
 ```
 
+## Architecture POS hardware
+
+Le POS (`apps/web/src/app/pos`) est concu pour fonctionner avec le materiel
+boutique suivant :
+
+```
+                       [ iPad Safari ]
+                     https://app.vintiz.fr
+                              |
+           +------------------+------------------+
+           |                  |                  |
+           v                  v                  v
+  [ Douchette USB HID ]  [ Imprimante 80mm ]  [ TPE SumUp Solo ]
+    Inateck 160B            AirPrint Wi-Fi      Wi-Fi / compte
+  (tape + Entree)         port RJ11 ---> [ Tiroir-caisse ]
+```
+
+Flux d'un encaissement :
+
+1. **Scan** — la douchette tape le barcode + *Enter* dans le champ recherche
+   POS (auto-focus). Le handler resout le code via
+   `GET /api/inventory/products/search?q=…` (match exact sur `barcode` prioritaire,
+   sinon seul resultat) et ajoute au panier.
+2. **Encaisser** — choix du moyen de paiement :
+   - *Especes* — numpad tactile, rendu monnaie calcule.
+   - *CB* — `POST /api/pos/payments/cb/initiate` cree un checkout SumUp,
+     l'UI poll toutes les 3 s jusqu'a `PAID` / `FAILED`.
+   - *Cheque* — saisie libre.
+3. **Validation** — `POST /api/pos/transactions` cree la vente + chaine de
+   hash NF525.
+4. **Ticket** — `GET /api/pos/transactions/{id}/receipt` renvoie un texte 80 mm.
+   Bouton *Imprimer* → `window.print()` AirPrint → l'imprimante declenche le
+   kick pulse RJ11 = tiroir ouvert.
+5. **Cloture** — en fin de journee, fermeture caisse + rapport Z.
+
 ## Conformite NF525
 
 Le systeme de caisse respecte les exigences NF525 :
@@ -99,14 +136,21 @@ Le systeme de caisse respecte les exigences NF525 :
 - Script seed data (admin, categories, grille tarifaire, zones)
 - Deploiement : Caddy reverse proxy, HTTPS, backup automatise
 
-### Phase 2 -- CRM & Reporting avance
+### Phase 2 -- CRM & Reporting avance (LIVREE)
 
 Fidelite client (cagnotte, ventes privees), dashboard analytics, rapports predictifs, integration meteo.
 
-### Phase 3 -- IA Booster
+### Phase 3 -- IA Booster (LIVREE)
 
 Claude Vision (analyse photo produit), scoring tendance, mapping surface de vente, mode styliste cabine, recommandations hebdomadaires.
 
-### Phase 4 -- Site vitrine complet & Social
+### Phase 4 -- Hardware POS (LIVREE)
+
+iPad + douchette Inateck 160B + imprimante 80 mm + tiroir RJ11 + TPE SumUp Solo.
+Handler scanner, impression AirPrint, ouverture tiroir via driver, SumUp
+sandbox avec event log live et approve/decline manuel, 15 produits de test
+pre-integres pour la mise en service (`docs/POS_TEST_BARCODES.md`).
+
+### Phase 5 -- Site vitrine complet & Social
 
 Site vintiz.fr public complet, extranet client, gestion reseaux sociaux, SEO local.

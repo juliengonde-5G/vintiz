@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import CompanionHero from '@/components/ai/CompanionHero';
 import { api } from '@/lib/api';
 
 interface TrendItem {
@@ -487,37 +488,49 @@ export default function IAPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-cream">
       <Sidebar />
-      <main className="md:ml-64 p-6 md:p-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-black">IA Booster</h1>
-          <p className="text-gray-500 mt-1">Intelligence artificielle au service de votre boutique</p>
-        </div>
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8 max-w-7xl">
+        <CompanionHero />
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+          <div className="mb-4 p-3 bg-pink-50 text-pink-700 rounded-lg text-sm">
             {error}
             <button onClick={() => setError('')} className="ml-2 font-bold">&times;</button>
           </div>
         )}
 
-        {/* Tab bar */}
+        {/* Skills */}
+        <div className="mb-4">
+          <p className="text-[11px] tracking-[0.22em] uppercase text-teal font-medium">
+            Tes outils IA
+          </p>
+          <h2 className="font-display font-semibold text-lg text-black mt-0.5">
+            Explorer un domaine
+          </h2>
+        </div>
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
           {tabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg min-h-[44px] whitespace-nowrap transition-colors ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl min-h-[44px] whitespace-nowrap transition-colors ${
                 tab === t.key
-                  ? 'bg-teal text-white font-medium'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                  ? 'bg-teal text-white font-medium shadow-soft'
+                  : 'bg-white text-gray-600 hover:bg-teal-50 hover:text-teal border border-gray-100'
               }`}
             >
               <span>{t.icon}</span>
               <span>{t.label}</span>
             </button>
           ))}
+          <Link
+            href="/ia/marketing"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl min-h-[44px] whitespace-nowrap bg-gradient-signature text-white font-medium shadow-soft hover:shadow-depth transition-all"
+          >
+            <span>📣</span>
+            <span>Rapport marketing</span>
+          </Link>
         </div>
 
         {/* VISION TAB */}

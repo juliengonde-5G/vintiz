@@ -84,12 +84,17 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.site
       args:
-        - NEXT_PUBLIC_API_URL=https://api.vintiz.fr
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://api.vintiz.fr}
+        - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-https://vintiz.fr}
+        - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID:-}
+        - NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION=${NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION:-}
     container_name: vintiz-site
     restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_SITE_URL=https://vintiz.fr
-      - NEXT_PUBLIC_API_URL=https://api.vintiz.fr
+      - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-https://vintiz.fr}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://api.vintiz.fr}
+      - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID:-}
+      - NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION=${NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION:-}
     networks:
       - vintiz-network
 

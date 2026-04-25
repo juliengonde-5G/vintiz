@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.database import engine
+from app.core.logging_config import setup_logging
+from app.core.middleware import RequestIdMiddleware, SecurityHeadersMiddleware
 from app.models import Base
 from app.api.auth.router import router as auth_router
 from app.api.inventory.router import router as inventory_router
@@ -17,7 +19,11 @@ from app.api.reporting.router import router as reporting_router
 from app.api.admin.router import router as admin_router
 from app.api.ai.router import router as ai_router
 from app.api.hardware.router import router as hardware_router
+from app.api.seo.router import router as seo_router
+from app.api.newsletter.router import router as newsletter_router
+from app.api.cahier.router import router as cahier_router
 
+setup_logging()
 logger = logging.getLogger("vintiz")
 
 
@@ -59,11 +65,32 @@ async def _run_monthly_scoring() -> None:
         logger.error("Monthly scoring job failed: %s", exc)
 
 
+_RUNTIME_MIGRATIONS = [
+    # Store zones — plan 2D layout columns (added 2026-04)
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS pos_x INTEGER NOT NULL DEFAULT 10",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS pos_y INTEGER NOT NULL DEFAULT 10",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS width INTEGER NOT NULL DEFAULT 20",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS height INTEGER NOT NULL DEFAULT 20",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS shape VARCHAR(20) NOT NULL DEFAULT 'rounded'",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS icon VARCHAR(50)",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS photo_url VARCHAR(500)",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS sales_target_monthly NUMERIC(10, 2)",
+    "ALTER TABLE store_zones ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0",
+]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create all DB tables on startup (idempotent — safe to run on every restart)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Apply lightweight runtime migrations for columns added after initial release.
+        from sqlalchemy import text
+        for stmt in _RUNTIME_MIGRATIONS:
+            try:
+                await conn.execute(text(stmt))
+            except Exception as exc:
+                logger.warning("Runtime migration skipped (%s): %s", stmt, exc)
 
     # Start APScheduler for monthly scoring (1st Wednesday of month at 06:00)
     try:
@@ -95,24 +122,45 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+# Middlewares are applied bottom-up: SecurityHeaders runs last (outermost),
+# then RequestId, then CORS innermost so it touches the actual response.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["x-request-id"],
 )
+app.add_middleware(RequestIdMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
-# Global exception handler — ensures CORS headers are present even on 500
+# Global exception handler — ensures CORS headers are present even on 500.
+# In production we hide the exception type/message to avoid information disclosure;
+# in development we keep them for easier debugging. The full traceback is always logged.
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error("Unhandled exception: %s\n%s", exc, traceback.format_exc())
-    return JSONResponse(
-        status_code=500,
-        content={"detail": f"{type(exc).__name__}: {str(exc)}"},
+    request_id = getattr(request.state, "request_id", "-")
+    logger.error(
+        "[%s] Unhandled exception on %s %s: %s\n%s",
+        request_id,
+        request.method,
+        request.url.path,
+        exc,
+        traceback.format_exc(),
     )
+    if settings.is_production:
+        body = {
+            "detail": "Une erreur interne est survenue.",
+            "request_id": request_id,
+        }
+    else:
+        body = {
+            "detail": f"{type(exc).__name__}: {str(exc)}",
+            "request_id": request_id,
+        }
+    return JSONResponse(status_code=500, content=body)
 
 # Routers
 app.include_router(auth_router, prefix="/api")
@@ -123,6 +171,9 @@ app.include_router(reporting_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
 app.include_router(ai_router, prefix="/api")
 app.include_router(hardware_router, prefix="/api")
+app.include_router(seo_router, prefix="/api")
+app.include_router(newsletter_router, prefix="/api")
+app.include_router(cahier_router, prefix="/api")
 
 
 @app.get("/api/health")

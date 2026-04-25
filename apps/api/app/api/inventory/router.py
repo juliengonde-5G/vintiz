@@ -1,14 +1,14 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.product import Category, Product, ProductStatus
-from app.models.inventory import Supplier, Order, OrderItem
+from app.models.inventory import Supplier, Order
 from app.models.user import User
 from app.schemas.product import (
     CategoryCreate,
@@ -107,8 +107,14 @@ async def search_products(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
     q: str = Query(..., min_length=1, description="Search query"),
+    include_sold: bool = Query(False, description="Inclure aussi les produits vendus/retournés"),
 ):
-    """Search products by name, barcode, or category. Returns max 20 results. Used by POS for quick product lookup."""
+    """Recherche produits par nom, code-barres ou catégorie. Limité à 20 résultats.
+
+    Par défaut, exclut les produits au statut ``sold`` ou ``returned`` (utile
+    pour la caisse — on ne propose que des articles vendables). Passer
+    ``?include_sold=true`` pour inclure tout l'historique (ex: SAV, retours).
+    """
     pattern = f"%{q}%"
     query = (
         select(Product)
@@ -120,8 +126,12 @@ async def search_products(
                 Category.name.ilike(pattern),
             )
         )
-        .limit(20)
     )
+    if not include_sold:
+        query = query.where(
+            Product.status.in_([ProductStatus.stock, ProductStatus.display])
+        )
+    query = query.limit(20)
     result = await db.execute(query)
     products = result.scalars().all()
     return [

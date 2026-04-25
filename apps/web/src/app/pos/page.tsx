@@ -122,6 +122,10 @@ export default function POSPage() {
   // General
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Which cart item has its discount strip expanded (compact layout: hide by
+  // default to fit more items on iPad 1024x768).
+  const [discountOpenIdx, setDiscountOpenIdx] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clientDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -254,6 +258,99 @@ export default function POSPage() {
     setSearchQuery('');
     setSearchResults([]);
   };
+
+  // Barcode scanner (Inateck BCST-60 / 160B USB HID): types the code fast then
+  // sends Enter. We resolve the code → product and add it to the cart.
+  const handleBarcodeScan = useCallback(async (rawCode: string) => {
+    const code = rawCode.trim();
+    if (!code) return;
+    try {
+      const res = await api.get(`/api/inventory/products/search?q=${encodeURIComponent(code)}`);
+      if (!res.ok) { setError(`Produit introuvable pour ${code}`); return; }
+      const data: SearchProduct[] = await res.json();
+      const exact = data.find(p => p.barcode === code);
+      const hit = exact || (data.length === 1 ? data[0] : null);
+      if (!hit) { setError(`Aucune correspondance pour ${code}`); return; }
+      addProductToCart(hit);
+    } catch {
+      setError(`Erreur lecture code-barres ${code}`);
+    }
+  }, []);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const q = searchQuery.trim();
+    if (!q) return;
+    const exact = searchResults.find(p => p.barcode === q);
+    if (exact) { addProductToCart(exact); return; }
+    if (searchResults.length === 1) { addProductToCart(searchResults[0]); return; }
+    handleBarcodeScan(q);
+  };
+
+  // Open the receipt in a print-sized window and trigger the browser print
+  // dialog (AirPrint on iPad). Most thermal printers fire the cash-drawer
+  // kick pulse (RJ11) when a ticket prints — no extra trigger needed.
+  // The logo (public/receipt-logo.png) is rendered at the top of the ticket,
+  // forced to pure black via grayscale+contrast filters so it reads cleanly
+  // on 80 mm thermal paper.
+  const printReceipt = useCallback((text: string) => {
+    const w = window.open('', '_blank', 'width=400,height=700');
+    if (!w) {
+      alert("Impossible d'ouvrir la fenêtre d'impression. Autorisez les pop-ups pour ce site.");
+      return;
+    }
+    const safe = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const logoUrl = `${window.location.origin}/receipt-logo.png`;
+    w.document.write(`<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Ticket Vintiz</title>
+<style>
+  @page { size: 80mm auto; margin: 0; }
+  body { margin: 0; padding: 4mm 3mm; }
+  .logo { display: block; margin: 0 auto 3mm; width: 28mm; height: auto;
+          filter: grayscale(1) contrast(10) brightness(0.9);
+          -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  pre { font-family: 'Courier New', Consolas, monospace; font-size: 12px;
+        line-height: 1.35; white-space: pre-wrap; word-break: break-word; margin: 0; }
+  @media print { body { padding: 0 2mm; } }
+</style></head>
+<body>
+<img class="logo" src="${logoUrl}" alt="Vintiz" onerror="this.style.display='none'">
+<pre>${safe}</pre>
+<script>
+  // Wait for the logo image to load (or fail) before triggering print, so it
+  // is rendered on the first print job instead of being blank on first run.
+  (function() {
+    var img = document.querySelector('.logo');
+    var go = function() { window.focus(); window.print(); };
+    if (!img || img.complete) { go(); }
+    else { img.addEventListener('load', go); img.addEventListener('error', go); }
+  })();
+</script>
+</body></html>`);
+    w.document.close();
+  }, []);
+
+  // Kick the cash drawer without printing a visible ticket. We send a
+  // near-empty print job to the same thermal printer — the printer fires
+  // its RJ11 kick pulse as soon as the print starts, so the drawer opens.
+  // On iPad AirPrint the pop-up window auto-closes after 800 ms.
+  const kickDrawer = useCallback(() => {
+    const w = window.open('', '_blank', 'width=200,height=60');
+    if (!w) return; // silently skip — the Imprimer button will still work
+    w.document.write(`<!doctype html>
+<html><head><meta charset="utf-8"><title>.</title>
+<style>@page { size: 80mm 5mm; margin: 0; } body { margin: 0; }</style></head>
+<body>
+<script>
+  window.onload = function() {
+    try { window.print(); } catch (e) {}
+    setTimeout(function(){ try { window.close(); } catch (e) {} }, 800);
+  };
+</script>
+</body></html>`);
+    w.document.close();
+  }, []);
 
   const addBag = () => {
     setCart(prev => {
@@ -452,6 +549,13 @@ export default function POSPage() {
 
       setShowPayment(false);
       setShowReceipt(true);
+
+      // Cash payment → fire the drawer kick immediately so the cashier can
+      // make change without an extra click. Card / cheque do not open the
+      // drawer automatically; the Imprimer button will, when used.
+      if (payments.some(p => p.method === 'especes')) {
+        kickDrawer();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     }
@@ -519,10 +623,18 @@ export default function POSPage() {
                   : 'Caisse non initialisée'}
               </span>
               {drawer.open ? (
-                <button onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
-                  className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
-                  Clôturer
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={kickDrawer}
+                    title="Ouvrir le tiroir-caisse manuellement"
+                    className="text-xs px-2 py-1 rounded bg-teal text-white hover:bg-teal-700 transition-colors flex items-center gap-1">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="10" width="18" height="10" rx="1"/><path d="M3 10V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"/><line x1="10" y1="15" x2="14" y2="15"/></svg>
+                    Ouvrir tiroir
+                  </button>
+                  <button onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
+                    className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
+                    Clôturer
+                  </button>
+                </div>
               ) : (
                 <button onClick={() => { setDrawerAmount(0); setShowDrawerOpen(true); }}
                   className="text-xs px-2 py-1 rounded bg-teal text-white hover:bg-teal-700 transition-colors">
@@ -601,46 +713,58 @@ export default function POSPage() {
                 const linePrice = item.price * item.quantity;
                 const afterDiscount = linePrice * (1 - item.discount / 100);
                 return (
-                  <div key={idx} className="p-2.5 bg-gray-50 rounded-xl border border-gray-100">
+                  <div key={idx} className="p-2 bg-gray-50 rounded-xl border border-gray-100">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-black truncate">
                           {item.name}
                           {item.isManual && <span className="ml-1 text-xs text-gray-400">(man.)</span>}
                         </p>
-                        <div className="flex items-center gap-1 mt-0.5">
+                        <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-xs text-gray-500">{formatCurrency(item.price)}</span>
-                          {item.discount > 0 && <span className="text-xs text-red-500 font-medium">-{item.discount}%</span>}
+                          <button
+                            onClick={() => setDiscountOpenIdx(discountOpenIdx === idx ? null : idx)}
+                            className={`text-xs px-1.5 py-0.5 rounded-full font-medium transition-colors ${
+                              item.discount > 0
+                                ? 'bg-red-500 text-white'
+                                : 'bg-white border border-gray-200 text-gray-400 hover:border-red-300 hover:text-red-500'
+                            }`}
+                            title="Remise"
+                          >
+                            {item.discount > 0 ? `-${item.discount}%` : '-%'}
+                          </button>
                           <span className="text-xs font-bold text-teal ml-auto">{formatCurrency(afterDiscount)}</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-0.5 flex-shrink-0">
                         <button onClick={() => updateQuantity(idx, -1)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-500">
+                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-500">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         </button>
                         <span className="w-6 text-center text-sm font-bold text-black">{item.quantity}</span>
                         <button onClick={() => updateQuantity(idx, 1)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-500">
+                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-500">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         </button>
                         <button onClick={() => removeFromCart(idx)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 ml-1">
+                          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 ml-1">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         </button>
                       </div>
                     </div>
-                    {/* Discount row */}
-                    <div className="flex items-center gap-1 mt-1.5">
-                      {[0, 5, 10, 15, 20, 30].map(d => (
-                        <button key={d} onClick={() => updateDiscount(idx, d)}
-                          className={`px-2 py-0.5 text-xs rounded-full transition-colors ${
-                            item.discount === d ? 'bg-red-500 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-red-300'
-                          }`}>
-                          {d === 0 ? '—' : `-${d}%`}
-                        </button>
-                      ))}
-                    </div>
+                    {/* Discount strip: only when expanded or a discount is already set */}
+                    {(discountOpenIdx === idx || item.discount > 0) && (
+                      <div className="flex items-center gap-1 mt-1.5">
+                        {[0, 5, 10, 15, 20, 30].map(d => (
+                          <button key={d} onClick={() => { updateDiscount(idx, d); if (d === 0) setDiscountOpenIdx(null); }}
+                            className={`px-2 py-1 text-xs rounded-full transition-colors min-w-[34px] ${
+                              item.discount === d ? 'bg-red-500 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-red-300'
+                            }`}>
+                            {d === 0 ? '0%' : `-${d}%`}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -712,6 +836,7 @@ export default function POSPage() {
                 placeholder="Scanner code-barres ou rechercher un article..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
                 autoFocus
               />
               {searchQuery && (
@@ -1070,13 +1195,19 @@ export default function POSPage() {
       <Modal
         open={showReceipt}
         onClose={handleReceiptClose}
-        title="Ticket de caisse"
+        title="Vente validée"
         actions={
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end w-full">
+            <Button variant="outline" onClick={handleReceiptClose}>
+              Fermer sans ticket
+            </Button>
             <Button onClick={printReceiptOnPrinter} disabled={printing || !receiptTxId} variant="secondary">
               {printing ? 'Impression...' : 'Imprimer (MUNBYN)'}
             </Button>
-            <Button onClick={handleReceiptClose}>Fermer</Button>
+            <Button onClick={() => { printReceipt(receiptText); handleReceiptClose(); }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              Imprimer (AirPrint)
+            </Button>
           </div>
         }
       >

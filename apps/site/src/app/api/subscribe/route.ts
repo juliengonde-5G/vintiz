@@ -1,44 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
 
-const SUBSCRIBERS_PATH = path.join(
-  process.cwd(),
-  "..",
-  "..",
-  "data",
-  "subscribers.json"
-);
-
-function isValidEmail(email: string): boolean {
-  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return re.test(email);
-}
-
-function readSubscribers(): string[] {
-  try {
-    if (fs.existsSync(SUBSCRIBERS_PATH)) {
-      const data = fs.readFileSync(SUBSCRIBERS_PATH, "utf-8");
-      return JSON.parse(data);
-    }
-  } catch {
-    // If file is corrupted, start fresh
-  }
-  return [];
-}
-
-function writeSubscribers(subscribers: string[]): void {
-  const dir = path.dirname(SUBSCRIBERS_PATH);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  fs.writeFileSync(SUBSCRIBERS_PATH, JSON.stringify(subscribers, null, 2));
-}
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email } = body;
+    const { email, consent, source } = body ?? {};
 
     if (!email || typeof email !== "string") {
       return NextResponse.json(
@@ -46,30 +13,36 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const trimmedEmail = email.trim().toLowerCase();
-
-    if (!isValidEmail(trimmedEmail)) {
+    if (consent !== true) {
       return NextResponse.json(
-        { error: "L'adresse email n'est pas valide." },
+        { error: "Le consentement est obligatoire." },
         { status: 400 }
       );
     }
 
-    const subscribers = readSubscribers();
+    const forwarded = request.headers.get("x-forwarded-for");
 
-    if (subscribers.includes(trimmedEmail)) {
-      return NextResponse.json(
-        { message: "Vous êtes déjà inscrit(e) ! Nous vous tiendrons informé(e)." },
-        { status: 200 }
-      );
+    const upstream = await fetch(`${API_URL}/api/newsletter/subscribe`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(forwarded ? { "x-forwarded-for": forwarded } : {}),
+      },
+      body: JSON.stringify({ email, consent: true, source: source ?? "site_landing" }),
+    });
+
+    const data = await upstream.json().catch(() => ({}));
+
+    if (!upstream.ok) {
+      const detail =
+        typeof data?.detail === "string"
+          ? data.detail
+          : "L'inscription a échoué. Veuillez réessayer.";
+      return NextResponse.json({ error: detail }, { status: upstream.status });
     }
 
-    subscribers.push(trimmedEmail);
-    writeSubscribers(subscribers);
-
     return NextResponse.json(
-      { message: "Merci pour votre inscription ! Nous vous tiendrons informé(e) de l'ouverture." },
+      { message: data.message ?? "Inscription enregistrée." },
       { status: 201 }
     );
   } catch {
