@@ -2,14 +2,11 @@ import hashlib
 import uuid
 from decimal import Decimal
 
-from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pos import (
     CashDrawer,
-    Payment,
-    PaymentMethod,
     Transaction,
     TransactionType,
     ZReport,

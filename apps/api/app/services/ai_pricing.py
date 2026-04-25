@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pos import Transaction, TransactionItem, TransactionType
-from app.models.product import Category, PriceGrid, Product, ProductStatus
+from app.models.product import PriceGrid, Product, ProductStatus
 
 logger = logging.getLogger("vintiz.ai.pricing")
 

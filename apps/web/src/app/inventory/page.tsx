@@ -87,17 +87,33 @@ export default function InventoryPage() {
         setTotal(data.total || 0);
         setTotalPages(data.pages || 1);
         setError('');
+      } else {
+        setError('Impossible de charger les produits');
       }
-    } catch {
-      setError('Erreur de chargement');
+    } catch (e) {
+      console.error('inventory fetch failed', e);
+      setError('Erreur réseau — vérifiez votre connexion');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [currentPage, search, categoryFilter, statusFilter]);
 
   useEffect(() => {
-    api.get('/api/inventory/categories').then(async (res) => {
-      if (res.ok) setCategories(await res.json());
-    });
+    let cancelled = false;
+    api
+      .get('/api/inventory/categories')
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.ok) {
+          setCategories(await res.json());
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) console.error('categories fetch failed', e);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -120,7 +136,7 @@ export default function InventoryPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="md:ml-64 p-6 md:p-8">
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-black">Inventaire</h1>

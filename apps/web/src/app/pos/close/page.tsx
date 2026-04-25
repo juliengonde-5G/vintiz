@@ -129,7 +129,7 @@ export default function CashClosePage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="md:ml-64 p-6 md:p-8">
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8">
         <div className="mb-6">
           <button
             onClick={() => router.back()}

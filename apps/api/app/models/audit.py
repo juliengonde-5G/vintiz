@@ -1,10 +1,11 @@
 import uuid
 
 from sqlalchemy import ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
+from app.models.types import JSONType
 
 
 class AuditLog(Base):
@@ -18,7 +19,7 @@ class AuditLog(Base):
     entity_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
-    data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    data: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
 
 
 class Settings(Base):

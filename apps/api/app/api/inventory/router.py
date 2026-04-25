@@ -1,14 +1,14 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.product import Category, Product, ProductStatus
-from app.models.inventory import Supplier, Order, OrderItem
+from app.models.inventory import Supplier, Order
 from app.models.user import User
 from app.schemas.product import (
     CategoryCreate,

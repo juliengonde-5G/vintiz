@@ -512,11 +512,12 @@ export default function DashboardPage() {
   const fetchDashboard = useCallback(async () => {
     try {
       const res = await api.get('/api/reports/dashboard');
-      if (!res.ok) throw new Error('Erreur lors du chargement');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
       setError('');
-    } catch {
+    } catch (e) {
+      console.error('dashboard fetch failed', e);
       setError('Impossible de charger le tableau de bord. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
@@ -528,8 +529,12 @@ export default function DashboardPage() {
     try {
       const res = await api.get('/api/admin/weather');
       if (res.ok) setWeather(await res.json());
-    } catch { /* weather is optional */ }
-    setWeatherLoading(false);
+    } catch (e) {
+      // Weather is optional — still log so it shows up in browser devtools / Sentry
+      console.warn('weather widget unavailable', e);
+    } finally {
+      setWeatherLoading(false);
+    }
   }, []);
 
   const openTicket = async (id: string) => {
@@ -538,9 +543,14 @@ export default function DashboardPage() {
       const res = await api.get(`/api/pos/transactions/${id}`);
       if (res.ok) {
         setSelectedTicket(await res.json());
+      } else {
+        console.warn('ticket fetch returned', res.status);
       }
-    } catch { /* silent */ }
-    setTicketLoading(false);
+    } catch (e) {
+      console.error('ticket fetch failed', e);
+    } finally {
+      setTicketLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -598,7 +608,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="md:ml-64 p-6 md:p-8">
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-black">Tableau de bord</h1>
           <p className="text-gray-500 mt-1">Bienvenue sur Vintiz</p>

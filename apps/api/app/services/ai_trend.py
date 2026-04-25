@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pos import Transaction, TransactionItem, TransactionType
-from app.models.product import Category, Product, ProductStatus
+from app.models.product import Product, ProductStatus
 
 logger = logging.getLogger("vintiz.ai.trend")
 
@@ -59,17 +59,6 @@ async def compute_trend_scores(db: AsyncSession) -> list[dict]:
 
     # Get total sales for normalization
     total_sales_count = sum(v["count"] for v in category_velocity.values()) or 1
-
-    # Current month for season mapping
-    month = today.month
-    if month in (3, 4, 5):
-        current_season = "mi-saison"
-    elif month in (6, 7, 8):
-        current_season = "ete"
-    elif month in (9, 10, 11):
-        current_season = "mi-saison"
-    else:
-        current_season = "hiver"
 
     scored = []
     for product in products:

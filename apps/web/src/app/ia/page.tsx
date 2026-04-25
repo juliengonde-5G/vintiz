@@ -490,7 +490,7 @@ export default function IAPage() {
   return (
     <div className="min-h-screen bg-cream">
       <Sidebar />
-      <main className="md:ml-64 p-4 md:p-8 max-w-7xl">
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8 max-w-7xl">
         <CompanionHero />
 
         {error && (

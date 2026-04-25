@@ -2,10 +2,11 @@ import uuid
 from datetime import date
 
 from sqlalchemy import Date, Float, ForeignKey, Integer, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.models.types import JSONType
 
 
 class DailyReport(Base):
@@ -22,7 +23,7 @@ class DailyReport(Base):
     net_revenue: Mapped[float] = mapped_column(
         Numeric(10, 2), nullable=False, default=0
     )
-    data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    data: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
 
 
 class CommercialAction(Base):
@@ -33,7 +34,7 @@ class CommercialAction(Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     discount_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0)
-    target_categories: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    target_categories: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
 
     results: Mapped[list["ActionResult"]] = relationship(
         "ActionResult", backref="action", lazy="selectin"

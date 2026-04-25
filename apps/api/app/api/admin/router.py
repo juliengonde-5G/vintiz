@@ -11,7 +11,6 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import engine, get_db
 from app.core.security import RoleChecker, get_current_user, hash_password
 from app.models.base import Base
@@ -177,8 +176,23 @@ async def seed_data(
 async def create_tables(
     x_admin_key: str = Header(..., alias="X-Admin-Key"),
 ):
-    """Create all database tables. Protected by X-Admin-Key header matching SECRET_KEY."""
-    if x_admin_key != settings.SECRET_KEY:
+    """Create all database tables. Protected by a dedicated X-Admin-Key header.
+
+    Reads the expected key from the ADMIN_BOOTSTRAP_KEY environment variable.
+    Refuses to run in production unless ADMIN_BOOTSTRAP_KEY is explicitly set
+    (we no longer alias SECRET_KEY here, which would have allowed anyone with
+    the JWT signing key to forge admin operations).
+    """
+    import os
+    import hmac
+
+    expected = os.getenv("ADMIN_BOOTSTRAP_KEY", "")
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ADMIN_BOOTSTRAP_KEY is not configured on the server.",
+        )
+    if not hmac.compare_digest(x_admin_key, expected):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid admin key",
@@ -329,7 +343,6 @@ async def _generate_test_data_impl(db: AsyncSession):
 
     # 4. Create products with varied dates (simulating 6 weeks of activity)
     created_products: list[Product] = []
-    week_num = now.isocalendar()[1]
 
     for i, p_data in enumerate(TEST_PRODUCTS):
         cat = find_category(p_data["gender"], p_data["cat_kw"])
@@ -561,7 +574,6 @@ async def reset_data(
     current_user: User = Depends(manager_only),
 ):
     """Delete all test data (products, clients, transactions, zones) to allow re-seeding."""
-    import traceback as tb
 
     try:
         return await _reset_data_impl(db)

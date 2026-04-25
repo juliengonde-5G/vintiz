@@ -195,7 +195,7 @@ export default function ProductDetailPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="md:ml-64 p-6 md:p-8">
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
