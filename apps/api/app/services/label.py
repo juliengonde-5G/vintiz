@@ -1,6 +1,57 @@
 import io
+from datetime import datetime, timezone
 
 from PIL import Image, ImageDraw, ImageFont
+
+# Tag colour palette for the life-cycle corner mark (P3-002).
+# Read by Sophie at a glance from across the floor.
+TAG_COLOR_GREEN = "#16a34a"   # nouveau, premier passage
+TAG_COLOR_YELLOW = "#f59e0b"  # discounted (J+30 typically)
+TAG_COLOR_ORANGE = "#ea580c"  # deep_discounted (J+60)
+TAG_COLOR_RED = "#dc2626"     # > 90 jours, retour tri imminent
+TAG_COLOR_GREY = "#9ca3af"    # unknown / not on the floor
+
+# Calibrated against the audit V1 §5.3 buckets and the markdown ladder.
+RED_AGE_THRESHOLD_DAYS = 90
+GREEN_AGE_THRESHOLD_DAYS = 30
+
+
+def life_cycle_tag_color(
+    *,
+    status: str | None,
+    displayed_at: datetime | None,
+    now: datetime | None = None,
+) -> str:
+    """Resolve the corner-tag colour from the product's life-cycle state.
+
+    Decision order:
+      1. discounted   → yellow
+      2. deep_discounted → orange
+      3. displayed for ≥ RED_AGE_THRESHOLD_DAYS → red (return-to-sorting due)
+      4. displayed for ≤ GREEN_AGE_THRESHOLD_DAYS → green (fresh)
+      5. anything else on the floor → yellow (mid-life amber)
+      6. otherwise → grey (intake / sold / donated / returned)
+    """
+    if status in {"discounted"}:
+        return TAG_COLOR_YELLOW
+    if status in {"deep_discounted"}:
+        return TAG_COLOR_ORANGE
+
+    if status not in {"display", "displayed"}:
+        return TAG_COLOR_GREY
+
+    if displayed_at is None:
+        return TAG_COLOR_GREEN  # just hit the floor today, no anchor yet
+
+    now = now or datetime.now(timezone.utc)
+    if displayed_at.tzinfo is None:
+        displayed_at = displayed_at.replace(tzinfo=timezone.utc)
+    age_days = max(0, (now - displayed_at).days)
+    if age_days >= RED_AGE_THRESHOLD_DAYS:
+        return TAG_COLOR_RED
+    if age_days <= GREEN_AGE_THRESHOLD_DAYS:
+        return TAG_COLOR_GREEN
+    return TAG_COLOR_YELLOW
 
 
 def generate_label(
@@ -10,6 +61,8 @@ def generate_label(
     price: str,
     week: int,
     barcode_image: bytes | None = None,
+    *,
+    tag_color: str | None = None,
 ) -> bytes:
     """Generate a Vintiz-branded product label image as PNG bytes.
 
@@ -44,6 +97,16 @@ def generate_label(
 
     # Header background strip
     draw.rectangle([0, 0, width, 50], fill="#1A7A6A")
+
+    # Life-cycle corner tag (P3-002): triangle painted ON TOP of the
+    # header so Sophie can read the maturity of a product across the
+    # floor without picking it up.
+    if tag_color:
+        triangle_size = 38
+        draw.polygon(
+            [(0, 0), (triangle_size, 0), (0, triangle_size)],
+            fill=tag_color,
+        )
 
     # Logo VINTIZ centered in header
     draw.text((width // 2, 25), "VINTIZ", fill="white", font=font_logo, anchor="mm")

@@ -165,6 +165,12 @@ POST /api/admin/embeddings/recompute         Recalcul embeddings catalogue (mana
 POST /api/admin/embeddings/customer/{id}     Refresh taste profile cliente (manager only)
 GET  /api/admin/return-to-sorting/preview    Dry-run retour automatique tri (manager only)
 POST /api/admin/return-to-sorting/run        Trigger manuel retour automatique (manager only)
+GET  /api/admin/markdown-rules               Liste règles markdown (manager only)
+POST /api/admin/markdown-rules               Créer règle markdown (manager only, validation conditions+action)
+PUT  /api/admin/markdown-rules/{id}          Modifier règle (manager only)
+DELETE /api/admin/markdown-rules/{id}        Supprimer règle (manager only)
+GET  /api/admin/markdown-rules/preview       Dry-run engine (manager only)
+POST /api/admin/markdown-rules/run           Trigger manuel engine (manager only)
 POST /api/inventory/products/{id}/transition Transition cycle de vie produit (FSM)
 POST /api/inventory/batches                  Créer un lot d'arrivage (carton)
 GET  /api/inventory/batches                  Liste des lots

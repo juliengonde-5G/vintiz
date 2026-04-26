@@ -1331,6 +1331,171 @@ async def recompute_embeddings(
     return summary
 
 
+# ---------------------------------------------------------------------------
+# Markdown engine (P3-001) — manager CRUD + dry-run + manual trigger
+# ---------------------------------------------------------------------------
+
+
+class MarkdownRuleRequest(BaseModel):
+    name: str
+    active: bool = True
+    priority: int = 100
+    conditions: dict
+    action: dict
+
+
+@router.get("/markdown-rules", dependencies=[Depends(manager_only)])
+async def list_markdown_rules(db: Annotated[AsyncSession, Depends(get_db)]):
+    from app.models.markdown import MarkdownRule
+
+    result = await db.execute(
+        select(MarkdownRule).order_by(MarkdownRule.priority, MarkdownRule.created_at)
+    )
+    return [
+        {
+            "id": str(r.id),
+            "name": r.name,
+            "active": r.active,
+            "priority": r.priority,
+            "conditions": r.conditions,
+            "action": r.action,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+        }
+        for r in result.scalars().all()
+    ]
+
+
+@router.post(
+    "/markdown-rules",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(manager_only)],
+)
+async def create_markdown_rule(
+    request: MarkdownRuleRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    from app.models.markdown import MarkdownRule
+    from app.services.markdown_engine import _validate_action
+
+    # Surface schema errors immediately so Camille doesn't save a rule
+    # the cron would then silently skip.
+    try:
+        _validate_action(request.action)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    rule = MarkdownRule(
+        name=request.name,
+        active=request.active,
+        priority=request.priority,
+        conditions=request.conditions,
+        action=request.action,
+        updated_by_user_id=current_user.id,
+    )
+    db.add(rule)
+    await db.flush()
+    await db.commit()
+    return {"id": str(rule.id), "name": rule.name}
+
+
+@router.put(
+    "/markdown-rules/{rule_id}",
+    dependencies=[Depends(manager_only)],
+)
+async def update_markdown_rule(
+    rule_id: uuid.UUID,
+    request: MarkdownRuleRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    from app.models.markdown import MarkdownRule
+    from app.services.markdown_engine import _validate_action
+
+    result = await db.execute(
+        select(MarkdownRule).where(MarkdownRule.id == rule_id)
+    )
+    rule = result.scalar_one_or_none()
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    try:
+        _validate_action(request.action)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    rule.name = request.name
+    rule.active = request.active
+    rule.priority = request.priority
+    rule.conditions = request.conditions
+    rule.action = request.action
+    rule.updated_by_user_id = current_user.id
+    await db.flush()
+    await db.commit()
+    return {"id": str(rule.id), "name": rule.name}
+
+
+@router.delete(
+    "/markdown-rules/{rule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(manager_only)],
+)
+async def delete_markdown_rule(
+    rule_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.markdown import MarkdownRule
+
+    result = await db.execute(
+        select(MarkdownRule).where(MarkdownRule.id == rule_id)
+    )
+    rule = result.scalar_one_or_none()
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    await db.delete(rule)
+    await db.commit()
+    return None
+
+
+@router.get("/markdown-rules/preview", dependencies=[Depends(manager_only)])
+async def preview_markdown_run(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Dry-run of the markdown engine — what would the next nightly pass do?"""
+    from app.services.markdown_engine import MarkdownEngineService
+
+    summary = await MarkdownEngineService(db).run_batch(dry_run=True)
+    return {
+        "scanned": summary.scanned,
+        "matched": summary.matched,
+        "would_apply": summary.matched,
+        "errors": summary.errors,
+        "actions": summary.actions,
+    }
+
+
+@router.post("/markdown-rules/run", dependencies=[Depends(manager_only)])
+async def run_markdown_now(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Manually trigger the markdown engine — same effect as waiting for
+    the nightly cron."""
+    from app.services.markdown_engine import MarkdownEngineService
+
+    summary = await MarkdownEngineService(db).run_batch(
+        dry_run=False, user_id=current_user.id
+    )
+    await db.commit()
+    return {
+        "scanned": summary.scanned,
+        "matched": summary.matched,
+        "applied": summary.applied,
+        "skipped": summary.skipped,
+        "errors": summary.errors,
+        "actions": summary.actions,
+    }
+
+
 @router.get(
     "/return-to-sorting/preview",
     dependencies=[Depends(manager_only)],
