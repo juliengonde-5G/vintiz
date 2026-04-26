@@ -1325,6 +1325,54 @@ async def recompute_embeddings(
     return summary
 
 
+@router.get(
+    "/return-to-sorting/preview",
+    dependencies=[Depends(manager_only)],
+)
+async def preview_return_to_sorting(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Dry-run of the return-to-sorting policy — what would be moved if the
+    cron ran right now. Useful for reviewing the threshold before flipping
+    auto-mode in production."""
+    from app.services.return_to_sorting import ReturnToSortingService
+
+    svc = ReturnToSortingService(db)
+    candidates = await svc.find_eligible()
+    return {
+        "policy": svc._policy_dict(),
+        "candidate_count": len(candidates),
+        "candidates": [
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "barcode": p.barcode,
+                "status": p.status.value,
+                "trend_score": p.trend_score,
+                "displayed_at": p.displayed_at.isoformat() if p.displayed_at else None,
+                "intake_batch_id": str(p.intake_batch_id) if p.intake_batch_id else None,
+            }
+            for p in candidates
+        ],
+    }
+
+
+@router.post(
+    "/return-to-sorting/run",
+    dependencies=[Depends(manager_only)],
+)
+async def run_return_to_sorting(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Manually trigger the return-to-sorting cron pass. Same effect as
+    waiting for the 02:00 daily run."""
+    from app.services.return_to_sorting import ReturnToSortingService
+
+    summary = await ReturnToSortingService(db).run()
+    await db.commit()
+    return summary
+
+
 @router.post(
     "/embeddings/customer/{client_id}",
     dependencies=[Depends(manager_only)],

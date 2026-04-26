@@ -76,6 +76,27 @@ async def _run_daily_embedding_refresh() -> None:
         logger.error("Embedding refresh job failed: %s", exc)
 
 
+async def _run_daily_return_to_sorting() -> None:
+    """Background job (P3-007): return aged unsold products to the sorting
+    centre. Runs daily at 02:00 Paris — before the embedding refresh so the
+    recommender sees the freshly-displayed inventory."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.return_to_sorting import ReturnToSortingService
+
+        async with AsyncSession(engine) as db:
+            summary = await ReturnToSortingService(db).run()
+            await db.commit()
+            logger.info(
+                "Return-to-sorting: scanned=%d, returned=%d",
+                summary["scanned"],
+                summary["returned"],
+            )
+    except Exception as exc:
+        logger.error("Return-to-sorting job failed: %s", exc)
+
+
 async def _run_daily_rgpd_purge() -> None:
     """Background job: hard-delete clients whose 30-day deletion window
     has elapsed (P1-007). Runs daily at 03:00 Paris time."""
@@ -191,6 +212,12 @@ async def lifespan(app: FastAPI):
             _run_daily_embedding_refresh,
             CronTrigger(hour=4, minute=0),
             id="daily_embedding_refresh",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_daily_return_to_sorting,
+            CronTrigger(hour=2, minute=0),
+            id="daily_return_to_sorting",
             replace_existing=True,
         )
         scheduler.start()

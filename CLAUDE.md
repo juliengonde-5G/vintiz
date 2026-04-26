@@ -163,6 +163,13 @@ GET  /api/admin/fiscal-export?from=&to=&format=xml|json  Export fiscal NF525/DGF
 GET  /api/admin/data-quality?days=7          Volumes events_log par type + courbe (manager only)
 POST /api/admin/embeddings/recompute         Recalcul embeddings catalogue (manager only)
 POST /api/admin/embeddings/customer/{id}     Refresh taste profile cliente (manager only)
+GET  /api/admin/return-to-sorting/preview    Dry-run retour automatique tri (manager only)
+POST /api/admin/return-to-sorting/run        Trigger manuel retour automatique (manager only)
+POST /api/inventory/products/{id}/transition Transition cycle de vie produit (FSM)
+POST /api/inventory/batches                  Créer un lot d'arrivage (carton)
+GET  /api/inventory/batches                  Liste des lots
+GET  /api/inventory/batches/{id}             Détail lot + produits assignés
+POST /api/inventory/batches/{id}/assign-product  Rattacher produit au lot
 GET  /api/ai/weekly-checklist                Checklist semaine IA
 GET  /api/ai/trends                          Tendances mode
 POST /api/ai/persona/marketing               Rapport marketing IA

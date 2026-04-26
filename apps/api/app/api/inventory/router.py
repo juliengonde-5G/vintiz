@@ -1,6 +1,7 @@
 import os
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
 
@@ -14,7 +15,9 @@ from app.core.security import get_current_user
 from app.models.product import Category, Product, ProductStatus
 from app.models.inventory import Supplier, Order
 from app.models.user import User
+from app.services.batch import BatchService
 from app.services.photo import PhotoService
+from app.services.product_lifecycle import ProductLifecycleService
 from app.schemas.product import (
     CategoryCreate,
     CategoryResponse,
@@ -574,6 +577,61 @@ async def upload_product_photo(
     }
 
 
+class TransitionRequest(BaseModel):
+    to_status: str
+    reason: str | None = None
+    new_price: float | None = None  # required for markdown transitions
+
+
+@router.post("/products/{product_id}/transition")
+async def transition_product(
+    product_id: uuid.UUID,
+    request: TransitionRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Move a product through its life cycle.
+
+    Validates the transition against the finite-state machine, stamps
+    life-cycle anchors (``received_at`` / ``displayed_at``) the first
+    time they're entered, appends a row to ``markdown_history`` for
+    discount transitions, and emits the matching analytics event.
+    """
+    try:
+        target = ProductStatus(request.to_status)
+    except ValueError:
+        valid = ", ".join(s.value for s in ProductStatus)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown status. Valid values: {valid}",
+        )
+
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    new_price = (
+        Decimal(str(request.new_price)) if request.new_price is not None else None
+    )
+    await ProductLifecycleService(db).transition(
+        product,
+        target,
+        user_id=current_user.id,
+        reason=request.reason,
+        new_price=new_price,
+    )
+    await db.commit()
+    return {
+        "id": str(product.id),
+        "status": product.status.value,
+        "received_at": product.received_at.isoformat() if product.received_at else None,
+        "displayed_at": product.displayed_at.isoformat() if product.displayed_at else None,
+        "sale_price": float(product.sale_price),
+        "markdown_history": product.markdown_history or [],
+    }
+
+
 @router.delete(
     "/products/{product_id}/photos/{photo_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -587,3 +645,87 @@ async def delete_product_photo(
     await PhotoService(db).delete_photo(product_id, photo_id)
     await db.commit()
     return None
+
+
+# ---------------------------------------------------------------------------
+# Intake batches (P2-015) — carton-level traceability
+# ---------------------------------------------------------------------------
+
+
+class BatchCreateRequest(BaseModel):
+    source: str  # IntakeSource enum value
+    n_items_received: int = 0
+    notes: str | None = None
+
+
+class BatchAssignProductRequest(BaseModel):
+    product_id: uuid.UUID
+
+
+@router.post(
+    "/batches",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_batch(
+    request: BatchCreateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    from app.models.batch import IntakeSource
+
+    try:
+        source = IntakeSource(request.source)
+    except ValueError:
+        valid = ", ".join(s.value for s in IntakeSource)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown intake source. Valid values: {valid}",
+        )
+    batch = await BatchService(db).create_batch(
+        source=source,
+        n_items_received=request.n_items_received,
+        notes=request.notes,
+        recorded_by_user_id=current_user.id,
+    )
+    await db.commit()
+    return {
+        "id": str(batch.id),
+        "batch_number": batch.batch_number,
+        "source": batch.source.value,
+        "received_at": batch.received_at.isoformat() if batch.received_at else None,
+        "n_items_received": batch.n_items_received,
+    }
+
+
+@router.get("/batches")
+async def list_batches(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    skip: int = 0,
+    limit: int = 50,
+):
+    return await BatchService(db).list_batches(skip=skip, limit=limit)
+
+
+@router.get("/batches/{batch_id}")
+async def get_batch(
+    batch_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    return await BatchService(db).get_batch(batch_id)
+
+
+@router.post("/batches/{batch_id}/assign-product")
+async def assign_product_to_batch(
+    batch_id: uuid.UUID,
+    request: BatchAssignProductRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    product = await BatchService(db).assign_product(batch_id, request.product_id)
+    await db.commit()
+    return {
+        "id": str(product.id),
+        "intake_batch_id": str(product.intake_batch_id),
+    }
