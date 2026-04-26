@@ -104,7 +104,7 @@ Sans la couche événementielle, le Personal Shopper et le Booster IA plafonnent
 | ID | Sujet | Source |
 |---|---|---|
 | P4-001 | KPIs retail standards (sell-through, GMROI, DOH, AIT, CA/m²/mois) | V1 |
-| P4-002 | Reporting ESS dédié Solidarité Textiles (mensuel/trimestriel/annuel) | V1 |
+| ~~P4-002~~ | ~~Reporting ESS dédié~~ — **OBSOLETE** (audit 2026-05 §2.1.c) : page UI retirée, calcul backend conservé pour exports ad-hoc | V1 |
 | P4-003 | Email automation Brevo (welcome, J+30 inactif, anniversaire, J+60 Gold inactif) | V1 |
 | P4-004 | Apple/Google Wallet (`.pkpass` + push solde points) | V1 |
 | P4-005 | Réservation 48h site vitrine + zone "Réservés" en btq | V1 |
