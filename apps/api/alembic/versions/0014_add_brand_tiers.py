@@ -88,12 +88,14 @@ def upgrade() -> None:
         )
 
     # Seed — INSERT ... ON CONFLICT DO NOTHING so re-runs don't barf.
+    # Cast :tier to the enum explicitly: asyncpg/PG won't auto-coerce a
+    # VARCHAR bind param to a custom ENUM column.
     op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
     for name, tier in _SEED:
         op.execute(
             sa.text(
                 "INSERT INTO brand_tiers (id, name, tier, created_at, updated_at) "
-                "VALUES (gen_random_uuid(), :name, :tier, now(), now()) "
+                "VALUES (gen_random_uuid(), :name, CAST(:tier AS brand_tier_level), now(), now()) "
                 "ON CONFLICT (name) DO NOTHING"
             ).bindparams(name=name, tier=tier)
         )
