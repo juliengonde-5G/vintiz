@@ -4,6 +4,18 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 // enough to surface a clear error rather than spinning forever.
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+// Endpoints where 401 is a normal business response (e.g. wrong PIN,
+// wrong password). The caller handles the error itself — we MUST NOT
+// clear the manager token nor redirect to /login.
+const SOFT_401_ENDPOINTS = [
+  '/api/pos/cashier/login',  // wrong cashier PIN
+  '/api/auth/login',         // wrong username/password
+];
+
+function isSoft401(endpoint: string): boolean {
+  return SOFT_401_ENDPOINTS.some((p) => endpoint.startsWith(p));
+}
+
 function handleUnauthorized() {
   if (typeof window === 'undefined') return;
   localStorage.removeItem('token');
@@ -29,7 +41,7 @@ async function fetchAPI(endpoint: string, options?: RequestInit & { timeoutMs?: 
       headers: { ...headers, ...options?.headers },
     });
 
-    if (res.status === 401) {
+    if (res.status === 401 && !isSoft401(endpoint)) {
       handleUnauthorized();
     }
 
