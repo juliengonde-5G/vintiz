@@ -22,6 +22,7 @@ scripts/
   diag.sh                     Diagnostic auto Docker/local (PostgreSQL, API, tables)
   reset-prod.sh               Remise à zéro DB prod (idempotent, documenté)
   backup.sh                   Backup PostgreSQL
+  smoke_prod.sh               Smoke-test post-deploy (read-only, OpenAPI + endpoints)
 docs/
   ARCHITECTURE.md             Diagramme + flux applicatif
   AUDIT_2026_04.md            Audit sécurité / code / UX (avril 2026)
