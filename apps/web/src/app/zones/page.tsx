@@ -338,6 +338,7 @@ export default function ZonesPage() {
           )}
 
           {viewMode === 'flat' && (
+          <>
           <div
             ref={canvasRef}
             onPointerMove={onPointerMove}
@@ -436,6 +437,7 @@ export default function ZonesPage() {
               <span className="h-2 w-2 rounded-full bg-pink-500" /> Saturee
             </span>
           </div>
+          </>
           )}
         </Card>
 
