@@ -94,10 +94,15 @@ async def lookup_client(
 
     return {
         "client": {
+            "id": str(client.id),
             "first_name": client.first_name,
             "last_name": client.last_name,
             "email": client.email,
             "phone": client.phone,
+            "email_optin": client.email_optin,
+            "sms_optin": client.sms_optin,
+            "avoir_balance": float(client.avoir_credit or 0),
+            "deletion_pending": client.deletion_requested_at is not None,
         },
         "loyalty": loyalty_data,
         "recent_transactions": [
@@ -980,6 +985,101 @@ async def request_client_deletion(
         "deletion_requested_at": requested_at.isoformat(),
         "purge_after": (requested_at + timedelta(days=30)).isoformat(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Public account self-service (P1-007 — accessed from apps/site /account/data)
+# ---------------------------------------------------------------------------
+
+
+class AccountActionRequest(BaseModel):
+    email: str
+
+
+def _normalize_email(value: str) -> str:
+    cleaned = value.strip().lower()
+    if "@" not in cleaned or "." not in cleaned.split("@", 1)[-1]:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+    return cleaned
+
+
+@router.get("/account/data-export")
+async def public_account_data_export(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public RGPD data export (Article 20 portability) by email lookup.
+
+    Returns the JSON portable snapshot directly. The audit logger records the
+    request via the SQLAlchemy listener; a future iteration will replace this
+    with a magic-link confirmation flow to prevent email enumeration leakage.
+    """
+    from app.services.rgpd import RgpdService
+
+    cleaned = _normalize_email(email)
+    result = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    return await RgpdService(db).export_client_data(client)
+
+
+@router.post("/account/deletion-request")
+async def public_account_deletion_request(
+    request: AccountActionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public RGPD deletion request (Article 17 erasure) by email lookup.
+
+    Stamps the soft-delete timestamp; the daily cron purges past 30 days.
+    The customer can cancel by re-submitting via the same flow within the
+    window (a future iteration will surface a "cancel" button on the site).
+    """
+    from app.services.rgpd import RgpdService
+
+    cleaned = _normalize_email(request.email)
+    result = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+
+    if client.deletion_requested_at is not None:
+        return {
+            "client_email": cleaned,
+            "deletion_requested_at": client.deletion_requested_at.isoformat(),
+            "purge_after": (
+                client.deletion_requested_at + timedelta(days=30)
+            ).isoformat(),
+            "already_pending": True,
+        }
+    requested_at = await RgpdService(db).request_deletion(client)
+    await db.commit()
+    return {
+        "client_email": cleaned,
+        "deletion_requested_at": requested_at.isoformat(),
+        "purge_after": (requested_at + timedelta(days=30)).isoformat(),
+        "already_pending": False,
+    }
+
+
+@router.post("/account/deletion-cancel")
+async def public_account_deletion_cancel(
+    request: AccountActionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public cancellation of a pending deletion request (within the 30-day window)."""
+    from app.services.rgpd import RgpdService
+
+    cleaned = _normalize_email(request.email)
+    result = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    if client.deletion_requested_at is None:
+        return {"client_email": cleaned, "deletion_cancelled": True, "was_pending": False}
+    await RgpdService(db).cancel_deletion(client)
+    await db.commit()
+    return {"client_email": cleaned, "deletion_cancelled": True, "was_pending": True}
 
 
 @router.post("/clients/{client_id}/deletion-cancel")

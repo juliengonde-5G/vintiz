@@ -24,6 +24,7 @@ class PaymentMethod(str, enum.Enum):
     card = "card"
     cheque = "cheque"
     transfer = "transfer"
+    avoir = "avoir"  # Settled from the client's store-credit balance
 
 
 class TransactionType(str, enum.Enum):

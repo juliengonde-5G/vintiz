@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.client import AvoirTransaction, AvoirTxType, Client
 from app.models.pos import (
     CashDrawer,
     Payment,
@@ -135,16 +136,55 @@ class PosService:
                 product.sold_at = datetime.now(timezone.utc).isoformat()
 
         # Create payment records
-        method_map = {"especes": "cash", "carte": "card", "cheque": "cheque",
-                      "cash": "cash", "card": "card"}
+        method_map = {
+            "especes": "cash", "carte": "card", "cheque": "cheque",
+            "cash": "cash", "card": "card", "avoir": "avoir",
+        }
+        avoir_total = Decimal("0")
         for pay in payments:
             method_str = method_map.get(pay.method, pay.method)
+            method_enum = PaymentMethod(method_str)
             payment = Payment(
                 transaction_id=transaction.id,
-                method=PaymentMethod(method_str),
+                method=method_enum,
                 amount=float(pay.amount),
             )
             self.db.add(payment)
+            if method_enum == PaymentMethod.avoir:
+                avoir_total += Decimal(str(pay.amount))
+
+        # Avoir checkout: validate balance, debit client and write ledger.
+        if avoir_total > 0:
+            if client_id is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Avoir payment requires a client to be selected",
+                )
+            client_result = await self.db.execute(
+                select(Client).where(Client.id == client_id)
+            )
+            client = client_result.scalar_one_or_none()
+            if client is None:
+                raise HTTPException(status_code=404, detail="Client not found")
+            current_balance = Decimal(str(client.avoir_credit or 0))
+            if avoir_total > current_balance:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Insufficient avoir balance: requested {avoir_total}, "
+                        f"available {current_balance}"
+                    ),
+                )
+            client.avoir_credit = float(current_balance - avoir_total)
+            self.db.add(
+                AvoirTransaction(
+                    client_id=client.id,
+                    transaction_id=transaction.id,
+                    tx_type=AvoirTxType.debit,
+                    amount=float(avoir_total),
+                    reason=f"Sale #{transaction.transaction_number}",
+                )
+            )
 
         await self.db.flush()
         await self.db.refresh(transaction)

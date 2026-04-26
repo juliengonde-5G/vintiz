@@ -172,6 +172,9 @@ POST /api/crm/clients/{id}/consents          Enregistrer consentement (purpose+g
 GET  /api/crm/clients/{id}/data-export       Export RGPD JSON portable (Article 20)
 POST /api/crm/clients/{id}/deletion-request  Demande suppression (soft, fenêtre 30j)
 POST /api/crm/clients/{id}/deletion-cancel   Annuler demande de suppression
+GET  /api/crm/account/data-export?email=     Public — export RGPD JSON par email
+POST /api/crm/account/deletion-request       Public — demande suppression (body: email)
+POST /api/crm/account/deletion-cancel        Public — annuler suppression (body: email)
 ```
 
 ## Fonctionnalités principales

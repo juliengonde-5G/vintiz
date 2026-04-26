@@ -37,7 +37,7 @@ interface CartItem {
 }
 
 interface PaymentLine {
-  method: 'especes' | 'carte' | 'cheque';
+  method: 'especes' | 'carte' | 'cheque' | 'avoir';
   amount: number;
 }
 
@@ -58,6 +58,7 @@ interface ClientDetail {
   email?: string;
   notes?: string;
   loyalty: { points: number; tier: string } | null;
+  avoir_balance?: number;
   purchases: { id: string; transaction_number: number; total_ttc: number; created_at: string }[];
 }
 
@@ -512,7 +513,12 @@ export default function POSPage() {
 
   // ── Payment ──────────────────────────────────────────────────────
   const addPayment = (method: PaymentLine['method']) => {
-    const autoAmount = Math.max(0, parseFloat((cartTotalAfterLoyalty - totalPaid).toFixed(2)));
+    const remainingBeforeLine = Math.max(0, parseFloat((cartTotalAfterLoyalty - totalPaid).toFixed(2)));
+    let autoAmount = remainingBeforeLine;
+    if (method === 'avoir') {
+      const balance = selectedClient?.avoir_balance || 0;
+      autoAmount = Math.min(remainingBeforeLine, balance);
+    }
     const newIndex = payments.length;
     setPayments(prev => [...prev, { method, amount: autoAmount }]);
     if (method === 'carte') {
@@ -521,6 +527,7 @@ export default function POSPage() {
       setCashGiven('');
       setNumpadTarget({ type: 'cash', index: newIndex });
     } else {
+      // chèque + avoir → numpad d'édition (avoir capé côté validateurs).
       setNumpadTarget({ type: 'payment', index: newIndex });
     }
   };
@@ -657,6 +664,7 @@ export default function POSPage() {
     especes: 'Especes',
     carte: 'Carte (CB)',
     cheque: 'Cheque',
+    avoir: 'Avoir client',
   };
 
   return (
@@ -1141,7 +1149,12 @@ export default function POSPage() {
 
           {/* Payment methods */}
           <div>
-            <p className="text-sm font-medium text-black mb-2">Moyen de paiement</p>
+            <p className="text-sm font-medium text-black mb-2">
+              Moyen de paiement{' '}
+              <span className="text-xs font-normal text-gray-500">
+                (cumulables — paiement mixte)
+              </span>
+            </p>
             <div className="flex gap-3 flex-wrap">
               <Button variant="outline" size="sm" onClick={() => addPayment('especes')}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-1.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
@@ -1157,7 +1170,23 @@ export default function POSPage() {
                 Carte (CB)
               </Button>
               <Button variant="outline" size="sm" onClick={() => addPayment('cheque')}>Chèque</Button>
+              {(selectedClient?.avoir_balance || 0) > 0 && !payments.some(p => p.method === 'avoir') && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => addPayment('avoir')}
+                  title={`Solde avoir : ${formatCurrency(selectedClient?.avoir_balance || 0)}`}
+                >
+                  Avoir ({formatCurrency(selectedClient?.avoir_balance || 0)})
+                </Button>
+              )}
             </div>
+            {selectedClient?.avoir_balance != null && selectedClient.avoir_balance > 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                {selectedClient.first_name} dispose d&apos;un avoir de{' '}
+                <strong>{formatCurrency(selectedClient.avoir_balance)}</strong>.
+              </p>
+            )}
           </div>
 
           {/* CB Status display */}

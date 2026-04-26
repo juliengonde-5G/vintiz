@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
+import RefundModal from '@/components/pos/RefundModal';
 import { api } from '@/lib/api';
 
 interface Transaction {
@@ -56,7 +57,15 @@ function SkeletonBlock({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse bg-gray-200 rounded-lg ${className}`} />;
 }
 
-function TransactionTable({ transactions, loading }: { transactions: Transaction[]; loading: boolean }) {
+function TransactionTable({
+  transactions,
+  loading,
+  onRefund,
+}: {
+  transactions: Transaction[];
+  loading: boolean;
+  onRefund: (txId: string) => void;
+}) {
   if (loading) {
     return (
       <div className="space-y-3 p-4">
@@ -77,22 +86,46 @@ function TransactionTable({ transactions, loading }: { transactions: Transaction
             <th className="py-3 px-4 font-semibold text-gray-600 text-right">Total TTC</th>
             <th className="py-3 px-4 font-semibold text-gray-600">Paiements</th>
             <th className="py-3 px-4 font-semibold text-gray-600 text-right">Articles</th>
+            <th className="py-3 px-4 font-semibold text-gray-600 text-right">Action</th>
           </tr>
         </thead>
         <tbody>
-          {transactions.map((tx) => (
-            <tr key={tx.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-              <td className="py-3 px-4 font-mono text-gray-700">#{tx.transaction_number}</td>
-              <td className="py-3 px-4 text-gray-600">{tx.created_at ? formatDate(tx.created_at) : '-'}</td>
-              <td className="py-3 px-4 text-right font-bold text-teal">{formatCurrency(tx.total_ttc)}</td>
-              <td className="py-3 px-4">
-                <div className="flex gap-1 flex-wrap">
-                  {(tx.payment_methods || []).map((m, i) => <PaymentBadge key={i} method={m} />)}
-                </div>
-              </td>
-              <td className="py-3 px-4 text-right text-gray-600">{tx.item_count}</td>
-            </tr>
-          ))}
+          {transactions.map((tx) => {
+            const isSale = tx.transaction_type !== 'refund';
+            return (
+              <tr key={tx.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                <td className="py-3 px-4 font-mono text-gray-700">
+                  #{tx.transaction_number}
+                  {!isSale && (
+                    <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">
+                      retour
+                    </span>
+                  )}
+                </td>
+                <td className="py-3 px-4 text-gray-600">{tx.created_at ? formatDate(tx.created_at) : '-'}</td>
+                <td className="py-3 px-4 text-right font-bold text-teal">{formatCurrency(tx.total_ttc)}</td>
+                <td className="py-3 px-4">
+                  <div className="flex gap-1 flex-wrap">
+                    {(tx.payment_methods || []).map((m, i) => <PaymentBadge key={i} method={m} />)}
+                  </div>
+                </td>
+                <td className="py-3 px-4 text-right text-gray-600">{tx.item_count}</td>
+                <td className="py-3 px-4 text-right">
+                  {isSale ? (
+                    <button
+                      type="button"
+                      onClick={() => onRefund(tx.id)}
+                      className="px-3 py-1 text-xs rounded bg-orange-50 text-orange-700 hover:bg-orange-100"
+                    >
+                      Rembourser
+                    </button>
+                  ) : (
+                    <span className="text-xs text-gray-300">—</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -162,6 +195,8 @@ export default function AdminPage() {
   const [drawers, setDrawers] = useState<CashDrawer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [refundTxId, setRefundTxId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const loadTransactions = useCallback(async (method?: string): Promise<Transaction[]> => {
     const url = method ? `/api/pos/transactions?limit=200&method=${method}` : '/api/pos/transactions?limit=200';
@@ -197,7 +232,7 @@ export default function AdminPage() {
       }
     };
     load();
-  }, [tab, loadTransactions, loadDrawers]);
+  }, [tab, loadTransactions, loadDrawers, reloadKey]);
 
   const tabs: { key: AdminTab; label: string; icon: string }[] = [
     { key: 'all', label: 'Toutes les transactions', icon: '📋' },
@@ -243,7 +278,7 @@ export default function AdminPage() {
         {/* Content */}
         {tab === 'all' && (
           <Card title={`Backlog — ${transactions.length} transaction(s)`}>
-            <TransactionTable transactions={transactions} loading={loading} />
+            <TransactionTable transactions={transactions} loading={loading} onRefund={setRefundTxId} />
           </Card>
         )}
 
@@ -254,7 +289,7 @@ export default function AdminPage() {
                 Transactions réglées par carte bancaire (SumUp terminal ou simulation).
               </p>
             </div>
-            <TransactionTable transactions={cbTransactions} loading={loading} />
+            <TransactionTable transactions={cbTransactions} loading={loading} onRefund={setRefundTxId} />
           </Card>
         )}
 
@@ -273,7 +308,7 @@ export default function AdminPage() {
                 </div>
               )}
             </div>
-            <TransactionTable transactions={cashTransactions} loading={loading} />
+            <TransactionTable transactions={cashTransactions} loading={loading} onRefund={setRefundTxId} />
           </Card>
         )}
 
@@ -288,6 +323,13 @@ export default function AdminPage() {
           </Card>
         )}
       </main>
+
+      <RefundModal
+        open={refundTxId !== null}
+        transactionId={refundTxId}
+        onClose={() => setRefundTxId(null)}
+        onCompleted={() => setReloadKey(k => k + 1)}
+      />
     </div>
   );
 }
