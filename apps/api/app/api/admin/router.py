@@ -6,7 +6,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, List
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1188,3 +1189,71 @@ async def list_audit_logs(
         }
         for row in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Fiscal export NF525 / DGFiP (P1-015 — closes P1-001)
+# ---------------------------------------------------------------------------
+
+
+def _parse_iso_date(value: str | None, field: str) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        # Accept "YYYY-MM-DD" or full ISO 8601.
+        if "T" in value:
+            return datetime.fromisoformat(value)
+        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {field}: expected ISO date (YYYY-MM-DD or full ISO 8601)",
+        ) from exc
+
+
+@router.get(
+    "/fiscal-export",
+    dependencies=[Depends(manager_only)],
+)
+async def fiscal_export(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    period_from: str | None = Query(None, alias="from"),
+    period_to: str | None = Query(None, alias="to"),
+    fmt: str = Query("xml", alias="format", pattern="^(xml|json)$"),
+    merchant_name: str = Query("Frip & Co Vernon"),
+    merchant_id: str = Query(""),
+):
+    """Build a NF525-compliant fiscal export over the given period.
+
+    Always includes the SHA-256 hash chain so a tax auditor can verify
+    no transaction has been altered after the fact. Manager only.
+    """
+    from app.services.fiscal_export import FiscalExportService
+
+    period_from_dt = _parse_iso_date(period_from, "from")
+    period_to_dt = _parse_iso_date(period_to, "to")
+
+    svc = FiscalExportService(db)
+    snapshot = await svc.build_snapshot(
+        period_from=period_from_dt,
+        period_to=period_to_dt,
+        merchant_name=merchant_name,
+        merchant_id=merchant_id,
+    )
+
+    suffix = period_from_dt.date().isoformat() if period_from_dt else "all"
+    filename = f"vintiz-fiscal-export-{suffix}.{fmt}"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    }
+    if fmt == "json":
+        return Response(
+            content=svc.to_json(snapshot),
+            media_type="application/json",
+            headers=headers,
+        )
+    return Response(
+        content=svc.to_xml(snapshot),
+        media_type="application/xml",
+        headers=headers,
+    )
