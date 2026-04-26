@@ -1,8 +1,8 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -55,6 +55,10 @@ class Client(Base):
     # champion / loyal / new / promising / at_risk / cant_lose / hibernating /
     # lost / unknown.
     rfm_segment: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # Date of birth — drives the anniversary email cron (P4-008). Optional;
+    # we ask for it on the onboarding form but never block account creation.
+    birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     loyalty_account: Mapped["LoyaltyAccount | None"] = relationship(
         "LoyaltyAccount", back_populates="client", uselist=False, lazy="selectin"
