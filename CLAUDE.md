@@ -128,7 +128,11 @@ Base URL: `http://localhost:8000`
 ### Endpoints clés
 
 ```
-POST /api/auth/login                         Connexion
+POST /api/auth/login                         Connexion (manager username/password)
+POST /api/pos/cashier/login                  Identifier le cashier au POS via PIN 4 chiffres
+POST /api/pos/cashier/set-pin                Définir/changer un PIN (manager only)
+POST /api/pos/cashier/clear-pin              Retirer un PIN (manager only)
+GET  /api/pos/cashier/list                   Lister utilisateurs + statut PIN (manager only)
 GET  /api/inventory/products                 Liste produits (paginée)
 GET  /api/inventory/products/search?q=…      Recherche (filtre stock+display par défaut, &include_sold=true sinon)
 GET  /api/inventory/products/{id}            Fiche produit

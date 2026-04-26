@@ -88,7 +88,10 @@ class FiscalService:
     # ------------------------------------------------------------------
 
     async def generate_z_report(
-        self, drawer: CashDrawer, user_id: uuid.UUID
+        self,
+        drawer: CashDrawer,
+        user_id: uuid.UUID,
+        cashier_id: uuid.UUID | None = None,
     ) -> ZReport:
         """Generate an end-of-day Z report for a closed cash drawer.
 
@@ -147,6 +150,7 @@ class FiscalService:
         z_report = ZReport(
             report_number=next_number,
             user_id=user_id,
+            cashier_id=cashier_id if cashier_id is not None else drawer.cashier_id,
             cash_drawer_id=drawer.id,
             total_sales=float(total_sales),
             total_refunds=float(total_refunds),
@@ -175,6 +179,7 @@ class FiscalService:
             {
                 "id": str(r.id),
                 "report_number": r.report_number,
+                "cashier_id": str(r.cashier_id) if r.cashier_id else None,
                 "total_sales": float(r.total_sales),
                 "total_refunds": float(r.total_refunds),
                 "total_net": float(r.total_net),

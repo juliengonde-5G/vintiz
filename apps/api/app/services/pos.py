@@ -33,6 +33,7 @@ class PosService:
         items: list,
         payments: list,
         client_id: uuid.UUID | None = None,
+        cashier_id: uuid.UUID | None = None,
     ) -> Transaction:
         """Create a sale transaction.
 
@@ -105,6 +106,7 @@ class PosService:
             transaction_number=next_number,
             transaction_type=TransactionType.sale,
             user_id=user_id,
+            cashier_id=cashier_id,
             client_id=client_id,
             total_ht=float(total_ht),
             total_tva=float(total_tva),
@@ -217,6 +219,7 @@ class PosService:
             "total_ht": float(t.total_ht),
             "tax_amount": float(t.total_tva),
             "hash_chain": t.hash_chain,
+            "cashier_id": str(t.cashier_id) if t.cashier_id else None,
             "created_at": t.created_at.isoformat() if t.created_at else None,
             "client": client_data,
             "items": [
@@ -246,7 +249,10 @@ class PosService:
     # ------------------------------------------------------------------
 
     async def open_drawer(
-        self, user_id: uuid.UUID, opening_amount: Decimal
+        self,
+        user_id: uuid.UUID,
+        opening_amount: Decimal,
+        cashier_id: uuid.UUID | None = None,
     ) -> CashDrawer:
         """Open a new cash drawer. Raises if one is already open."""
         existing = await self.get_open_drawer()
@@ -256,6 +262,7 @@ class PosService:
             )
         drawer = CashDrawer(
             user_id=user_id,
+            cashier_id=cashier_id,
             opened_at=datetime.now(timezone.utc),
             opening_amount=float(opening_amount),
             is_open=True,
@@ -266,18 +273,24 @@ class PosService:
         return drawer
 
     async def close_drawer(
-        self, user_id: uuid.UUID, closing_amount: Decimal
+        self,
+        user_id: uuid.UUID,
+        closing_amount: Decimal,
+        cashier_id: uuid.UUID | None = None,
     ) -> CashDrawer:
         """Close the currently open drawer.
 
         Computes *expected_amount* as opening_amount + sum of cash payments
-        made while the drawer was open.
+        made while the drawer was open. If a cashier_id is supplied, it
+        replaces the one set at opening (e.g. shift handover).
         """
         drawer = await self.get_open_drawer()
         if not drawer:
             raise HTTPException(
                 status_code=400, detail="No open cash drawer found"
             )
+        if cashier_id is not None:
+            drawer.cashier_id = cashier_id
 
         # Sum cash payments during the drawer period
         cash_sum_result = await self.db.execute(

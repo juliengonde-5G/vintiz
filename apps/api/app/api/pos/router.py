@@ -5,13 +5,24 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import RoleChecker, get_current_user
 from app.models.user import User
+from app.schemas.user import (
+    CashierPinClearRequest,
+    CashierPinLoginRequest,
+    CashierPinSetRequest,
+    CashierResponse,
+    CashierWithPinStatusResponse,
+)
+from app.services.cashier import CashierService
 from app.services.fiscal import FiscalService
 from app.services.pos import PosService
+
+manager_only = RoleChecker(["manager"])
 
 logger = logging.getLogger("vintiz")
 
@@ -35,14 +46,17 @@ class CreateTransactionRequest(BaseModel):
     items: list[CartItem]
     payments: list[PaymentInput]
     client_id: uuid.UUID | None = None
+    cashier_id: uuid.UUID | None = None
 
 
 class OpenDrawerRequest(BaseModel):
     opening_amount: Decimal
+    cashier_id: uuid.UUID | None = None
 
 
 class CloseDrawerRequest(BaseModel):
     closing_amount: Decimal
+    cashier_id: uuid.UUID | None = None
 
 
 @router.post("/transactions")
@@ -60,6 +74,7 @@ async def create_transaction(
         items=request.items,
         payments=request.payments,
         client_id=request.client_id,
+        cashier_id=request.cashier_id,
     )
 
     # Generate fiscal hash chain
@@ -109,7 +124,9 @@ async def open_drawer(
 ):
     """Open cash drawer for the day."""
     pos_service = PosService(db)
-    drawer = await pos_service.open_drawer(current_user.id, request.opening_amount)
+    drawer = await pos_service.open_drawer(
+        current_user.id, request.opening_amount, cashier_id=request.cashier_id
+    )
     await db.commit()
     return {
         "drawer_id": str(drawer.id),
@@ -127,8 +144,12 @@ async def close_drawer(
     pos_service = PosService(db)
     fiscal_service = FiscalService(db)
 
-    drawer = await pos_service.close_drawer(current_user.id, request.closing_amount)
-    z_report = await fiscal_service.generate_z_report(drawer, current_user.id)
+    drawer = await pos_service.close_drawer(
+        current_user.id, request.closing_amount, cashier_id=request.cashier_id
+    )
+    z_report = await fiscal_service.generate_z_report(
+        drawer, current_user.id, cashier_id=request.cashier_id
+    )
     await db.commit()
 
     return {
@@ -481,3 +502,83 @@ async def get_transaction_receipt(
         "receipt_text": receipt_text,
         "transaction_id": str(transaction_id),
     }
+
+
+# ---------------------------------------------------------------------------
+# Cashier identification (PIN-based) — tickets P1-002 + P1-014
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/cashier/set-pin",
+    dependencies=[Depends(manager_only)],
+)
+async def set_cashier_pin(
+    request: CashierPinSetRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Set or replace a 4-digit POS PIN for a user. Manager only."""
+    result = await db.execute(select(User).where(User.id == request.user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    cashier_service = CashierService(db)
+    await cashier_service.set_pin(user, request.pin)
+    await db.commit()
+    return {"user_id": str(user.id), "has_pin": True}
+
+
+@router.post(
+    "/cashier/clear-pin",
+    dependencies=[Depends(manager_only)],
+)
+async def clear_cashier_pin(
+    request: CashierPinClearRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a user's POS PIN. Manager only."""
+    result = await db.execute(select(User).where(User.id == request.user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    cashier_service = CashierService(db)
+    await cashier_service.clear_pin(user)
+    await db.commit()
+    return {"user_id": str(user.id), "has_pin": False}
+
+
+@router.post("/cashier/login", response_model=CashierResponse)
+async def cashier_pin_login(
+    request: CashierPinLoginRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Identify a cashier from their 4-digit PIN.
+
+    Requires a valid JWT (the iPad is logged in as a manager). Returns
+    the cashier's id and role so the POS UI can stamp subsequent
+    transactions / drawer events.
+    """
+    cashier_service = CashierService(db)
+    cashier = await cashier_service.authenticate_pin(request.pin)
+    logger.info(
+        "Cashier PIN login: cashier_id=%s by_user=%s",
+        cashier.id,
+        current_user.id,
+    )
+    return CashierResponse(
+        id=cashier.id,
+        username=cashier.username,
+        role=cashier.role.value,
+    )
+
+
+@router.get(
+    "/cashier/list",
+    response_model=list[CashierWithPinStatusResponse],
+    dependencies=[Depends(manager_only)],
+)
+async def list_cashiers(db: AsyncSession = Depends(get_db)):
+    """List all users with their PIN status. Manager only."""
+    cashier_service = CashierService(db)
+    return await cashier_service.list_with_pin_status()
