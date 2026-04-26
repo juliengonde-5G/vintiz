@@ -1910,6 +1910,126 @@ async def list_coupons(
 
 
 # ---------------------------------------------------------------------------
+# L4 — Scoring config (DB-backed weights with hot reload)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/scoring-config", dependencies=[Depends(manager_only)])
+async def get_scoring_config_endpoint(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Return the current scoring config (or defaults v2 if unset)."""
+    from app.services.scoring_config import get_scoring_config
+
+    return await get_scoring_config(db)
+
+
+@router.put("/scoring-config", dependencies=[Depends(manager_only)])
+async def update_scoring_config_endpoint(
+    payload: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Validate & persist a new scoring config (manager only).
+
+    The body must contain at least ``weights`` (8 components summing to 1.0).
+    Optional : ``age_decay``, ``season_boost``, ``consignment_threshold``.
+    """
+    from app.services.scoring_config import update_scoring_config
+
+    return await update_scoring_config(
+        db, payload, user_email=current_user.email
+    )
+
+
+@router.post("/scoring-config/reset", dependencies=[Depends(manager_only)])
+async def reset_scoring_config_endpoint(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    version: int = Query(default=2, ge=1, le=2),
+):
+    """Restore default config (v1 = 6 components, v2 = 8 components)."""
+    from app.services.scoring_config import reset_scoring_config
+
+    return await reset_scoring_config(
+        db, version=version, user_email=current_user.email
+    )
+
+
+@router.post("/scoring-config/preview", dependencies=[Depends(manager_only)])
+async def preview_scoring_config(
+    payload: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Dry-run a scoring config against the live catalog.
+
+    Returns up to 10 sample products with their score before/after the
+    proposed config — Camille can validate the impact before saving.
+    """
+    from app.services.scoring_config import _validate_payload, get_scoring_config
+    from app.services.scoring_service import compute_score
+    from datetime import datetime, timezone as tz
+
+    _validate_payload(payload)
+    current = await get_scoring_config(db)
+
+    # Sample 10 products in displayed status (or stock if none)
+    result = await db.execute(
+        select(Product).where(
+            Product.status.in_(
+                [ProductStatus.displayed, ProductStatus.stock]
+            ),
+            Product.is_test.is_(False),
+        ).limit(10)
+    )
+    products = result.scalars().all()
+
+    samples = []
+    for p in products:
+        # Need average price per category — query lazily
+        avg_q = await db.execute(
+            select(func.avg(Product.sale_price)).where(
+                Product.category_id == p.category_id
+            )
+        )
+        avg = float(avg_q.scalar() or 0)
+
+        before = compute_score(
+            shelf_date=p.shelf_date,
+            sale_price=float(p.sale_price),
+            category_avg_price=avg,
+            condition=p.condition or "tres_bon",
+            brand=p.brand,
+            photo_url=p.photo_url,
+            config=current,
+        )
+        after = compute_score(
+            shelf_date=p.shelf_date,
+            sale_price=float(p.sale_price),
+            category_avg_price=avg,
+            condition=p.condition or "tres_bon",
+            brand=p.brand,
+            photo_url=p.photo_url,
+            config=payload,
+        )
+        samples.append({
+            "product_id": str(p.id),
+            "name": p.name,
+            "score_before": before["total_score"],
+            "score_after": after["total_score"],
+            "delta": round(after["total_score"] - before["total_score"], 1),
+            "action_before": before["action"],
+            "action_after": after["action"],
+        })
+
+    return {
+        "config_proposed": payload,
+        "samples": samples,
+        "n_sampled": len(samples),
+    }
+
+
+# ---------------------------------------------------------------------------
 # L3.1 — Test data purge (selective, idempotent)
 # ---------------------------------------------------------------------------
 
