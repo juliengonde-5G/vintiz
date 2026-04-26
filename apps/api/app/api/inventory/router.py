@@ -282,7 +282,9 @@ async def get_product_score(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Compute and return detailed score for a product."""
+    from app.services.category_trends import get_category_trend
     from app.services.scoring_service import compute_score
+
     result = await db.execute(select(Product).where(Product.id == product_id))
     product = result.scalar_one_or_none()
     if product is None:
@@ -294,6 +296,9 @@ async def get_product_score(
     )
     avg_price = avg_result.scalar_one_or_none() or float(product.sale_price)
 
+    # Plug in the live category trend (P2-010) — replaces the old static 50.0.
+    trend = await get_category_trend(db, product.category_id)
+
     score = compute_score(
         shelf_date=product.shelf_date,
         sale_price=float(product.sale_price),
@@ -301,6 +306,7 @@ async def get_product_score(
         condition="tres_bon",
         brand=product.brand,
         photo_url=product.photo_url,
+        category_trend=trend,
     )
     return score
 

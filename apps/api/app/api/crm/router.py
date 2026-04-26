@@ -1149,6 +1149,100 @@ async def public_personal_shopper_v2(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Cold-start onboarding (P2-004)
+# ---------------------------------------------------------------------------
+
+
+class OnboardingRequest(BaseModel):
+    liked_style_keys: list[str] = []
+    preferred_occasions: list[str] = []
+    preferred_price_buckets: list[str] = []
+    preferred_categories: list[str] = []
+
+
+class PublicOnboardingRequest(OnboardingRequest):
+    email: str
+
+
+@router.get("/onboarding/options")
+async def onboarding_options():
+    """Public catalogue of style profiles, occasions and price buckets the
+    picker UI displays. Static data — no DB hit."""
+    from app.services.onboarding import (
+        list_available_occasions,
+        list_available_price_buckets,
+        list_available_style_profiles,
+    )
+
+    return {
+        "styles": list_available_style_profiles(),
+        "occasions": list_available_occasions(),
+        "price_buckets": list_available_price_buckets(),
+    }
+
+
+@router.post("/clients/{client_id}/onboarding")
+async def submit_onboarding(
+    client_id: uuid.UUID,
+    request: OnboardingRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Manager-side: build (or refresh) a cold-start taste profile for a
+    client whose history is too thin for the daily cron."""
+    from app.services.onboarding import cold_start_taste_profile
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    profile = await cold_start_taste_profile(
+        db, client,
+        liked_style_keys=request.liked_style_keys,
+        preferred_occasions=request.preferred_occasions,
+        preferred_price_buckets=request.preferred_price_buckets,
+        preferred_categories=request.preferred_categories,
+    )
+    await db.commit()
+    return {
+        "client_id": str(client.id),
+        "profile_id": str(profile.id),
+        "algo_version": profile.algo_version,
+        "computed_at": profile.computed_at.isoformat() if profile.computed_at else None,
+    }
+
+
+@router.post("/account/onboarding")
+async def public_submit_onboarding(
+    request: PublicOnboardingRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public: same as the authenticated endpoint, identified by email."""
+    from app.services.onboarding import cold_start_taste_profile
+
+    cleaned = _normalize_email(request.email)
+    result = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+
+    profile = await cold_start_taste_profile(
+        db, client,
+        liked_style_keys=request.liked_style_keys,
+        preferred_occasions=request.preferred_occasions,
+        preferred_price_buckets=request.preferred_price_buckets,
+        preferred_categories=request.preferred_categories,
+    )
+    await db.commit()
+    return {
+        "client_email": cleaned,
+        "profile_id": str(profile.id),
+        "algo_version": profile.algo_version,
+    }
+
+
 @router.post("/personal-shopper-v2/click")
 async def personal_shopper_click(
     request: RecommendationClickRequest,

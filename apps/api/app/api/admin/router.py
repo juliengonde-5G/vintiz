@@ -1083,7 +1083,12 @@ async def monthly_scoring_update(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Recompute trend score for all active products. Triggered on the 1st Wednesday of each month."""
+    from app.services.category_trends import refresh_cache
     from app.services.scoring_service import compute_score
+
+    # Refresh the per-category trend cache once for the whole pass (P2-010)
+    # — replaces the static 50.0 default in the scoring formula.
+    category_trends = await refresh_cache(db)
 
     result = await db.execute(
         select(Product).where(
@@ -1106,6 +1111,7 @@ async def monthly_scoring_update(
             condition=getattr(product, "condition", "tres_bon") or "tres_bon",
             brand=product.brand,
             photo_url=product.photo_url,
+            category_trend=category_trends.get(str(product.category_id), 50.0),
         )
         product.trend_score = score_data["total_score"]
         updated += 1
