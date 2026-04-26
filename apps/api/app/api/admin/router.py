@@ -2225,6 +2225,37 @@ async def create_operation(
 
 
 # ---------------------------------------------------------------------------
+# L5 — AI routing (multi-provider abstraction)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/ai-routing", dependencies=[Depends(manager_only)])
+async def get_ai_routing(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Return the current AI routing table (prompt → provider/model)."""
+    from app.services.ai_router import get_routing
+
+    return await get_routing(db)
+
+
+@router.put("/ai-routing", dependencies=[Depends(manager_only)])
+async def update_ai_routing(
+    payload: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Replace the AI routing table.
+
+    Body must be a dict prompt_name → { provider, model }.
+    Provider must be in {anthropic, mistral, openai, gemini}.
+    """
+    from app.services.ai_router import update_routing
+
+    try:
+        return await update_routing(db, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
 # L4 — Scoring config (DB-backed weights with hot reload)
 # ---------------------------------------------------------------------------
 
