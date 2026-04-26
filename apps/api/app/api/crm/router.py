@@ -1082,6 +1082,101 @@ async def public_account_deletion_cancel(
     return {"client_email": cleaned, "deletion_cancelled": True, "was_pending": True}
 
 
+# ---------------------------------------------------------------------------
+# Personal Shopper v2 (P2-003) — embeddings + Claude rewrite
+# ---------------------------------------------------------------------------
+
+
+class RecommendationClickRequest(BaseModel):
+    recommendation_set_id: uuid.UUID
+    product_id: uuid.UUID
+    customer_email: str | None = None
+    position_in_list: int | None = None
+
+
+@router.get("/clients/{client_id}/personal-shopper-v2")
+async def personal_shopper_v2(
+    client_id: uuid.UUID,
+    top_n: int = 4,
+    weather: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Build a Personal Shopper v2 recommendation set for a client.
+
+    Pipeline: embedding similarity → diversify by category → size filter →
+    Claude Haiku rewrite (fallback to deterministic template if the API
+    isn't reachable). Manager / staff only — the public flavour goes
+    through ``/api/crm/personal-shopper-v2``.
+    """
+    from app.services.personal_shopper import PersonalShopperService
+
+    try:
+        result = await PersonalShopperService(db).recommend(
+            client_id, top_n=max(1, min(top_n, 10)), weather_summary=weather,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    await db.commit()
+    return result
+
+
+@router.get("/personal-shopper-v2")
+async def public_personal_shopper_v2(
+    email: str = Query(..., min_length=5, max_length=255),
+    top_n: int = 4,
+    weather: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public flavour of Personal Shopper v2 — email-based lookup.
+
+    Same pipeline as the authenticated endpoint; the email is the only
+    identification, which mirrors the existing public lookup pattern.
+    Future iteration: magic-link verification before serving (consistent
+    with the RGPD endpoints).
+    """
+    from app.services.personal_shopper import PersonalShopperService
+
+    cleaned = _normalize_email(email)
+    result_row = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result_row.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    result = await PersonalShopperService(db).recommend(
+        client.id, top_n=max(1, min(top_n, 10)), weather_summary=weather,
+    )
+    await db.commit()
+    return result
+
+
+@router.post("/personal-shopper-v2/click")
+async def personal_shopper_click(
+    request: RecommendationClickRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public click-through endpoint. Logs ``customer.recommendation_clicked``."""
+    from app.services.personal_shopper import PersonalShopperService
+
+    customer_id: uuid.UUID | None = None
+    if request.customer_email:
+        cleaned = _normalize_email(request.customer_email)
+        result_row = await db.execute(
+            select(Client).where(Client.email == cleaned)
+        )
+        client = result_row.scalar_one_or_none()
+        if client is not None:
+            customer_id = client.id
+
+    await PersonalShopperService(db).record_click(
+        recommendation_set_id=request.recommendation_set_id,
+        product_id=request.product_id,
+        customer_id=customer_id,
+        position_in_list=request.position_in_list,
+    )
+    await db.commit()
+    return {"recorded": True}
+
+
 @router.post("/clients/{client_id}/deletion-cancel")
 async def cancel_client_deletion(
     client_id: uuid.UUID,
