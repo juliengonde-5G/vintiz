@@ -104,6 +104,23 @@ async def create_product(
     db.add(product)
     await db.flush()
     await db.refresh(product)
+
+    # P1-003: trace inventory creation for downstream analytics.
+    from app.models.events import EventSource, EventType
+    from app.services.events import EventService
+    await EventService(db).emit(
+        EventType.product_created,
+        source=EventSource.admin,
+        product_id=product.id,
+        user_id=current_user.id,
+        meta={
+            "barcode": product.barcode,
+            "category_id": str(product.category_id),
+            "sale_price": float(product.sale_price),
+            "brand": product.brand,
+        },
+    )
+
     return ProductResponse.model_validate(product)
 
 

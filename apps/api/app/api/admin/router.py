@@ -1257,3 +1257,37 @@ async def fiscal_export(
         media_type="application/xml",
         headers=headers,
     )
+
+
+# ---------------------------------------------------------------------------
+# Data quality / event store observability (P1-003)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/data-quality",
+    dependencies=[Depends(manager_only)],
+)
+async def data_quality(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    days: int = 7,
+):
+    """Surface event-store coverage so silent instrumentation regressions
+    (e.g. zero ``product.viewed`` events for a day = JS broke) are spotted.
+
+    Returns counts by event_type over the last ``days`` (default 7) plus
+    a daily total. Manager only.
+    """
+    from app.services.events import EventService
+
+    days = max(1, min(days, 90))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    svc = EventService(db)
+    by_type = await svc.counts_by_type(since=since)
+    daily = await svc.daily_volume(since=since)
+    return {
+        "since": since.isoformat(),
+        "window_days": days,
+        "by_event_type": by_type,
+        "daily_total": daily,
+    }

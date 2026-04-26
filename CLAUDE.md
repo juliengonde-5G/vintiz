@@ -160,6 +160,7 @@ POST /api/pos/payments/cb/sandbox/{id}/decline  Refuser manuellement
 GET  /api/admin/weather                      Météo Vernon
 GET  /api/admin/audit-logs                   Journal AuditLog (manager only, filtres entity/action/user_id)
 GET  /api/admin/fiscal-export?from=&to=&format=xml|json  Export fiscal NF525/DGFiP (manager only)
+GET  /api/admin/data-quality?days=7          Volumes events_log par type + courbe (manager only)
 GET  /api/ai/weekly-checklist                Checklist semaine IA
 GET  /api/ai/trends                          Tendances mode
 POST /api/ai/persona/marketing               Rapport marketing IA

@@ -19,6 +19,7 @@ from app.schemas.user import (
     CashierWithPinStatusResponse,
 )
 from app.services.cashier import CashierService
+from app.services.events import EventService
 from app.services.fiscal import FiscalService
 from app.services.pos import PosService
 from app.services.refund import RefundLineInput, RefundService
@@ -80,6 +81,36 @@ async def create_transaction(
 
     # Generate fiscal hash chain
     await fiscal_service.sign_transaction(transaction)
+
+    # Emit analytics events (P1-003). One row per sold item + a customer
+    # visit if a client was attached. Failures are swallowed by EventService.
+    from app.models.events import EventSource, EventType
+    events = EventService(db)
+    if transaction.client_id is not None:
+        await events.emit(
+            EventType.customer_visited,
+            source=EventSource.pos,
+            customer_id=transaction.client_id,
+            transaction_id=transaction.id,
+            user_id=current_user.id,
+        )
+    for item in (transaction.items or []):
+        if item.product_id is None:
+            continue  # manual / free-form line, not a stocked product
+        await events.emit(
+            EventType.product_sold,
+            source=EventSource.pos,
+            customer_id=transaction.client_id,
+            product_id=item.product_id,
+            transaction_id=transaction.id,
+            user_id=current_user.id,
+            meta={
+                "quantity": int(item.quantity),
+                "unit_price": float(item.unit_price),
+                "discount_percent": float(item.discount_percent or 0),
+            },
+        )
+
     await db.commit()
 
     return {
@@ -128,6 +159,19 @@ async def open_drawer(
     drawer = await pos_service.open_drawer(
         current_user.id, request.opening_amount, cashier_id=request.cashier_id
     )
+
+    from app.models.events import EventSource, EventType
+    await EventService(db).emit(
+        EventType.cashier_session_opened,
+        source=EventSource.pos,
+        user_id=current_user.id,
+        meta={
+            "drawer_id": str(drawer.id),
+            "cashier_id": str(request.cashier_id) if request.cashier_id else None,
+            "opening_amount": float(drawer.opening_amount),
+        },
+    )
+
     await db.commit()
     return {
         "drawer_id": str(drawer.id),
@@ -151,6 +195,26 @@ async def close_drawer(
     z_report = await fiscal_service.generate_z_report(
         drawer, current_user.id, cashier_id=request.cashier_id
     )
+
+    from app.models.events import EventSource, EventType
+    discrepancy = (
+        float(drawer.closing_amount) - float(drawer.expected_amount)
+        if drawer.expected_amount is not None and drawer.closing_amount is not None
+        else None
+    )
+    await EventService(db).emit(
+        EventType.cashier_session_closed,
+        source=EventSource.pos,
+        user_id=current_user.id,
+        meta={
+            "drawer_id": str(drawer.id),
+            "cashier_id": str(drawer.cashier_id) if drawer.cashier_id else None,
+            "z_report_number": z_report.report_number,
+            "discrepancy": discrepancy,
+            "transaction_count": z_report.transaction_count,
+        },
+    )
+
     await db.commit()
 
     return {
@@ -630,6 +694,28 @@ async def refund_transaction(
         reason=request.reason,
     )
     await fiscal_service.sign_transaction(refund_tx)
+
+    # Emit a product.refunded event per refunded item (P1-003).
+    from app.models.events import EventSource, EventType
+    events = EventService(db)
+    for item in (refund_tx.items or []):
+        if item.product_id is None:
+            continue
+        await events.emit(
+            EventType.product_refunded,
+            source=EventSource.pos,
+            customer_id=refund_tx.client_id,
+            product_id=item.product_id,
+            transaction_id=refund_tx.id,
+            user_id=current_user.id,
+            meta={
+                "quantity": int(item.quantity),
+                "refund_method": request.refund_method,
+                "reason": request.reason,
+                "original_transaction_id": str(refund_tx.original_transaction_id),
+            },
+        )
+
     await db.commit()
 
     return {

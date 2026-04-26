@@ -15,6 +15,7 @@ from app.models.client import (
 from app.models.store import StoreZone, ZoneProduct, TrendAnalysis, StoreArrangement, AIRecommendation
 from app.models.reporting import DailyReport, CommercialAction, ActionResult
 from app.models.audit import AuditLog, Settings
+from app.models.events import EventLog, EventSource, EventType
 from app.models.ai_task import AITask
 from app.models.newsletter import NewsletterSubscriber
 
@@ -30,6 +31,7 @@ __all__ = [
     "StoreZone", "ZoneProduct", "TrendAnalysis", "StoreArrangement", "AIRecommendation",
     "DailyReport", "CommercialAction", "ActionResult",
     "AuditLog", "Settings",
+    "EventLog", "EventSource", "EventType",
     "AITask",
     "NewsletterSubscriber",
 ]
