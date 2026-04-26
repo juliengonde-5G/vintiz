@@ -74,11 +74,29 @@ def _entity_id(instance: Any) -> uuid.UUID | None:
 
 
 def _redact(field: str, value: Any) -> Any:
-    """Hide secret values in audit data — only flag presence/change."""
+    """Hide secret values + JSON-safe coercion before storage in audit data.
+
+    The audit row's ``data`` column is JSONB ; ``json.dumps`` chokes on
+    Decimal, Enum, datetime and UUID natively. We coerce those to JSON-
+    friendly primitives here so a misbehaved caller never crashes the
+    flush (which would deny-list the whole transaction).
+    """
+    import enum
+    from datetime import date, datetime
+    from decimal import Decimal
+
     if field in {"pin_hash", "password_hash"}:
         return "<set>" if value else "<empty>"
+    if value is None:
+        return None
     if isinstance(value, uuid.UUID):
         return str(value)
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, enum.Enum):
+        return value.value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
     return value
 
 

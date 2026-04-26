@@ -206,13 +206,19 @@ async def create_from_photo(
     color = vision_payload.get("couleur")
     size = vision_payload.get("taille")
     condition = _normalize_condition(vision_payload.get("etat"))
-    sale_price = _gamme_to_price_hint(
-        vision_payload.get("gamme_estimee"), sale_price_hint
+    sale_price = round(
+        _gamme_to_price_hint(vision_payload.get("gamme_estimee"), sale_price_hint),
+        2,
     )
-    purchase_price = (
-        purchase_price_hint if purchase_price_hint > 0 else sale_price * 0.4
+    purchase_price = round(
+        purchase_price_hint if purchase_price_hint > 0 else sale_price * 0.4,
+        2,
     )
 
+    # Pass plain floats (not Decimal) to align with legacy create_product. The
+    # audit listener (services/audit.py) snapshots inserted-row attributes into
+    # a JSONB column ; Decimal values choke json.dumps and crash the autoflush
+    # on the next SELECT in this transaction.
     product = Product(
         barcode=barcode,
         name=description[:255],
@@ -220,8 +226,8 @@ async def create_from_photo(
         size=size[:20] if size else None,
         color=color[:50] if color else None,
         brand=brand[:100] if brand else None,
-        purchase_price=Decimal(str(purchase_price)).quantize(Decimal("0.01")),
-        sale_price=Decimal(str(sale_price)).quantize(Decimal("0.01")),
+        purchase_price=float(purchase_price),
+        sale_price=float(sale_price),
         status=ProductStatus.stock,
         condition=condition,
         description=description,
