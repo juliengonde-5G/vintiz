@@ -289,6 +289,8 @@ async def get_product_score(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Compute and return detailed score for a product."""
+    from app.models.product import ProductPhoto
+    from app.services.brand_tiers import get_brand_score
     from app.services.category_trends import get_category_trend
     from app.services.scoring_service import compute_score
 
@@ -306,6 +308,21 @@ async def get_product_score(
     # Plug in the live category trend (P2-010) — replaces the old static 50.0.
     trend = await get_category_trend(db, product.category_id)
 
+    # Plug in the DB-driven brand tier (P2-012).
+    brand_score = await get_brand_score(db, product.brand)
+
+    # Plug in photo count + Vision confidence (P2-011). Aggregating in
+    # the request handler keeps compute_score sync + pure.
+    photo_rows = (await db.execute(
+        select(ProductPhoto.ai_confidence)
+        .where(ProductPhoto.product_id == product_id)
+    )).all()
+    photo_count = len(photo_rows)
+    confidences = [c for (c,) in photo_rows if c is not None]
+    photo_avg_confidence = (
+        sum(confidences) / len(confidences) if confidences else None
+    )
+
     score = compute_score(
         shelf_date=product.shelf_date,
         sale_price=float(product.sale_price),
@@ -314,6 +331,9 @@ async def get_product_score(
         brand=product.brand,
         photo_url=product.photo_url,
         category_trend=trend,
+        brand_score=brand_score,
+        photo_count=photo_count,
+        photo_avg_confidence=photo_avg_confidence,
     )
     return score
 

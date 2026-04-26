@@ -171,9 +171,10 @@ async def _run_daily_rgpd_purge() -> None:
 async def _run_monthly_scoring() -> None:
     """Background job: recompute trend scores for all active products (1st Wednesday of month)."""
     try:
-        from sqlalchemy import select
+        from sqlalchemy import func, select
         from sqlalchemy.ext.asyncio import AsyncSession
-        from app.models.product import Product, ProductStatus
+        from app.models.product import Product, ProductPhoto, ProductStatus
+        from app.services.brand_tiers import get_brand_score
         from app.services.category_trends import refresh_cache
         from app.services.scoring_service import compute_score
 
@@ -182,6 +183,19 @@ async def _run_monthly_scoring() -> None:
             # (P2-010) so each product gets the live signal instead of 50.0.
             category_trends = await refresh_cache(db)
 
+            # Pre-compute photo aggregates once (P2-011) to avoid N+1.
+            photo_agg = await db.execute(
+                select(
+                    ProductPhoto.product_id,
+                    func.count(ProductPhoto.id).label("n"),
+                    func.avg(ProductPhoto.ai_confidence).label("avg_conf"),
+                ).group_by(ProductPhoto.product_id)
+            )
+            photo_data = {
+                row[0]: (int(row[1]), float(row[2]) if row[2] is not None else None)
+                for row in photo_agg.all()
+            }
+
             result = await db.execute(
                 select(Product).where(
                     Product.status.in_([ProductStatus.stock, ProductStatus.display])
@@ -189,13 +203,14 @@ async def _run_monthly_scoring() -> None:
             )
             products = result.scalars().all()
             for product in products:
-                from sqlalchemy import func
                 avg_result = await db.execute(
                     select(func.avg(Product.sale_price)).where(
                         Product.category_id == product.category_id
                     )
                 )
                 avg_price = float(avg_result.scalar_one_or_none() or product.sale_price)
+                brand_score = await get_brand_score(db, product.brand)
+                photo_count, photo_avg_conf = photo_data.get(product.id, (0, None))
                 score_data = compute_score(
                     shelf_date=product.shelf_date,
                     sale_price=float(product.sale_price),
@@ -206,6 +221,9 @@ async def _run_monthly_scoring() -> None:
                     category_trend=category_trends.get(
                         str(product.category_id), 50.0
                     ),
+                    brand_score=brand_score,
+                    photo_count=photo_count,
+                    photo_avg_confidence=photo_avg_conf,
                 )
                 product.trend_score = score_data["total_score"]
             await db.commit()
