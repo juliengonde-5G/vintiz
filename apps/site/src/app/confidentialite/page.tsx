@@ -1,11 +1,12 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import Link from "next/link";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Politique de confidentialité",
   description:
-    "Politique de confidentialité et gestion des cookies de la boutique Vintiz (Vernon, Normandie). Conformité RGPD.",
+    "Politique de confidentialité, traitement des données et gestion des cookies de la boutique Vintiz (Vernon, Normandie). Conformité RGPD.",
   robots: { index: false, follow: true },
 };
 
@@ -18,7 +19,9 @@ export default function ConfidentialitePage() {
           <h1 className="font-display text-3xl text-black mb-8">
             Politique de confidentialité
           </h1>
-          <p className="text-xs text-black/50 mb-8">Dernière mise à jour : avril 2026</p>
+          <p className="text-xs text-black/50 mb-8">
+            Dernière mise à jour : avril 2026 — version v1.0-2026-04
+          </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">
             Responsable du traitement
@@ -32,69 +35,207 @@ export default function ConfidentialitePage() {
             Données collectées
           </h2>
           <p className="text-black/70 leading-relaxed">
-            Sur ce site vitrine, seules les adresses e-mail déposées via le formulaire
-            d&apos;inscription à la newsletter sont collectées. Lors de votre inscription,
-            nous enregistrons également la date et l&apos;heure du consentement ainsi que
-            l&apos;adresse IP ayant servi à le donner — à des fins exclusives de preuve du
-            consentement conformément au RGPD. Aucune autre donnée personnelle
-            n&apos;est collectée.
+            Selon votre interaction avec Vintiz, nous collectons les données
+            suivantes&nbsp;:
           </p>
+          <ul className="list-disc pl-6 mt-2 space-y-2 text-black/70">
+            <li>
+              <strong>Newsletter</strong> — adresse e-mail, date, heure et adresse
+              IP du consentement (preuve RGPD).
+            </li>
+            <li>
+              <strong>Carte de fidélité</strong> (souscription en boutique) —
+              prénom, nom, e-mail, téléphone, achats, points de fidélité, niveau
+              de carte, et solde d&apos;avoir éventuel.
+            </li>
+            <li>
+              <strong>Personal Shopper IA</strong> (sur demande) — préférences de
+              style, tailles, marques, dérivées de votre historique d&apos;achats
+              afin de vous proposer des sélections personnalisées.
+            </li>
+            <li>
+              <strong>Encaissement</strong> — chaque vente est enregistrée
+              conformément à la norme NF525 (loi anti-fraude TVA), avec montant,
+              articles, méthode de paiement et chaînage cryptographique.
+            </li>
+          </ul>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">
-            Finalité et base légale
+            Finalités et bases légales
           </h2>
-          <p className="text-black/70 leading-relaxed">
-            Finalité : vous informer de l&apos;ouverture de la boutique, des ventes privées
-            et des nouveautés. Base légale : votre <strong>consentement explicite</strong>{" "}
-            (RGPD art. 6.1.a), matérialisé par la case à cocher du formulaire. Vous
-            pouvez retirer ce consentement à tout moment sans motif via le lien de
-            désinscription présent dans chaque e-mail que nous vous envoyons, ou en
-            écrivant à dpo@solidarite-textiles.fr.
-          </p>
+          <ul className="list-disc pl-6 mt-2 space-y-2 text-black/70">
+            <li>
+              <strong>Newsletter</strong> — consentement explicite (RGPD art.
+              6.1.a). Retirable à tout moment via le lien de désinscription.
+            </li>
+            <li>
+              <strong>Programme fidélité, avoirs, historique d&apos;achats</strong>
+              {" "}— exécution de la relation commerciale (RGPD art. 6.1.b).
+            </li>
+            <li>
+              <strong>Personal Shopper IA et profilage</strong> — consentement
+              explicite (RGPD art. 6.1.a + art. 22). Vous pouvez le retirer à
+              tout moment depuis votre{" "}
+              <Link href="/account/data" className="text-teal underline">
+                espace de gestion des données
+              </Link>
+              .
+            </li>
+            <li>
+              <strong>Comptabilité fiscale</strong> — obligation légale (CGI,
+              décret 2016-1138 NF525) imposant la conservation 6 ans des
+              transactions.
+            </li>
+          </ul>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">Cookies</h2>
           <p className="text-black/70 leading-relaxed">
-            Ce site utilise uniquement des cookies fonctionnels nécessaires à son
-            fonctionnement. Avec votre accord explicite (bandeau de consentement), des
-            cookies de mesure d&apos;audience anonyme (Google Analytics 4 avec IP
-            anonymisée et Consent Mode v2) peuvent être déposés afin de comprendre
-            comment les visiteurs utilisent le site. Aucun cookie publicitaire n&apos;est
-            déposé.
+            Ce site utilise uniquement des cookies fonctionnels nécessaires à
+            son fonctionnement. Avec votre accord explicite (bandeau de
+            consentement), des cookies de mesure d&apos;audience anonyme (Google
+            Analytics 4 avec IP anonymisée et Consent Mode v2) peuvent être
+            déposés. Aucun cookie publicitaire n&apos;est déposé.
           </p>
 
-          <h2 className="font-display text-xl text-black mt-8 mb-3">Vos droits</h2>
+          <h2 className="font-display text-xl text-black mt-8 mb-3">
+            Vos droits
+          </h2>
           <p className="text-black/70 leading-relaxed">
-            Conformément au RGPD et à la loi Informatique et Libertés, vous disposez
-            d&apos;un droit d&apos;accès, de rectification, d&apos;effacement, de limitation, d&apos;opposition
-            et de portabilité de vos données. Pour exercer ces droits, écrivez à
-            dpo@solidarite-textiles.fr. Nous répondons sous un délai maximum de 30 jours.
-            Vous pouvez également introduire une réclamation auprès de la CNIL
-            (www.cnil.fr).
+            Conformément au RGPD et à la loi Informatique et Libertés, vous
+            disposez des droits suivants&nbsp;:
+          </p>
+          <ul className="list-disc pl-6 mt-2 space-y-2 text-black/70">
+            <li>
+              <strong>Accès et portabilité</strong> (art. 15 + 20) — visualiser
+              et télécharger l&apos;ensemble de vos données au format JSON depuis{" "}
+              <Link href="/account/data" className="text-teal underline">
+                /account/data
+              </Link>
+              .
+            </li>
+            <li>
+              <strong>Rectification</strong> (art. 16) — demande à
+              dpo@solidarite-textiles.fr ou directement en boutique.
+            </li>
+            <li>
+              <strong>Effacement / droit à l&apos;oubli</strong> (art. 17) —
+              demande en self-service depuis{" "}
+              <Link href="/account/data" className="text-teal underline">
+                /account/data
+              </Link>
+              . La suppression effective intervient sous 30 jours pour permettre
+              une éventuelle annulation. Les transactions soumises à
+              l&apos;obligation NF525 (6 ans) sont conservées mais anonymisées
+              (votre identité est dissociée du paiement).
+            </li>
+            <li>
+              <strong>Limitation et opposition</strong> (art. 18 + 21) —
+              dpo@solidarite-textiles.fr.
+            </li>
+            <li>
+              <strong>Réclamation</strong> auprès de la CNIL (www.cnil.fr).
+            </li>
+          </ul>
+          <p className="text-black/70 leading-relaxed mt-3">
+            Nous répondons à toute demande sous un délai maximum de 30 jours.
           </p>
 
-          <h2 className="font-display text-xl text-black mt-8 mb-3">Conservation</h2>
-          <p className="text-black/70 leading-relaxed">
-            Les adresses e-mail newsletter sont conservées jusqu&apos;à votre désinscription,
-            et au plus tard pendant <strong>3 ans sans interaction</strong> avec nos e-mails
-            (standard CNIL pour la prospection). Passé ce délai, elles sont
-            automatiquement supprimées. Les données de mesure d&apos;audience sont
-            conservées 14 mois.
-          </p>
+          <h2 className="font-display text-xl text-black mt-8 mb-3">
+            Conservation
+          </h2>
+          <ul className="list-disc pl-6 mt-2 space-y-2 text-black/70">
+            <li>
+              <strong>Newsletter</strong> — jusqu&apos;à désinscription, et au
+              plus tard 3 ans sans interaction (standard CNIL prospection).
+            </li>
+            <li>
+              <strong>Compte client / carte de fidélité</strong> — pendant la
+              durée de la relation commerciale, puis 5 ans après la dernière
+              transaction.
+            </li>
+            <li>
+              <strong>Données de transaction (NF525)</strong> — 6 ans, obligation
+              légale (article L102 B du Livre des procédures fiscales).
+            </li>
+            <li>
+              <strong>Mesure d&apos;audience</strong> — 14 mois.
+            </li>
+          </ul>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">
             Destinataires et sous-traitants
           </h2>
           <p className="text-black/70 leading-relaxed">
-            Vos données ne sont transmises à aucun tiers commercial. Elles sont stockées
-            sur nos serveurs hébergés en France et ne font l&apos;objet d&apos;aucun transfert
-            hors Union européenne. Seul le personnel autorisé de Vintiz peut y accéder.
+            Vos données ne sont transmises à aucun tiers commercial. Les
+            sous-traitants techniques utilisés sont&nbsp;:
+          </p>
+          <ul className="list-disc pl-6 mt-2 space-y-2 text-black/70">
+            <li>
+              <strong>Scaleway</strong> (hébergement, France) — base de données
+              et application.
+            </li>
+            <li>
+              <strong>Anthropic</strong> (API Claude, AWS Europe) — analyse
+              automatisée des fiches produits et rédaction des recommandations
+              Personal Shopper. Les données envoyées sont strictement
+              fonctionnelles (description du panier ou du produit) et ne sont
+              pas conservées par Anthropic après inférence.
+            </li>
+            <li>
+              <strong>SumUp</strong> (paiement CB) — informations de paiement
+              traitées directement par SumUp&nbsp;; Vintiz n&apos;a accès qu&apos;à
+              un identifiant de transaction non nominatif.
+            </li>
+            <li>
+              <strong>Twilio / fournisseur SMTP</strong> — uniquement pour
+              l&apos;envoi de votre ticket par e-mail/SMS lorsque vous nous le
+              demandez.
+            </li>
+          </ul>
+          <p className="text-black/70 leading-relaxed mt-2">
+            Aucun transfert hors Union européenne n&apos;est effectué pour les
+            données de profil&nbsp;; l&apos;API Claude est utilisée via une
+            instance européenne.
           </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">Sécurité</h2>
           <p className="text-black/70 leading-relaxed">
-            Les données sont stockées dans une base de données PostgreSQL sauvegardée
-            quotidiennement (sauvegardes chiffrées). Les accès administratifs sont
-            protégés par authentification forte et journalisation.
+            Les données sont stockées dans une base de données PostgreSQL
+            sauvegardée quotidiennement (sauvegardes chiffrées). Les accès
+            administratifs sont protégés par authentification forte
+            (mot de passe + PIN cashier 4 chiffres). Toute modification de
+            donnée sensible est journalisée dans un registre d&apos;audit
+            inaltérable. Les transactions de caisse sont chaînées par hash
+            SHA-256 conformément à la norme NF525.
+          </p>
+
+          <h2 className="font-display text-xl text-black mt-8 mb-3">
+            Profilage et décisions automatisées
+          </h2>
+          <p className="text-black/70 leading-relaxed">
+            Le Personal Shopper IA et les recommandations de produits utilisent
+            un traitement automatisé pour suggérer des articles susceptibles de
+            vous plaire. Aucune décision automatisée produisant un effet juridique
+            ou affectant significativement votre situation n&apos;est prise sur la
+            base de ce profilage&nbsp;: il s&apos;agit uniquement de suggestions,
+            qu&apos;une employée valide systématiquement avant tout envoi
+            personnalisé. Vous pouvez à tout moment retirer votre consentement
+            au profilage depuis votre{" "}
+            <Link href="/account/data" className="text-teal underline">
+              espace de gestion des données
+            </Link>
+            .
+          </p>
+
+          <h2 className="font-display text-xl text-black mt-8 mb-3">
+            Modification de cette politique
+          </h2>
+          <p className="text-black/70 leading-relaxed">
+            Cette politique est versionnée. Chaque modification fait
+            l&apos;objet d&apos;une nouvelle version (visible en haut de cette
+            page) et, lorsqu&apos;elle est substantielle, vous est notifiée par
+            e-mail si vous êtes inscrit·e à la newsletter ou détenteur d&apos;une
+            carte fidélité.
           </p>
         </div>
       </section>

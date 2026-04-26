@@ -1,10 +1,12 @@
 import logging
 import traceback
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import engine
@@ -214,6 +216,13 @@ app.include_router(hardware_router, prefix="/api")
 app.include_router(seo_router, prefix="/api")
 app.include_router(newsletter_router, prefix="/api")
 app.include_router(cahier_router, prefix="/api")
+
+# Static files for product photo uploads (P1-008 follow-up). The folder is
+# created on demand by the upload handler, but we mount it eagerly so missing
+# folders don't 500 — StaticFiles raises if the directory is missing at boot.
+_UPLOADS_DIR = Path(__file__).resolve().parents[1] / "uploads"
+_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
 
 
 @app.get("/api/health")

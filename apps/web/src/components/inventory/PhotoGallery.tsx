@@ -67,6 +67,29 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
     setBusy(false);
   };
 
+  const uploadFile = async (file: File) => {
+    setBusy(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.upload(
+        `/api/inventory/products/${productId}/photos/upload`,
+        formData,
+      );
+      if (res.ok) {
+        await load();
+        notify();
+      } else {
+        const err = await res.json().catch(() => null);
+        setError(err?.detail || 'Erreur upload.');
+      }
+    } catch {
+      setError('Erreur réseau.');
+    }
+    setBusy(false);
+  };
+
   const setPrimary = async (photoId: string) => {
     setBusy(true);
     try {
@@ -198,28 +221,52 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
         </div>
       )}
 
-      <div className="flex gap-2">
+      <div className="space-y-2 pt-2 border-t border-gray-100">
+        <label className="block text-sm font-medium text-black">
+          Téléverser depuis l&apos;appareil
+        </label>
         <input
-          type="url"
-          value={newUrl}
-          onChange={(e) => setNewUrl(e.target.value)}
-          placeholder="URL de la photo (https://…)"
-          className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
           disabled={busy}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              uploadFile(file);
+              e.target.value = '';
+            }
+          }}
+          className="block w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-teal file:text-white hover:file:bg-teal-700 disabled:opacity-50"
         />
-        <button
-          type="button"
-          onClick={addPhoto}
-          disabled={busy || !newUrl.trim()}
-          className="px-4 py-2 bg-teal text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50"
-        >
-          Ajouter
-        </button>
+        <p className="text-xs text-gray-400">
+          JPG / PNG / WEBP, 5 Mo max. Stockage local pour l&apos;instant ;
+          bascule Scaleway prévue.
+        </p>
       </div>
-      <p className="text-xs text-gray-400">
-        L&apos;upload de fichier sera ajouté plus tard ; pour l&apos;instant
-        utilisez une URL publique (CDN, S3, etc.).
-      </p>
+
+      <div className="space-y-2 pt-2 border-t border-gray-100">
+        <label className="block text-sm font-medium text-black">
+          Ou ajouter par URL
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="url"
+            value={newUrl}
+            onChange={(e) => setNewUrl(e.target.value)}
+            placeholder="https://…"
+            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            disabled={busy}
+          />
+          <button
+            type="button"
+            onClick={addPhoto}
+            disabled={busy || !newUrl.trim()}
+            className="px-4 py-2 bg-teal text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50"
+          >
+            Ajouter
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

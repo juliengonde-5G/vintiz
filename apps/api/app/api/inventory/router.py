@@ -1,8 +1,10 @@
+import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -490,6 +492,69 @@ async def reorder_product_photos(
     rows = await PhotoService(db).reorder(product_id, request.ordered_ids)
     await db.commit()
     return rows
+
+
+# Local storage for uploaded photos. Resolved relative to the project root so
+# the mount in main.py and this router agree on the same folder regardless of
+# where uvicorn is launched from. Switch to S3/Scaleway later by replacing
+# the body of this handler.
+UPLOAD_ROOT = Path(__file__).resolve().parents[3] / "uploads" / "products"
+ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+MAX_PHOTO_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+@router.post(
+    "/products/{product_id}/photos/upload",
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_product_photo(
+    product_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    file: UploadFile = File(...),
+):
+    """Accept a multipart upload, persist the file under uploads/products/, then
+    register it via PhotoService so it benefits from the same invariants
+    (primary mirror, contiguous order_index, audit trail).
+    """
+    # Validate that the product exists upfront — avoids orphan files on disk.
+    product_row = await db.execute(select(Product).where(Product.id == product_id))
+    if product_row.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in ALLOWED_PHOTO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {sorted(ALLOWED_PHOTO_EXTENSIONS)}",
+        )
+
+    # Read with cap to bound memory + reject oversized uploads.
+    blob = await file.read(MAX_PHOTO_BYTES + 1)
+    if len(blob) > MAX_PHOTO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large (max {MAX_PHOTO_BYTES // (1024 * 1024)} MB)",
+        )
+    if not blob:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    target_dir = UPLOAD_ROOT / str(product_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    fname = f"{uuid.uuid4().hex}{suffix}"
+    target_path = target_dir / fname
+    target_path.write_bytes(blob)
+    os.chmod(target_path, 0o644)
+
+    public_url = f"/uploads/products/{product_id}/{fname}"
+    photo = await PhotoService(db).add_photo(product_id=product_id, url=public_url)
+    await db.commit()
+    return {
+        "id": str(photo.id),
+        "url": photo.url,
+        "is_primary": photo.is_primary,
+        "order_index": photo.order_index,
+    }
 
 
 @router.delete(
