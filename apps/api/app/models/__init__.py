@@ -12,7 +12,15 @@ from app.models.client import (
     LoyaltyAccount,
     LoyaltyTransaction,
 )
-from app.models.store import StoreZone, ZoneProduct, TrendAnalysis, StoreArrangement, AIRecommendation
+from app.models.store import (
+    AIRecommendation,
+    FurnitureItem,
+    StoreArrangement,
+    StoreZone,
+    TrendAnalysis,
+    ZoneProduct,
+    ZoneTag,
+)
 from app.models.reporting import DailyReport, CommercialAction, ActionResult
 from app.models.audit import AuditLog, Settings
 from app.models.batch import IntakeBatch, IntakeSource
@@ -37,6 +45,11 @@ from app.models.ai_task import AITask
 from app.models.newsletter import NewsletterSubscriber
 from app.models.coupon import Coupon, CouponDiscountType, CouponSource
 from app.models.reservation import Reservation, ReservationStatus
+from app.models.local_calendar import (
+    CahierDayArchive,
+    CommercialOperation,
+    LocalEvent,
+)
 
 __all__ = [
     "Base",
@@ -48,6 +61,7 @@ __all__ = [
     "AvoirTransaction", "AvoirTxType",
     "Consent", "ConsentPurpose",
     "StoreZone", "ZoneProduct", "TrendAnalysis", "StoreArrangement", "AIRecommendation",
+    "FurnitureItem", "ZoneTag",
     "DailyReport", "CommercialAction", "ActionResult",
     "AuditLog", "Settings",
     "EventLog", "EventSource", "EventType",
@@ -62,4 +76,5 @@ __all__ = [
     "NewsletterSubscriber",
     "Coupon", "CouponDiscountType", "CouponSource",
     "Reservation", "ReservationStatus",
+    "LocalEvent", "CommercialOperation", "CahierDayArchive",
 ]

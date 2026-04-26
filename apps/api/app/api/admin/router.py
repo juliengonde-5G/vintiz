@@ -1907,3 +1907,539 @@ async def list_coupons(
         }
         for c in coupons
     ]
+
+
+# ---------------------------------------------------------------------------
+# L2.2 — Furniture items + zone tags (iso 2.5D mapping)
+# ---------------------------------------------------------------------------
+
+
+VALID_ZONE_TAGS = {
+    "homme", "femme", "enfant", "accessoire",
+    "derniere_demarque", "nouveaute", "premium",
+    "saisonnier", "vitrine", "tete_gondole",
+}
+
+VALID_FURNITURE_TYPES = {
+    "portant", "mannequin", "etagere", "table_presentation",
+    "comptoir_caisse", "cabine_essayage", "vitrine",
+    "mur", "porte_entree", "tete_gondole",
+}
+
+
+class FurnitureItemPayload(BaseModel):
+    zone_id: uuid.UUID | None = None
+    type: str
+    variant: str | None = None
+    pos_x: float = 0
+    pos_y: float = 0
+    rotation: int = 0
+    scale: float = 1.0
+    label: str | None = None
+
+
+@router.get("/furniture", dependencies=[Depends(manager_only)])
+async def list_furniture(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    zone_id: uuid.UUID | None = Query(default=None),
+):
+    from app.models.store import FurnitureItem
+
+    stmt = select(FurnitureItem)
+    if zone_id:
+        stmt = stmt.where(FurnitureItem.zone_id == zone_id)
+    rows = await db.execute(stmt)
+    return [
+        {
+            "id": str(f.id),
+            "zone_id": str(f.zone_id) if f.zone_id else None,
+            "type": f.type,
+            "variant": f.variant,
+            "pos_x": f.pos_x,
+            "pos_y": f.pos_y,
+            "rotation": f.rotation,
+            "scale": f.scale,
+            "label": f.label,
+        }
+        for f in rows.scalars().all()
+    ]
+
+
+@router.post("/furniture", dependencies=[Depends(manager_only)])
+async def create_furniture(
+    payload: FurnitureItemPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.store import FurnitureItem
+
+    if payload.type not in VALID_FURNITURE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"type must be one of {sorted(VALID_FURNITURE_TYPES)}",
+        )
+    f = FurnitureItem(
+        zone_id=payload.zone_id,
+        type=payload.type,
+        variant=payload.variant,
+        pos_x=payload.pos_x,
+        pos_y=payload.pos_y,
+        rotation=payload.rotation,
+        scale=max(0.5, min(2.0, payload.scale)),
+        label=payload.label,
+    )
+    db.add(f)
+    await db.flush()
+    await db.refresh(f)
+    return {"id": str(f.id)}
+
+
+@router.put("/furniture/{furn_id}", dependencies=[Depends(manager_only)])
+async def update_furniture(
+    furn_id: uuid.UUID,
+    payload: FurnitureItemPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.store import FurnitureItem
+
+    res = await db.execute(select(FurnitureItem).where(FurnitureItem.id == furn_id))
+    f = res.scalar_one_or_none()
+    if not f:
+        raise HTTPException(status_code=404, detail="Furniture not found")
+    f.zone_id = payload.zone_id
+    f.type = payload.type
+    f.variant = payload.variant
+    f.pos_x = payload.pos_x
+    f.pos_y = payload.pos_y
+    f.rotation = payload.rotation
+    f.scale = max(0.5, min(2.0, payload.scale))
+    f.label = payload.label
+    await db.flush()
+    return {"ok": True}
+
+
+@router.delete("/furniture/{furn_id}", dependencies=[Depends(manager_only)])
+async def delete_furniture(
+    furn_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.store import FurnitureItem
+
+    res = await db.execute(select(FurnitureItem).where(FurnitureItem.id == furn_id))
+    f = res.scalar_one_or_none()
+    if not f:
+        raise HTTPException(status_code=404, detail="Furniture not found")
+    await db.delete(f)
+    await db.flush()
+    return {"ok": True}
+
+
+class ZoneTagsPayload(BaseModel):
+    tags: list[str]
+
+
+@router.get("/zones/{zone_id}/tags", dependencies=[Depends(manager_only)])
+async def list_zone_tags(
+    zone_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.store import ZoneTag
+
+    rows = await db.execute(select(ZoneTag).where(ZoneTag.zone_id == zone_id))
+    return [t.tag for t in rows.scalars().all()]
+
+
+@router.put("/zones/{zone_id}/tags", dependencies=[Depends(manager_only)])
+async def set_zone_tags(
+    zone_id: uuid.UUID,
+    payload: ZoneTagsPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Replace the tag set for a zone — atomic upsert (delete+insert)."""
+    from app.models.store import ZoneTag
+
+    invalid = set(payload.tags) - VALID_ZONE_TAGS
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tags inconnus : {sorted(invalid)}. Valides : {sorted(VALID_ZONE_TAGS)}",
+        )
+
+    # Delete current
+    res = await db.execute(select(ZoneTag).where(ZoneTag.zone_id == zone_id))
+    for tag in res.scalars().all():
+        await db.delete(tag)
+
+    # Insert new (deduped)
+    for t in set(payload.tags):
+        db.add(ZoneTag(zone_id=zone_id, tag=t))
+    await db.flush()
+    return {"tags": sorted(set(payload.tags))}
+
+
+# ---------------------------------------------------------------------------
+# L2.4 — Local calendar (Vernon + Giverny + school holidays) + operations
+# ---------------------------------------------------------------------------
+
+
+class LocalEventPayload(BaseModel):
+    title: str
+    date_start: str  # ISO date
+    date_end: str
+    location: str = "Vernon"
+    expected_traffic_boost_pct: int = 0
+    description: str | None = None
+    source_url: str | None = None
+    is_school_holiday: bool = False
+
+
+@router.get("/local-events", dependencies=[Depends(manager_only)])
+async def list_local_events(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+):
+    """List LocalEvent entries, optionally filtered by date range."""
+    from app.models.local_calendar import LocalEvent
+    from datetime import date as _date
+
+    stmt = select(LocalEvent).order_by(LocalEvent.date_start)
+    if date_from:
+        stmt = stmt.where(LocalEvent.date_end >= _date.fromisoformat(date_from))
+    if date_to:
+        stmt = stmt.where(LocalEvent.date_start <= _date.fromisoformat(date_to))
+    rows = await db.execute(stmt)
+    return [
+        {
+            "id": str(e.id),
+            "title": e.title,
+            "date_start": e.date_start.isoformat(),
+            "date_end": e.date_end.isoformat(),
+            "location": e.location,
+            "expected_traffic_boost_pct": e.expected_traffic_boost_pct,
+            "description": e.description,
+            "is_school_holiday": e.is_school_holiday,
+        }
+        for e in rows.scalars().all()
+    ]
+
+
+@router.post("/local-events", dependencies=[Depends(manager_only)])
+async def create_local_event(
+    payload: LocalEventPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Create a LocalEvent."""
+    from app.models.local_calendar import LocalEvent
+    from datetime import date as _date
+
+    ev = LocalEvent(
+        title=payload.title,
+        date_start=_date.fromisoformat(payload.date_start),
+        date_end=_date.fromisoformat(payload.date_end),
+        location=payload.location,
+        expected_traffic_boost_pct=payload.expected_traffic_boost_pct,
+        description=payload.description,
+        source_url=payload.source_url,
+        is_school_holiday=payload.is_school_holiday,
+    )
+    db.add(ev)
+    await db.flush()
+    await db.refresh(ev)
+    return {"id": str(ev.id)}
+
+
+class CommercialOperationPayload(BaseModel):
+    name: str
+    date_start: str
+    date_end: str
+    status: str = "draft"
+    description: str | None = None
+    op_type: str = "soldes"
+    discount_pct: int = 0
+    applicable_categories: list[str] | None = None
+    applicable_zones: list[str] | None = None
+    visible_pos: bool = True
+    visible_site: bool = False
+
+
+@router.get("/operations", dependencies=[Depends(manager_only)])
+async def list_operations(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    only_active: bool = Query(default=False),
+):
+    from app.models.local_calendar import CommercialOperation
+    from datetime import date as _date
+
+    stmt = select(CommercialOperation).order_by(CommercialOperation.date_start.desc())
+    if only_active:
+        today = _date.today()
+        stmt = stmt.where(
+            CommercialOperation.status == "active",
+            CommercialOperation.date_start <= today,
+            CommercialOperation.date_end >= today,
+        )
+    rows = await db.execute(stmt)
+    return [
+        {
+            "id": str(o.id),
+            "name": o.name,
+            "date_start": o.date_start.isoformat(),
+            "date_end": o.date_end.isoformat(),
+            "status": o.status,
+            "op_type": o.op_type,
+            "discount_pct": o.discount_pct,
+            "applicable_categories": o.applicable_categories,
+            "applicable_zones": o.applicable_zones,
+            "visible_pos": o.visible_pos,
+            "visible_site": o.visible_site,
+        }
+        for o in rows.scalars().all()
+    ]
+
+
+@router.post("/operations", dependencies=[Depends(manager_only)])
+async def create_operation(
+    payload: CommercialOperationPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.local_calendar import CommercialOperation
+    from datetime import date as _date
+
+    op = CommercialOperation(
+        name=payload.name,
+        date_start=_date.fromisoformat(payload.date_start),
+        date_end=_date.fromisoformat(payload.date_end),
+        status=payload.status,
+        description=payload.description,
+        op_type=payload.op_type,
+        discount_pct=payload.discount_pct,
+        applicable_categories=payload.applicable_categories,
+        applicable_zones=payload.applicable_zones,
+        visible_pos=payload.visible_pos,
+        visible_site=payload.visible_site,
+    )
+    db.add(op)
+    await db.flush()
+    await db.refresh(op)
+    return {"id": str(op.id)}
+
+
+# ---------------------------------------------------------------------------
+# L5 — AI routing (multi-provider abstraction)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/ai-routing", dependencies=[Depends(manager_only)])
+async def get_ai_routing(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Return the current AI routing table (prompt → provider/model)."""
+    from app.services.ai_router import get_routing
+
+    return await get_routing(db)
+
+
+@router.put("/ai-routing", dependencies=[Depends(manager_only)])
+async def update_ai_routing(
+    payload: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Replace the AI routing table.
+
+    Body must be a dict prompt_name → { provider, model }.
+    Provider must be in {anthropic, mistral, openai, gemini}.
+    """
+    from app.services.ai_router import update_routing
+
+    try:
+        return await update_routing(db, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# L4 — Scoring config (DB-backed weights with hot reload)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/scoring-config", dependencies=[Depends(manager_only)])
+async def get_scoring_config_endpoint(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Return the current scoring config (or defaults v2 if unset)."""
+    from app.services.scoring_config import get_scoring_config
+
+    return await get_scoring_config(db)
+
+
+@router.put("/scoring-config", dependencies=[Depends(manager_only)])
+async def update_scoring_config_endpoint(
+    payload: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Validate & persist a new scoring config (manager only).
+
+    The body must contain at least ``weights`` (8 components summing to 1.0).
+    Optional : ``age_decay``, ``season_boost``, ``consignment_threshold``.
+    """
+    from app.services.scoring_config import update_scoring_config
+
+    return await update_scoring_config(
+        db, payload, user_email=current_user.email
+    )
+
+
+@router.post("/scoring-config/reset", dependencies=[Depends(manager_only)])
+async def reset_scoring_config_endpoint(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    version: int = Query(default=2, ge=1, le=2),
+):
+    """Restore default config (v1 = 6 components, v2 = 8 components)."""
+    from app.services.scoring_config import reset_scoring_config
+
+    return await reset_scoring_config(
+        db, version=version, user_email=current_user.email
+    )
+
+
+@router.post("/scoring-config/preview", dependencies=[Depends(manager_only)])
+async def preview_scoring_config(
+    payload: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Dry-run a scoring config against the live catalog.
+
+    Returns up to 10 sample products with their score before/after the
+    proposed config — Camille can validate the impact before saving.
+    """
+    from app.services.scoring_config import _validate_payload, get_scoring_config
+    from app.services.scoring_service import compute_score
+    from datetime import datetime, timezone as tz
+
+    _validate_payload(payload)
+    current = await get_scoring_config(db)
+
+    # Sample 10 products in displayed status (or stock if none)
+    result = await db.execute(
+        select(Product).where(
+            Product.status.in_(
+                [ProductStatus.displayed, ProductStatus.stock]
+            ),
+            Product.is_test.is_(False),
+        ).limit(10)
+    )
+    products = result.scalars().all()
+
+    samples = []
+    for p in products:
+        # Need average price per category — query lazily
+        avg_q = await db.execute(
+            select(func.avg(Product.sale_price)).where(
+                Product.category_id == p.category_id
+            )
+        )
+        avg = float(avg_q.scalar() or 0)
+
+        before = compute_score(
+            shelf_date=p.shelf_date,
+            sale_price=float(p.sale_price),
+            category_avg_price=avg,
+            condition=p.condition or "tres_bon",
+            brand=p.brand,
+            photo_url=p.photo_url,
+            config=current,
+        )
+        after = compute_score(
+            shelf_date=p.shelf_date,
+            sale_price=float(p.sale_price),
+            category_avg_price=avg,
+            condition=p.condition or "tres_bon",
+            brand=p.brand,
+            photo_url=p.photo_url,
+            config=payload,
+        )
+        samples.append({
+            "product_id": str(p.id),
+            "name": p.name,
+            "score_before": before["total_score"],
+            "score_after": after["total_score"],
+            "delta": round(after["total_score"] - before["total_score"], 1),
+            "action_before": before["action"],
+            "action_after": after["action"],
+        })
+
+    return {
+        "config_proposed": payload,
+        "samples": samples,
+        "n_sampled": len(samples),
+    }
+
+
+# ---------------------------------------------------------------------------
+# L3.1 — Test data purge (selective, idempotent)
+# ---------------------------------------------------------------------------
+
+
+class PurgeTestDataRequest(BaseModel):
+    dry_run: bool = True
+
+
+@router.post("/test-data/purge", dependencies=[Depends(manager_only)])
+async def purge_test_data(
+    payload: PurgeTestDataRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Delete every Product and Client row marked ``is_test=True``.
+
+    The pre-opening real base (rows with the default ``is_test=False``) is
+    untouched. Cascade through SQLAlchemy relationships removes attached
+    photos, embeddings, transactions, taste profiles, consents.
+
+    ``dry_run=True`` (default) returns the counts that *would* be deleted
+    without actually deleting anything. Pass ``dry_run=False`` to commit.
+
+    Audit log entries are produced automatically by ``services/audit.py``
+    event listeners on each deletion.
+    """
+    product_count_q = await db.execute(
+        select(func.count()).select_from(Product).where(Product.is_test.is_(True))
+    )
+    product_count = int(product_count_q.scalar() or 0)
+
+    client_count_q = await db.execute(
+        select(func.count()).select_from(Client).where(Client.is_test.is_(True))
+    )
+    client_count = int(client_count_q.scalar() or 0)
+
+    if payload.dry_run:
+        return {
+            "dry_run": True,
+            "would_delete": {
+                "products": product_count,
+                "clients": client_count,
+            },
+        }
+
+    # Real delete — fetch and delete one-by-one so cascade + event listeners
+    # fire (DELETE … WHERE bypasses ORM cascade for some setups).
+    products_res = await db.execute(
+        select(Product).where(Product.is_test.is_(True))
+    )
+    for prod in products_res.scalars().all():
+        await db.delete(prod)
+
+    clients_res = await db.execute(
+        select(Client).where(Client.is_test.is_(True))
+    )
+    for cli in clients_res.scalars().all():
+        await db.delete(cli)
+
+    await db.commit()
+
+    return {
+        "dry_run": False,
+        "deleted": {
+            "products": product_count,
+            "clients": client_count,
+        },
+    }

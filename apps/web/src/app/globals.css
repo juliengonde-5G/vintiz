@@ -38,3 +38,11 @@ body {
     text-wrap: balance;
   }
 }
+
+/* Sidebar collapsible — overrides md:ml-64 set by pages when sidebar is in icon-only mode.
+   Sidebar component sets body[data-sidebar="collapsed"] in localStorage-backed effect. */
+@media (min-width: 768px) {
+  body[data-sidebar="collapsed"] [class*="md:ml-64"] {
+    margin-left: 4rem !important;
+  }
+}

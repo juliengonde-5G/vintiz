@@ -59,6 +59,101 @@ def _photo_subscore(
     return min(20.0, base + confidence_bonus)
 
 
+_DEFAULT_WEIGHTS_V1 = {
+    "age": 0.30, "price": 0.20, "condition": 0.20, "brand": 0.15,
+    "category": 0.10, "photos": 0.05,
+    "season_transition": 0.0, "fashion_watch": 0.0,
+}
+
+
+def _resolve_weights(config: dict | None) -> dict[str, float]:
+    """Pick weights from config or fall back to v1 defaults (regression-safe)."""
+    if not config or "weights" not in config:
+        return _DEFAULT_WEIGHTS_V1
+    w = config["weights"]
+    return {
+        "age": float(w.get("age", 0.30)),
+        "price": float(w.get("price", 0.20)),
+        "condition": float(w.get("condition", 0.20)),
+        "brand": float(w.get("brand", 0.15)),
+        "category": float(w.get("category", 0.10)),
+        "photos": float(w.get("photos", 0.05)),
+        "season_transition": float(w.get("season_transition", 0.0)),
+        "fashion_watch": float(w.get("fashion_watch", 0.0)),
+    }
+
+
+def _age_decay_score(days_on_shelf: int, decay: dict | None) -> float:
+    """Age sub-score [0, 20] with configurable decay curve.
+
+    - linear (default v1) : ``20 - days // 3``, clamped at 0
+    - exponential       : ``20 * 0.5^(days / half_life)`` with half_life =
+                           ``min_score_days``
+    - step              : 20 until ``max_score_days``, then linear toward
+                           ``min_score_days``, then 0 after ``saturation_days``
+    """
+    if not decay:
+        return float(max(0, 20 - (days_on_shelf // 3)))
+    curve = decay.get("curve", "linear")
+    max_days = int(decay.get("max_score_days", 0))
+    min_days = int(decay.get("min_score_days", 60))
+    sat_days = int(decay.get("saturation_days", 90))
+
+    if curve == "exponential":
+        half_life = max(1, min_days)
+        return max(0.0, min(20.0, 20.0 * (0.5 ** (days_on_shelf / half_life))))
+
+    if curve == "step":
+        if days_on_shelf <= max_days:
+            return 20.0
+        if days_on_shelf >= sat_days:
+            return 0.0
+        # Between max_days and sat_days, linear ramp 20 → 0
+        span = max(1, sat_days - max_days)
+        return max(0.0, 20.0 - 20.0 * (days_on_shelf - max_days) / span)
+
+    # linear (default) : honors min_score_days as the day where the score reaches 0
+    if days_on_shelf <= max_days:
+        return 20.0
+    if days_on_shelf >= min_days:
+        return 0.0
+    span = max(1, min_days - max_days)
+    return max(0.0, 20.0 - 20.0 * (days_on_shelf - max_days) / span)
+
+
+def _season_transition_score(
+    category_name: str | None,
+    season_boost: dict | None,
+    explicit_value: float | None,
+) -> float:
+    """Sub-score [0, 20] for seasonal transition.
+
+    If the caller passes ``explicit_value`` (precomputed elsewhere), use it.
+    Otherwise, derive a coarse score from the category calendar :
+    - in-season month  : 20
+    - 1 month before/after season : 12
+    - out of season     : 5
+    Returns 10 (neutral) if no calendar configured.
+    """
+    if explicit_value is not None:
+        return max(0.0, min(20.0, float(explicit_value)))
+    if not season_boost or not season_boost.get("enabled"):
+        return 10.0
+    calendar = season_boost.get("category_calendar", {})
+    if not category_name or category_name not in calendar:
+        return 10.0
+    months_in_season = set(calendar[category_name])
+    now = datetime.now(timezone.utc)
+    cur = now.month
+    if cur in months_in_season:
+        return 20.0
+    nxt = cur % 12 + 1
+    prv = (cur - 2) % 12 + 1
+    if nxt in months_in_season or prv in months_in_season:
+        return 12.0
+    return 5.0
+
+
 def compute_score(
     shelf_date: Optional[datetime],
     sale_price: float,
@@ -71,27 +166,43 @@ def compute_score(
     brand_score: float | None = None,
     photo_count: int | None = None,
     photo_avg_confidence: float | None = None,
+    config: dict | None = None,
+    category_name: str | None = None,
+    season_transition_score: float | None = None,
+    fashion_watch_score: float | None = None,
 ) -> dict:
     """Compute product score (0-100) with sub-scores.
 
-    Optional keyword arguments (P2-011 + P2-012):
+    Optional keyword arguments :
 
-    - ``brand_score``: precomputed brand sub-score (0-20), typically from
-      ``brand_tiers.get_brand_score`` which reads the DB-backed
-      ``brand_tiers`` table. When supplied, takes precedence over the
-      legacy hardcoded brand sets.
-    - ``photo_count`` + ``photo_avg_confidence``: produce a richer photo
-      sub-score that rewards having multiple analyzed shots. When
-      omitted, falls back to the legacy binary 0/20 on ``photo_url``.
+    - ``brand_score`` (P2-012) : precomputed brand sub-score (0-20).
+    - ``photo_count`` + ``photo_avg_confidence`` (P2-011) : richer photo
+      sub-score. When omitted, falls back to legacy binary 0/20.
+    - ``config`` (L4) : DB-backed scoring config dict (see
+      ``services/scoring_config.py``). When supplied, drives 8-component
+      weighted total + age decay curve. When ``None``, falls back to v1
+      hardcoded weights — regression-safe.
+    - ``category_name`` (L4) : enables season_boost calendar lookup.
+    - ``season_transition_score`` (L4) : explicit override for the new
+      "transition saison" sub-score (0-20).
+    - ``fashion_watch_score`` (L4) : explicit override for the new
+      "fashion watch" sub-score (0-20).
 
-    Existing call sites that don't pass the new arguments behave
-    identically to before — the regression suite confirms this.
+    Existing call sites that don't pass the new arguments behave identically
+    to v1 — confirmed by ``test_scoring_formula.py``.
     """
 
-    # Age score (30%)
+    weights = _resolve_weights(config)
+    age_decay = (config or {}).get("age_decay") if config else None
+    season_boost = (config or {}).get("season_boost") if config else None
+
+    # Age score (configurable decay curve)
     if shelf_date:
         days_on_shelf = (datetime.now(timezone.utc) - shelf_date.replace(tzinfo=timezone.utc)).days
-        score_age = max(0, 20 - (days_on_shelf // 3))
+        if age_decay:
+            score_age = _age_decay_score(days_on_shelf, age_decay)
+        else:
+            score_age = max(0, 20 - (days_on_shelf // 3))
     else:
         score_age = 15  # unknown, neutral
 
@@ -133,18 +244,51 @@ def compute_score(
     # Photos (5%)
     score_photos = _photo_subscore(photo_url, photo_count, photo_avg_confidence)
 
-    # Weighted total
+    # Season transition (v2, default 0% if no config)
+    score_season_transition = _season_transition_score(
+        category_name, season_boost, season_transition_score
+    )
+
+    # Fashion watch (v2, default 10 = neutral if no signal)
+    score_fashion_watch = (
+        max(0.0, min(20.0, float(fashion_watch_score)))
+        if fashion_watch_score is not None
+        else 10.0
+    )
+
+    # Weighted total — uses configurable weights when present, else v1 defaults.
     total = (
-        score_age * 0.30
-        + score_prix * 0.20
-        + score_condition * 0.20
-        + score_brand * 0.15
-        + score_category * 0.10
-        + score_photos * 0.05
+        score_age * weights["age"]
+        + score_prix * weights["price"]
+        + score_condition * weights["condition"]
+        + score_brand * weights["brand"]
+        + score_category * weights["category"]
+        + score_photos * weights["photos"]
+        + score_season_transition * weights["season_transition"]
+        + score_fashion_watch * weights["fashion_watch"]
     ) * 5  # scale to 100
 
+    # Consignment threshold (v2) : if past max_days, force RETIRER regardless of score.
+    consignment = (config or {}).get("consignment_threshold") if config else None
+    consignment_forced = False
+    days_on_shelf_val: int | None = None
+    if shelf_date:
+        days_on_shelf_val = (
+            datetime.now(timezone.utc) - shelf_date.replace(tzinfo=timezone.utc)
+        ).days
+        if (
+            consignment
+            and consignment.get("enabled")
+            and days_on_shelf_val >= int(consignment.get("max_days", 120))
+        ):
+            consignment_forced = True
+
     # Recommended action
-    if total < 30:
+    if consignment_forced:
+        action_after = (consignment or {}).get("action_after", "RETURNED_TO_SORTING")
+        action = f"RETIRER — seuil consignation atteint ({action_after})"
+        action_color = "red"
+    elif total < 30:
         action = "RETIRER — produit trop longtemps en rayon"
         action_color = "red"
     elif total < 50:
@@ -157,12 +301,6 @@ def compute_score(
         action = "MAINTENIR — bon potentiel de vente"
         action_color = "green"
 
-    days_on_shelf_val: int | None = None
-    if shelf_date:
-        days_on_shelf_val = (
-            datetime.now(timezone.utc) - shelf_date.replace(tzinfo=timezone.utc)
-        ).days
-
     return {
         "total_score": round(total, 1),
         "score_age": round(score_age, 1),
@@ -171,7 +309,10 @@ def compute_score(
         "score_brand": round(score_brand, 1),
         "score_category": round(score_category, 1),
         "score_photos": round(score_photos, 1),
+        "score_season_transition": round(score_season_transition, 1),
+        "score_fashion_watch": round(score_fashion_watch, 1),
         "action": action,
         "action_color": action_color,
         "days_on_shelf": days_on_shelf_val,
+        "consignment_forced": consignment_forced,
     }

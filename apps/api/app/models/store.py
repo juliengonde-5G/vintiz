@@ -27,9 +27,63 @@ class StoreZone(Base):
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     sales_target_monthly: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # L2.2 — Optional uploaded floor plan / aerial photo, displayed as
+    # background overlay in the iso canvas.
+    floor_plan_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    layout_orientation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     zone_products: Mapped[list["ZoneProduct"]] = relationship(
         "ZoneProduct", back_populates="zone", lazy="selectin"
+    )
+    tags: Mapped[list["ZoneTag"]] = relationship(
+        "ZoneTag", back_populates="zone",
+        cascade="all, delete-orphan", lazy="selectin",
+    )
+    furniture: Mapped[list["FurnitureItem"]] = relationship(
+        "FurnitureItem", back_populates="zone", lazy="selectin",
+    )
+
+
+class ZoneTag(Base):
+    """Multi-tag a zone : homme | femme | enfant | accessoire |
+    derniere_demarque | nouveaute | premium | saisonnier | vitrine |
+    tete_gondole. Drives the merchandising filter + UI badges (L2.2).
+    """
+
+    __tablename__ = "zone_tags"
+
+    zone_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("store_zones.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tag: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    zone: Mapped["StoreZone"] = relationship("StoreZone", back_populates="tags", lazy="selectin")
+
+
+class FurnitureItem(Base):
+    """A piece of furniture in the iso canvas (portant, mannequin,
+    etagere, table, comptoir, cabine, vitrine, mur, porte,
+    tete_gondole). Coords in % of canvas; rotation in degrees;
+    scale ∈ [0.5, 2.0].
+    """
+
+    __tablename__ = "furniture_items"
+
+    zone_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("store_zones.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    variant: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    pos_x: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    pos_y: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    rotation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    scale: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    zone: Mapped["StoreZone | None"] = relationship(
+        "StoreZone", back_populates="furniture", lazy="selectin"
     )
 
 

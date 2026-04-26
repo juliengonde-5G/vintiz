@@ -107,7 +107,7 @@ pour la cartographie complète ticket → PR + checklist validation prod.
 | ID | Sujet | Source | Status |
 |---|---|---|---|
 | P4-001 | KPIs retail standards (sell-through, GMROI, DOH, AIT, CA/m²/mois) | V1 | ✅ #25 |
-| P4-002 | Reporting ESS dédié Solidarité Textiles | V1 | ✅ #25 |
+| ~~P4-002~~ | ~~Reporting ESS dédié~~ — **OBSOLETE** (audit 2026-05 §2.1.c) : page UI retirée, calcul backend conservé pour exports ad-hoc | V1 | ⛔ retiré |
 | P4-003 | Email gateway Brevo (anniversaire, nouveautés) | V1 | ✅ #27 |
 | P4-004 | Apple/Google Wallet (payload prêt, signing TODO ops) | V1 | ✅ #27 partiel |
 | P4-005 | Réservation 48h (modèle + service + UI + cron + redemption POS) | V1 | ✅ #29 + #30 |

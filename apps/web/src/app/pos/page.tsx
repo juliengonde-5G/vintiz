@@ -8,6 +8,7 @@ import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import Card from '@/components/ui/Card';
 import CashierPinModal from '@/components/cashier/CashierPinModal';
+import LoyaltyCustomerCard, { type CustomerBrief } from '@/components/pos/LoyaltyCustomerCard';
 import { api } from '@/lib/api';
 import { useConnectivity } from '@/lib/connectivity';
 import {
@@ -115,6 +116,7 @@ export default function POSPage() {
   const [clientResults, setClientResults] = useState<ClientResult[]>([]);
   const [selectedClient, setSelectedClient] = useState<ClientDetail | null>(null);
   const [showClientPopup, setShowClientPopup] = useState(false);
+  const [customerBrief, setCustomerBrief] = useState<CustomerBrief | null>(null);
 
   // Manual article
   const [showManualEntry, setShowManualEntry] = useState(false);
@@ -309,6 +311,29 @@ export default function POSPage() {
         setSelectedClient(detail);
         setShowClientPopup(true);
       }
+      // L2.3 — load enriched brief in parallel for upsell context.
+      const briefRes = await api.get(`/api/crm/clients/${client.id}/brief`);
+      if (briefRes.ok) setCustomerBrief(await briefRes.json());
+    } catch { /* silent */ }
+  };
+
+  // L2.3 — Tap a Personal Shopper pick from the loyalty card → add to cart.
+  const addPickToCart = async (productId: string) => {
+    try {
+      const res = await api.get(`/api/inventory/products/${productId}`);
+      if (!res.ok) return;
+      const product = await res.json();
+      addProductToCart({
+        id: product.id,
+        name: product.name,
+        sale_price: product.sale_price,
+        barcode: product.barcode,
+        photo_url: product.photo_url,
+        category: product.category,
+        brand: product.brand,
+        size: product.size,
+        color: product.color,
+      } as any);
     } catch { /* silent */ }
   };
 
@@ -833,6 +858,7 @@ export default function POSPage() {
     setPayments([]);
     setCashGiven('');
     setSelectedClient(null);
+    setCustomerBrief(null);
     setClientSearch('');
     setError('');
     setCouponCode(''); setCouponDiscount(0); setCouponApplied(null); setCouponError('');
@@ -997,7 +1023,7 @@ export default function POSPage() {
                     className="w-8 h-8 flex items-center justify-center rounded-lg bg-teal-50 text-teal hover:bg-teal-100 text-xs">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                   </button>
-                  <button onClick={() => { setSelectedClient(null); setClientSearch(''); }}
+                  <button onClick={() => { setSelectedClient(null); setCustomerBrief(null); setClientSearch(''); }}
                     className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 text-xs">&times;</button>
                 </div>
               </div>
@@ -1028,6 +1054,17 @@ export default function POSPage() {
             <div className="mx-3 mt-2 p-2 bg-red-50 text-red-700 rounded-lg text-xs flex-shrink-0">
               {error}
               <button onClick={() => setError('')} className="ml-1 font-bold">&times;</button>
+            </div>
+          )}
+
+          {/* L2.3 — Loyalty customer card with PS picks for upsell */}
+          {customerBrief && (
+            <div className="px-3 pt-2">
+              <LoyaltyCustomerCard
+                brief={customerBrief}
+                onTapPick={addPickToCart}
+                onClose={() => setCustomerBrief(null)}
+              />
             </div>
           )}
 

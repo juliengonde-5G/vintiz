@@ -4,7 +4,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
-import EssReportCard from '@/components/reports/EssReportCard';
+// L6 (audit 2026-05) : reporting ESS dédié supprimé — non pertinent.
+// Le calcul backend (kg revalorisés / CA reversé) reste disponible via
+// GET /api/reports/ess pour exports ad-hoc à Solidarité Textiles.
+// import EssReportCard from '@/components/reports/EssReportCard';
 import RetailKpisCard from '@/components/reports/RetailKpisCard';
 import RfmSegmentsCard from '@/components/reports/RfmSegmentsCard';
 import { api } from '@/lib/api';
@@ -323,10 +326,9 @@ export default function ReportsPage() {
           </>
         ) : null}
 
-        {/* P4 — Analytics riche (KPIs retail + ESS + RFM) */}
+        {/* P4 — Analytics riche (KPIs retail + RFM). ESS retiré (L6 audit 2026-05). */}
         <div className="space-y-6 mb-8">
           <RetailKpisCard />
-          <EssReportCard />
           <RfmSegmentsCard />
         </div>
 

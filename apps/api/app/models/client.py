@@ -56,6 +56,11 @@ class Client(Base):
     # lost / unknown.
     rfm_segment: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
+    # Flag for seed / demo data (witness clients used to validate the
+    # Personal Shopper flow). Pre-opening real clients keep the default
+    # ``False`` and survive ``scripts/purge_test_data.py``.
+    is_test: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     # Date of birth — drives the anniversary email cron (P4-008). Optional;
     # we ask for it on the onboarding form but never block account creation.
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)

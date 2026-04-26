@@ -82,6 +82,61 @@ async def list_products(
     )
 
 
+class ProductFromPhotoRequest(BaseModel):
+    """Body for ``POST /api/inventory/products/from-photo`` (L3.2).
+
+    All fields except ``photo_url`` are optional. The orchestration extracts
+    type / brand / size / color / condition / gamme via Vision and falls
+    back to defaults when they're missing.
+    """
+
+    photo_url: str
+    category_id: uuid.UUID | None = None
+    sale_price_hint: float = 0.0
+    purchase_price_hint: float = 0.0
+    is_test: bool = False
+
+
+@router.post("/products/from-photo", status_code=status.HTTP_201_CREATED)
+async def create_product_from_photo(
+    payload: ProductFromPhotoRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Create a Product from a photo URL — Vision auto-fills the fields.
+
+    Returns the created product, the Vision payload, the score breakdown,
+    and a zone suggestion. Resilient to Vision failure (degraded mode).
+    """
+    from app.services.product_intake import create_from_photo
+
+    result = await create_from_photo(
+        db,
+        photo_url=payload.photo_url,
+        category_id_hint=payload.category_id,
+        sale_price_hint=payload.sale_price_hint,
+        purchase_price_hint=payload.purchase_price_hint,
+        is_test=payload.is_test,
+    )
+
+    # P1-003 instrumentation — keep parity with the legacy create_product.
+    from app.models.events import EventSource, EventType
+    from app.services.events import EventService
+    await EventService(db).emit(
+        EventType.product_created,
+        source=EventSource.admin,
+        product_id=uuid.UUID(result["product"]["id"]),
+        user_id=current_user.id,
+        meta={
+            "from_photo": True,
+            "vision_used": result["vision_used"],
+            "barcode": result["product"]["barcode"],
+            "is_test": payload.is_test,
+        },
+    )
+    return result
+
+
 @router.post("/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 async def create_product(
     product_in: ProductCreate,

@@ -5,6 +5,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import ScoringWeightsPanel from '@/components/settings/ScoringWeightsPanel';
 import { api } from '@/lib/api';
 
 interface Category {
@@ -81,7 +82,7 @@ interface SandboxSnapshot {
 }
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'store' | 'payment' | 'cahier' | 'categories' | 'zones' | 'hardware' | 'system'>('store');
+  const [tab, setTab] = useState<'store' | 'payment' | 'cahier' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
   const [hardware, setHardware] = useState<HardwareConfig | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityItem[]>([]);
   const [hwSaving, setHwSaving] = useState(false);
@@ -448,6 +449,7 @@ export default function SettingsPage() {
     { key: 'categories' as const, label: 'Categories' },
     { key: 'zones' as const, label: 'Zones' },
     { key: 'hardware' as const, label: 'Materiel' },
+    { key: 'scoring' as const, label: 'Scoring IA' },
     { key: 'system' as const, label: 'Systeme' },
   ];
 
@@ -1252,6 +1254,11 @@ export default function SettingsPage() {
               })()}
             </Card>
           </div>
+        )}
+
+        {/* SCORING IA TAB */}
+        {tab === 'scoring' && (
+          <ScoringWeightsPanel />
         )}
 
         {/* SYSTEM TAB */}

@@ -6,6 +6,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import CompanionHero from '@/components/ai/CompanionHero';
+import RecosDuJourTab from '@/components/ia/RecosDuJourTab';
 import { api } from '@/lib/api';
 
 interface TrendItem {
@@ -294,7 +295,7 @@ interface TrendsMode {
 
 
 export default function IAPage() {
-  const [tab, setTab] = useState<'vision' | 'trends' | 'pricing' | 'mapping' | 'checklist' | 'tendances_mode'>('vision');
+  const [tab, setTab] = useState<'recos_du_jour' | 'vision' | 'trends' | 'pricing' | 'mapping' | 'checklist' | 'tendances_mode'>('recos_du_jour');
   const [trends, setTrends] = useState<TrendItem[]>([]);
   const [markdowns, setMarkdowns] = useState<MarkdownItem[]>([]);
   const [zones, setZones] = useState<ZoneStat[]>([]);
@@ -479,6 +480,7 @@ export default function IAPage() {
   };
 
   const tabs = [
+    { key: 'recos_du_jour' as const, label: 'Recos du jour', icon: '💡' },
     { key: 'vision' as const, label: 'Analyse Photo', icon: '📷' },
     { key: 'trends' as const, label: 'Tendances', icon: '📈' },
     { key: 'pricing' as const, label: 'Prix & Demarques', icon: '🏷️' },
@@ -532,6 +534,11 @@ export default function IAPage() {
             <span>Rapport marketing</span>
           </Link>
         </div>
+
+        {/* RECOS DU JOUR TAB (L2.5) */}
+        {tab === 'recos_du_jour' && (
+          <RecosDuJourTab />
+        )}
 
         {/* VISION TAB */}
         {tab === 'vision' && (
