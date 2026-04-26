@@ -9,6 +9,14 @@ import Modal from '@/components/ui/Modal';
 import Card from '@/components/ui/Card';
 import CashierPinModal from '@/components/cashier/CashierPinModal';
 import { api } from '@/lib/api';
+import { useConnectivity } from '@/lib/connectivity';
+import {
+  count as queueCount,
+  drain as drainQueue,
+  enqueue as enqueueOffline,
+  generateClientUuid,
+  type Submitter,
+} from '@/lib/offline-queue';
 
 interface Cashier {
   id: string;
@@ -120,6 +128,12 @@ export default function POSPage() {
 
   // Numpad (touch)
   const [numpadTarget, setNumpadTarget] = useState<{ type: 'cash' | 'payment'; index: number } | null>(null);
+
+  // Offline POS (P1-005)
+  const { online, recheck } = useConnectivity();
+  const [pendingCount, setPendingCount] = useState(0);
+  const [draining, setDraining] = useState(false);
+  const [offlineMsg, setOfflineMsg] = useState('');
 
   // Cash drawer
   const [drawer, setDrawer] = useState<{ open: boolean; drawer_id?: string; opening_amount?: number } | null>(null);
@@ -564,6 +578,48 @@ export default function POSPage() {
     setPayments(prev => prev.filter((_, i) => i !== index));
   };
 
+  // ── Offline replay (P1-005) ───────────────────────────────────
+  // Refresh the badge count whenever the page is shown so cashiers see
+  // a stale queue from a previous session.
+  useEffect(() => {
+    queueCount().then(setPendingCount).catch(() => {});
+  }, []);
+
+  const submitter: Submitter = useCallback(async (payload) => {
+    const res = await api.post('/api/pos/transactions', payload);
+    const bodyText = await res.text().catch(() => '');
+    return { ok: res.ok, status: res.status, bodyText };
+  }, []);
+
+  const drainPending = useCallback(async () => {
+    if (draining) return;
+    setDraining(true);
+    setOfflineMsg('');
+    try {
+      const outcome = await drainQueue(submitter);
+      setPendingCount(await queueCount());
+      if (outcome.failed.length > 0) {
+        setOfflineMsg(
+          `${outcome.succeeded.length}/${outcome.attempted} synchronisées. ${outcome.failed.length} échec(s) — refaire manuellement.`,
+        );
+      } else if (outcome.succeeded.length > 0) {
+        setOfflineMsg(`${outcome.succeeded.length} vente(s) synchronisée(s).`);
+      }
+    } catch (err) {
+      setOfflineMsg(
+        err instanceof Error ? err.message : 'Erreur de synchronisation.',
+      );
+    }
+    setDraining(false);
+  }, [draining, submitter]);
+
+  // Auto-drain whenever connectivity flips back on AND there's a backlog.
+  useEffect(() => {
+    if (online && pendingCount > 0 && !draining) {
+      void drainPending();
+    }
+  }, [online, pendingCount, draining, drainPending]);
+
   const handleValidate = async () => {
     setSubmitting(true);
     setError('');
@@ -574,6 +630,7 @@ export default function POSPage() {
         setSubmitting(false);
         return;
       }
+      const clientUuid = generateClientUuid();
       const body: Record<string, unknown> = {
         items: cart.map(item => ({
           product_id: item.product_id || undefined,
@@ -584,11 +641,59 @@ export default function POSPage() {
         })),
         payments: payments.map(p => ({ method: p.method, amount: p.amount })),
         redeem_loyalty_discount: redeemPoints ? loyaltyDiscount : 0,
+        client_uuid: clientUuid,
       };
       if (selectedClient) body.client_id = selectedClient.id;
       if (cashier) body.cashier_id = cashier.id;
 
-      const res = await api.post('/api/pos/transactions', body);
+      // Offline path (P1-005): no card transactions allowed without
+      // network (the SumUp Solo TPE itself needs Wi-Fi). Cash / cheque /
+      // avoir queue locally and replay on reconnect.
+      if (!online) {
+        if (payments.some(p => p.method === 'carte')) {
+          setError('Mode hors-ligne : seules les ventes espèces / chèque / avoir sont acceptées. Le TPE CB nécessite le réseau.');
+          setSubmitting(false);
+          return;
+        }
+        await enqueueOffline(body);
+        setPendingCount(await queueCount());
+        setReceiptTxId(null);
+        setReceiptText(
+          `Vente enregistrée hors-ligne.\nElle sera synchronisée à la reconnexion.\nTotal: ${formatCurrency(cartTotalAfterLoyalty)}`,
+        );
+        setShowPayment(false);
+        setShowReceipt(true);
+        if (payments.some(p => p.method === 'especes')) {
+          kickDrawer();
+        }
+        setSubmitting(false);
+        return;
+      }
+
+      let res: Response;
+      try {
+        res = await api.post('/api/pos/transactions', body);
+      } catch (netErr) {
+        // Network failure mid-submit — enqueue and keep going so the
+        // cashier isn't blocked. The drain will retry on reconnect.
+        await enqueueOffline(body);
+        setPendingCount(await queueCount());
+        setReceiptTxId(null);
+        setReceiptText(
+          `Réseau coupé pendant la vente — bufferisée.\nElle sera synchronisée à la reconnexion.\nTotal: ${formatCurrency(cartTotalAfterLoyalty)}`,
+        );
+        setShowPayment(false);
+        setShowReceipt(true);
+        if (payments.some(p => p.method === 'especes')) {
+          kickDrawer();
+        }
+        setSubmitting(false);
+        // Trigger an immediate connectivity recheck so the banner updates.
+        void recheck();
+        void netErr;
+        return;
+      }
+
       if (!res.ok) {
         const err = await res.json().catch(() => null);
         throw new Error(err?.detail || 'Erreur lors de la creation');
@@ -676,6 +781,55 @@ export default function POSPage() {
 
         {/* ── LEFT PANEL: Order / Cart ────────────────────────────── */}
         <div className="w-[42%] flex flex-col bg-white border-r border-gray-200 shadow-sm">
+
+          {/* Connectivity strip (P1-005) — visible only when offline or with backlog */}
+          {(!online || pendingCount > 0) && (
+            <div
+              className={`flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs ${
+                online
+                  ? 'bg-amber-50 border-b border-amber-200'
+                  : 'bg-red-50 border-b border-red-200'
+              }`}
+            >
+              <span className={`font-medium ${online ? 'text-amber-800' : 'text-red-700'}`}>
+                {online ? (
+                  <>📡 En ligne — {pendingCount} vente(s) en attente de synchronisation</>
+                ) : (
+                  <>⚠️ Mode hors-ligne — les ventes espèces / chèque / avoir sont bufferisées</>
+                )}
+              </span>
+              <div className="flex items-center gap-1.5">
+                {pendingCount > 0 && (
+                  <button
+                    onClick={drainPending}
+                    disabled={draining || !online}
+                    className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    title={online ? 'Synchroniser maintenant' : 'Synchronisation impossible hors-ligne'}
+                  >
+                    {draining ? 'Sync…' : 'Synchroniser'}
+                  </button>
+                )}
+                <button
+                  onClick={() => recheck()}
+                  className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"
+                  title="Re-tester la connexion"
+                >
+                  ↻
+                </button>
+              </div>
+            </div>
+          )}
+          {offlineMsg && (
+            <div className="px-3 py-1.5 text-xs bg-teal-50 text-teal-800 border-b border-teal-100 flex items-center justify-between">
+              <span>{offlineMsg}</span>
+              <button
+                onClick={() => setOfflineMsg('')}
+                className="text-xs font-bold hover:text-teal-900"
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           {/* Cashier identification strip */}
           <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs bg-teal-50 border-b border-teal-100">
