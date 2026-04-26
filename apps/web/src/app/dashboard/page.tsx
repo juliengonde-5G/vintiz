@@ -609,6 +609,25 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-background">
       <Sidebar />
       <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8">
+        {/* P4-006 — Sticky compact KPI strip on mobile only. The full
+            grid below stays the source of truth on desktop. */}
+        {data && (
+          <div className="md:hidden sticky top-0 z-30 -mx-4 mb-4 px-4 py-2 bg-white/90 backdrop-blur border-b border-gray-200 flex justify-between items-center text-sm">
+            <span>
+              <span className="text-gray-500 mr-1">CA</span>
+              <strong className="text-teal">{formatCurrency(data.today.revenue)}</strong>
+            </span>
+            <span>
+              <span className="text-gray-500 mr-1">Tickets</span>
+              <strong>{data.today.transaction_count}</strong>
+            </span>
+            <span>
+              <span className="text-gray-500 mr-1">Panier</span>
+              <strong>{formatCurrency(data.today.avg_basket)}</strong>
+            </span>
+          </div>
+        )}
+
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-black">Tableau de bord</h1>
           <p className="text-gray-500 mt-1">Bienvenue sur Vintiz</p>

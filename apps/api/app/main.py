@@ -29,6 +29,7 @@ from app.api.hardware.router import router as hardware_router
 from app.api.seo.router import router as seo_router
 from app.api.newsletter.router import router as newsletter_router
 from app.api.cahier.router import router as cahier_router
+from app.api.reservation.router import router as reservation_router
 
 setup_logging()
 logger = logging.getLogger("vintiz")
@@ -246,6 +247,24 @@ async def _run_weekly_new_arrivals_emails() -> None:
         logger.error("New-arrivals cron failed: %s", exc)
 
 
+async def _run_hourly_reservation_expiry() -> None:
+    """Background job: expire reservations whose 48h window has elapsed
+    (P4-005). Runs every hour so a held article goes back on the floor
+    quickly after timeout."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.reservation import expire_due
+
+        async with AsyncSession(engine) as db:
+            n = await expire_due(db)
+            await db.commit()
+            if n:
+                logger.info("Reservation expiry: flipped %d row(s)", n)
+    except Exception as exc:
+        logger.error("Reservation expiry job failed: %s", exc)
+
+
 async def _run_monthly_rfm_segmentation() -> None:
     """Background job: recompute RFM scores for all customers and stamp
     each ``Client.rfm_segment`` (P4-007). Runs the 1st of each month at
@@ -435,6 +454,12 @@ async def lifespan(app: FastAPI):
             id="weekly_new_arrivals_emails",
             replace_existing=True,
         )
+        scheduler.add_job(
+            _run_hourly_reservation_expiry,
+            CronTrigger(minute=15),
+            id="hourly_reservation_expiry",
+            replace_existing=True,
+        )
         scheduler.start()
         logger.info("Vintiz API started — tables ready, scheduler started")
         yield
@@ -506,6 +531,7 @@ app.include_router(hardware_router, prefix="/api")
 app.include_router(seo_router, prefix="/api")
 app.include_router(newsletter_router, prefix="/api")
 app.include_router(cahier_router, prefix="/api")
+app.include_router(reservation_router, prefix="/api")
 
 # Static files for product photo uploads (P1-008 follow-up). The folder is
 # created on demand by the upload handler, but we mount it eagerly so missing

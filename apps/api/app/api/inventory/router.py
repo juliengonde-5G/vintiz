@@ -159,6 +159,13 @@ async def search_products(
     query = query.limit(20)
     result = await db.execute(query)
     products = result.scalars().all()
+
+    # P4-005: products currently held by an active reservation are
+    # surfaced with a flag so the cashier can refuse the sale or look
+    # up the holder in the reservations page.
+    from app.services.reservation import list_active_reservation_product_ids
+
+    reserved_ids = await list_active_reservation_product_ids(db)
     return [
         {
             "id": str(p.id),
@@ -167,6 +174,7 @@ async def search_products(
             "sale_price": float(p.sale_price),
             "status": p.status.value,
             "category": p.category.name if p.category else None,
+            "reserved": p.id in reserved_ids,
         }
         for p in products
     ]
@@ -336,6 +344,24 @@ async def get_product_score(
         photo_avg_confidence=photo_avg_confidence,
     )
     return score
+
+
+@router.get("/products/{product_id}/insights")
+async def get_product_insights(
+    product_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """P4-010: small set of contextual badges for the POS UI.
+
+    Sales velocity, time on the floor, brand tier, Vintiz score and
+    active hold. Computed on demand — cheap (< 5 small queries) so the
+    badge can refresh whenever the cashier scans a barcode.
+    """
+    from app.services.product_insights import compute_for_product, to_dict
+
+    result = await compute_for_product(db, product_id)
+    return to_dict(result)
 
 
 @router.put("/products/{product_id}", response_model=ProductResponse)

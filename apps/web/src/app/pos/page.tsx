@@ -95,6 +95,9 @@ export default function POSPage() {
   // Cart
   const [cart, setCart] = useState<CartItem[]>([]);
 
+  // P4-010 — per-product insights (badges) cached by product_id.
+  const [insights, setInsights] = useState<Record<string, { icon: string; label: string; severity: string }[]>>({});
+
   // Client
   const [clientSearch, setClientSearch] = useState('');
   const [clientResults, setClientResults] = useState<ClientResult[]>([]);
@@ -620,6 +623,35 @@ export default function POSPage() {
     }
   }, [online, pendingCount, draining, drainPending]);
 
+  // P4-010 — fetch insights for each product in the cart that we
+  // haven't already loaded. Cheap call (< 5 small queries server-side).
+  useEffect(() => {
+    const ids = Array.from(
+      new Set(
+        cart
+          .filter((i) => !i.isManual && i.product_id)
+          .map((i) => i.product_id as string),
+      ),
+    ).filter((id) => !(id in insights));
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const fresh: Record<string, { icon: string; label: string; severity: string }[]> = {};
+      for (const id of ids) {
+        try {
+          const res = await api.get(`/api/inventory/products/${id}/insights`);
+          if (!res.ok) continue;
+          const data = await res.json();
+          fresh[id] = data.insights || [];
+        } catch { /* silent */ }
+      }
+      if (!cancelled && Object.keys(fresh).length) {
+        setInsights((prev) => ({ ...prev, ...fresh }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [cart, insights]);
+
   const handleValidate = async () => {
     setSubmitting(true);
     setError('');
@@ -1016,6 +1048,25 @@ export default function POSPage() {
                             }`}>
                             {d === 0 ? '0%' : `-${d}%`}
                           </button>
+                        ))}
+                      </div>
+                    )}
+                    {/* P4-010 — AI insight badges (vendue 3× cette semaine, etc.) */}
+                    {item.product_id && insights[item.product_id]?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {insights[item.product_id].map((b, i) => (
+                          <span
+                            key={i}
+                            className={`text-[10px] px-2 py-0.5 rounded-full ${
+                              b.severity === 'good'
+                                ? 'bg-teal/10 text-teal'
+                                : b.severity === 'warn'
+                                  ? 'bg-orange-50 text-orange-700'
+                                  : 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {b.icon} {b.label}
+                          </span>
                         ))}
                       </div>
                     )}
