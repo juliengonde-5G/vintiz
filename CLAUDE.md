@@ -177,6 +177,17 @@ GET  /api/admin/brand-tiers                  Liste marques + tiers (manager only
 POST /api/admin/brand-tiers                  Créer marque (luxury/premium/mid/basic)
 PUT  /api/admin/brand-tiers/{id}             Modifier marque (manager only)
 DELETE /api/admin/brand-tiers/{id}           Supprimer marque (manager only)
+POST /api/seo/snapshots/run                  Lancer un snapshot SEO + persister
+GET  /api/seo/snapshots?days=30              Historique snapshots SEO (manager only)
+GET  /api/seo/social-posts/current           4 posts proposés cette semaine (manager only)
+POST /api/seo/social-posts/regenerate        Régénérer la sélection (Claude + fallback)
+POST /api/seo/social-posts/{id}/accept       Valider un post
+GET  /api/seo/mentions                       Liste mentions Insta/TikTok (manager only)
+POST /api/seo/mentions                       Saisie manuelle d'une mention
+GET  /api/seo/reviews                        Liste avis Google (manager only)
+POST /api/seo/reviews                        Saisie manuelle d'un avis
+POST /api/seo/reviews/{id}/suggest-reply     Brouillon de réponse Claude (avec fallback)
+PUT  /api/seo/reviews/{id}/reply             Enregistrer la réponse
 POST /api/inventory/products/{id}/transition Transition cycle de vie produit (FSM)
 POST /api/inventory/batches                  Créer un lot d'arrivage (carton)
 GET  /api/inventory/batches                  Liste des lots

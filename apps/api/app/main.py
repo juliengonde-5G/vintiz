@@ -76,6 +76,45 @@ async def _run_daily_embedding_refresh() -> None:
         logger.error("Embedding refresh job failed: %s", exc)
 
 
+async def _run_daily_seo_snapshot() -> None:
+    """Background job (P3-005): persist a daily SEO snapshot at 05:00 Paris.
+
+    Same logic as POST /api/seo/snapshots/run; lives here to plug into
+    APScheduler without a circular import."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.api.seo.router import _run_seo_check_and_persist
+
+        async with AsyncSession(engine) as db:
+            payload = await _run_seo_check_and_persist(db)
+            await db.commit()
+            logger.info("SEO snapshot: score=%s fetched_at=%s",
+                        payload.get("score"), payload.get("fetched_at"))
+    except Exception as exc:
+        logger.error("SEO snapshot job failed: %s", exc)
+
+
+async def _run_weekly_social_posts() -> None:
+    """Background job (P3-004): generate 4 social posts every Monday at
+    07:00 Paris (1h after the window-display cron so Sophie sees both)."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.visibility import generate_weekly_social_posts
+
+        async with AsyncSession(engine) as db:
+            rows = await generate_weekly_social_posts(db)
+            await db.commit()
+            logger.info(
+                "Social posts: %d posts proposed (used_llm=%s)",
+                len(rows),
+                all(r.used_llm for r in rows) if rows else False,
+            )
+    except Exception as exc:
+        logger.error("Social posts job failed: %s", exc)
+
+
 async def _run_weekly_window_display() -> None:
     """Background job (P2-007): build Monday's window-display proposal.
 
@@ -303,6 +342,18 @@ async def lifespan(app: FastAPI):
             _run_weekly_window_display,
             CronTrigger(day_of_week="mon", hour=6, minute=0),
             id="weekly_window_display",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_weekly_social_posts,
+            CronTrigger(day_of_week="mon", hour=7, minute=0),
+            id="weekly_social_posts",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_daily_seo_snapshot,
+            CronTrigger(hour=5, minute=0),
+            id="daily_seo_snapshot",
             replace_existing=True,
         )
         scheduler.start()
