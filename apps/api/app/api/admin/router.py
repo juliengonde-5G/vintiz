@@ -1357,6 +1357,93 @@ async def preview_return_to_sorting(
     }
 
 
+# ---------------------------------------------------------------------------
+# Store plan + window display (P2-005 + P2-007)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/store-plan",
+    dependencies=[Depends(manager_only)],
+)
+async def store_plan(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Return all zones with their canvas coordinates, current occupancy
+    and the score-bucket colour code so the front can render the SVG
+    plan directly (P2-005)."""
+    from app.services.merchandising import MerchandisingService
+
+    return {"zones": await MerchandisingService(db).zone_occupancy()}
+
+
+@router.get(
+    "/window-display/current",
+    dependencies=[Depends(manager_only)],
+)
+async def get_current_window_display(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Return the current ISO week's window-display proposal, or 404 if
+    the cron hasn't run yet."""
+    from app.services.merchandising import MerchandisingService
+
+    proposal = await MerchandisingService(db).get_current_window_proposal()
+    if proposal is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Aucune proposition vitrine pour la semaine en cours.",
+        )
+    return {
+        "id": str(proposal.id),
+        "iso_week": proposal.iso_week,
+        "proposal": proposal.proposal,
+        "used_llm": proposal.used_llm,
+        "accepted_at": proposal.accepted_at.isoformat() if proposal.accepted_at else None,
+        "accepted_by_user_id": str(proposal.accepted_by_user_id) if proposal.accepted_by_user_id else None,
+    }
+
+
+@router.post(
+    "/window-display/regenerate",
+    dependencies=[Depends(manager_only)],
+)
+async def regenerate_window_display(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Force a fresh window-display proposal for the current ISO week.
+    Same effect as waiting for the Monday 06:00 cron."""
+    from app.services.merchandising import MerchandisingService
+
+    proposal = await MerchandisingService(db).propose_weekly_window()
+    await db.commit()
+    return {
+        "id": str(proposal.id),
+        "iso_week": proposal.iso_week,
+        "proposal": proposal.proposal,
+    }
+
+
+@router.post(
+    "/window-display/{proposal_id}/accept",
+    dependencies=[Depends(manager_only)],
+)
+async def accept_window_display(
+    proposal_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    from app.services.merchandising import MerchandisingService
+
+    proposal = await MerchandisingService(db).accept_window_proposal(
+        proposal_id, current_user.id
+    )
+    await db.commit()
+    return {
+        "id": str(proposal.id),
+        "iso_week": proposal.iso_week,
+        "accepted_at": proposal.accepted_at.isoformat() if proposal.accepted_at else None,
+    }
+
+
 @router.post(
     "/return-to-sorting/run",
     dependencies=[Depends(manager_only)],

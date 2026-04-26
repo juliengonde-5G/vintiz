@@ -170,6 +170,12 @@ POST /api/inventory/batches                  Créer un lot d'arrivage (carton)
 GET  /api/inventory/batches                  Liste des lots
 GET  /api/inventory/batches/{id}             Détail lot + produits assignés
 POST /api/inventory/batches/{id}/assign-product  Rattacher produit au lot
+GET  /api/inventory/products/{id}/suggest-zone   Reco placement zone (P2-006)
+GET  /api/inventory/locate?q=                Localiser un produit en boutique (P2-008)
+GET  /api/admin/store-plan                   Plan zones + occupation + score moyen (manager only)
+GET  /api/admin/window-display/current       Proposition vitrine semaine courante (manager only)
+POST /api/admin/window-display/regenerate    Régénérer la proposition (manager only)
+POST /api/admin/window-display/{id}/accept   Valider la vitrine (manager only)
 GET  /api/ai/weekly-checklist                Checklist semaine IA
 GET  /api/ai/trends                          Tendances mode
 POST /api/ai/persona/marketing               Rapport marketing IA

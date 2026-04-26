@@ -18,7 +18,10 @@ from app.models import Base
 from app.models.audit import AuditLog
 from app.models.product import Category, Product, ProductPhoto, ProductStatus
 from app.models.user import User, UserRole
-from app.services.audit import register_audit_listeners
+from app.services.audit import (
+    register_audit_listeners,
+    unregister_audit_listeners,
+)
 
 
 @pytest.fixture(scope="module")
@@ -35,7 +38,10 @@ def engine():
     ]
     Base.metadata.create_all(eng, tables=tables_needed)
     register_audit_listeners()
-    return eng
+    yield eng
+    # Detach so other test modules that don't include audit_logs in their
+    # schema don't see autoflush errors.
+    unregister_audit_listeners()
 
 
 @pytest.fixture

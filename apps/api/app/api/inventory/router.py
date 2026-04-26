@@ -729,3 +729,48 @@ async def assign_product_to_batch(
         "id": str(product.id),
         "intake_batch_id": str(product.intake_batch_id),
     }
+
+
+# ---------------------------------------------------------------------------
+# Merchandising / Booster IA — placement + locate (P2-006 + P2-008)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/products/{product_id}/suggest-zone")
+async def suggest_zone_for_product(
+    product_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Recommend a store zone for a freshly-tagged product (P2-006)."""
+    from app.services.merchandising import MerchandisingService
+
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    suggestion = await MerchandisingService(db).suggest_zone(product)
+    return {
+        "product_id": str(product.id),
+        "primary_zone_id": suggestion.primary_zone_id,
+        "primary_zone_name": suggestion.primary_zone_name,
+        "alternative_zone_id": suggestion.alternative_zone_id,
+        "alternative_zone_name": suggestion.alternative_zone_name,
+        "should_go_to_window": suggestion.should_go_to_window,
+        "rationale": suggestion.rationale,
+    }
+
+
+@router.get("/locate")
+async def locate_product(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    q: str = Query(..., min_length=1, max_length=100),
+):
+    """Find a product on the floor — exact barcode wins, otherwise fuzzy
+    name match. Used by Sophie when a customer asks "vous avez encore ce
+    trench beige ?" (P2-008)."""
+    from app.services.merchandising import MerchandisingService
+
+    return await MerchandisingService(db).locate_product(q)

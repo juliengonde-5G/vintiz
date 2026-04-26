@@ -201,3 +201,17 @@ def register_audit_listeners() -> None:
         event.listen(Session, "before_flush", _before_flush)
     if not event.contains(Session, "after_flush", _after_flush):
         event.listen(Session, "after_flush", _after_flush)
+
+
+def unregister_audit_listeners() -> None:
+    """Detach the SQLAlchemy event listeners.
+
+    Useful in tests where one module's fixture registers them and a
+    later module hits an SQLite schema that doesn't include
+    ``audit_logs``. Idempotent — safe to call when the listeners
+    aren't attached.
+    """
+    if event.contains(Session, "before_flush", _before_flush):
+        event.remove(Session, "before_flush", _before_flush)
+    if event.contains(Session, "after_flush", _after_flush):
+        event.remove(Session, "after_flush", _after_flush)

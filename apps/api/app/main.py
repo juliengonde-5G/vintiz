@@ -76,6 +76,29 @@ async def _run_daily_embedding_refresh() -> None:
         logger.error("Embedding refresh job failed: %s", exc)
 
 
+async def _run_weekly_window_display() -> None:
+    """Background job (P2-007): build Monday's window-display proposal.
+
+    Runs every Monday at 06:00 Paris time so Sophie sees a ready-made
+    suggestion when she opens the iPad."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.merchandising import MerchandisingService
+
+        async with AsyncSession(engine) as db:
+            svc = MerchandisingService(db)
+            proposal = await svc.propose_weekly_window()
+            await db.commit()
+            logger.info(
+                "Window-display proposal: iso_week=%s, n_items=%d",
+                proposal.iso_week,
+                len(proposal.proposal.get("items", [])),
+            )
+    except Exception as exc:
+        logger.error("Window-display job failed: %s", exc)
+
+
 async def _run_daily_return_to_sorting() -> None:
     """Background job (P3-007): return aged unsold products to the sorting
     centre. Runs daily at 02:00 Paris — before the embedding refresh so the
@@ -218,6 +241,12 @@ async def lifespan(app: FastAPI):
             _run_daily_return_to_sorting,
             CronTrigger(hour=2, minute=0),
             id="daily_return_to_sorting",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_weekly_window_display,
+            CronTrigger(day_of_week="mon", hour=6, minute=0),
+            id="weekly_window_display",
             replace_existing=True,
         )
         scheduler.start()

@@ -16,6 +16,7 @@ from app.models.store import StoreZone, ZoneProduct, TrendAnalysis, StoreArrange
 from app.models.reporting import DailyReport, CommercialAction, ActionResult
 from app.models.audit import AuditLog, Settings
 from app.models.batch import IntakeBatch, IntakeSource
+from app.models.merchandising import WindowDisplayProposal
 from app.models.events import EventLog, EventSource, EventType
 from app.models.embeddings import (
     EMBEDDING_DIM,
@@ -39,6 +40,7 @@ __all__ = [
     "AuditLog", "Settings",
     "EventLog", "EventSource", "EventType",
     "IntakeBatch", "IntakeSource",
+    "WindowDisplayProposal",
     "ProductEmbedding", "CustomerTasteProfile", "EMBEDDING_DIM",
     "AITask",
     "NewsletterSubscriber",
