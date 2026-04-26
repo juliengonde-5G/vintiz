@@ -259,12 +259,63 @@ est disponible via le lien en pied de chaque newsletter.
 
 `/reports`
 
+### Rapports historiques
 - CA jour / semaine / mois / personnalisé
 - Panier moyen, taux de transformation, top vendeurs
 - Évolution N-1
 - Export CSV pour comptabilité
 
-## 11. Site public
+### KPIs retail (P4-001)
+- **Sell-through rate** : articles vendus / (vendus + en vitrine) sur la fenêtre
+- **GMROI** (gross margin return on inventory) : approximation
+  net_revenue / coût d'inventaire en vitrine
+- **Days on Hand** : jours moyens passés sur la surface de vente
+- **AIT** (average items per ticket) : panier moyen en nombre d'articles
+- **CA / m² / mois** : revenu mensualisé rapporté à la surface (par défaut 98 m²,
+  éditable dans `Settings > KPIs config`)
+- Top et bottom catégories
+- % de variation vs période précédente
+
+### Rapport ESS — Solidarité Textiles (P4-002)
+- Pièces reçues / vendues / données / retournées au tri
+- Taux de réemploi
+- Tonnage estimé (poids moyen 0,5 kg/pièce, éditable)
+- CA reversé à Solidarité Textiles (pourcentage configurable)
+
+### Segmentation RFM (P4-007)
+9 segments calculés mensuellement (1er du mois, 04:00) :
+- Champions, Fidèles, Nouvelles, Prometteuses, À ne pas perdre, À risque,
+  En sommeil, Perdues, Régulières
+- Bouton "Recalculer maintenant" pour rafraîchir à la demande
+- Visualisation barres + clic pour voir la liste des clientes par segment
+
+## 11. Communication automatique (Phase 4)
+
+### Email anniversaire (P4-008)
+Cron quotidien 09:00. Pour chaque cliente dont c'est l'anniversaire et qui
+a opt-in email : crée un coupon `ANNIV-XXXXXX` -10% valable 7 jours et
+envoie l'email. Idempotent — relancer le jour-même n'envoie pas en double.
+Trigger manuel : `Settings > Outils > Anniversaires`.
+
+### Email nouvelles arrivées (P4-009)
+Cron hebdo vendredi 10:00. Digest des 5 dernières pièces sur la vitrine
+envoyé aux clientes opt-in email. Personnalisé via Personal Shopper si
+profil de goût présent, sinon plus récents génériques.
+
+### Réservation 48h (P4-005)
+`/reservations` — Camille pose un hold pour une cliente sur un article
+spécifique. La cliente le voit sur son espace `vintiz.fr/account/data`.
+Au POS, un bandeau alerte si l'article est tenu pour quelqu'un d'autre,
+ou confirme en vert si c'est la bonne cliente. La réservation est
+encaissée automatiquement à la validation de la vente. Cron horaire
+expire automatiquement les holds dépassés.
+
+### Wallet pass (P4-004)
+Carte fidélité dématérialisée avec QR membership stable. Affichée sur
+l'espace client `/account/data`. La signature Apple `.pkpass` et Google
+Wallet JWT sont en attente d'activation côté ops (cert + service account).
+
+## 12. Site public
 
 `vintiz.fr` — landing avec :
 
@@ -274,7 +325,7 @@ est disponible via le lien en pied de chaque newsletter.
 - Personal Shopper IA accessible aux clients fidélisés
 - Mentions légales / CGV / Confidentialité / Désinscription
 
-## 12. Dépannage rapide
+## 13. Dépannage rapide
 
 | Problème | Vérifier |
 |---|---|

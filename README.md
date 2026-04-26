@@ -4,7 +4,8 @@ Logiciel de gestion pour boutique de seconde main premium — Vernon, Normandie.
 
 Application complète : caisse iPad, gestion d'inventaire, CRM, IA assistante,
 matériel ESC/POS / SATO / SumUp, site vitrine SEO + GA4, espace client, cahier
-de travail journalier.
+de travail journalier, KPIs retail + ESS, segmentation RFM, emails automatiques
+(anniversaires, nouveautés), réservation 48h, Wallet pass.
 
 ## Documentation
 
@@ -14,6 +15,7 @@ de travail journalier.
 | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Dev — diagramme + flux applicatif |
 | [`docs/DEPLOIEMENT.md`](./docs/DEPLOIEMENT.md) | Ops — VPS, Caddy, GitHub Action |
 | [`docs/AUDIT_2026_04.md`](./docs/AUDIT_2026_04.md) | Dev — audit sécurité / code / UX d'avril 2026 |
+| [`docs/AUDIT_2026_04_PHASE4_CLOSE.md`](./docs/AUDIT_2026_04_PHASE4_CLOSE.md) | Dev — clôture Phase 4 (analytics, communication, UX) |
 | [`docs/DESIGN_SYSTEM.md`](./docs/DESIGN_SYSTEM.md) | Design — palette, fonts, logos, règles |
 | [`docs/UX_DESIGN.md`](./docs/UX_DESIGN.md) | Design — heuristiques, parcours, états |
 | [`docs/MANUEL_BOUTIQUE.md`](./docs/MANUEL_BOUTIQUE.md) | Manager / vendeur — guide d'utilisation |
@@ -29,7 +31,7 @@ apps/
   web/          Next.js 14 — Interface d'administration (back-office)
   site/         Next.js 14 — Site vitrine public + espace client
 docker/         Dockerfiles + docker-compose{,-prod}.yml + Caddyfile
-scripts/        seed_data.py, seed_test_products.py, deploy.sh, diag.sh, reset-prod.sh
+scripts/        seed_data.py, seed_test_products.py, deploy.sh, diag.sh, reset-prod.sh, smoke_prod.sh
 docs/           Documentation technique et utilisateur
 .github/        Workflow auto-deploy (deploy.yml)
 .claude/        Hooks Claude Code (session-start) + settings.json
@@ -114,6 +116,15 @@ GA_MEASUREMENT_ID=G-XXXXXXXXXX
 GOOGLE_SITE_VERIFICATION=...
 RECEIPT_PRINTER_HOST=192.168.1.50   # MUNBYN 047P-WiFi
 LABEL_PRINTER_HOST=192.168.1.51     # SATO CT4-LX
+
+# Phase 4 — communication + wallet (avril 2026)
+BREVO_API_KEY=                      # transactional emails (anniversaires, nouveautés)
+EMAIL_FROM_ADDRESS=noreply@vintiz.fr
+EMAIL_FROM_NAME=Vintiz Vernon
+WALLET_PASS_TYPE_IDENTIFIER=pass.fr.vintiz.loyalty
+WALLET_TEAM_IDENTIFIER=             # Apple Developer (signing à plugger côté ops)
+WALLET_GOOGLE_ISSUER_ID=            # Google Pay & Wallet
+WALLET_GOOGLE_CLASS_SUFFIX=vintiz_loyalty
 ```
 
 ## Hardware supporté
@@ -130,20 +141,23 @@ LABEL_PRINTER_HOST=192.168.1.51     # SATO CT4-LX
 Configuration via `/settings > Materiel` (back-office). Tests live disponibles
 (impression test, kick tiroir).
 
-## Diagnostic
+## Diagnostic + smoke test
 
 ```bash
-bash scripts/diag.sh
+bash scripts/diag.sh                                 # PostgreSQL/API/tables, redémarre auto
+bash scripts/smoke_prod.sh https://api.vintiz.fr     # post-deploy : routes + endpoints (read-only)
 ```
 
-Détecte automatiquement Docker vs local, vérifie PostgreSQL, l'API, les tables
-et Caddy. Redémarre automatiquement ce qui ne répond pas.
+`diag.sh` détecte Docker vs local. `smoke_prod.sh` valide qu'un déploiement est
+sain sans créer de données : liveness, OpenAPI (12 routes Phase 4 attendues),
+endpoints publics (404 attendu sur emails inconnus), endpoints manager si
+`VINTIZ_API_TOKEN` posé.
 
 ## Tests
 
 ```bash
 # Backend
-cd apps/api && pytest                   # 11 tests dont 6 régression sécurité
+cd apps/api && pytest                   # 362 tests (suite complète)
 ruff check apps/api/app                 # 0 erreur
 
 # Frontend

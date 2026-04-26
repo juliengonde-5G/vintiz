@@ -99,22 +99,36 @@ Sans la couche événementielle, le Personal Shopper et le Booster IA plafonnent
 
 ---
 
-## Phase 4 — KPIs avancés + UX polish (2-3 semaines)
+## Phase 4 — KPIs avancés + UX polish ✅ CLÔTURÉE (26 avril 2026)
 
-| ID | Sujet | Source |
-|---|---|---|
-| P4-001 | KPIs retail standards (sell-through, GMROI, DOH, AIT, CA/m²/mois) | V1 |
-| P4-002 | Reporting ESS dédié Solidarité Textiles (mensuel/trimestriel/annuel) | V1 |
-| P4-003 | Email automation Brevo (welcome, J+30 inactif, anniversaire, J+60 Gold inactif) | V1 |
-| P4-004 | Apple/Google Wallet (`.pkpass` + push solde points) | V1 |
-| P4-005 | Réservation 48h site vitrine + zone "Réservés" en btq | V1 |
-| P4-006 | Mobile-first dashboard manager | V1 |
-| P4-007 | Segmentation RFM clients (job mensuel) | V2 |
-| P4-008 | Offre anniversaire automatique (cron quotidien) | V2 |
-| P4-009 | Notification "Nouvelles arrivées" hebdo (si email_optin) | V2 |
-| P4-010 | Badge "Boost IA" caisse pour produits Hot | V2 |
-| P2-014 | Drag-and-drop sur plan boutique SVG | V2 |
-| P1-011 | Lier bouton "Imprimer étiquette" à `sato_service.py` (si confirmé non branché) | V2 |
+Voir [`docs/AUDIT_2026_04_PHASE4_CLOSE.md`](./docs/AUDIT_2026_04_PHASE4_CLOSE.md)
+pour la cartographie complète ticket → PR + checklist validation prod.
+
+| ID | Sujet | Source | Status |
+|---|---|---|---|
+| P4-001 | KPIs retail standards (sell-through, GMROI, DOH, AIT, CA/m²/mois) | V1 | ✅ #25 |
+| P4-002 | Reporting ESS dédié Solidarité Textiles | V1 | ✅ #25 |
+| P4-003 | Email gateway Brevo (anniversaire, nouveautés) | V1 | ✅ #27 |
+| P4-004 | Apple/Google Wallet (payload prêt, signing TODO ops) | V1 | ✅ #27 partiel |
+| P4-005 | Réservation 48h (modèle + service + UI + cron + redemption POS) | V1 | ✅ #29 + #30 |
+| P4-006 | Mobile dashboard (sticky KPI strip) | V1 | ✅ #29 |
+| P4-007 | Segmentation RFM clients (cron mensuel) | V2 | ✅ #25 |
+| P4-008 | Offre anniversaire automatique (cron quotidien + coupon -10% 7j) | V2 | ✅ #27 |
+| P4-009 | Notification "Nouvelles arrivées" hebdo | V2 | ✅ #27 |
+| P4-010 | Badge "Boost IA" caisse pour produits Hot | V2 | ✅ #29 |
+| Hotfix | Migration 0014 cast `brand_tier_level` | — | ✅ #28 |
+| Suivi | Coupon + reservation redemption au POS | — | ✅ #30 |
+| Doc | Closing notes + CHANGELOG + smoke_prod.sh | — | ✅ #31 + #32 |
+| P2-014 | Drag-and-drop sur plan boutique SVG | V2 | ⏳ post-MVP |
+| P1-011 | Lier bouton "Imprimer étiquette" à `sato_service.py` | V2 | ⏳ post-MVP |
+
+### Suivi laissé en TODO ops (post-Phase 4)
+
+- Apple `.pkpass` signing (cert p12 + WWDR) — payload prêt côté API.
+- Google Wallet JWT signing (Service Account RS256) — payload prêt côté API.
+- Reservation reminder J-12h (cron + email).
+- Backup S3/Backblaze automatisé sur `scripts/backup.sh`.
+- Pagination de l'autocomplete cliente sur `/reservations` quand > 1k clientes.
 
 ---
 
