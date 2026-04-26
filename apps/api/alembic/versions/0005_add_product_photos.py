@@ -83,17 +83,21 @@ def upgrade() -> None:
             ["product_id", "is_primary"],
         )
 
-    # Backfill: copy each products.photo_url into a primary product_photos row
-    # if no row exists yet for that product. uuid_generate_v4() is part of the
-    # uuid-ossp extension; fall back to gen_random_uuid() (pgcrypto) if not.
+    # Backfill: copy each products.photo_url into a primary product_photos
+    # row when no row exists yet for that product. ``gen_random_uuid()``
+    # comes from pgcrypto; we ensure the extension is present so this
+    # works on a fresh PG instance too. The WHERE NOT EXISTS clause
+    # makes the backfill itself per-product idempotent — running the
+    # migration again on a partially-populated table only inserts the
+    # rows still missing.
+    op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
     op.execute(
         """
-        INSERT INTO product_photos (id, product_id, url, order_index, is_primary, created_at, updated_at)
+        INSERT INTO product_photos (
+            id, product_id, url, order_index, is_primary, created_at, updated_at
+        )
         SELECT
-            COALESCE(
-                (SELECT NULL),
-                gen_random_uuid()
-            ),
+            gen_random_uuid(),
             p.id,
             p.photo_url,
             0,
