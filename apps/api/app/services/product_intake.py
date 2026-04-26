@@ -120,18 +120,26 @@ async def _resolve_category(
 
     target_name = _normalize_type(vision_type)
     if target_name:
+        # Several categories can share a casing variant ("Chaussures",
+        # "Chaussures femme"…). We just want any match → .first() instead
+        # of scalar_one_or_none() which raises on > 1 row.
         result = await db.execute(
-            select(Category).where(Category.name.ilike(target_name))
+            select(Category)
+            .where(Category.name.ilike(target_name))
+            .order_by(Category.created_at)
+            .limit(1)
         )
-        cat = result.scalar_one_or_none()
+        cat = result.scalars().first()
         if cat:
             return cat.id
 
     # Fallback: Inclassable
     result = await db.execute(
-        select(Category).where(Category.name.ilike("Inclassable"))
+        select(Category)
+        .where(Category.name.ilike("Inclassable"))
+        .limit(1)
     )
-    cat = result.scalar_one_or_none()
+    cat = result.scalars().first()
     if cat:
         return cat.id
 
