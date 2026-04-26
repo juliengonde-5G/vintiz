@@ -101,10 +101,9 @@ fi
 
 echo ""
 echo "── 2. OpenAPI — routes Phase 4 ──────────────────────────"
-OPENAPI_PATH="/api/openapi.json"
-case "$API_URL" in
-  */api) OPENAPI_PATH="/openapi.json" ;;
-esac
+# OpenAPI schema is exposed at the FastAPI app-level (/openapi.json),
+# pas sous /api : seuls les routers métier ont le préfixe /api.
+OPENAPI_PATH="/openapi.json"
 code=$(http_get_anon "$OPENAPI_PATH")
 if [ "$code" = "200" ]; then
   ok "$OPENAPI_PATH → 200"
