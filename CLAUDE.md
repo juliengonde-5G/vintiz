@@ -161,6 +161,11 @@ POST /api/ai/persona/juridique               Audit RGPD IA
 GET  /api/crm/clients/lookup?email=…         Lookup client public
 GET  /api/crm/clients/personal-shopper?email=…  Personal shopper
 GET  /api/crm/clients/{id}/avoir             Solde + historique avoir (store credit)
+GET  /api/crm/clients/{id}/consents          Consentements RGPD (état courant + historique)
+POST /api/crm/clients/{id}/consents          Enregistrer consentement (purpose+granted+source)
+GET  /api/crm/clients/{id}/data-export       Export RGPD JSON portable (Article 20)
+POST /api/crm/clients/{id}/deletion-request  Demande suppression (soft, fenêtre 30j)
+POST /api/crm/clients/{id}/deletion-cancel   Annuler demande de suppression
 ```
 
 ## Fonctionnalités principales

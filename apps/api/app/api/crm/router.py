@@ -1,7 +1,7 @@
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -13,6 +13,8 @@ from app.core.security import get_current_user
 from app.models.client import (
     AvoirTransaction,
     Client,
+    Consent,
+    ConsentPurpose,
     LoyaltyAccount,
     LoyaltyTransaction,
     LoyaltyTxType,
@@ -859,3 +861,141 @@ async def get_client_avoir(
         "balance": float(client.avoir_credit or 0),
         "history": history,
     }
+
+
+# ---------------------------------------------------------------------------
+# RGPD endpoints (P1-007) — manager only
+# ---------------------------------------------------------------------------
+
+
+class ConsentRequest(BaseModel):
+    purpose: str  # email_marketing | sms_marketing | profiling | data_sharing
+    granted: bool
+    source: str = "admin"  # site_signup | pos | admin | import
+    policy_version: str | None = None
+
+
+@router.get("/clients/{client_id}/consents")
+async def get_client_consents(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return current consent state per purpose + full history."""
+    from app.services.rgpd import RgpdService
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    svc = RgpdService(db)
+    return {
+        "client_id": str(client.id),
+        "current": await svc.current_consents(client.id),
+        "history": await svc.consent_history(client.id),
+    }
+
+
+@router.post("/clients/{client_id}/consents")
+async def record_client_consent(
+    client_id: uuid.UUID,
+    request: ConsentRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record a consent grant or revoke for a single purpose."""
+    from app.services.rgpd import RgpdService
+
+    try:
+        purpose = ConsentPurpose(request.purpose)
+    except ValueError:
+        valid = ", ".join(p.value for p in ConsentPurpose)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid consent purpose. Valid values: {valid}",
+        )
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    svc = RgpdService(db)
+    entry = await svc.record_consent(
+        client=client,
+        purpose=purpose,
+        granted=request.granted,
+        source=request.source,
+        recorded_by_user_id=current_user.id,
+        policy_version=request.policy_version,
+    )
+    await db.commit()
+    return {
+        "id": str(entry.id),
+        "purpose": entry.purpose.value,
+        "granted": entry.granted,
+        "policy_version": entry.policy_version,
+        "recorded_at": entry.created_at.isoformat() if entry.created_at else None,
+    }
+
+
+@router.get("/clients/{client_id}/data-export")
+async def export_client_data(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return a portable JSON snapshot of everything we hold about the client
+    (Article 20 RGPD — data portability)."""
+    from app.services.rgpd import RgpdService
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    return await RgpdService(db).export_client_data(client)
+
+
+@router.post("/clients/{client_id}/deletion-request")
+async def request_client_deletion(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Soft-delete: stamps the 30-day grace window. The daily cron purges
+    clients whose request is older than DELETION_WINDOW."""
+    from app.services.rgpd import RgpdService
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    requested_at = await RgpdService(db).request_deletion(client)
+    await db.commit()
+    return {
+        "client_id": str(client.id),
+        "deletion_requested_at": requested_at.isoformat(),
+        "purge_after": (requested_at + timedelta(days=30)).isoformat(),
+    }
+
+
+@router.post("/clients/{client_id}/deletion-cancel")
+async def cancel_client_deletion(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel a pending deletion request (only valid before the cron runs)."""
+    from app.services.rgpd import RgpdService
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    await RgpdService(db).cancel_deletion(client)
+    await db.commit()
+    return {"client_id": str(client.id), "deletion_cancelled": True}

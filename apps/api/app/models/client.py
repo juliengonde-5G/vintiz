@@ -1,7 +1,8 @@
 import enum
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,6 +21,15 @@ class AvoirTxType(str, enum.Enum):
     adjust = "adjust"  # Manual adjustment by manager
 
 
+class ConsentPurpose(str, enum.Enum):
+    """RGPD consent buckets tracked in the Consent ledger."""
+
+    email_marketing = "email_marketing"
+    sms_marketing = "sms_marketing"
+    profiling = "profiling"        # Personal Shopper / AI recommendations
+    data_sharing = "data_sharing"  # Future B2B sharing — kept for forward compat
+
+
 class Client(Base):
     __tablename__ = "clients"
 
@@ -34,6 +44,11 @@ class Client(Base):
     # decremented when used at checkout. AvoirTransaction holds the audit trail.
     avoir_credit: Mapped[float] = mapped_column(
         Numeric(10, 2), nullable=False, default=0
+    )
+    # RGPD soft-delete: set when the client requests erasure. A daily cron
+    # hard-deletes rows whose timestamp is older than 30 days.
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     loyalty_account: Mapped["LoyaltyAccount | None"] = relationship(
@@ -72,6 +87,32 @@ class LoyaltyTransaction(Base):
 
     account: Mapped["LoyaltyAccount"] = relationship(
         "LoyaltyAccount", back_populates="transactions", lazy="selectin"
+    )
+
+
+class Consent(Base):
+    """Append-only ledger of RGPD consent decisions per client × purpose.
+
+    Each row captures a single grant/revoke event with metadata sufficient
+    for an audit (who recorded it, on which policy version, from where).
+    The current consent for a purpose is the most recent row's ``granted``.
+    """
+
+    __tablename__ = "consents"
+
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False
+    )
+    purpose: Mapped[ConsentPurpose] = mapped_column(
+        Enum(ConsentPurpose, name="consent_purpose"), nullable=False
+    )
+    granted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # e.g. "site_signup", "pos", "admin", "import"
+    recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
 
 

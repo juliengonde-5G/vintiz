@@ -32,6 +32,30 @@ setup_logging()
 logger = logging.getLogger("vintiz")
 
 
+async def _run_daily_rgpd_purge() -> None:
+    """Background job: hard-delete clients whose 30-day deletion window
+    has elapsed (P1-007). Runs daily at 03:00 Paris time."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.rgpd import RgpdService
+
+        async with AsyncSession(engine) as db:
+            svc = RgpdService(db)
+            summary = await svc.purge_pending_deletions()
+            await db.commit()
+            if summary["purged_count"]:
+                logger.info(
+                    "RGPD purge: hard-deleted %d clients (ids=%s)",
+                    summary["purged_count"],
+                    summary["purged_ids"],
+                )
+            else:
+                logger.info("RGPD purge: nothing to delete")
+    except Exception as exc:
+        logger.error("RGPD purge job failed: %s", exc)
+
+
 async def _run_monthly_scoring() -> None:
     """Background job: recompute trend scores for all active products (1st Wednesday of month)."""
     try:
@@ -111,6 +135,12 @@ async def lifespan(app: FastAPI):
             _run_monthly_scoring,
             CronTrigger(day_of_week="wed", week="1", hour=6, minute=0),
             id="monthly_scoring",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_daily_rgpd_purge,
+            CronTrigger(hour=3, minute=0),
+            id="daily_rgpd_purge",
             replace_existing=True,
         )
         scheduler.start()

@@ -7,6 +7,8 @@ from app.models.client import (
     AvoirTransaction,
     AvoirTxType,
     Client,
+    Consent,
+    ConsentPurpose,
     LoyaltyAccount,
     LoyaltyTransaction,
 )
@@ -24,6 +26,7 @@ __all__ = [
     "Transaction", "TransactionItem", "Payment", "CashDrawer", "ZReport", "Receipt",
     "Client", "LoyaltyAccount", "LoyaltyTransaction",
     "AvoirTransaction", "AvoirTxType",
+    "Consent", "ConsentPurpose",
     "StoreZone", "ZoneProduct", "TrendAnalysis", "StoreArrangement", "AIRecommendation",
     "DailyReport", "CommercialAction", "ActionResult",
     "AuditLog", "Settings",
