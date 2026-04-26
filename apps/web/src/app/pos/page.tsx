@@ -7,7 +7,16 @@ import NumPad from '@/components/ui/NumPad';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import Card from '@/components/ui/Card';
+import CashierPinModal from '@/components/cashier/CashierPinModal';
 import { api } from '@/lib/api';
+
+interface Cashier {
+  id: string;
+  username: string;
+  role: string;
+}
+
+const CASHIER_STORAGE_KEY = 'vintiz_pos_cashier';
 
 interface SearchProduct {
   id: string;
@@ -119,6 +128,11 @@ export default function POSPage() {
   const [zReport, setZReport] = useState<{ z_report_number: number; total_sales: number; total_refunds: number; total_net: number; transaction_count: number; difference: number } | null>(null);
   const [drawerSubmitting, setDrawerSubmitting] = useState(false);
 
+  // Cashier identification (NF525 — P1-002)
+  const [cashier, setCashier] = useState<Cashier | null>(null);
+  const [showCashierModal, setShowCashierModal] = useState(false);
+  const [cashierModalDismissible, setCashierModalDismissible] = useState(false);
+
   // General
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -144,6 +158,40 @@ export default function POSPage() {
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   const remaining = cartTotalAfterLoyalty - totalPaid;
 
+  // ── Cashier identification ──────────────────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = sessionStorage.getItem(CASHIER_STORAGE_KEY);
+    if (stored) {
+      try {
+        setCashier(JSON.parse(stored) as Cashier);
+        return;
+      } catch {
+        sessionStorage.removeItem(CASHIER_STORAGE_KEY);
+      }
+    }
+    setCashierModalDismissible(false);
+    setShowCashierModal(true);
+  }, []);
+
+  const handleCashierAuthenticated = (next: Cashier) => {
+    setCashier(next);
+    sessionStorage.setItem(CASHIER_STORAGE_KEY, JSON.stringify(next));
+    setShowCashierModal(false);
+  };
+
+  const switchCashier = () => {
+    setCashierModalDismissible(true);
+    setShowCashierModal(true);
+  };
+
+  const logoutCashier = () => {
+    sessionStorage.removeItem(CASHIER_STORAGE_KEY);
+    setCashier(null);
+    setCashierModalDismissible(false);
+    setShowCashierModal(true);
+  };
+
   // ── Cash drawer ─────────────────────────────────────────────────
   useEffect(() => {
     api.get('/api/pos/drawer/current').then(async (res) => {
@@ -154,7 +202,10 @@ export default function POSPage() {
   const handleOpenDrawer = async () => {
     setDrawerSubmitting(true);
     try {
-      const res = await api.post('/api/pos/drawer/open', { opening_amount: drawerAmount });
+      const res = await api.post('/api/pos/drawer/open', {
+        opening_amount: drawerAmount,
+        cashier_id: cashier?.id,
+      });
       if (res.ok) {
         const data = await res.json();
         setDrawer({ open: true, drawer_id: data.drawer_id, opening_amount: data.opening_amount });
@@ -168,7 +219,10 @@ export default function POSPage() {
   const handleCloseDrawer = async () => {
     setDrawerSubmitting(true);
     try {
-      const res = await api.post('/api/pos/drawer/close', { closing_amount: drawerAmount });
+      const res = await api.post('/api/pos/drawer/close', {
+        closing_amount: drawerAmount,
+        cashier_id: cashier?.id,
+      });
       if (res.ok) {
         const data = await res.json();
         setZReport(data);
@@ -525,6 +579,7 @@ export default function POSPage() {
         redeem_loyalty_discount: redeemPoints ? loyaltyDiscount : 0,
       };
       if (selectedClient) body.client_id = selectedClient.id;
+      if (cashier) body.cashier_id = cashier.id;
 
       const res = await api.post('/api/pos/transactions', body);
       if (!res.ok) {
@@ -613,6 +668,43 @@ export default function POSPage() {
 
         {/* ── LEFT PANEL: Order / Cart ────────────────────────────── */}
         <div className="w-[42%] flex flex-col bg-white border-r border-gray-200 shadow-sm">
+
+          {/* Cashier identification strip */}
+          <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs bg-teal-50 border-b border-teal-100">
+            <span className="font-medium text-teal-800">
+              {cashier
+                ? <>Cashier : <strong>{cashier.username}</strong></>
+                : 'Aucun cashier identifié'}
+            </span>
+            <div className="flex items-center gap-1.5">
+              {cashier && (
+                <>
+                  <button
+                    onClick={switchCashier}
+                    className="text-xs px-2 py-1 rounded bg-white border border-teal-200 text-teal hover:bg-teal-100 transition-colors"
+                    title="Changer de cashier (relève)"
+                  >
+                    Changer
+                  </button>
+                  <button
+                    onClick={logoutCashier}
+                    className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+                    title="Déconnecter le cashier"
+                  >
+                    Déconnexion
+                  </button>
+                </>
+              )}
+              {!cashier && (
+                <button
+                  onClick={() => { setCashierModalDismissible(false); setShowCashierModal(true); }}
+                  className="text-xs px-2 py-1 rounded bg-teal text-white hover:bg-teal-700 transition-colors"
+                >
+                  S&apos;identifier
+                </button>
+              )}
+            </div>
+          </div>
 
           {/* Cash drawer status strip */}
           {drawer !== null && (
@@ -1261,6 +1353,14 @@ export default function POSPage() {
           </div>
         )}
       </Modal>
+
+      {/* Cashier PIN modal — required at session start, dismissible during shift change */}
+      <CashierPinModal
+        open={showCashierModal}
+        dismissible={cashierModalDismissible}
+        onAuthenticated={handleCashierAuthenticated}
+        onCancel={() => setShowCashierModal(false)}
+      />
     </div>
   );
 }
