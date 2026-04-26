@@ -138,6 +138,11 @@ GET  /api/inventory/products/search?q=…      Recherche (filtre stock+display p
 GET  /api/inventory/products/{id}            Fiche produit
 GET  /api/inventory/products/{id}/label      Étiquette PNG
 GET  /api/inventory/products/{id}/score      Score détaillé
+GET  /api/inventory/products/{id}/photos     Liste multi-photos
+POST /api/inventory/products/{id}/photos     Ajouter une photo (url + AI fields)
+POST /api/inventory/products/{id}/photos/{pid}/primary  Définir la photo primaire
+POST /api/inventory/products/{id}/photos/reorder        Réordonner (drag/drop)
+DELETE /api/inventory/products/{id}/photos/{pid}        Supprimer une photo
 POST /api/pos/transactions                   Créer une vente
 POST /api/pos/transactions/{id}/refund       Refund partiel/total (cash/card/cheque/avoir)
 GET  /api/pos/transactions/{id}/receipt      Texte du ticket (80 mm)

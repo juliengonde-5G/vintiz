@@ -27,7 +27,7 @@ from app.models.pos import (
     TransactionItem,
     TransactionType,
 )
-from app.models.product import Category, Product, ProductStatus
+from app.models.product import Category, Product, ProductPhoto, ProductStatus
 from app.models.user import User, UserRole
 from app.services.refund import RefundLineInput, RefundService
 
@@ -44,6 +44,7 @@ async def engine():
         User.__table__,
         Category.__table__,
         Product.__table__,
+        ProductPhoto.__table__,
         Client.__table__,
         Transaction.__table__,
         TransactionItem.__table__,

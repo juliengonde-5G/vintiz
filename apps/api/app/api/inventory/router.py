@@ -1,7 +1,9 @@
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +12,7 @@ from app.core.security import get_current_user
 from app.models.product import Category, Product, ProductStatus
 from app.models.inventory import Supplier, Order
 from app.models.user import User
+from app.services.photo import PhotoService
 from app.schemas.product import (
     CategoryCreate,
     CategoryResponse,
@@ -415,3 +418,90 @@ async def create_order(
     await db.flush()
     await db.refresh(order)
     return order
+
+
+# ---------------------------------------------------------------------------
+# Multi-photos (P1-008) — list / add / set primary / reorder / delete
+# ---------------------------------------------------------------------------
+
+
+class PhotoAddRequest(BaseModel):
+    url: str
+    ai_analyzed_at: datetime | None = None
+    ai_confidence: float | None = None
+
+
+class PhotoReorderRequest(BaseModel):
+    ordered_ids: list[uuid.UUID]
+
+
+@router.get("/products/{product_id}/photos")
+async def list_product_photos(
+    product_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    return await PhotoService(db).list_photos(product_id)
+
+
+@router.post(
+    "/products/{product_id}/photos", status_code=status.HTTP_201_CREATED
+)
+async def add_product_photo(
+    product_id: uuid.UUID,
+    request: PhotoAddRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    photo = await PhotoService(db).add_photo(
+        product_id=product_id,
+        url=request.url,
+        ai_analyzed_at=request.ai_analyzed_at,
+        ai_confidence=request.ai_confidence,
+    )
+    await db.commit()
+    return {
+        "id": str(photo.id),
+        "url": photo.url,
+        "is_primary": photo.is_primary,
+        "order_index": photo.order_index,
+    }
+
+
+@router.post("/products/{product_id}/photos/{photo_id}/primary")
+async def set_primary_photo(
+    product_id: uuid.UUID,
+    photo_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    photo = await PhotoService(db).set_primary(product_id, photo_id)
+    await db.commit()
+    return {"id": str(photo.id), "is_primary": True}
+
+
+@router.post("/products/{product_id}/photos/reorder")
+async def reorder_product_photos(
+    product_id: uuid.UUID,
+    request: PhotoReorderRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    rows = await PhotoService(db).reorder(product_id, request.ordered_ids)
+    await db.commit()
+    return rows
+
+
+@router.delete(
+    "/products/{product_id}/photos/{photo_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_product_photo(
+    product_id: uuid.UUID,
+    photo_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    await PhotoService(db).delete_photo(product_id, photo_id)
+    await db.commit()
+    return None

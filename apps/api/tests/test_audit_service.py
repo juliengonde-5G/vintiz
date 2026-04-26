@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.audit_context import set_current_user_id, reset_current_user_id
 from app.models import Base
 from app.models.audit import AuditLog
-from app.models.product import Category, Product, ProductStatus
+from app.models.product import Category, Product, ProductPhoto, ProductStatus
 from app.models.user import User, UserRole
 from app.services.audit import register_audit_listeners
 
@@ -30,6 +30,7 @@ def engine():
         User.__table__,
         Category.__table__,
         Product.__table__,
+        ProductPhoto.__table__,
         AuditLog.__table__,
     ]
     Base.metadata.create_all(eng, tables=tables_needed)

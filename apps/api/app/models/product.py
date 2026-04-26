@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -53,6 +53,9 @@ class Product(Base):
     size: Mapped[str | None] = mapped_column(String(20), nullable=True)
     color: Mapped[str | None] = mapped_column(String(50), nullable=True)
     brand: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Convenience pointer to the primary image. Kept in sync with ProductPhoto
+    # rows by PhotoService so existing call sites that read photo_url keep
+    # working unchanged. Multi-photo support lives in the photos relation.
     photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     purchase_price: Mapped[float] = mapped_column(
         Numeric(10, 2), nullable=False, default=0
@@ -77,6 +80,41 @@ class Product(Base):
 
     category: Mapped["Category"] = relationship(
         "Category", back_populates="products", lazy="selectin"
+    )
+    photos: Mapped[list["ProductPhoto"]] = relationship(
+        "ProductPhoto",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="ProductPhoto.order_index",
+        lazy="selectin",
+    )
+
+
+class ProductPhoto(Base):
+    """A single image attached to a Product.
+
+    Ordering is explicit via ``order_index`` (lower → shown first). Exactly
+    one row per product carries ``is_primary=True``; PhotoService enforces
+    this invariant and mirrors the primary URL onto Product.photo_url.
+    The AI-related fields capture Vision's analysis output so the score
+    photos sub-component (P2-011) can later weight by quality + count.
+    """
+
+    __tablename__ = "product_photos"
+
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id"), nullable=False
+    )
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ai_analyzed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ai_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    product: Mapped["Product"] = relationship(
+        "Product", back_populates="photos", lazy="selectin"
     )
 
 
