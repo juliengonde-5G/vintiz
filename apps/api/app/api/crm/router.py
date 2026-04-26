@@ -118,6 +118,64 @@ async def lookup_client(
 
 
 # ---------------------------------------------------------------------------
+# L2.3 — Enriched customer brief for POS upsell
+# ---------------------------------------------------------------------------
+
+
+@router.get("/clients/{client_id}/brief")
+async def get_client_brief(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the enriched LoyaltyCustomerCard payload for the POS.
+
+    Same data than ``GET /clients/lookup`` but augmented with :
+    - Last visit + days since
+    - Lifetime value
+    - Favorite categories / brands / colors / sizes
+    - 3 Personal Shopper picks (with fallback to top-score)
+    - Active reservation + anniversary coupon
+    - RFM segment
+
+    See ``services/customer_brief.py`` for the aggregation logic.
+    """
+    from app.services.customer_brief import get_customer_brief
+
+    brief = await get_customer_brief(db, client_id)
+    if not brief:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return brief
+
+
+@router.get("/clients/lookup-brief")
+async def lookup_client_brief(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Email-based lookup that returns the enriched brief in 1 call.
+
+    Used by the POS at card scan : Sophie types/scans, instantly sees the
+    `LoyaltyCustomerCard` panel with last visit, favorite categories, and
+    3 PS picks ready to be tapped into the cart.
+    """
+    from app.services.customer_brief import get_customer_brief
+
+    email_clean = email.strip().lower()
+    if "@" not in email_clean or "." not in email_clean.split("@", 1)[-1]:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+
+    result = await db.execute(
+        select(Client).where(Client.email == email_clean)
+    )
+    client = result.scalar_one_or_none()
+    if not client:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+
+    brief = await get_customer_brief(db, client.id)
+    return brief
+
+
+# ---------------------------------------------------------------------------
 # Authenticated CRM endpoints
 # ---------------------------------------------------------------------------
 
