@@ -19,6 +19,14 @@ from app.models.batch import IntakeBatch, IntakeSource
 from app.models.brand_tier import BrandTier, BrandTierLevel
 from app.models.markdown import MarkdownRule
 from app.models.merchandising import WindowDisplayProposal
+from app.models.visibility import (
+    GoogleReview,
+    SEOSnapshot,
+    SocialMention,
+    SocialPlatform,
+    SocialPost,
+    SocialPostCategory,
+)
 from app.models.events import EventLog, EventSource, EventType
 from app.models.embeddings import (
     EMBEDDING_DIM,
@@ -45,6 +53,8 @@ __all__ = [
     "BrandTier", "BrandTierLevel",
     "WindowDisplayProposal",
     "MarkdownRule",
+    "SEOSnapshot", "SocialPost", "SocialPostCategory", "SocialPlatform",
+    "SocialMention", "GoogleReview",
     "ProductEmbedding", "CustomerTasteProfile", "EMBEDDING_DIM",
     "AITask",
     "NewsletterSubscriber",

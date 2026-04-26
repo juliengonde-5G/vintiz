@@ -4,6 +4,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import SeoSnapshotsCard from '@/components/visibility/SeoSnapshotsCard';
+import SocialPostsCard from '@/components/visibility/SocialPostsCard';
+import ReviewsCard from '@/components/visibility/ReviewsCard';
 import { api } from '@/lib/api';
 
 interface SEOCheck {
@@ -288,6 +291,13 @@ export default function SEOPage() {
               </Card>
             </>
           )}
+
+          {/* P3-003 + P3-004 + P3-005 — visibility module */}
+          <div className="mt-6 space-y-6">
+            <SeoSnapshotsCard />
+            <SocialPostsCard />
+            <ReviewsCard />
+          </div>
         </div>
       </main>
     </div>
