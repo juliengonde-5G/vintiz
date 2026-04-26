@@ -18,7 +18,10 @@ services:
       - vintiz-network
 
   db:
-    image: postgres:16-alpine
+    # Drop-in PG 16 image with pgvector pre-installed (P1-004 / P2-003).
+    # Compatible binary-wise with the existing postgres:16-alpine data
+    # directory — switching only requires a container restart.
+    image: pgvector/pgvector:pg16
     container_name: vintiz-db
     restart: unless-stopped
     environment:
