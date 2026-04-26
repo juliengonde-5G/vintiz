@@ -76,11 +76,18 @@ needs_token() {
 
 echo ""
 echo "── 1. Liveness ──────────────────────────────────────────"
-code=$(http_get_anon "/health")
+# L'API FastAPI Vintiz monte tous ses routers sous /api ; le health endpoint
+# est donc à /api/health (pas à la racine). Si l'utilisateur passe une URL
+# qui inclut déjà /api (rare), on retire le suffixe pour éviter /api/api/health.
+HEALTH_PATH="/api/health"
+case "$API_URL" in
+  */api) HEALTH_PATH="/health" ;;
+esac
+code=$(http_get_anon "$HEALTH_PATH")
 if [ "$code" = "200" ]; then
-  ok "/health → 200"
+  ok "$HEALTH_PATH → 200"
 else
-  fail "/health → $code (attendu 200) — l'API est down ou l'URL est fausse, on stoppe."
+  fail "$HEALTH_PATH → $code (attendu 200) — l'API est down ou l'URL est fausse, on stoppe."
   echo ""
   echo "════════════════════════════════════════════════════════"
   echo "  Résultat : $PASS OK, $FAIL KO, $SKIP skip"
@@ -94,9 +101,13 @@ fi
 
 echo ""
 echo "── 2. OpenAPI — routes Phase 4 ──────────────────────────"
-code=$(http_get_anon "/openapi.json")
+OPENAPI_PATH="/api/openapi.json"
+case "$API_URL" in
+  */api) OPENAPI_PATH="/openapi.json" ;;
+esac
+code=$(http_get_anon "$OPENAPI_PATH")
 if [ "$code" = "200" ]; then
-  ok "/openapi.json → 200"
+  ok "$OPENAPI_PATH → 200"
   EXPECTED_PATHS=(
     "/api/reports/retail-kpis"
     "/api/reports/ess"
@@ -127,7 +138,7 @@ if [ "$code" = "200" ]; then
     fi
   done
 else
-  fail "/openapi.json → $code"
+  fail "$OPENAPI_PATH → $code"
 fi
 
 # ---------------------------------------------------------------------------
