@@ -52,66 +52,78 @@ import httpx
 # 50 image URLs grouped by brand. To regenerate : pick fresh URLs from each
 # brand's e-shop product pages (the URL must respond with Content-Type:
 # image/*). Avoid signed URLs that expire.
+# 50 photos Unsplash de mode (licence Unsplash, libre — pas de risque copyright)
+# regroupées par persona catégorie. Vision extraira de vrais attributs (type,
+# couleur, matière) — la marque sera souvent null car Unsplash n'a pas
+# d'étiquette visible, ce qui est exactement le comportement attendu en
+# boutique seconde main quand l'étiquette a été retirée.
+#
+# Le script HEAD-vérifie chaque URL avant d'appeler /from-photo (Vision coûte ~5 €
+# pour les 50 calls). Si une URL renvoie != 200, l'entrée est skippée.
 DEMO_PRODUCTS: list[dict] = [
-    # --- H&M (10) — femme mainstream ---
-    {"brand": "H&M", "url": "https://image.hm.com/assets/hm/12/4d/124d8d54fb55cad8aae1a0f3eef63c6d3a3e0e3e.jpg", "price_hint": 12.0},
-    {"brand": "H&M", "url": "https://image.hm.com/assets/hm/4f/30/4f30e5a1e75f1a32e8fcbf53b76b4ea5cf95d8d6.jpg", "price_hint": 15.0},
-    {"brand": "H&M", "url": "https://image.hm.com/assets/hm/5e/97/5e97a2b87a78b6d1d62b0f8b03f6aa37c81e7765.jpg", "price_hint": 9.0},
-    {"brand": "H&M", "url": "https://image.hm.com/assets/hm/6a/22/6a228e5ea6e87f1e8e2e80c6e1d5f56e1f8e61c5.jpg", "price_hint": 18.0},
-    {"brand": "H&M", "url": "https://image.hm.com/assets/hm/c4/d9/c4d92e6e0a8e76e8b7e1e2e1c8f5e2e3a3b4c5d6.jpg", "price_hint": 22.0},
-    {"brand": "H&M", "url": "https://image.hm.com/assets/hm/01/02/0102d4c8e6e7e8f9a0b1c2d3e4f5061718192a2b.jpg", "price_hint": 14.0},
-    {"brand": "H&M", "url": "https://image.hm.com/assets/hm/03/04/030405a6b7c8d9e0f1a2b3c4d5e6f7081920a1b2.jpg", "price_hint": 16.0},
-    {"brand": "H&M", "url": "https://image.hm.com/assets/hm/05/06/050607b8c9d0e1f2a3b4c5d6e7f8091020b1c2d3.jpg", "price_hint": 11.0},
-    {"brand": "H&M", "url": "https://image.hm.com/assets/hm/07/08/070809c0d1e2f3a4b5c6d7e8f9001121c2d3e4f5.jpg", "price_hint": 13.0},
-    {"brand": "H&M", "url": "https://image.hm.com/assets/hm/09/10/091011d2e3f4a5b6c7d8e9f0011223d4e5f60718.jpg", "price_hint": 19.0},
+    # --- Robes (7) ---
+    {"category_persona": "robe", "url": "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&q=80", "price_hint": 35.0},
+    {"category_persona": "robe", "url": "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=800&q=80", "price_hint": 45.0},
+    {"category_persona": "robe", "url": "https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=800&q=80", "price_hint": 28.0},
+    {"category_persona": "robe", "url": "https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=800&q=80", "price_hint": 55.0},
+    {"category_persona": "robe", "url": "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=800&q=80", "price_hint": 39.0},
+    {"category_persona": "robe", "url": "https://images.unsplash.com/photo-1623609163859-ca93c959b98a?w=800&q=80", "price_hint": 32.0},
+    {"category_persona": "robe", "url": "https://images.unsplash.com/photo-1583846783214-7229a91b20ed?w=800&q=80", "price_hint": 49.0},
 
-    # --- Celio (10) — homme casual ---
-    {"brand": "Celio", "url": "https://www.celio.com/dw/image/v2/BCSC_PRD/on/demandware.static/-/Sites-celio-master/default/dw1a2b3c4d/images/product/01.jpg", "price_hint": 18.0},
-    {"brand": "Celio", "url": "https://www.celio.com/dw/image/v2/BCSC_PRD/on/demandware.static/-/Sites-celio-master/default/dw5e6f7a8b/images/product/02.jpg", "price_hint": 25.0},
-    {"brand": "Celio", "url": "https://www.celio.com/dw/image/v2/BCSC_PRD/on/demandware.static/-/Sites-celio-master/default/dw9c0d1e2f/images/product/03.jpg", "price_hint": 14.0},
-    {"brand": "Celio", "url": "https://www.celio.com/dw/image/v2/BCSC_PRD/on/demandware.static/-/Sites-celio-master/default/dw3a4b5c6d/images/product/04.jpg", "price_hint": 30.0},
-    {"brand": "Celio", "url": "https://www.celio.com/dw/image/v2/BCSC_PRD/on/demandware.static/-/Sites-celio-master/default/dw7e8f9a0b/images/product/05.jpg", "price_hint": 20.0},
-    {"brand": "Celio", "url": "https://www.celio.com/dw/image/v2/BCSC_PRD/on/demandware.static/-/Sites-celio-master/default/dw1c2d3e4f/images/product/06.jpg", "price_hint": 22.0},
-    {"brand": "Celio", "url": "https://www.celio.com/dw/image/v2/BCSC_PRD/on/demandware.static/-/Sites-celio-master/default/dw5a6b7c8d/images/product/07.jpg", "price_hint": 16.0},
-    {"brand": "Celio", "url": "https://www.celio.com/dw/image/v2/BCSC_PRD/on/demandware.static/-/Sites-celio-master/default/dw9e0f1a2b/images/product/08.jpg", "price_hint": 28.0},
-    {"brand": "Celio", "url": "https://www.celio.com/dw/image/v2/BCSC_PRD/on/demandware.static/-/Sites-celio-master/default/dw3c4d5e6f/images/product/09.jpg", "price_hint": 24.0},
-    {"brand": "Celio", "url": "https://www.celio.com/dw/image/v2/BCSC_PRD/on/demandware.static/-/Sites-celio-master/default/dw7a8b9c0d/images/product/10.jpg", "price_hint": 19.0},
+    # --- Manteaux / vestes (7) ---
+    {"category_persona": "manteau", "url": "https://images.unsplash.com/photo-1544022613-e87ca75a784a?w=800&q=80", "price_hint": 65.0},
+    {"category_persona": "manteau", "url": "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=800&q=80", "price_hint": 75.0},
+    {"category_persona": "manteau", "url": "https://images.unsplash.com/photo-1539533018447-63fcce2678e3?w=800&q=80", "price_hint": 58.0},
+    {"category_persona": "manteau", "url": "https://images.unsplash.com/photo-1548883354-94bcfe321cbb?w=800&q=80", "price_hint": 69.0},
+    {"category_persona": "manteau", "url": "https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?w=800&q=80", "price_hint": 49.0},
+    {"category_persona": "manteau", "url": "https://images.unsplash.com/photo-1520975916090-3105956dac38?w=800&q=80", "price_hint": 79.0},
+    {"category_persona": "manteau", "url": "https://images.unsplash.com/photo-1577900232427-18219b9166a0?w=800&q=80", "price_hint": 42.0},
 
-    # --- Kiabi (10) — enfant + family ---
-    {"brand": "Kiabi", "url": "https://image.kiabi.com/MEDIAS/CATALOG/01/AAAA0_01.jpg", "price_hint": 8.0},
-    {"brand": "Kiabi", "url": "https://image.kiabi.com/MEDIAS/CATALOG/02/AAAA0_02.jpg", "price_hint": 6.0},
-    {"brand": "Kiabi", "url": "https://image.kiabi.com/MEDIAS/CATALOG/03/AAAA0_03.jpg", "price_hint": 11.0},
-    {"brand": "Kiabi", "url": "https://image.kiabi.com/MEDIAS/CATALOG/04/AAAA0_04.jpg", "price_hint": 9.0},
-    {"brand": "Kiabi", "url": "https://image.kiabi.com/MEDIAS/CATALOG/05/AAAA0_05.jpg", "price_hint": 7.0},
-    {"brand": "Kiabi", "url": "https://image.kiabi.com/MEDIAS/CATALOG/06/AAAA0_06.jpg", "price_hint": 12.0},
-    {"brand": "Kiabi", "url": "https://image.kiabi.com/MEDIAS/CATALOG/07/AAAA0_07.jpg", "price_hint": 5.0},
-    {"brand": "Kiabi", "url": "https://image.kiabi.com/MEDIAS/CATALOG/08/AAAA0_08.jpg", "price_hint": 10.0},
-    {"brand": "Kiabi", "url": "https://image.kiabi.com/MEDIAS/CATALOG/09/AAAA0_09.jpg", "price_hint": 13.0},
-    {"brand": "Kiabi", "url": "https://image.kiabi.com/MEDIAS/CATALOG/10/AAAA0_10.jpg", "price_hint": 8.0},
+    # --- Pulls / chemises (7) ---
+    {"category_persona": "pull", "url": "https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=800&q=80", "price_hint": 25.0},
+    {"category_persona": "pull", "url": "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&q=80", "price_hint": 32.0},
+    {"category_persona": "pull", "url": "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?w=800&q=80", "price_hint": 28.0},
+    {"category_persona": "pull", "url": "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=800&q=80", "price_hint": 22.0},
+    {"category_persona": "pull", "url": "https://images.unsplash.com/photo-1611312449412-6cefac5dc3e4?w=800&q=80", "price_hint": 35.0},
+    {"category_persona": "pull", "url": "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=800&q=80", "price_hint": 19.0},
+    {"category_persona": "pull", "url": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800&q=80", "price_hint": 24.0},
 
-    # --- Lacoste (10) — polos + chemises premium ---
-    {"brand": "Lacoste", "url": "https://www.lacoste.com/dw/image/v2/AAQM_PRD/on/demandware.static/-/Sites-lacoste-master/default/dw01.jpg", "price_hint": 45.0},
-    {"brand": "Lacoste", "url": "https://www.lacoste.com/dw/image/v2/AAQM_PRD/on/demandware.static/-/Sites-lacoste-master/default/dw02.jpg", "price_hint": 50.0},
-    {"brand": "Lacoste", "url": "https://www.lacoste.com/dw/image/v2/AAQM_PRD/on/demandware.static/-/Sites-lacoste-master/default/dw03.jpg", "price_hint": 38.0},
-    {"brand": "Lacoste", "url": "https://www.lacoste.com/dw/image/v2/AAQM_PRD/on/demandware.static/-/Sites-lacoste-master/default/dw04.jpg", "price_hint": 60.0},
-    {"brand": "Lacoste", "url": "https://www.lacoste.com/dw/image/v2/AAQM_PRD/on/demandware.static/-/Sites-lacoste-master/default/dw05.jpg", "price_hint": 42.0},
-    {"brand": "Lacoste", "url": "https://www.lacoste.com/dw/image/v2/AAQM_PRD/on/demandware.static/-/Sites-lacoste-master/default/dw06.jpg", "price_hint": 55.0},
-    {"brand": "Lacoste", "url": "https://www.lacoste.com/dw/image/v2/AAQM_PRD/on/demandware.static/-/Sites-lacoste-master/default/dw07.jpg", "price_hint": 35.0},
-    {"brand": "Lacoste", "url": "https://www.lacoste.com/dw/image/v2/AAQM_PRD/on/demandware.static/-/Sites-lacoste-master/default/dw08.jpg", "price_hint": 48.0},
-    {"brand": "Lacoste", "url": "https://www.lacoste.com/dw/image/v2/AAQM_PRD/on/demandware.static/-/Sites-lacoste-master/default/dw09.jpg", "price_hint": 52.0},
-    {"brand": "Lacoste", "url": "https://www.lacoste.com/dw/image/v2/AAQM_PRD/on/demandware.static/-/Sites-lacoste-master/default/dw10.jpg", "price_hint": 40.0},
+    # --- Pantalons / jupes (7) ---
+    {"category_persona": "pantalon", "url": "https://images.unsplash.com/photo-1542272604-787c3835535d?w=800&q=80", "price_hint": 35.0},
+    {"category_persona": "pantalon", "url": "https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=800&q=80", "price_hint": 29.0},
+    {"category_persona": "pantalon", "url": "https://images.unsplash.com/photo-1582418702059-97ebafb35d09?w=800&q=80", "price_hint": 38.0},
+    {"category_persona": "pantalon", "url": "https://images.unsplash.com/photo-1604176354204-9268737828e4?w=800&q=80", "price_hint": 42.0},
+    {"category_persona": "pantalon", "url": "https://images.unsplash.com/photo-1591195853828-11db59a44f6b?w=800&q=80", "price_hint": 26.0},
+    {"category_persona": "pantalon", "url": "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?w=800&q=80", "price_hint": 32.0},
+    {"category_persona": "pantalon", "url": "https://images.unsplash.com/photo-1551854838-212c9a5e29fb?w=800&q=80", "price_hint": 24.0},
 
-    # --- Dior (10) — luxury archive ---
-    {"brand": "Dior", "url": "https://media.dior.com/couture/ecommerce/media/catalog/product/01.jpg", "price_hint": 180.0},
-    {"brand": "Dior", "url": "https://media.dior.com/couture/ecommerce/media/catalog/product/02.jpg", "price_hint": 250.0},
-    {"brand": "Dior", "url": "https://media.dior.com/couture/ecommerce/media/catalog/product/03.jpg", "price_hint": 150.0},
-    {"brand": "Dior", "url": "https://media.dior.com/couture/ecommerce/media/catalog/product/04.jpg", "price_hint": 320.0},
-    {"brand": "Dior", "url": "https://media.dior.com/couture/ecommerce/media/catalog/product/05.jpg", "price_hint": 200.0},
-    {"brand": "Dior", "url": "https://media.dior.com/couture/ecommerce/media/catalog/product/06.jpg", "price_hint": 280.0},
-    {"brand": "Dior", "url": "https://media.dior.com/couture/ecommerce/media/catalog/product/07.jpg", "price_hint": 170.0},
-    {"brand": "Dior", "url": "https://media.dior.com/couture/ecommerce/media/catalog/product/08.jpg", "price_hint": 220.0},
-    {"brand": "Dior", "url": "https://media.dior.com/couture/ecommerce/media/catalog/product/09.jpg", "price_hint": 300.0},
-    {"brand": "Dior", "url": "https://media.dior.com/couture/ecommerce/media/catalog/product/10.jpg", "price_hint": 240.0},
+    # --- Chaussures (8) ---
+    {"category_persona": "chaussures", "url": "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&q=80", "price_hint": 45.0},
+    {"category_persona": "chaussures", "url": "https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?w=800&q=80", "price_hint": 39.0},
+    {"category_persona": "chaussures", "url": "https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=800&q=80", "price_hint": 55.0},
+    {"category_persona": "chaussures", "url": "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=800&q=80", "price_hint": 49.0},
+    {"category_persona": "chaussures", "url": "https://images.unsplash.com/photo-1551107696-a4b0c5a0d9a2?w=800&q=80", "price_hint": 35.0},
+    {"category_persona": "chaussures", "url": "https://images.unsplash.com/photo-1560769629-975ec94e6a86?w=800&q=80", "price_hint": 42.0},
+    {"category_persona": "chaussures", "url": "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=800&q=80", "price_hint": 65.0},
+    {"category_persona": "chaussures", "url": "https://images.unsplash.com/photo-1549298916-b41d501d3772?w=800&q=80", "price_hint": 52.0},
+
+    # --- Sacs (7) ---
+    {"category_persona": "sac", "url": "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=800&q=80", "price_hint": 48.0},
+    {"category_persona": "sac", "url": "https://images.unsplash.com/photo-1591561954557-26941169b49e?w=800&q=80", "price_hint": 65.0},
+    {"category_persona": "sac", "url": "https://images.unsplash.com/photo-1590874103328-eac38a683ce7?w=800&q=80", "price_hint": 39.0},
+    {"category_persona": "sac", "url": "https://images.unsplash.com/photo-1566150905458-1bf1fc113f0d?w=800&q=80", "price_hint": 72.0},
+    {"category_persona": "sac", "url": "https://images.unsplash.com/photo-1564422170194-896b89110ef8?w=800&q=80", "price_hint": 45.0},
+    {"category_persona": "sac", "url": "https://images.unsplash.com/photo-1605733513597-a8f8341084e6?w=800&q=80", "price_hint": 58.0},
+    {"category_persona": "sac", "url": "https://images.unsplash.com/photo-1559563458-527698bf5295?w=800&q=80", "price_hint": 55.0},
+
+    # --- Accessoires (lunettes / foulards / ceintures / chapeaux) (7) ---
+    {"category_persona": "accessoire", "url": "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&q=80", "price_hint": 18.0},
+    {"category_persona": "accessoire", "url": "https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=800&q=80", "price_hint": 22.0},
+    {"category_persona": "accessoire", "url": "https://images.unsplash.com/photo-1556306535-0f09a537f0a3?w=800&q=80", "price_hint": 15.0},
+    {"category_persona": "accessoire", "url": "https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?w=800&q=80", "price_hint": 28.0},
+    {"category_persona": "accessoire", "url": "https://images.unsplash.com/photo-1601924994987-69e26d50dc26?w=800&q=80", "price_hint": 19.0},
+    {"category_persona": "accessoire", "url": "https://images.unsplash.com/photo-1590736969955-71cc94901144?w=800&q=80", "price_hint": 24.0},
+    {"category_persona": "accessoire", "url": "https://images.unsplash.com/photo-1521369909029-2afed882baee?w=800&q=80", "price_hint": 16.0},
 ]
 
 
@@ -129,8 +141,23 @@ async def login_admin(client: httpx.AsyncClient) -> str:
     return r.json()["access_token"]
 
 
+async def head_check(client: httpx.AsyncClient, url: str) -> bool:
+    """Pre-flight HEAD check to avoid wasting Vision calls on broken URLs."""
+    try:
+        r = await client.head(url, follow_redirects=True, timeout=8,
+                              headers={"User-Agent": "Mozilla/5.0 (Vintiz Seed)"})
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
 async def main() -> int:
-    """Iterate through DEMO_PRODUCTS and POST each to /from-photo."""
+    """Iterate through DEMO_PRODUCTS and POST each to /from-photo.
+
+    Pré-flight HEAD sur chaque URL pour éviter les appels Vision (~5€/50)
+    sur des URLs cassées. Les entrées avec URL 404 sont reportées sans
+    appel API.
+    """
     output_dir = Path(__file__).parent / "output"
     output_dir.mkdir(exist_ok=True)
 
@@ -138,8 +165,24 @@ async def main() -> int:
         token = API_TOKEN or await login_admin(client)
         headers = {"Authorization": f"Bearer {token}"}
 
+        # Pre-flight : valide toutes les URLs en parallèle pour échouer vite.
+        print(f"Pre-flight HEAD check on {len(DEMO_PRODUCTS)} URLs...")
+        head_results = await asyncio.gather(
+            *(head_check(client, e["url"]) for e in DEMO_PRODUCTS)
+        )
+        ok_urls = sum(head_results)
+        print(f"  → {ok_urls}/{len(DEMO_PRODUCTS)} URLs accessibles\n")
+        if ok_urls == 0:
+            print("✗ Aucune URL accessible — rien à seeder.", file=sys.stderr)
+            return 1
+
         report: list[dict] = []
-        for i, entry in enumerate(DEMO_PRODUCTS, 1):
+        for i, (entry, head_ok) in enumerate(zip(DEMO_PRODUCTS, head_results), 1):
+            persona = entry["category_persona"]
+            if not head_ok:
+                print(f"[{i:02d}/50] · {persona:11} URL 404 — skip")
+                report.append({"persona": persona, "url": entry["url"], "ok": False, "error": "URL not reachable (HEAD)"})
+                continue
             try:
                 r = await client.post(
                     f"{API_URL}/api/inventory/products/from-photo",
@@ -151,18 +194,18 @@ async def main() -> int:
                     headers=headers,
                 )
                 if r.status_code >= 400:
-                    print(f"[{i:02d}/50] ✗ {entry['brand']:8} HTTP {r.status_code} : {r.text[:120]}", file=sys.stderr)
-                    report.append({"brand": entry["brand"], "url": entry["url"], "ok": False, "error": r.text[:200]})
+                    print(f"[{i:02d}/50] ✗ {persona:11} HTTP {r.status_code} : {r.text[:120]}", file=sys.stderr)
+                    report.append({"persona": persona, "url": entry["url"], "ok": False, "error": r.text[:200]})
                     continue
                 data = r.json()
                 vision_used = data.get("vision_used", False)
                 product = data.get("product", {})
                 print(
-                    f"[{i:02d}/50] ✓ {entry['brand']:8} → {product.get('name', '')[:40]:40} "
+                    f"[{i:02d}/50] ✓ {persona:11} → {product.get('name', '')[:40]:40} "
                     f"score={product.get('trend_score', '?'):>5} vision={vision_used}"
                 )
                 report.append({
-                    "brand": entry["brand"],
+                    "persona": persona,
                     "url": entry["url"],
                     "ok": True,
                     "vision_used": vision_used,
@@ -171,8 +214,8 @@ async def main() -> int:
                     "score": product.get("trend_score"),
                 })
             except Exception as exc:  # noqa: BLE001
-                print(f"[{i:02d}/50] ✗ {entry['brand']:8} EXCEPTION: {exc}", file=sys.stderr)
-                report.append({"brand": entry["brand"], "url": entry["url"], "ok": False, "error": str(exc)})
+                print(f"[{i:02d}/50] ✗ {persona:11} EXCEPTION: {exc}", file=sys.stderr)
+                report.append({"persona": persona, "url": entry["url"], "ok": False, "error": str(exc)})
 
         report_path = output_dir / "seed_demo_report.json"
         report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False))
