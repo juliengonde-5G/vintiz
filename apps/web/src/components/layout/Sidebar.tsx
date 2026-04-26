@@ -216,6 +216,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [userName, setUserName] = useState<string>('Admin');
 
   useEffect(() => {
@@ -224,7 +225,17 @@ export default function Sidebar() {
     if (!token) router.replace('/login');
     const stored = localStorage.getItem('username');
     if (stored) setUserName(stored);
+    const sidebarPref = localStorage.getItem('vintiz_sidebar_state');
+    if (sidebarPref === 'collapsed') setDesktopCollapsed(true);
   }, [router]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.body.dataset.sidebar = desktopCollapsed ? 'collapsed' : 'expanded';
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vintiz_sidebar_state', desktopCollapsed ? 'collapsed' : 'expanded');
+    }
+  }, [desktopCollapsed]);
 
   const isItemActive = (href: string) => {
     if (href === '/dashboard') return pathname === href;
@@ -254,29 +265,49 @@ export default function Sidebar() {
       )}
 
       <aside
-        className={`fixed top-0 left-0 h-full bg-white border-r border-gray-100 z-40 transition-transform duration-200 w-64 flex flex-col ${
+        className={`fixed top-0 left-0 h-full bg-white border-r border-gray-100 z-40 transition-all duration-200 flex flex-col ${
           collapsed ? 'translate-x-0' : '-translate-x-full'
-        } md:translate-x-0`}
+        } md:translate-x-0 ${desktopCollapsed ? 'md:w-16' : 'w-64'} ${!desktopCollapsed ? 'w-64' : ''}`}
       >
+        {/* Desktop expand/collapse toggle */}
+        <button
+          onClick={() => setDesktopCollapsed(!desktopCollapsed)}
+          className="hidden md:flex absolute -right-3 top-20 z-50 h-6 w-6 min-h-0 min-w-0 items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm hover:bg-gray-50 text-gray-500"
+          aria-label={desktopCollapsed ? 'Étendre la barre latérale' : 'Réduire la barre latérale'}
+          title={desktopCollapsed ? 'Étendre' : 'Réduire'}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            {desktopCollapsed ? (
+              <polyline points="9 18 15 12 9 6" />
+            ) : (
+              <polyline points="15 18 9 12 15 6" />
+            )}
+          </svg>
+        </button>
+
         {/* Brand */}
-        <div className="px-6 pt-6 pb-5 border-b border-gray-100 flex flex-col items-center">
+        <div className={`pt-6 pb-5 border-b border-gray-100 flex flex-col items-center ${desktopCollapsed ? 'md:px-2' : 'px-6'}`}>
           <img
             src="/logo-teal.png"
             alt="Vintiz"
-            className="h-14 w-auto mb-1 select-none"
+            className={`w-auto mb-1 select-none transition-all ${desktopCollapsed ? 'md:h-8' : 'h-14'}`}
             draggable={false}
           />
-          <p className="text-[10px] tracking-[0.25em] text-gray-400 uppercase">Back Office</p>
+          {!desktopCollapsed && (
+            <p className="text-[10px] tracking-[0.25em] text-gray-400 uppercase">Back Office</p>
+          )}
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 py-3 overflow-y-auto">
           {navGroups.map((group) => (
             <div key={group.label} className="mb-4">
-              <p className="px-6 mb-1 text-[10px] font-semibold tracking-[0.22em] uppercase text-gray-400">
-                {group.label}
-              </p>
-              <ul className="space-y-0.5 px-3">
+              {!desktopCollapsed && (
+                <p className="md:px-6 px-6 mb-1 text-[10px] font-semibold tracking-[0.22em] uppercase text-gray-400">
+                  {group.label}
+                </p>
+              )}
+              <ul className={`space-y-0.5 ${desktopCollapsed ? 'md:px-2' : 'px-3'}`}>
                 {group.items.map((item) => {
                   const isActive = isItemActive(item.href);
                   return (
@@ -284,7 +315,8 @@ export default function Sidebar() {
                       <Link
                         href={item.href}
                         onClick={() => setCollapsed(false)}
-                        className={`relative flex items-center gap-3 px-4 py-2.5 rounded-xl min-h-[44px] transition-all ${
+                        title={desktopCollapsed ? item.label : undefined}
+                        className={`relative flex items-center gap-3 ${desktopCollapsed ? 'md:justify-center md:px-2 px-4' : 'px-4'} py-2.5 rounded-xl min-h-[44px] transition-all ${
                           isActive
                             ? 'bg-gradient-warm text-teal font-medium shadow-sm'
                             : 'text-gray-600 hover:bg-gray-50 hover:text-black'
@@ -296,7 +328,7 @@ export default function Sidebar() {
                         <span className={isActive ? 'text-teal' : 'text-gray-400'}>
                           {item.icon}
                         </span>
-                        <span className="text-sm">{item.label}</span>
+                        <span className={`text-sm ${desktopCollapsed ? 'md:hidden' : ''}`}>{item.label}</span>
                       </Link>
                     </li>
                   );
@@ -307,16 +339,24 @@ export default function Sidebar() {
         </nav>
 
         {/* User + Logout */}
-        <div className="p-3 border-t border-gray-100 space-y-1">
-          <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-cream">
-            <div className="h-9 w-9 rounded-full bg-gradient-signature flex items-center justify-center text-white font-semibold font-display text-sm">
-              {userName.slice(0, 1).toUpperCase()}
+        <div className={`p-3 border-t border-gray-100 space-y-1 ${desktopCollapsed ? 'md:p-2' : ''}`}>
+          {!desktopCollapsed ? (
+            <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-cream">
+              <div className="h-9 w-9 rounded-full bg-gradient-signature flex items-center justify-center text-white font-semibold font-display text-sm">
+                {userName.slice(0, 1).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-black truncate">{userName}</p>
+                <p className="text-[11px] text-gray-500">Manager</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-black truncate">{userName}</p>
-              <p className="text-[11px] text-gray-500">Manager</p>
+          ) : (
+            <div className="hidden md:flex justify-center" title={userName}>
+              <div className="h-9 w-9 rounded-full bg-gradient-signature flex items-center justify-center text-white font-semibold font-display text-sm">
+                {userName.slice(0, 1).toUpperCase()}
+              </div>
             </div>
-          </div>
+          )}
           <button
             onClick={() => {
               if (typeof window !== 'undefined') {
@@ -324,14 +364,15 @@ export default function Sidebar() {
                 window.location.href = '/login';
               }
             }}
-            className="flex items-center gap-3 px-4 py-2.5 rounded-xl min-h-[44px] w-full text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+            title={desktopCollapsed ? 'Deconnexion' : undefined}
+            className={`flex items-center gap-3 ${desktopCollapsed ? 'md:justify-center md:px-2 px-4' : 'px-4'} py-2.5 rounded-xl min-h-[44px] w-full text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors`}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
-            <span className="text-sm">Deconnexion</span>
+            <span className={`text-sm ${desktopCollapsed ? 'md:hidden' : ''}`}>Deconnexion</span>
           </button>
         </div>
       </aside>
