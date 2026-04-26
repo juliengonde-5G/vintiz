@@ -139,11 +139,23 @@ LABEL_PRINTER_HOST=               # IP de la SATO CT4-LX
 LABEL_PRINTER_PORT=9100
 VINTIZ_HARDWARE_CONFIG=           # chemin custom du fichier hardware.json (défaut: data/hardware.json)
 
-# Email SMTP (sans ces clés, simulation)
+# Email transactional (P4-003) — gateway unifié Brevo > SMTP > simulation.
+# Si BREVO_API_KEY est posée → Brevo. Sinon → fallback SMTP. Sinon → simulation.
+BREVO_API_KEY=                    # xkeysib-xxx
+EMAIL_FROM_ADDRESS=noreply@vintiz.fr
+EMAIL_FROM_NAME=Vintiz Vernon
+
+# Email SMTP (fallback si BREVO_API_KEY non posée)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=email@domaine.fr
 SMTP_PASSWORD=mot-de-passe
+
+# Wallet pass (P4-004) — payload prêt, signing à plugger côté ops
+WALLET_PASS_TYPE_IDENTIFIER=pass.fr.vintiz.loyalty
+WALLET_TEAM_IDENTIFIER=           # ABCDE12345 (Apple Developer)
+WALLET_GOOGLE_ISSUER_ID=          # 19 chiffres (Google Pay & Wallet)
+WALLET_GOOGLE_CLASS_SUFFIX=vintiz_loyalty
 
 # SMS Twilio (sans ces clés, simulation)
 TWILIO_ACCOUNT_SID=ACxxxx
@@ -184,6 +196,7 @@ Base URL: `http://localhost:8000`
 | **Cahier** | `/api/cahier` | Cahier de travail journalier (objectifs, signatures) |
 | **Newsletter** | `/api/newsletter` | Subscribe RGPD, unsubscribe 1-clic, export CSV |
 | **SEO** | `/api/seo` | Smoke tests sitemap / robots / metas / OG / JSON-LD |
+| **Réservations** | `/api/reservations` | Hold 48h (manager + lookup public) |
 
 ### Endpoints clés
 
@@ -319,6 +332,34 @@ POST   /api/crm/clients/{id}/deletion-cancel       Annuler demande de suppressio
 GET    /api/crm/account/data-export?email=         Public — export RGPD JSON par email
 POST   /api/crm/account/deletion-request           Public — demande suppression (body: email)
 POST   /api/crm/account/deletion-cancel            Public — annuler suppression (body: email)
+
+# Phase 4 — Analytics & reporting (P4-001 / P4-002 / P4-007)
+GET    /api/reports/retail-kpis?period_days=30     KPIs retail (sell-through, GMROI, AIT, CA/m²/mois…)
+GET    /api/reports/ess?period_days=90             Rapport ESS (réemploi, tonnage, CA reversé)
+GET    /api/admin/kpis-config                      Config surface boutique + poids pièce + %CA reversé
+PUT    /api/admin/kpis-config                      Modifier la config retail/ESS
+POST   /api/admin/rfm/run                          Trigger manuel segmentation RFM
+GET    /api/crm/segments                           Counts par segment RFM
+GET    /api/crm/segments/{segment}                 Sample clientes d'un segment
+
+# Phase 4 — Communication automatique (P4-003 / P4-004 / P4-008 / P4-009)
+GET    /api/crm/account/wallet?email=              Wallet pass payload (Apple + Google) — public
+GET    /api/crm/clients/{id}/wallet                Wallet pass payload (manager-side preview)
+POST   /api/admin/anniversary/run                  Trigger manuel cron anniversaires
+POST   /api/admin/new-arrivals/run                 Trigger manuel digest hebdo nouvelles arrivées
+GET    /api/admin/coupons?only_active=true         Liste coupons (manager only)
+
+# Phase 4 — Réservation 48h (P4-005)
+GET    /api/reservations?only_active=true          Liste réservations (manager)
+POST   /api/reservations                           Créer un hold (manager — body: client_id, product_id, hold_hours, notes)
+POST   /api/reservations/{id}/cancel               Annuler une réservation (manager)
+GET    /api/reservations/lookup?email=             Lookup public par email (carte cliente)
+
+# Phase 4 — POS AI badges (P4-010) + redemption coupon/réservation
+GET    /api/inventory/products/{id}/insights       Badges contextuels pour la caisse
+POST   /api/pos/coupons/validate                   Preview coupon (body: code, cart_total, client_id?)
+GET    /api/pos/products/{id}/reservation-holder   Warning bandeau caisse (cliente qui tient l'article)
+POST   /api/pos/transactions                       (modifié) accepte coupon_code? + auto-redeem réservation
 ```
 
 ## Fonctionnalités principales
