@@ -12,7 +12,15 @@ from app.models.client import (
     LoyaltyAccount,
     LoyaltyTransaction,
 )
-from app.models.store import StoreZone, ZoneProduct, TrendAnalysis, StoreArrangement, AIRecommendation
+from app.models.store import (
+    AIRecommendation,
+    FurnitureItem,
+    StoreArrangement,
+    StoreZone,
+    TrendAnalysis,
+    ZoneProduct,
+    ZoneTag,
+)
 from app.models.reporting import DailyReport, CommercialAction, ActionResult
 from app.models.audit import AuditLog, Settings
 from app.models.batch import IntakeBatch, IntakeSource
@@ -53,6 +61,7 @@ __all__ = [
     "AvoirTransaction", "AvoirTxType",
     "Consent", "ConsentPurpose",
     "StoreZone", "ZoneProduct", "TrendAnalysis", "StoreArrangement", "AIRecommendation",
+    "FurnitureItem", "ZoneTag",
     "DailyReport", "CommercialAction", "ActionResult",
     "AuditLog", "Settings",
     "EventLog", "EventSource", "EventType",

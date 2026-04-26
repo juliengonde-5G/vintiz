@@ -7,6 +7,8 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import SectionHeader from '@/components/ui/SectionHeader';
 import EmptyState from '@/components/ui/EmptyState';
+import IsoCanvas from '@/components/zones/IsoCanvas';
+import { ZONE_TAG_OPTIONS } from '@/components/zones/FurnitureSVG';
 import { api } from '@/lib/api';
 
 type Zone = {
@@ -121,6 +123,8 @@ export default function ZonesPage() {
   const [saving, setSaving] = useState(false);
   const [drag, setDrag] = useState<DragState>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'flat' | 'iso'>('flat');
+  const [filterTag, setFilterTag] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
   const loadZones = useCallback(async () => {
@@ -277,23 +281,63 @@ export default function ZonesPage() {
 
         {/* Canvas */}
         <Card variant="elevated" className="mb-6">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <div>
               <h2 className="font-display font-semibold text-lg text-black">
                 {editMode ? 'Mode edition — glisse, redimensionne, enregistre' : 'Vue terrain'}
               </h2>
               <p className="text-xs text-gray-500">
-                {editMode
-                  ? 'Deplace une zone en la tirant. Redimensionne avec la poignee en bas a droite.'
-                  : 'Survole une zone pour en voir le detail, clique pour ouvrir son tableau de bord.'}
+                {viewMode === 'iso'
+                  ? 'Vue isométrique 2.5D — mobilier paramétrable + tags zones'
+                  : (editMode
+                    ? 'Deplace une zone en la tirant. Redimensionne avec la poignee en bas a droite.'
+                    : 'Survole une zone pour en voir le detail, clique pour ouvrir son tableau de bord.')}
               </p>
             </div>
-            {editMode && (
-              <span className="text-xs px-3 py-1 rounded-full bg-teal-50 text-teal font-medium">
-                Edition active
-              </span>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* L2.2 — Toggle Vue plate / Vue iso 2.5D */}
+              <div className="flex bg-gray-100 rounded-lg p-0.5">
+                <button
+                  onClick={() => setViewMode('flat')}
+                  className={`text-xs px-3 py-1 rounded-md min-h-0 min-w-0 ${
+                    viewMode === 'flat' ? 'bg-white shadow-sm font-medium' : 'text-gray-500'
+                  }`}
+                >
+                  Vue plate
+                </button>
+                <button
+                  onClick={() => setViewMode('iso')}
+                  className={`text-xs px-3 py-1 rounded-md min-h-0 min-w-0 ${
+                    viewMode === 'iso' ? 'bg-white shadow-sm font-medium' : 'text-gray-500'
+                  }`}
+                >
+                  Vue 2.5D
+                </button>
+              </div>
+              {/* L2.2 — Filtre par tag (visible dans les 2 modes) */}
+              <select
+                value={filterTag || ''}
+                onChange={(e) => setFilterTag(e.target.value || null)}
+                className="text-xs px-2 py-1 border border-gray-200 rounded-lg bg-white min-h-0"
+              >
+                <option value="">Tous les tags</option>
+                {ZONE_TAG_OPTIONS.map((opt) => (
+                  <option key={opt.tag} value={opt.tag}>{opt.label}</option>
+                ))}
+              </select>
+              {editMode && (
+                <span className="text-xs px-3 py-1 rounded-full bg-teal-50 text-teal font-medium">
+                  Edition active
+                </span>
+              )}
+            </div>
           </div>
+
+          {viewMode === 'iso' && (
+            <IsoCanvas zones={zones as any} editMode={editMode} filterTag={filterTag} />
+          )}
+
+          {viewMode === 'flat' && (
           <div
             ref={canvasRef}
             onPointerMove={onPointerMove}
@@ -392,6 +436,7 @@ export default function ZonesPage() {
               <span className="h-2 w-2 rounded-full bg-pink-500" /> Saturee
             </span>
           </div>
+          )}
         </Card>
 
         {/* Cards */}

@@ -1910,6 +1910,173 @@ async def list_coupons(
 
 
 # ---------------------------------------------------------------------------
+# L2.2 — Furniture items + zone tags (iso 2.5D mapping)
+# ---------------------------------------------------------------------------
+
+
+VALID_ZONE_TAGS = {
+    "homme", "femme", "enfant", "accessoire",
+    "derniere_demarque", "nouveaute", "premium",
+    "saisonnier", "vitrine", "tete_gondole",
+}
+
+VALID_FURNITURE_TYPES = {
+    "portant", "mannequin", "etagere", "table_presentation",
+    "comptoir_caisse", "cabine_essayage", "vitrine",
+    "mur", "porte_entree", "tete_gondole",
+}
+
+
+class FurnitureItemPayload(BaseModel):
+    zone_id: uuid.UUID | None = None
+    type: str
+    variant: str | None = None
+    pos_x: float = 0
+    pos_y: float = 0
+    rotation: int = 0
+    scale: float = 1.0
+    label: str | None = None
+
+
+@router.get("/furniture", dependencies=[Depends(manager_only)])
+async def list_furniture(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    zone_id: uuid.UUID | None = Query(default=None),
+):
+    from app.models.store import FurnitureItem
+
+    stmt = select(FurnitureItem)
+    if zone_id:
+        stmt = stmt.where(FurnitureItem.zone_id == zone_id)
+    rows = await db.execute(stmt)
+    return [
+        {
+            "id": str(f.id),
+            "zone_id": str(f.zone_id) if f.zone_id else None,
+            "type": f.type,
+            "variant": f.variant,
+            "pos_x": f.pos_x,
+            "pos_y": f.pos_y,
+            "rotation": f.rotation,
+            "scale": f.scale,
+            "label": f.label,
+        }
+        for f in rows.scalars().all()
+    ]
+
+
+@router.post("/furniture", dependencies=[Depends(manager_only)])
+async def create_furniture(
+    payload: FurnitureItemPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.store import FurnitureItem
+
+    if payload.type not in VALID_FURNITURE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"type must be one of {sorted(VALID_FURNITURE_TYPES)}",
+        )
+    f = FurnitureItem(
+        zone_id=payload.zone_id,
+        type=payload.type,
+        variant=payload.variant,
+        pos_x=payload.pos_x,
+        pos_y=payload.pos_y,
+        rotation=payload.rotation,
+        scale=max(0.5, min(2.0, payload.scale)),
+        label=payload.label,
+    )
+    db.add(f)
+    await db.flush()
+    await db.refresh(f)
+    return {"id": str(f.id)}
+
+
+@router.put("/furniture/{furn_id}", dependencies=[Depends(manager_only)])
+async def update_furniture(
+    furn_id: uuid.UUID,
+    payload: FurnitureItemPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.store import FurnitureItem
+
+    res = await db.execute(select(FurnitureItem).where(FurnitureItem.id == furn_id))
+    f = res.scalar_one_or_none()
+    if not f:
+        raise HTTPException(status_code=404, detail="Furniture not found")
+    f.zone_id = payload.zone_id
+    f.type = payload.type
+    f.variant = payload.variant
+    f.pos_x = payload.pos_x
+    f.pos_y = payload.pos_y
+    f.rotation = payload.rotation
+    f.scale = max(0.5, min(2.0, payload.scale))
+    f.label = payload.label
+    await db.flush()
+    return {"ok": True}
+
+
+@router.delete("/furniture/{furn_id}", dependencies=[Depends(manager_only)])
+async def delete_furniture(
+    furn_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.store import FurnitureItem
+
+    res = await db.execute(select(FurnitureItem).where(FurnitureItem.id == furn_id))
+    f = res.scalar_one_or_none()
+    if not f:
+        raise HTTPException(status_code=404, detail="Furniture not found")
+    await db.delete(f)
+    await db.flush()
+    return {"ok": True}
+
+
+class ZoneTagsPayload(BaseModel):
+    tags: list[str]
+
+
+@router.get("/zones/{zone_id}/tags", dependencies=[Depends(manager_only)])
+async def list_zone_tags(
+    zone_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.store import ZoneTag
+
+    rows = await db.execute(select(ZoneTag).where(ZoneTag.zone_id == zone_id))
+    return [t.tag for t in rows.scalars().all()]
+
+
+@router.put("/zones/{zone_id}/tags", dependencies=[Depends(manager_only)])
+async def set_zone_tags(
+    zone_id: uuid.UUID,
+    payload: ZoneTagsPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Replace the tag set for a zone — atomic upsert (delete+insert)."""
+    from app.models.store import ZoneTag
+
+    invalid = set(payload.tags) - VALID_ZONE_TAGS
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tags inconnus : {sorted(invalid)}. Valides : {sorted(VALID_ZONE_TAGS)}",
+        )
+
+    # Delete current
+    res = await db.execute(select(ZoneTag).where(ZoneTag.zone_id == zone_id))
+    for tag in res.scalars().all():
+        await db.delete(tag)
+
+    # Insert new (deduped)
+    for t in set(payload.tags):
+        db.add(ZoneTag(zone_id=zone_id, tag=t))
+    await db.flush()
+    return {"tags": sorted(set(payload.tags))}
+
+
+# ---------------------------------------------------------------------------
 # L2.4 — Local calendar (Vernon + Giverny + school holidays) + operations
 # ---------------------------------------------------------------------------
 
