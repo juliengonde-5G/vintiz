@@ -6,7 +6,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, List
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import engine, get_db
 from app.core.security import RoleChecker, get_current_user, hash_password
 from app.models.base import Base
+from app.models.audit import AuditLog
 from app.models.client import Client, LoyaltyAccount, LoyaltyTransaction, LoyaltyTxType
 from app.models.inventory import Supplier
 from app.models.pos import (
@@ -1081,7 +1083,27 @@ async def monthly_scoring_update(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Recompute trend score for all active products. Triggered on the 1st Wednesday of each month."""
+    from app.models.product import ProductPhoto
+    from app.services.brand_tiers import get_brand_score
+    from app.services.category_trends import refresh_cache
     from app.services.scoring_service import compute_score
+
+    # Refresh the per-category trend cache once for the whole pass (P2-010)
+    # — replaces the static 50.0 default in the scoring formula.
+    category_trends = await refresh_cache(db)
+
+    # Pre-aggregate photo data (P2-011) to avoid an N+1 in the loop.
+    photo_agg = await db.execute(
+        select(
+            ProductPhoto.product_id,
+            func.count(ProductPhoto.id).label("n"),
+            func.avg(ProductPhoto.ai_confidence).label("avg_conf"),
+        ).group_by(ProductPhoto.product_id)
+    )
+    photo_data = {
+        row[0]: (int(row[1]), float(row[2]) if row[2] is not None else None)
+        for row in photo_agg.all()
+    }
 
     result = await db.execute(
         select(Product).where(
@@ -1097,6 +1119,9 @@ async def monthly_scoring_update(
         )
         avg_price = float(avg_result.scalar_one_or_none() or product.sale_price)
 
+        brand_score = await get_brand_score(db, product.brand)
+        photo_count, photo_avg_conf = photo_data.get(product.id, (0, None))
+
         score_data = compute_score(
             shelf_date=product.shelf_date,
             sale_price=float(product.sale_price),
@@ -1104,6 +1129,10 @@ async def monthly_scoring_update(
             condition=getattr(product, "condition", "tres_bon") or "tres_bon",
             brand=product.brand,
             photo_url=product.photo_url,
+            category_trend=category_trends.get(str(product.category_id), 50.0),
+            brand_score=brand_score,
+            photo_count=photo_count,
+            photo_avg_confidence=photo_avg_conf,
         )
         product.trend_score = score_data["total_score"]
         updated += 1
@@ -1139,3 +1168,681 @@ async def delete_zone(
     await db.delete(zone)
     await db.flush()
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Audit log inspection (P1-013) — manager only
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/audit-logs",
+    dependencies=[Depends(manager_only)],
+)
+async def list_audit_logs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    entity: str | None = None,
+    action: str | None = None,
+    user_id: uuid.UUID | None = None,
+    skip: int = 0,
+    limit: int = 100,
+):
+    """Paginated audit log listing, newest first.
+
+    Optional filters: entity (e.g. "transaction"), action (create/update/delete),
+    user_id. Limit capped at 500 to keep responses snappy.
+    """
+    capped_limit = min(max(limit, 1), 500)
+    query = select(AuditLog).order_by(AuditLog.created_at.desc())
+    if entity:
+        query = query.where(AuditLog.entity == entity)
+    if action:
+        query = query.where(AuditLog.action == action)
+    if user_id is not None:
+        query = query.where(AuditLog.user_id == user_id)
+    query = query.offset(max(skip, 0)).limit(capped_limit)
+
+    result = await db.execute(query)
+    rows = result.scalars().all()
+    return [
+        {
+            "id": str(row.id),
+            "user_id": str(row.user_id) if row.user_id else None,
+            "action": row.action,
+            "entity": row.entity,
+            "entity_id": str(row.entity_id) if row.entity_id else None,
+            "data": row.data,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Fiscal export NF525 / DGFiP (P1-015 — closes P1-001)
+# ---------------------------------------------------------------------------
+
+
+def _parse_iso_date(value: str | None, field: str) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        # Accept "YYYY-MM-DD" or full ISO 8601.
+        if "T" in value:
+            return datetime.fromisoformat(value)
+        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {field}: expected ISO date (YYYY-MM-DD or full ISO 8601)",
+        ) from exc
+
+
+@router.get(
+    "/fiscal-export",
+    dependencies=[Depends(manager_only)],
+)
+async def fiscal_export(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    period_from: str | None = Query(None, alias="from"),
+    period_to: str | None = Query(None, alias="to"),
+    fmt: str = Query("xml", alias="format", pattern="^(xml|json)$"),
+    merchant_name: str = Query("Frip & Co Vernon"),
+    merchant_id: str = Query(""),
+):
+    """Build a NF525-compliant fiscal export over the given period.
+
+    Always includes the SHA-256 hash chain so a tax auditor can verify
+    no transaction has been altered after the fact. Manager only.
+    """
+    from app.services.fiscal_export import FiscalExportService
+
+    period_from_dt = _parse_iso_date(period_from, "from")
+    period_to_dt = _parse_iso_date(period_to, "to")
+
+    svc = FiscalExportService(db)
+    snapshot = await svc.build_snapshot(
+        period_from=period_from_dt,
+        period_to=period_to_dt,
+        merchant_name=merchant_name,
+        merchant_id=merchant_id,
+    )
+
+    suffix = period_from_dt.date().isoformat() if period_from_dt else "all"
+    filename = f"vintiz-fiscal-export-{suffix}.{fmt}"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    }
+    if fmt == "json":
+        return Response(
+            content=svc.to_json(snapshot),
+            media_type="application/json",
+            headers=headers,
+        )
+    return Response(
+        content=svc.to_xml(snapshot),
+        media_type="application/xml",
+        headers=headers,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Data quality / event store observability (P1-003)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/data-quality",
+    dependencies=[Depends(manager_only)],
+)
+async def data_quality(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    days: int = 7,
+):
+    """Surface event-store coverage so silent instrumentation regressions
+    (e.g. zero ``product.viewed`` events for a day = JS broke) are spotted.
+
+    Returns counts by event_type over the last ``days`` (default 7) plus
+    a daily total. Manager only.
+    """
+    from app.services.events import EventService
+
+    days = max(1, min(days, 90))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    svc = EventService(db)
+    by_type = await svc.counts_by_type(since=since)
+    daily = await svc.daily_volume(since=since)
+    return {
+        "since": since.isoformat(),
+        "window_days": days,
+        "by_event_type": by_type,
+        "daily_total": daily,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Embeddings recompute (P1-004) — admin trigger, mirrors the daily cron
+# ---------------------------------------------------------------------------
+
+
+class RecomputeRequest(BaseModel):
+    only_missing: bool = False
+
+
+@router.post(
+    "/embeddings/recompute",
+    dependencies=[Depends(manager_only)],
+)
+async def recompute_embeddings(
+    request: RecomputeRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Recompute product embeddings for the catalogue.
+
+    ``only_missing=True`` skips products whose embeddings already match
+    the current encoder version — useful for incremental backfill.
+    Manager only.
+    """
+    from app.services.embeddings import EmbeddingService
+
+    summary = await EmbeddingService(db).recompute_all_products(
+        only_missing=request.only_missing
+    )
+    await db.commit()
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# Brand tiers (P2-012) — manager-curated DB replacing the hardcoded sets
+# ---------------------------------------------------------------------------
+
+
+class BrandTierRequest(BaseModel):
+    name: str
+    tier: str  # luxury / premium / mid / basic
+    score_override: float | None = None
+
+
+@router.get("/brand-tiers", dependencies=[Depends(manager_only)])
+async def list_brand_tiers(db: Annotated[AsyncSession, Depends(get_db)]):
+    from app.models.brand_tier import BRAND_TIER_SCORE, BrandTier
+
+    result = await db.execute(select(BrandTier).order_by(BrandTier.name))
+    return [
+        {
+            "id": str(r.id),
+            "name": r.name,
+            "tier": r.tier.value,
+            "score_override": r.score_override,
+            "effective_score": (
+                r.score_override
+                if r.score_override is not None
+                else BRAND_TIER_SCORE[r.tier]
+            ),
+        }
+        for r in result.scalars().all()
+    ]
+
+
+@router.post(
+    "/brand-tiers",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(manager_only)],
+)
+async def create_brand_tier(
+    request: BrandTierRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.brand_tier import BrandTier, BrandTierLevel
+    from app.services.brand_tiers import invalidate_cache
+
+    try:
+        tier = BrandTierLevel(request.tier)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "tier must be one of: "
+                + ", ".join(t.value for t in BrandTierLevel)
+            ),
+        )
+    row = BrandTier(
+        name=request.name.strip().lower(),
+        tier=tier,
+        score_override=request.score_override,
+    )
+    db.add(row)
+    try:
+        await db.flush()
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail=f"Brand already exists or invalid: {exc}"
+        )
+    await db.commit()
+    invalidate_cache()
+    return {"id": str(row.id), "name": row.name}
+
+
+@router.put(
+    "/brand-tiers/{tier_id}",
+    dependencies=[Depends(manager_only)],
+)
+async def update_brand_tier(
+    tier_id: uuid.UUID,
+    request: BrandTierRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.brand_tier import BrandTier, BrandTierLevel
+    from app.services.brand_tiers import invalidate_cache
+
+    result = await db.execute(select(BrandTier).where(BrandTier.id == tier_id))
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Brand tier not found")
+    try:
+        tier = BrandTierLevel(request.tier)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid tier")
+    row.name = request.name.strip().lower()
+    row.tier = tier
+    row.score_override = request.score_override
+    await db.flush()
+    await db.commit()
+    invalidate_cache()
+    return {"id": str(row.id), "name": row.name}
+
+
+@router.delete(
+    "/brand-tiers/{tier_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(manager_only)],
+)
+async def delete_brand_tier(
+    tier_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.brand_tier import BrandTier
+    from app.services.brand_tiers import invalidate_cache
+
+    result = await db.execute(select(BrandTier).where(BrandTier.id == tier_id))
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Brand tier not found")
+    await db.delete(row)
+    await db.commit()
+    invalidate_cache()
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Markdown engine (P3-001) — manager CRUD + dry-run + manual trigger
+# ---------------------------------------------------------------------------
+
+
+class MarkdownRuleRequest(BaseModel):
+    name: str
+    active: bool = True
+    priority: int = 100
+    conditions: dict
+    action: dict
+
+
+@router.get("/markdown-rules", dependencies=[Depends(manager_only)])
+async def list_markdown_rules(db: Annotated[AsyncSession, Depends(get_db)]):
+    from app.models.markdown import MarkdownRule
+
+    result = await db.execute(
+        select(MarkdownRule).order_by(MarkdownRule.priority, MarkdownRule.created_at)
+    )
+    return [
+        {
+            "id": str(r.id),
+            "name": r.name,
+            "active": r.active,
+            "priority": r.priority,
+            "conditions": r.conditions,
+            "action": r.action,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+        }
+        for r in result.scalars().all()
+    ]
+
+
+@router.post(
+    "/markdown-rules",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(manager_only)],
+)
+async def create_markdown_rule(
+    request: MarkdownRuleRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    from app.models.markdown import MarkdownRule
+    from app.services.markdown_engine import _validate_action
+
+    # Surface schema errors immediately so Camille doesn't save a rule
+    # the cron would then silently skip.
+    try:
+        _validate_action(request.action)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    rule = MarkdownRule(
+        name=request.name,
+        active=request.active,
+        priority=request.priority,
+        conditions=request.conditions,
+        action=request.action,
+        updated_by_user_id=current_user.id,
+    )
+    db.add(rule)
+    await db.flush()
+    await db.commit()
+    return {"id": str(rule.id), "name": rule.name}
+
+
+@router.put(
+    "/markdown-rules/{rule_id}",
+    dependencies=[Depends(manager_only)],
+)
+async def update_markdown_rule(
+    rule_id: uuid.UUID,
+    request: MarkdownRuleRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    from app.models.markdown import MarkdownRule
+    from app.services.markdown_engine import _validate_action
+
+    result = await db.execute(
+        select(MarkdownRule).where(MarkdownRule.id == rule_id)
+    )
+    rule = result.scalar_one_or_none()
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    try:
+        _validate_action(request.action)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    rule.name = request.name
+    rule.active = request.active
+    rule.priority = request.priority
+    rule.conditions = request.conditions
+    rule.action = request.action
+    rule.updated_by_user_id = current_user.id
+    await db.flush()
+    await db.commit()
+    return {"id": str(rule.id), "name": rule.name}
+
+
+@router.delete(
+    "/markdown-rules/{rule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(manager_only)],
+)
+async def delete_markdown_rule(
+    rule_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.markdown import MarkdownRule
+
+    result = await db.execute(
+        select(MarkdownRule).where(MarkdownRule.id == rule_id)
+    )
+    rule = result.scalar_one_or_none()
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    await db.delete(rule)
+    await db.commit()
+    return None
+
+
+@router.get("/markdown-rules/preview", dependencies=[Depends(manager_only)])
+async def preview_markdown_run(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Dry-run of the markdown engine — what would the next nightly pass do?"""
+    from app.services.markdown_engine import MarkdownEngineService
+
+    summary = await MarkdownEngineService(db).run_batch(dry_run=True)
+    return {
+        "scanned": summary.scanned,
+        "matched": summary.matched,
+        "would_apply": summary.matched,
+        "errors": summary.errors,
+        "actions": summary.actions,
+    }
+
+
+@router.post("/markdown-rules/run", dependencies=[Depends(manager_only)])
+async def run_markdown_now(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Manually trigger the markdown engine — same effect as waiting for
+    the nightly cron."""
+    from app.services.markdown_engine import MarkdownEngineService
+
+    summary = await MarkdownEngineService(db).run_batch(
+        dry_run=False, user_id=current_user.id
+    )
+    await db.commit()
+    return {
+        "scanned": summary.scanned,
+        "matched": summary.matched,
+        "applied": summary.applied,
+        "skipped": summary.skipped,
+        "errors": summary.errors,
+        "actions": summary.actions,
+    }
+
+
+@router.get(
+    "/return-to-sorting/preview",
+    dependencies=[Depends(manager_only)],
+)
+async def preview_return_to_sorting(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Dry-run of the return-to-sorting policy — what would be moved if the
+    cron ran right now. Useful for reviewing the threshold before flipping
+    auto-mode in production."""
+    from app.services.return_to_sorting import ReturnToSortingService
+
+    svc = ReturnToSortingService(db)
+    candidates = await svc.find_eligible()
+    return {
+        "policy": svc._policy_dict(),
+        "candidate_count": len(candidates),
+        "candidates": [
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "barcode": p.barcode,
+                "status": p.status.value,
+                "trend_score": p.trend_score,
+                "displayed_at": p.displayed_at.isoformat() if p.displayed_at else None,
+                "intake_batch_id": str(p.intake_batch_id) if p.intake_batch_id else None,
+            }
+            for p in candidates
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Store plan + window display (P2-005 + P2-007)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/store-plan",
+    dependencies=[Depends(manager_only)],
+)
+async def store_plan(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Return all zones with their canvas coordinates, current occupancy
+    and the score-bucket colour code so the front can render the SVG
+    plan directly (P2-005)."""
+    from app.services.merchandising import MerchandisingService
+
+    return {"zones": await MerchandisingService(db).zone_occupancy()}
+
+
+@router.get(
+    "/window-display/current",
+    dependencies=[Depends(manager_only)],
+)
+async def get_current_window_display(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Return the current ISO week's window-display proposal, or 404 if
+    the cron hasn't run yet."""
+    from app.services.merchandising import MerchandisingService
+
+    proposal = await MerchandisingService(db).get_current_window_proposal()
+    if proposal is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Aucune proposition vitrine pour la semaine en cours.",
+        )
+    return {
+        "id": str(proposal.id),
+        "iso_week": proposal.iso_week,
+        "proposal": proposal.proposal,
+        "used_llm": proposal.used_llm,
+        "accepted_at": proposal.accepted_at.isoformat() if proposal.accepted_at else None,
+        "accepted_by_user_id": str(proposal.accepted_by_user_id) if proposal.accepted_by_user_id else None,
+    }
+
+
+@router.post(
+    "/window-display/regenerate",
+    dependencies=[Depends(manager_only)],
+)
+async def regenerate_window_display(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Force a fresh window-display proposal for the current ISO week.
+    Same effect as waiting for the Monday 06:00 cron."""
+    from app.services.merchandising import MerchandisingService
+
+    proposal = await MerchandisingService(db).propose_weekly_window()
+    await db.commit()
+    return {
+        "id": str(proposal.id),
+        "iso_week": proposal.iso_week,
+        "proposal": proposal.proposal,
+    }
+
+
+@router.post(
+    "/window-display/{proposal_id}/accept",
+    dependencies=[Depends(manager_only)],
+)
+async def accept_window_display(
+    proposal_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    from app.services.merchandising import MerchandisingService
+
+    proposal = await MerchandisingService(db).accept_window_proposal(
+        proposal_id, current_user.id
+    )
+    await db.commit()
+    return {
+        "id": str(proposal.id),
+        "iso_week": proposal.iso_week,
+        "accepted_at": proposal.accepted_at.isoformat() if proposal.accepted_at else None,
+    }
+
+
+@router.post(
+    "/return-to-sorting/run",
+    dependencies=[Depends(manager_only)],
+)
+async def run_return_to_sorting(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Manually trigger the return-to-sorting cron pass. Same effect as
+    waiting for the 02:00 daily run."""
+    from app.services.return_to_sorting import ReturnToSortingService
+
+    summary = await ReturnToSortingService(db).run()
+    await db.commit()
+    return summary
+
+
+@router.post(
+    "/embeddings/customer/{client_id}",
+    dependencies=[Depends(manager_only)],
+)
+async def recompute_taste_profile(
+    client_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Refresh one customer's taste centroid (admin tool / debugging)."""
+    from app.services.embeddings import EmbeddingService
+
+    profile = await EmbeddingService(db).recompute_taste_profile(client_id)
+    if profile is None:
+        return {
+            "client_id": str(client_id),
+            "computed": False,
+            "reason": "No analyzable purchases",
+        }
+    await db.commit()
+    return {
+        "client_id": str(client_id),
+        "computed": True,
+        "n_purchases_analyzed": profile.n_purchases_analyzed,
+        "algo_version": profile.algo_version,
+    }
+
+
+# ---------------------------------------------------------------------------
+# RFM segmentation (P4-007) + retail-KPIs config (P4-001 / P4-002)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/rfm/run", dependencies=[Depends(manager_only)])
+async def run_rfm_segmentation(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Manually trigger the RFM scoring + persistence pass. Same effect as
+    waiting for the monthly cron (1st of the month at 04:00)."""
+    from app.services.rfm import run_segmentation
+
+    summary = await run_segmentation(db)
+    await db.commit()
+    return summary
+
+
+class KpiConfigPayload(BaseModel):
+    store_surface_m2: float | None = None
+    avg_piece_weight_kg: float | None = None
+    ess_reversed_pct: float | None = None
+
+
+@router.get("/kpis-config", dependencies=[Depends(manager_only)])
+async def get_kpis_config(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Read the retail-KPIs / ESS config (surface, weight, %CA reversé)."""
+    from app.services.retail_kpis import _load_config
+
+    return await _load_config(db)
+
+
+@router.put("/kpis-config", dependencies=[Depends(manager_only)])
+async def update_kpis_config(
+    payload: KpiConfigPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Update one or several retail-KPIs / ESS config knobs."""
+    from app.services.retail_kpis import update_config
+
+    overrides = {k: v for k, v in payload.model_dump().items() if v is not None}
+    merged = await update_config(db, **overrides)
+    await db.commit()
+    return merged

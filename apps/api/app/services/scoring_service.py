@@ -2,6 +2,63 @@ from datetime import datetime, timezone
 from typing import Optional
 
 
+# Legacy hardcoded brand sets — kept as a fallback for callers who still
+# pass only the brand string. The DB-backed BrandTier table (P2-012)
+# supersedes these whenever a caller resolves ``brand_score`` upstream.
+_LEGACY_LUXURY_BRANDS = {
+    "hermes", "chanel", "dior", "vuitton", "gucci", "prada",
+    "celine", "saint laurent", "balenciaga",
+}
+_LEGACY_PREMIUM_BRANDS = {
+    "sandro", "maje", "ba&sh", "gerard darel", "the kooples",
+    "claudie pierlot", "des petits hauts",
+}
+_LEGACY_MID_BRANDS = {"zara", "h&m", "mango", "apc", "jacquemus", "sessun"}
+
+
+def _legacy_brand_score(brand: str | None) -> float:
+    """The original hardcoded brand-tier resolver (V1 §2.1.6)."""
+    b_lower = (brand or "").lower()
+    if any(lb in b_lower for lb in _LEGACY_LUXURY_BRANDS):
+        return 20.0
+    if any(pb in b_lower for pb in _LEGACY_PREMIUM_BRANDS):
+        return 15.0
+    if any(mb in b_lower for mb in _LEGACY_MID_BRANDS):
+        return 10.0
+    if brand:
+        return 8.0
+    return 5.0
+
+
+def _photo_subscore(
+    photo_url: str | None,
+    photo_count: int | None,
+    photo_avg_confidence: float | None,
+) -> float:
+    """Photo sub-score (0-20). P2-011 enrichment.
+
+    Decision tree:
+      - ``photo_count`` supplied → score on (count + Vision confidence).
+        + 5 points per photo (capped at 15) for the count.
+        + up to 5 points scaled by avg Vision confidence (0..1 → 0..5).
+      - Else legacy binary: 20 if any photo_url, 0 otherwise.
+
+    The new path always tops at 20 like the legacy one, so the weighted
+    formula bounds stay [0, 100].
+    """
+    if photo_count is None:
+        return 20.0 if photo_url else 0.0
+    n = max(0, int(photo_count))
+    if n == 0:
+        # No photos at all → no score, regardless of any stale confidence
+        # number that may have leaked in from a previous Vision pass.
+        return 0.0
+    base = min(15.0, n * 5.0)
+    confidence = max(0.0, min(1.0, float(photo_avg_confidence or 0.0)))
+    confidence_bonus = confidence * 5.0
+    return min(20.0, base + confidence_bonus)
+
+
 def compute_score(
     shelf_date: Optional[datetime],
     sale_price: float,
@@ -10,8 +67,26 @@ def compute_score(
     brand: str | None,
     photo_url: str | None,
     category_trend: float = 50.0,
+    *,
+    brand_score: float | None = None,
+    photo_count: int | None = None,
+    photo_avg_confidence: float | None = None,
 ) -> dict:
-    """Compute product score (0-100) with sub-scores."""
+    """Compute product score (0-100) with sub-scores.
+
+    Optional keyword arguments (P2-011 + P2-012):
+
+    - ``brand_score``: precomputed brand sub-score (0-20), typically from
+      ``brand_tiers.get_brand_score`` which reads the DB-backed
+      ``brand_tiers`` table. When supplied, takes precedence over the
+      legacy hardcoded brand sets.
+    - ``photo_count`` + ``photo_avg_confidence``: produce a richer photo
+      sub-score that rewards having multiple analyzed shots. When
+      omitted, falls back to the legacy binary 0/20 on ``photo_url``.
+
+    Existing call sites that don't pass the new arguments behave
+    identically to before — the regression suite confirms this.
+    """
 
     # Age score (30%)
     if shelf_date:
@@ -46,33 +121,17 @@ def compute_score(
         condition.lower().replace(" ", "_") if condition else "tres_bon", 12
     )
 
-    # Brand tier (15%)
-    luxury_brands = {
-        "hermes", "chanel", "dior", "vuitton", "gucci", "prada",
-        "celine", "saint laurent", "balenciaga"
-    }
-    premium_brands = {
-        "sandro", "maje", "ba&sh", "gerard darel", "the kooples",
-        "claudie pierlot", "des petits hauts"
-    }
-    mid_brands = {"zara", "h&m", "mango", "apc", "jacquemus", "sessun"}
-    b_lower = (brand or "").lower()
-    if any(lb in b_lower for lb in luxury_brands):
-        score_brand = 20
-    elif any(pb in b_lower for pb in premium_brands):
-        score_brand = 15
-    elif any(mb in b_lower for mb in mid_brands):
-        score_brand = 10
-    elif brand:
-        score_brand = 8
+    # Brand tier (15%) — DB-driven when the caller supplies a score.
+    if brand_score is not None:
+        score_brand = max(0.0, min(20.0, float(brand_score)))
     else:
-        score_brand = 5
+        score_brand = _legacy_brand_score(brand)
 
     # Category trend (10%)
     score_category = category_trend / 5  # 0-100 → 0-20
 
     # Photos (5%)
-    score_photos = 20 if photo_url else 0
+    score_photos = _photo_subscore(photo_url, photo_count, photo_avg_confidence)
 
     # Weighted total
     total = (

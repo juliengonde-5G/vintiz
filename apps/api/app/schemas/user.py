@@ -29,3 +29,34 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     sub: str | None = None
+
+
+class CashierPinSetRequest(BaseModel):
+    user_id: uuid.UUID
+    pin: str  # 4 digits, validated server-side
+
+
+class CashierPinClearRequest(BaseModel):
+    user_id: uuid.UUID
+
+
+class CashierPinLoginRequest(BaseModel):
+    pin: str
+
+
+class CashierResponse(BaseModel):
+    id: uuid.UUID
+    username: str
+    role: str
+
+    model_config = {"from_attributes": True}
+
+
+class CashierWithPinStatusResponse(BaseModel):
+    id: uuid.UUID
+    username: str
+    role: str
+    is_active: bool
+    has_pin: bool
+
+    model_config = {"from_attributes": True}

@@ -24,9 +24,14 @@ A partir de la photo, tu dois identifier :
 5. **taille** : si une etiquette de taille est visible, la lire. Sinon estimer (XS, S, M, L, XL, ou taille numerique)
 6. **etat** : excellent, tres bon, bon, correct (pour de la seconde main premium, on attend minimum "bon")
 7. **saison** : ete, hiver, mi-saison, toute saison
-8. **style** : casual, chic, sportswear, soiree, business, boheme, etc.
-9. **description** : une description courte (1-2 phrases) pour l'etiquette/fiche produit
-10. **gamme_estimee** : entree, moyenne, premium (basee sur la qualite apparente, la marque, la matiere)
+8. **style** : un seul mot parmi minimaliste, vintage, boheme, chic, sport, rock, romantique, casual, business
+9. **occasion** : un ou deux mots cles parmi quotidien, bureau, soiree, weekend, ceremonie, ete, festival
+10. **motif** : uni, raye, fleuri, carreaux, pois, animal, geometrique, autre
+11. **coupe** : slim, droit, oversize, cintre, fluide, ample, ajuste
+12. **defauts** : liste eventuelle de defauts visibles (taches, trous, decoloration, peluches, fermeture cassee, bouton manquant). Vide si aucun.
+13. **description** : une description courte (1-2 phrases) pour l'etiquette/fiche produit
+14. **gamme_estimee** : entree, moyenne, premium (basee sur la qualite apparente, la marque, la matiere)
+15. **confiance** : 0.0-1.0 — ton niveau de certitude global (faible si la photo est floue ou partielle)
 
 Reponds UNIQUEMENT en JSON valide, sans texte autour. Format :
 {
@@ -38,11 +43,96 @@ Reponds UNIQUEMENT en JSON valide, sans texte autour. Format :
   "taille": "...",
   "etat": "excellent|tres bon|bon|correct",
   "saison": "ete|hiver|mi-saison|toute saison",
-  "style": "...",
+  "style": "minimaliste|vintage|boheme|chic|sport|rock|romantique|casual|business",
+  "occasion": ["quotidien"|"bureau"|"soiree"|"weekend"|"ceremonie"|"ete"|"festival"],
+  "motif": "uni|raye|fleuri|carreaux|pois|animal|geometrique|autre",
+  "coupe": "slim|droit|oversize|cintre|fluide|ample|ajuste",
+  "defauts": ["..."],
   "description": "...",
   "gamme_estimee": "entree|moyenne|premium",
   "confiance": 0.0-1.0
 }"""
+
+
+# Allowed values per enriched field (P2-013). Validators below enforce
+# these so a hallucinated value from Claude doesn't pollute downstream
+# embeddings or scoring.
+ALLOWED_STYLES = {
+    "minimaliste", "vintage", "boheme", "chic", "sport",
+    "rock", "romantique", "casual", "business",
+}
+ALLOWED_OCCASIONS = {
+    "quotidien", "bureau", "soiree", "weekend",
+    "ceremonie", "ete", "festival",
+}
+ALLOWED_PATTERNS = {
+    "uni", "raye", "fleuri", "carreaux", "pois",
+    "animal", "geometrique", "autre",
+}
+ALLOWED_CUTS = {
+    "slim", "droit", "oversize", "cintre", "fluide", "ample", "ajuste",
+}
+
+
+def normalize_vision_payload(payload: dict) -> dict:
+    """Normalise the JSON returned by Claude Vision (P2-013).
+
+    - Lowercases free-form strings, strips accents-aware.
+    - Filters style / occasion / motif / coupe against the allowed sets.
+    - Coerces ``defauts`` to a clean list[str].
+    - Clamps ``confiance`` to [0, 1].
+
+    Returns a fresh dict, leaving the original untouched. Unknown enum
+    values fall back to ``None`` so callers can spot the gap.
+    """
+    if not isinstance(payload, dict):
+        return {}
+
+    def _lower(value):
+        if not isinstance(value, str):
+            return None
+        s = value.strip().lower()
+        return s or None
+
+    def _filter(value, allowed):
+        v = _lower(value)
+        return v if v in allowed else None
+
+    out = dict(payload)
+    out["style"] = _filter(payload.get("style"), ALLOWED_STYLES)
+    out["motif"] = _filter(payload.get("motif"), ALLOWED_PATTERNS)
+    out["coupe"] = _filter(payload.get("coupe"), ALLOWED_CUTS)
+
+    raw_occ = payload.get("occasion")
+    if isinstance(raw_occ, str):
+        raw_occ = [raw_occ]
+    if isinstance(raw_occ, list):
+        out["occasion"] = [
+            o for o in (_lower(x) for x in raw_occ) if o in ALLOWED_OCCASIONS
+        ]
+    else:
+        out["occasion"] = []
+
+    raw_def = payload.get("defauts")
+    if isinstance(raw_def, str):
+        raw_def = [raw_def]
+    if isinstance(raw_def, list):
+        out["defauts"] = [
+            d.strip() for d in raw_def
+            if isinstance(d, str) and d.strip()
+        ]
+    else:
+        out["defauts"] = []
+
+    conf = payload.get("confiance")
+    try:
+        conf_f = float(conf) if conf is not None else None
+    except (TypeError, ValueError):
+        conf_f = None
+    if conf_f is not None:
+        out["confiance"] = max(0.0, min(1.0, conf_f))
+
+    return out
 
 
 async def analyze_product_photo(

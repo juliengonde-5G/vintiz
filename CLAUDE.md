@@ -189,7 +189,11 @@ Base URL: `http://localhost:8000`
 
 ```
 # Auth
-POST   /api/auth/login                       Connexion (429 si rate-limit dépassé)
+POST   /api/auth/login                       Connexion manager (username/password, 429 si rate-limit dépassé)
+POST   /api/pos/cashier/login                Identifier le cashier au POS via PIN 4 chiffres
+POST   /api/pos/cashier/set-pin              Définir/changer un PIN (manager only)
+POST   /api/pos/cashier/clear-pin            Retirer un PIN (manager only)
+GET    /api/pos/cashier/list                 Lister utilisateurs + statut PIN (manager only)
 
 # Inventaire
 GET    /api/inventory/products               Liste produits (paginée)
@@ -197,9 +201,24 @@ GET    /api/inventory/products/search?q=…    Recherche (filtre stock+display p
 GET    /api/inventory/products/{id}          Fiche produit
 GET    /api/inventory/products/{id}/label    Étiquette PNG (ou impression SATO si configurée)
 GET    /api/inventory/products/{id}/score    Score détaillé
+GET    /api/inventory/products/{id}/photos   Liste multi-photos
+POST   /api/inventory/products/{id}/photos   Ajouter une photo (url + AI fields)
+POST   /api/inventory/products/{id}/photos/{pid}/primary  Définir la photo primaire
+POST   /api/inventory/products/{id}/photos/reorder        Réordonner (drag/drop)
+DELETE /api/inventory/products/{id}/photos/{pid}          Supprimer une photo
+POST   /api/inventory/products/import-csv    Import en masse CSV (multipart, ?dry_run=true)
+GET    /api/inventory/products/{id}/history  Historique mouvements (audit_logs)
+POST   /api/inventory/products/{id}/transition  Transition cycle de vie produit (FSM)
+POST   /api/inventory/batches                Créer un lot d'arrivage (carton)
+GET    /api/inventory/batches                Liste des lots
+GET    /api/inventory/batches/{id}           Détail lot + produits assignés
+POST   /api/inventory/batches/{id}/assign-product  Rattacher produit au lot
+GET    /api/inventory/products/{id}/suggest-zone   Reco placement zone (P2-006)
+GET    /api/inventory/locate?q=              Localiser un produit en boutique (P2-008)
 
 # POS — vente + caisse + ticket
-POST   /api/pos/transactions                 Créer une vente
+POST   /api/pos/transactions                 Créer une vente (idempotent via client_uuid optionnel — replay offline safe)
+POST   /api/pos/transactions/{id}/refund     Refund partiel/total (cash/card/cheque/avoir)
 GET    /api/pos/transactions/{id}/receipt    Texte du ticket (80 mm)
 POST   /api/pos/transactions/{id}/resend     Renvoyer ticket (email/SMS)
 POST   /api/pos/drawer/open                  Ouvrir la caisse (fond initial)
@@ -238,17 +257,68 @@ GET    /api/newsletter/subscribers           Liste (admin)
 GET    /api/newsletter/subscribers/export    Export CSV (admin)
 DELETE /api/newsletter/subscribers/{id}      Suppression (admin, RGPD)
 
-# SEO
+# SEO + Marketing
 GET    /api/seo/status                       Smoke test sitemap / robots / metas (ext)
+POST   /api/seo/snapshots/run                Lancer un snapshot SEO + persister
+GET    /api/seo/snapshots?days=30            Historique snapshots SEO (manager only)
+GET    /api/seo/social-posts/current         4 posts proposés cette semaine (manager only)
+POST   /api/seo/social-posts/regenerate      Régénérer la sélection (Claude + fallback)
+POST   /api/seo/social-posts/{id}/accept     Valider un post
+GET    /api/seo/mentions                     Liste mentions Insta/TikTok (manager only)
+POST   /api/seo/mentions                     Saisie manuelle d'une mention
+GET    /api/seo/reviews                      Liste avis Google (manager only)
+POST   /api/seo/reviews                      Saisie manuelle d'un avis
+POST   /api/seo/reviews/{id}/suggest-reply   Brouillon de réponse Claude (avec fallback)
+PUT    /api/seo/reviews/{id}/reply           Enregistrer la réponse
 
-# Admin / IA / CRM
+# Admin / IA / merchandising
 GET    /api/admin/weather                    Météo Vernon
+GET    /api/admin/audit-logs                 Journal AuditLog (manager only, filtres entity/action/user_id)
+GET    /api/admin/fiscal-export?from=&to=&format=xml|json  Export fiscal NF525/DGFiP (manager only)
+GET    /api/admin/data-quality?days=7        Volumes events_log + courbe (manager only)
+POST   /api/admin/embeddings/recompute       Recalcul embeddings catalogue (manager only)
+POST   /api/admin/embeddings/customer/{id}   Refresh taste profile cliente (manager only)
+GET    /api/admin/return-to-sorting/preview  Dry-run retour automatique tri (manager only)
+POST   /api/admin/return-to-sorting/run      Trigger manuel retour automatique (manager only)
+GET    /api/admin/markdown-rules             Liste règles markdown (manager only)
+POST   /api/admin/markdown-rules             Créer règle markdown (manager only, validation conditions+action)
+PUT    /api/admin/markdown-rules/{id}        Modifier règle (manager only)
+DELETE /api/admin/markdown-rules/{id}        Supprimer règle (manager only)
+GET    /api/admin/markdown-rules/preview     Dry-run engine (manager only)
+POST   /api/admin/markdown-rules/run         Trigger manuel engine (manager only)
+GET    /api/admin/brand-tiers                Liste marques + tiers (manager only)
+POST   /api/admin/brand-tiers                Créer marque (luxury/premium/mid/basic)
+PUT    /api/admin/brand-tiers/{id}           Modifier marque (manager only)
+DELETE /api/admin/brand-tiers/{id}           Supprimer marque (manager only)
+GET    /api/admin/store-plan                 Plan zones + occupation + score moyen (manager only)
+GET    /api/admin/window-display/current     Proposition vitrine semaine courante (manager only)
+POST   /api/admin/window-display/regenerate  Régénérer la proposition (manager only)
+POST   /api/admin/window-display/{id}/accept Valider la vitrine (manager only)
+
+# IA Booster (Compagnon IA)
 GET    /api/ai/weekly-checklist              Checklist semaine IA
 GET    /api/ai/trends                        Tendances mode
 POST   /api/ai/persona/marketing             Rapport marketing IA
 POST   /api/ai/persona/juridique             Audit RGPD IA
+
+# CRM clients + RGPD
 GET    /api/crm/clients/lookup?email=…       Lookup client public
-GET    /api/crm/clients/personal-shopper?email=…  Personal shopper
+GET    /api/crm/clients/personal-shopper?email=…  Personal shopper v1 (legacy règles)
+GET    /api/crm/clients/{id}/personal-shopper-v2  Personal shopper v2 (embeddings + Claude Haiku)
+GET    /api/crm/personal-shopper-v2?email=        Personal shopper v2 public (lookup email)
+POST   /api/crm/personal-shopper-v2/click         Log click sur recommandation
+GET    /api/crm/onboarding/options                Catalogue styles/occasions/budgets (public)
+POST   /api/crm/clients/{id}/onboarding           Cold-start taste profile (manager)
+POST   /api/crm/account/onboarding                Cold-start taste profile (public, body: email + choix)
+GET    /api/crm/clients/{id}/avoir                Solde + historique avoir (store credit)
+GET    /api/crm/clients/{id}/consents              Consentements RGPD (état courant + historique)
+POST   /api/crm/clients/{id}/consents              Enregistrer consentement (purpose+granted+source)
+GET    /api/crm/clients/{id}/data-export           Export RGPD JSON portable (Article 20)
+POST   /api/crm/clients/{id}/deletion-request      Demande suppression (soft, fenêtre 30j)
+POST   /api/crm/clients/{id}/deletion-cancel       Annuler demande de suppression
+GET    /api/crm/account/data-export?email=         Public — export RGPD JSON par email
+POST   /api/crm/account/deletion-request           Public — demande suppression (body: email)
+POST   /api/crm/account/deletion-cancel            Public — annuler suppression (body: email)
 ```
 
 ## Fonctionnalités principales

@@ -9,8 +9,37 @@ from app.core.security import get_current_user
 from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.product import Product, ProductStatus
 from app.models.user import User
+from app.services.retail_kpis import ess_report, retail_kpis
 
 router = APIRouter(prefix="/reports", tags=["reporting"])
+
+
+@router.get("/retail-kpis")
+async def retail_kpis_endpoint(
+    period_days: int = Query(default=30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """P4-001: industry-standard retail KPIs over the last N days.
+
+    Sell-through, GMROI, Days-on-Hand, AIT, CA/m²/mois, top/bottom
+    categories and variation versus the previous period.
+    """
+    return await retail_kpis(db, period_days=period_days)
+
+
+@router.get("/ess")
+async def ess_report_endpoint(
+    period_days: int = Query(default=90, ge=1, le=730),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """P4-002: Solidarité Textiles dashboard.
+
+    Pieces received vs sold vs donated vs returned-to-sorting, taux de
+    réemploi, estimated tonnage, CA reversé.
+    """
+    return await ess_report(db, period_days=period_days)
 
 
 @router.get("/daily")
