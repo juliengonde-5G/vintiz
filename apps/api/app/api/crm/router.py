@@ -188,6 +188,9 @@ class CreateClientRequest(BaseModel):
     city: str | None = None
     email_optin: bool = False
     sms_optin: bool = False
+    # L3.4 — Allows seed scripts (witness clients) to flag rows for purge.
+    # Only honored when the caller is a manager.
+    is_test: bool = False
 
 
 class UpdateClientRequest(BaseModel):
@@ -207,6 +210,12 @@ async def create_client(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new client."""
+    # is_test honored only for manager users (admin seed scripts).
+    is_test_flag = bool(
+        request.is_test
+        and getattr(current_user, "role", None)
+        and str(current_user.role).lower().endswith("manager")
+    )
     client = Client(
         first_name=request.first_name,
         last_name=request.last_name,
@@ -215,6 +224,7 @@ async def create_client(
         notes=request.city,
         email_optin=request.email_optin,
         sms_optin=request.sms_optin,
+        is_test=is_test_flag,
     )
     db.add(client)
     await db.flush()
