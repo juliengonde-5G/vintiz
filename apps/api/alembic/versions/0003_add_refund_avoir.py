@@ -83,10 +83,25 @@ def upgrade() -> None:
         )
 
     if not _table_exists("avoir_transactions"):
-        avoir_tx_type = sa.Enum(
-            "credit", "debit", "adjust", name="avoir_tx_type"
+        # Create the enum idempotently. PG has no CREATE TYPE IF NOT EXISTS
+        # so we wrap in a DO/EXCEPTION block. The lifespan's
+        # Base.metadata.create_all may have already created it on a prior
+        # boot, so this is the safe form.
+        op.execute(
+            """
+            DO $$ BEGIN
+                CREATE TYPE avoir_tx_type AS ENUM ('credit', 'debit', 'adjust');
+            EXCEPTION WHEN duplicate_object THEN NULL;
+            END $$;
+            """
         )
-        avoir_tx_type.create(op.get_bind(), checkfirst=True)
+        # ``create_type=False`` so create_table() doesn't try to recreate
+        # the type implicitly (which would crash on the second run).
+        avoir_tx_type = sa.dialects.postgresql.ENUM(
+            "credit", "debit", "adjust",
+            name="avoir_tx_type",
+            create_type=False,
+        )
         op.create_table(
             "avoir_transactions",
             sa.Column(

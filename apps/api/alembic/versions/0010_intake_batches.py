@@ -38,15 +38,26 @@ def _column_exists(table: str, column: str) -> bool:
 
 def upgrade() -> None:
     if not _table_exists("intake_batches"):
-        intake_source = sa.Enum(
+        op.execute(
+            """
+            DO $$ BEGIN
+                CREATE TYPE intake_source AS ENUM (
+                    'sorting_center', 'deposit',
+                    'direct_donation', 'purchase', 'other'
+                );
+            EXCEPTION WHEN duplicate_object THEN NULL;
+            END $$;
+            """
+        )
+        intake_source = sa.dialects.postgresql.ENUM(
             "sorting_center",
             "deposit",
             "direct_donation",
             "purchase",
             "other",
             name="intake_source",
+            create_type=False,
         )
-        intake_source.create(op.get_bind(), checkfirst=True)
 
         op.create_table(
             "intake_batches",
