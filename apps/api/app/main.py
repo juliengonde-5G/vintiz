@@ -207,6 +207,45 @@ async def _run_daily_rgpd_purge() -> None:
         logger.error("RGPD purge job failed: %s", exc)
 
 
+async def _run_daily_anniversary_emails() -> None:
+    """Background job: birthday coupon + email (P4-008). Runs daily at
+    09:00 Paris time."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.anniversary import run_anniversary_pass
+
+        async with AsyncSession(engine) as db:
+            summary = await run_anniversary_pass(db)
+            await db.commit()
+            if summary["considered"]:
+                logger.info(
+                    "Anniversary cron: %d considered, %d coupons, %d emails, %d failures",
+                    summary["considered"],
+                    summary["coupons"],
+                    summary["emails_sent"],
+                    summary["failures"],
+                )
+    except Exception as exc:
+        logger.error("Anniversary cron failed: %s", exc)
+
+
+async def _run_weekly_new_arrivals_emails() -> None:
+    """Background job: weekly digest of new pieces (P4-009). Runs every
+    Friday at 10:00 Paris time."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.new_arrivals import run_new_arrivals_pass
+
+        async with AsyncSession(engine) as db:
+            summary = await run_new_arrivals_pass(db)
+            await db.commit()
+            logger.info("New-arrivals cron summary: %s", summary)
+    except Exception as exc:
+        logger.error("New-arrivals cron failed: %s", exc)
+
+
 async def _run_monthly_rfm_segmentation() -> None:
     """Background job: recompute RFM scores for all customers and stamp
     each ``Client.rfm_segment`` (P4-007). Runs the 1st of each month at
@@ -382,6 +421,18 @@ async def lifespan(app: FastAPI):
             _run_monthly_rfm_segmentation,
             CronTrigger(day="1", hour=4, minute=0),
             id="monthly_rfm_segmentation",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_daily_anniversary_emails,
+            CronTrigger(hour=9, minute=0),
+            id="daily_anniversary_emails",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_weekly_new_arrivals_emails,
+            CronTrigger(day_of_week="fri", hour=10, minute=0),
+            id="weekly_new_arrivals_emails",
             replace_existing=True,
         )
         scheduler.start()

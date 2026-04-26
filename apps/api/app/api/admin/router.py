@@ -1846,3 +1846,64 @@ async def update_kpis_config(
     merged = await update_config(db, **overrides)
     await db.commit()
     return merged
+
+
+# ---------------------------------------------------------------------------
+# P4 communication: manual triggers + coupon listing
+# ---------------------------------------------------------------------------
+
+
+@router.post("/anniversary/run", dependencies=[Depends(manager_only)])
+async def run_anniversary_now(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Manually trigger the daily anniversary pass (P4-008). Same effect
+    as waiting for the 09:00 cron — useful when adding a forgotten DOB
+    on a client whose birthday is today."""
+    from app.services.anniversary import run_anniversary_pass
+
+    summary = await run_anniversary_pass(db)
+    await db.commit()
+    return summary
+
+
+@router.post("/new-arrivals/run", dependencies=[Depends(manager_only)])
+async def run_new_arrivals_now(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Manually trigger the weekly new-arrivals digest (P4-009)."""
+    from app.services.new_arrivals import run_new_arrivals_pass
+
+    summary = await run_new_arrivals_pass(db)
+    await db.commit()
+    return summary
+
+
+@router.get("/coupons", dependencies=[Depends(manager_only)])
+async def list_coupons(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    only_active: bool = Query(default=True),
+):
+    """List recent coupons with their redemption status."""
+    from app.models.coupon import Coupon
+
+    stmt = select(Coupon).order_by(Coupon.created_at.desc()).limit(200)
+    if only_active:
+        stmt = stmt.where(Coupon.is_active.is_(True), Coupon.redeemed_at.is_(None))
+    rows = await db.execute(stmt)
+    coupons = rows.scalars().all()
+    return [
+        {
+            "id": str(c.id),
+            "code": c.code,
+            "client_id": str(c.client_id) if c.client_id else None,
+            "discount_type": c.discount_type.value,
+            "discount_value": float(c.discount_value),
+            "source": c.source.value,
+            "valid_from": c.valid_from.isoformat() if c.valid_from else None,
+            "valid_until": c.valid_until.isoformat() if c.valid_until else None,
+            "redeemed_at": c.redeemed_at.isoformat() if c.redeemed_at else None,
+            "is_active": c.is_active,
+        }
+        for c in coupons
+    ]

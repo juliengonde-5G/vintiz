@@ -433,41 +433,41 @@ async def resend_transaction(
     if request.channel == "email":
         if not client.get("email"):
             raise HTTPException(status_code=400, detail="Ce client n'a pas d'adresse email")
-        smtp_host = os.getenv("SMTP_HOST", "")
-        if smtp_host:
-            try:
-                import smtplib
-                from email.mime.text import MIMEText
-                msg = MIMEText(
-                    f"Bonjour {client['first_name']},\n\n"
-                    f"Voici le recu de votre achat chez Vintiz.\n\n"
-                    f"Ticket #{ticket_num}\n"
-                    f"Articles :\n{items_text}\n\n"
-                    f"Total TTC : {total:.2f} EUR\n\n"
-                    f"Merci de votre visite !\nVintiz — Boutique de seconde main premium",
-                    "plain",
-                    "utf-8",
-                )
-                msg["Subject"] = f"Votre recu Vintiz #{ticket_num}"
-                msg["From"] = os.getenv("SMTP_USER", "noreply@vintiz.fr")
-                msg["To"] = client["email"]
-                with smtplib.SMTP(smtp_host, int(os.getenv("SMTP_PORT", "587"))) as server:
-                    server.starttls()
-                    server.login(os.getenv("SMTP_USER", ""), os.getenv("SMTP_PASSWORD", ""))
-                    server.send_message(msg)
-                logger.info("Receipt email sent for transaction %s", transaction_id)
-                return {"success": True, "message": f"Email envoye a {client['email']}"}
-            except Exception:
-                # Don't leak SMTP details (host, credentials, transport state) to clients.
-                logger.exception("Failed to send receipt email for transaction %s", transaction_id)
-                raise HTTPException(
-                    status_code=502,
-                    detail="L'envoi de l'email a échoué. Réessayez plus tard.",
-                )
-        else:
-            # Simulate
-            logger.info("Receipt email simulated for transaction %s", transaction_id)
-            return {"success": True, "message": f"[SIMULE] Email envoye a {client['email']}"}
+        from app.services.email_gateway import (
+            EmailDeliveryError,
+            EmailMessage,
+            send_email as _gateway_send,
+        )
+
+        body_text = (
+            f"Bonjour {client['first_name']},\n\n"
+            f"Voici le recu de votre achat chez Vintiz.\n\n"
+            f"Ticket #{ticket_num}\n"
+            f"Articles :\n{items_text}\n\n"
+            f"Total TTC : {total:.2f} EUR\n\n"
+            f"Merci de votre visite !\nVintiz — Boutique de seconde main premium"
+        )
+        body_html = "<pre style=\"font-family: monospace\">" + body_text + "</pre>"
+
+        try:
+            outcome = _gateway_send(EmailMessage(
+                to=client["email"],
+                to_name=client.get("first_name"),
+                subject=f"Votre reçu Vintiz #{ticket_num}",
+                html=body_html,
+                text=body_text,
+            ))
+        except EmailDeliveryError:
+            logger.exception("Failed to send receipt email for transaction %s",
+                             transaction_id)
+            raise HTTPException(
+                status_code=502,
+                detail="L'envoi de l'email a échoué. Réessayez plus tard.",
+            )
+        logger.info("Receipt email %s for transaction %s via %s",
+                    outcome.status, transaction_id, outcome.backend)
+        prefix = "" if outcome.status == "sent" else "[SIMULE] "
+        return {"success": True, "message": f"{prefix}Email envoyé à {client['email']}"}
 
     elif request.channel == "sms":
         if not client.get("phone"):

@@ -35,6 +35,7 @@ from app.models.embeddings import (
 )
 from app.models.ai_task import AITask
 from app.models.newsletter import NewsletterSubscriber
+from app.models.coupon import Coupon, CouponDiscountType, CouponSource
 
 __all__ = [
     "Base",
@@ -58,4 +59,5 @@ __all__ = [
     "ProductEmbedding", "CustomerTasteProfile", "EMBEDDING_DIM",
     "AITask",
     "NewsletterSubscriber",
+    "Coupon", "CouponDiscountType", "CouponSource",
 ]

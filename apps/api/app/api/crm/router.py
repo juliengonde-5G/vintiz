@@ -495,7 +495,14 @@ async def send_email(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Send an email to a client. Uses SMTP if configured, otherwise simulates."""
+    """Send an email to a client through the unified gateway (P4-003).
+    Brevo > SMTP > simulation depending on what's configured."""
+    from app.services.email_gateway import (
+        EmailDeliveryError,
+        EmailMessage,
+        send_email as _gateway_send,
+    )
+
     result = await db.execute(select(Client).where(Client.id == request.client_id))
     client = result.scalar_one_or_none()
     if not client:
@@ -503,53 +510,29 @@ async def send_email(
     if not client.email:
         raise HTTPException(status_code=400, detail="Client has no email address")
 
-    smtp_host = os.getenv("SMTP_HOST", "")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER", "")
-    smtp_password = os.getenv("SMTP_PASSWORD", "")
-    smtp_from = os.getenv("SMTP_FROM", smtp_user or "noreply@vintiz.fr")
+    try:
+        outcome = _gateway_send(EmailMessage(
+            to=client.email,
+            to_name=f"{client.first_name} {client.last_name}".strip() or None,
+            subject=request.subject,
+            html=request.body,
+        ))
+    except EmailDeliveryError as exc:
+        logger.warning("send-email gateway error for client_id=%s: %s",
+                       request.client_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail="L'envoi de l'email a échoué. Réessayez plus tard.",
+        )
 
-    if smtp_host and smtp_user and smtp_password:
-        try:
-            import smtplib
-            from email.mime.text import MIMEText
-            from email.mime.multipart import MIMEMultipart
-
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = request.subject
-            msg["From"] = smtp_from
-            msg["To"] = client.email
-
-            html_part = MIMEText(request.body, "html", "utf-8")
-            msg.attach(html_part)
-
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
-                server.starttls()
-                server.login(smtp_user, smtp_password)
-                server.sendmail(smtp_from, client.email, msg.as_string())
-
-            return {
-                "status": "sent",
-                "message": f"Email envoye a {client.email}",
-                "client_id": str(request.client_id),
-                "type": request.type,
-                "sent_at": datetime.now(timezone.utc).isoformat(),
-            }
-        except Exception:
-            logger.exception("send-email failed for client_id=%s", request.client_id)
-            raise HTTPException(
-                status_code=502,
-                detail="L'envoi de l'email a échoué. Réessayez plus tard.",
-            )
-    else:
-        # Simulated send
-        return {
-            "status": "simulated",
-            "message": f"[SIMULATION] Email '{request.subject}' envoye a {client.email} ({client.first_name} {client.last_name})",
-            "client_id": str(request.client_id),
-            "type": request.type,
-            "sent_at": datetime.now(timezone.utc).isoformat(),
-        }
+    return {
+        "status": outcome.status,
+        "backend": outcome.backend,
+        "message": f"Email '{request.subject}' → {client.email}",
+        "client_id": str(request.client_id),
+        "type": request.type,
+        "sent_at": outcome.sent_at,
+    }
 
 
 @router.post("/send-sms")
@@ -1343,3 +1326,46 @@ async def list_clients_in_segment(
             for c in clients
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Wallet pass (P4-004) — public lookup by email + manager-side by id
+# ---------------------------------------------------------------------------
+
+
+@router.get("/account/wallet")
+async def public_wallet_pass(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the loyalty Wallet pass payload by client email.
+
+    Generic 404 on unknown email — same shape as ``/clients/lookup`` so
+    we don't expose enumeration. The payload contains the Apple
+    ``pass.json`` and the Google ``LoyaltyObject`` plus the metadata the
+    front needs to render a preview card.
+    """
+    from app.services.wallet import build_pass_by_email, payload_to_dict
+
+    email_clean = email.strip().lower()
+    if "@" not in email_clean or "." not in email_clean.split("@", 1)[-1]:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+    pass_payload = await build_pass_by_email(db, email_clean)
+    if pass_payload is None:
+        raise HTTPException(status_code=404, detail="Compte introuvable")
+    return payload_to_dict(pass_payload)
+
+
+@router.get("/clients/{client_id}/wallet")
+async def client_wallet_pass(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Manager-side wallet payload (preview a client's pass)."""
+    from app.services.wallet import build_pass_for_client, payload_to_dict
+
+    pass_payload = await build_pass_for_client(db, client_id)
+    if pass_payload is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return payload_to_dict(pass_payload)

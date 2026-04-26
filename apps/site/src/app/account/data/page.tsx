@@ -4,6 +4,7 @@ import { useState, FormEvent } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import WalletCard from "@/components/WalletCard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -264,6 +265,11 @@ export default function AccountDataPage() {
                     </div>
                   )}
                 </dl>
+                {data.client.email && (
+                  <div className="mt-4">
+                    <WalletCard email={data.client.email} />
+                  </div>
+                )}
               </section>
 
               <section className="bg-white rounded-2xl shadow-sm p-6">
