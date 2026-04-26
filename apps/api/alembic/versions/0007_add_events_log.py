@@ -34,31 +34,41 @@ def upgrade() -> None:
     if _table_exists("events_log"):
         return
 
-    event_type = sa.Enum(
-        "product.created",
-        "product.viewed",
-        "product.try_requested",
-        "product.try_in_store",
-        "product.sold",
-        "product.refunded",
-        "product.donated",
-        "product.returned_to_sorting",
-        "product.markdown_applied",
-        "product.zone_changed",
-        "customer.signed_up",
-        "customer.visited",
-        "customer.recommendation_shown",
-        "customer.recommendation_clicked",
-        "cashier.session_opened",
-        "cashier.session_closed",
-        name="event_type",
+    # Idempotent enum creation: PG has no CREATE TYPE IF NOT EXISTS so we
+    # wrap each one in a DO/EXCEPTION block.
+    op.execute(
+        """
+        DO $$ BEGIN
+            CREATE TYPE event_type AS ENUM (
+                'product.created', 'product.viewed',
+                'product.try_requested', 'product.try_in_store',
+                'product.sold', 'product.refunded',
+                'product.donated', 'product.returned_to_sorting',
+                'product.markdown_applied', 'product.zone_changed',
+                'customer.signed_up', 'customer.visited',
+                'customer.recommendation_shown', 'customer.recommendation_clicked',
+                'cashier.session_opened', 'cashier.session_closed'
+            );
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$;
+        """
     )
-    event_type.create(op.get_bind(), checkfirst=True)
-
-    event_source = sa.Enum(
-        "pos", "site", "admin", "api", "system", name="event_source"
+    op.execute(
+        """
+        DO $$ BEGIN
+            CREATE TYPE event_source AS ENUM (
+                'pos', 'site', 'admin', 'api', 'system'
+            );
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$;
+        """
     )
-    event_source.create(op.get_bind(), checkfirst=True)
+    event_type = sa.dialects.postgresql.ENUM(
+        name="event_type", create_type=False,
+    )
+    event_source = sa.dialects.postgresql.ENUM(
+        name="event_source", create_type=False,
+    )
 
     op.create_table(
         "events_log",

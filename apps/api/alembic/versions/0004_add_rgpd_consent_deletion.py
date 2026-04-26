@@ -56,11 +56,22 @@ def upgrade() -> None:
         )
 
     if not _table_exists("consents"):
-        consent_purpose = sa.Enum(
+        op.execute(
+            """
+            DO $$ BEGIN
+                CREATE TYPE consent_purpose AS ENUM (
+                    'email_marketing', 'sms_marketing',
+                    'profiling', 'data_sharing'
+                );
+            EXCEPTION WHEN duplicate_object THEN NULL;
+            END $$;
+            """
+        )
+        consent_purpose = sa.dialects.postgresql.ENUM(
             "email_marketing", "sms_marketing", "profiling", "data_sharing",
             name="consent_purpose",
+            create_type=False,
         )
-        consent_purpose.create(op.get_bind(), checkfirst=True)
         op.create_table(
             "consents",
             sa.Column(
