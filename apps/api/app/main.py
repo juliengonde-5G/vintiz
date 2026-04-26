@@ -207,6 +207,28 @@ async def _run_daily_rgpd_purge() -> None:
         logger.error("RGPD purge job failed: %s", exc)
 
 
+async def _run_monthly_rfm_segmentation() -> None:
+    """Background job: recompute RFM scores for all customers and stamp
+    each ``Client.rfm_segment`` (P4-007). Runs the 1st of each month at
+    04:00 Paris time."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.rfm import run_segmentation
+
+        async with AsyncSession(engine) as db:
+            summary = await run_segmentation(db)
+            await db.commit()
+            logger.info(
+                "RFM segmentation: %d computed / %d updated, segments=%s",
+                summary["computed"],
+                summary["updated"],
+                summary["segments"],
+            )
+    except Exception as exc:
+        logger.error("RFM segmentation job failed: %s", exc)
+
+
 async def _run_monthly_scoring() -> None:
     """Background job: recompute trend scores for all active products (1st Wednesday of month)."""
     try:
@@ -354,6 +376,12 @@ async def lifespan(app: FastAPI):
             _run_daily_seo_snapshot,
             CronTrigger(hour=5, minute=0),
             id="daily_seo_snapshot",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_monthly_rfm_segmentation,
+            CronTrigger(day="1", hour=4, minute=0),
+            id="monthly_rfm_segmentation",
             replace_existing=True,
         )
         scheduler.start()

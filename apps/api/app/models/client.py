@@ -51,6 +51,11 @@ class Client(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # RFM segmentation tag (P4-007). Recomputed monthly. Values:
+    # champion / loyal / new / promising / at_risk / cant_lose / hibernating /
+    # lost / unknown.
+    rfm_segment: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     loyalty_account: Mapped["LoyaltyAccount | None"] = relationship(
         "LoyaltyAccount", back_populates="client", uselist=False, lazy="selectin"
     )

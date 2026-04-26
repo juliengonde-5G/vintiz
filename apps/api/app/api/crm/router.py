@@ -1288,3 +1288,58 @@ async def cancel_client_deletion(
     await RgpdService(db).cancel_deletion(client)
     await db.commit()
     return {"client_id": str(client.id), "deletion_cancelled": True}
+
+
+# ---------------------------------------------------------------------------
+# RFM segmentation read endpoints (P4-007)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/segments")
+async def list_rfm_segments(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Aggregate counts of clients per RFM segment, plus a sample list."""
+    from app.services.rfm import segment_summary
+
+    counts = await segment_summary(db)
+    total = sum(counts.values())
+    return {
+        "total_segmented": total,
+        "segments": [
+            {"segment": seg, "count": cnt}
+            for seg, cnt in sorted(counts.items(), key=lambda kv: -kv[1])
+        ],
+    }
+
+
+@router.get("/segments/{segment}")
+async def list_clients_in_segment(
+    segment: str,
+    limit: int = Query(default=50, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Sample of clients in a given RFM segment (champion, loyal, …)."""
+    result = await db.execute(
+        select(Client)
+        .where(Client.rfm_segment == segment)
+        .order_by(Client.updated_at.desc())
+        .limit(limit)
+    )
+    clients = result.scalars().all()
+    return {
+        "segment": segment,
+        "count": len(clients),
+        "clients": [
+            {
+                "id": str(c.id),
+                "email": c.email,
+                "first_name": c.first_name,
+                "last_name": c.last_name,
+                "rfm_segment": c.rfm_segment,
+            }
+            for c in clients
+        ],
+    }
