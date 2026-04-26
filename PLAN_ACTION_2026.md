@@ -36,20 +36,26 @@ Avant toute implémentation, vérifier dans `apps/api/app/` ce qui existe vraime
 
 ---
 
-## Phase 1 — P0 bloquants ouverture Vernon (5-6 semaines)
+## Phase 1 — P0 bloquants ouverture Vernon ✅ CLÔTURÉE (26 avril 2026)
 
-Bloquants légaux + fonctionnels. Sans ces tickets, on **ne peut pas** ouvrir publiquement.
+> **Statut** : tous les tickets backend + UI sont livrés. Détail complet dans
+> [`PHASE_1_CLOTURE.md`](./PHASE_1_CLOTURE.md). Seules deux actions humaines
+> restent (signature attestation NF525 §4 + test cycle complet D-30).
 
-| ID | Sujet | Source | Type |
-|---|---|---|---|
-| P1-001 | Conformité NF525 (chaînage SHA-256, archivage 6 ans, attestation éditeur) | V1 | Légal bloquant |
-| P1-002 | Multi-utilisateur + PIN cashier sur POS | V1 | Légal/audit |
-| P1-007 | RGPD-by-design CRM (consentement, droit oubli, export JSON) | V1 | Légal bloquant |
-| P1-009 | Split payment (mixte espèces+CB+chèque) | V2 | Fonctionnel |
-| P1-010 | Flux retour / avoir POS + ticket retour 80mm | V2 | Fonctionnel |
-| P2-009 | **BUG** : refactor formule pondération `scoring_service.py` | V2 | Correction |
-| P2-010 | **BUG** : connecter `category_trend` au calcul réel (vs `50.0` statique) | V2 | Correction |
-| P1-008 | Multi-photos produit (modèle `ProductPhoto`) | V2 | Fonctionnel |
+| ID | Sujet | Source | Type | État |
+|---|---|---|---|:---:|
+| P1-001 | Conformité NF525 (chaînage SHA-256, export DGFiP, attestation éditeur) | V1 | Légal bloquant | ✅ |
+| P1-002 | Multi-utilisateur + PIN cashier sur POS | V1 | Légal/audit | ✅ |
+| P1-007 | RGPD-by-design CRM (consentement, droit oubli, export JSON) | V1 | Légal bloquant | ✅ |
+| P1-008 | Multi-photos produit (modèle `ProductPhoto` + carousel + upload binaire) | V2 | Fonctionnel | ✅ |
+| P1-009 | Split payment (mixte espèces+CB+chèque+avoir) | V2 | Fonctionnel | ✅ |
+| P1-010 | Flux retour / avoir POS + ticket retour 80mm | V2 | Fonctionnel | ✅ |
+| P1-013 | Auto-population AuditLog via SQLAlchemy event listeners | V2 | Légal/audit | ✅ |
+| P1-014 | `cashier_id` traceable sur Transaction / CashDrawer / ZReport | V2 | Légal/audit | ✅ |
+| P1-015 | Export XML/JSON DGFiP (clôt P1-001) | V1 | Légal bloquant | ✅ |
+| P1-016 | `Client.avoir_credit` + ledger `AvoirTransaction` | V2 | Fonctionnel | ✅ |
+| P2-009 | **BUG** scoring : confirmé faux positif (formule mathématiquement correcte) | V2 | Correction | ✅ Fermé |
+| P2-010 | **BUG** `category_trend` statique → reporté Phase 2 (avec ai_trend) | V2 | Correction | ⏭ Ph. 2 |
 
 ---
 
