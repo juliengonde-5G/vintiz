@@ -765,6 +765,105 @@ async def assign_product_to_batch(
 
 
 # ---------------------------------------------------------------------------
+# Bulk import (P3-006) — CSV upload
+# ---------------------------------------------------------------------------
+
+
+@router.post("/products/import-csv")
+async def import_products_csv(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    file: UploadFile = File(...),
+    dry_run: bool = False,
+):
+    """Import products in bulk from a CSV.
+
+    Required columns: ``name``, ``sale_price`` + either ``category_id``
+    (UUID) or ``category_name`` (must already exist).
+    Optional: ``barcode``, ``brand``, ``color``, ``size``, ``condition``,
+    ``purchase_price``, ``week_number``, ``status``, ``description``.
+
+    ``dry_run=true`` validates without persisting.
+    """
+    from app.services.csv_import import ImportCsvService
+
+    if not (file.filename or "").lower().endswith(".csv"):
+        raise HTTPException(
+            status_code=400,
+            detail="File must be a .csv (got " f"{file.filename!r})",
+        )
+    blob = await file.read()
+    if len(blob) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="CSV too large (max 5 MB)")
+    if not blob:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    try:
+        summary = await ImportCsvService(db).import_csv(blob, dry_run=dry_run)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if not dry_run:
+        await db.commit()
+
+    return {
+        "dry_run": dry_run,
+        "total_rows": summary.total_rows,
+        "imported": summary.imported,
+        "skipped_existing_barcode": summary.skipped,
+        "errors": [
+            {"line": e.line, "message": e.message} for e in summary.errors
+        ],
+        "created_ids": summary.created_ids,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Audit history per product (P3-008)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/products/{product_id}/history")
+async def get_product_history(
+    product_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    limit: int = 100,
+):
+    """Return the chronological audit trail for a single product.
+
+    Reads ``audit_logs`` rows where ``entity = 'product'`` and
+    ``entity_id = product_id``. The audit listener (P1-013) populates
+    these for create / update / delete with a per-field diff, so this
+    endpoint surfaces price changes, status transitions, zone moves,
+    etc. — all without a dedicated history table.
+    """
+    from app.models.audit import AuditLog
+
+    capped = min(max(limit, 1), 500)
+    result = await db.execute(
+        select(AuditLog)
+        .where(
+            AuditLog.entity == "product",
+            AuditLog.entity_id == product_id,
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(capped)
+    )
+    rows = result.scalars().all()
+    return [
+        {
+            "id": str(row.id),
+            "action": row.action,
+            "user_id": str(row.user_id) if row.user_id else None,
+            "data": row.data,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Merchandising / Booster IA — placement + locate (P2-006 + P2-008)
 # ---------------------------------------------------------------------------
 
