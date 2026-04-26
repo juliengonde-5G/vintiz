@@ -61,6 +61,13 @@ class Transaction(Base):
         UUID(as_uuid=True), ForeignKey("transactions.id"), nullable=True
     )
     refund_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Client-generated UUID for idempotent submission. The POS UI generates
+    # this BEFORE the transaction is sent so that a network retry / offline
+    # queue replay can be deduplicated server-side. Nullable for legacy
+    # transactions; new submissions from the POS should always set it.
+    client_uuid: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), unique=True, nullable=True
+    )
     total_ht: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     total_tva: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     total_ttc: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
