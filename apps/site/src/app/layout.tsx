@@ -92,6 +92,11 @@ export const metadata: Metadata = {
   verification: {
     google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
   },
+  icons: {
+    icon: "/logo-teal.png",
+    apple: "/logo-teal.png",
+    shortcut: "/logo-teal.png",
+  },
 };
 
 const jsonLd = {

@@ -34,6 +34,11 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Vintiz",
   },
+  icons: {
+    icon: "/logo-teal.png",
+    apple: "/logo-teal.png",
+    shortcut: "/logo-teal.png",
+  },
 };
 
 export default function RootLayout({
