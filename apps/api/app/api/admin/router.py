@@ -1800,3 +1800,49 @@ async def recompute_taste_profile(
         "n_purchases_analyzed": profile.n_purchases_analyzed,
         "algo_version": profile.algo_version,
     }
+
+
+# ---------------------------------------------------------------------------
+# RFM segmentation (P4-007) + retail-KPIs config (P4-001 / P4-002)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/rfm/run", dependencies=[Depends(manager_only)])
+async def run_rfm_segmentation(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Manually trigger the RFM scoring + persistence pass. Same effect as
+    waiting for the monthly cron (1st of the month at 04:00)."""
+    from app.services.rfm import run_segmentation
+
+    summary = await run_segmentation(db)
+    await db.commit()
+    return summary
+
+
+class KpiConfigPayload(BaseModel):
+    store_surface_m2: float | None = None
+    avg_piece_weight_kg: float | None = None
+    ess_reversed_pct: float | None = None
+
+
+@router.get("/kpis-config", dependencies=[Depends(manager_only)])
+async def get_kpis_config(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Read the retail-KPIs / ESS config (surface, weight, %CA reversé)."""
+    from app.services.retail_kpis import _load_config
+
+    return await _load_config(db)
+
+
+@router.put("/kpis-config", dependencies=[Depends(manager_only)])
+async def update_kpis_config(
+    payload: KpiConfigPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Update one or several retail-KPIs / ESS config knobs."""
+    from app.services.retail_kpis import update_config
+
+    overrides = {k: v for k, v in payload.model_dump().items() if v is not None}
+    merged = await update_config(db, **overrides)
+    await db.commit()
+    return merged

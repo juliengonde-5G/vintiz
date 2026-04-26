@@ -4,6 +4,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
+import EssReportCard from '@/components/reports/EssReportCard';
+import RetailKpisCard from '@/components/reports/RetailKpisCard';
+import RfmSegmentsCard from '@/components/reports/RfmSegmentsCard';
 import { api } from '@/lib/api';
 
 type Tab = 'daily' | 'weekly' | 'monthly';
@@ -319,6 +322,13 @@ export default function ReportsPage() {
             </Card>
           </>
         ) : null}
+
+        {/* P4 — Analytics riche (KPIs retail + ESS + RFM) */}
+        <div className="space-y-6 mb-8">
+          <RetailKpisCard />
+          <EssReportCard />
+          <RfmSegmentsCard />
+        </div>
 
         {/* Stock Value */}
         <Card title="Valeur du stock">
