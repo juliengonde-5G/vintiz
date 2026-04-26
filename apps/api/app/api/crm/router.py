@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.client import Client, LoyaltyAccount, LoyaltyTransaction, LoyaltyTxType
+from app.models.client import (
+    AvoirTransaction,
+    Client,
+    LoyaltyAccount,
+    LoyaltyTransaction,
+    LoyaltyTxType,
+)
 from app.models.pos import Transaction
 from app.models.product import Product, ProductStatus
 from app.models.user import User
@@ -258,6 +264,7 @@ async def get_client(
         "email_optin": client.email_optin,
         "sms_optin": client.sms_optin,
         "loyalty": loyalty_data,
+        "avoir_balance": float(client.avoir_credit or 0),
         "purchases": [
             {
                 "id": str(t.id),
@@ -823,4 +830,32 @@ Pièces sélectionnées pour elle : {items_str}.
         "narrative": narrative,
         "recommendations": recommendations,
         "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Avoir / store credit (P1-016)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/clients/{client_id}/avoir")
+async def get_client_avoir(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the client's avoir balance and transaction history."""
+    from app.services.refund import RefundService
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    refund_service = RefundService(db)
+    history = await refund_service.list_avoir_history(client_id)
+    return {
+        "client_id": str(client.id),
+        "balance": float(client.avoir_credit or 0),
+        "history": history,
     }

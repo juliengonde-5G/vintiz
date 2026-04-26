@@ -3,7 +3,13 @@ from app.models.user import User
 from app.models.product import Product, Category, PriceGrid
 from app.models.inventory import Supplier, Order, OrderItem
 from app.models.pos import Transaction, TransactionItem, Payment, CashDrawer, ZReport, Receipt
-from app.models.client import Client, LoyaltyAccount, LoyaltyTransaction
+from app.models.client import (
+    AvoirTransaction,
+    AvoirTxType,
+    Client,
+    LoyaltyAccount,
+    LoyaltyTransaction,
+)
 from app.models.store import StoreZone, ZoneProduct, TrendAnalysis, StoreArrangement, AIRecommendation
 from app.models.reporting import DailyReport, CommercialAction, ActionResult
 from app.models.audit import AuditLog, Settings
@@ -17,6 +23,7 @@ __all__ = [
     "Supplier", "Order", "OrderItem",
     "Transaction", "TransactionItem", "Payment", "CashDrawer", "ZReport", "Receipt",
     "Client", "LoyaltyAccount", "LoyaltyTransaction",
+    "AvoirTransaction", "AvoirTxType",
     "StoreZone", "ZoneProduct", "TrendAnalysis", "StoreArrangement", "AIRecommendation",
     "DailyReport", "CommercialAction", "ActionResult",
     "AuditLog", "Settings",

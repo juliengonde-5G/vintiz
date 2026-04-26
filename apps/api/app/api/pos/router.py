@@ -21,6 +21,7 @@ from app.schemas.user import (
 from app.services.cashier import CashierService
 from app.services.fiscal import FiscalService
 from app.services.pos import PosService
+from app.services.refund import RefundLineInput, RefundService
 
 manager_only = RoleChecker(["manager"])
 
@@ -582,3 +583,63 @@ async def list_cashiers(db: AsyncSession = Depends(get_db)):
     """List all users with their PIN status. Manager only."""
     cashier_service = CashierService(db)
     return await cashier_service.list_with_pin_status()
+
+
+# ---------------------------------------------------------------------------
+# Refunds (P1-010 + P1-016) — partial / full, settled in cash, card or avoir
+# ---------------------------------------------------------------------------
+
+
+class RefundLineRequest(BaseModel):
+    transaction_item_id: uuid.UUID
+    quantity: int
+
+
+class RefundRequest(BaseModel):
+    items: list[RefundLineRequest]
+    refund_method: str  # cash | card | cheque | avoir
+    cashier_id: uuid.UUID | None = None
+    reason: str | None = None
+
+
+@router.post("/transactions/{transaction_id}/refund")
+async def refund_transaction(
+    transaction_id: uuid.UUID,
+    request: RefundRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Issue a partial or full refund of a sale.
+
+    Refunded products are returned to display status. The refund total can
+    be settled in cash, on card (record only — SumUp call is a TODO), or as
+    store credit on the customer's avoir balance.
+    """
+    refund_service = RefundService(db)
+    fiscal_service = FiscalService(db)
+
+    refund_tx = await refund_service.refund_transaction(
+        original_tx_id=transaction_id,
+        items=[
+            RefundLineInput(line.transaction_item_id, line.quantity)
+            for line in request.items
+        ],
+        refund_method=request.refund_method,
+        user_id=current_user.id,
+        cashier_id=request.cashier_id,
+        reason=request.reason,
+    )
+    await fiscal_service.sign_transaction(refund_tx)
+    await db.commit()
+
+    return {
+        "id": str(refund_tx.id),
+        "transaction_number": refund_tx.transaction_number,
+        "transaction_type": refund_tx.transaction_type.value,
+        "original_transaction_id": str(refund_tx.original_transaction_id)
+        if refund_tx.original_transaction_id
+        else None,
+        "total_ttc": float(refund_tx.total_ttc),
+        "refund_method": request.refund_method,
+        "hash_chain": refund_tx.hash_chain,
+    }

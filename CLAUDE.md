@@ -139,6 +139,7 @@ GET  /api/inventory/products/{id}            Fiche produit
 GET  /api/inventory/products/{id}/label      Étiquette PNG
 GET  /api/inventory/products/{id}/score      Score détaillé
 POST /api/pos/transactions                   Créer une vente
+POST /api/pos/transactions/{id}/refund       Refund partiel/total (cash/card/cheque/avoir)
 GET  /api/pos/transactions/{id}/receipt      Texte du ticket (80 mm)
 POST /api/pos/transactions/{id}/resend       Renvoyer ticket (email/SMS)
 POST /api/pos/drawer/open                    Ouvrir la caisse (fond initial)
@@ -159,6 +160,7 @@ POST /api/ai/persona/marketing               Rapport marketing IA
 POST /api/ai/persona/juridique               Audit RGPD IA
 GET  /api/crm/clients/lookup?email=…         Lookup client public
 GET  /api/crm/clients/personal-shopper?email=…  Personal shopper
+GET  /api/crm/clients/{id}/avoir             Solde + historique avoir (store credit)
 ```
 
 ## Fonctionnalités principales

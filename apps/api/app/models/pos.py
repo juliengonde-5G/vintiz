@@ -54,6 +54,12 @@ class Transaction(Base):
     client_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("clients.id"), nullable=True
     )
+    # For refund transactions: link to the original sale (NF525 traceability,
+    # also lets the API compute "remaining refundable amount").
+    original_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("transactions.id"), nullable=True
+    )
+    refund_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     total_ht: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     total_tva: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     total_ttc: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
