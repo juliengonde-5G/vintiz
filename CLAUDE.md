@@ -185,6 +185,9 @@ GET  /api/crm/clients/personal-shopper?email=…  Personal shopper v1 (legacy r�
 GET  /api/crm/clients/{id}/personal-shopper-v2  Personal shopper v2 (embeddings + Claude Haiku)
 GET  /api/crm/personal-shopper-v2?email=        Personal shopper v2 public (lookup email)
 POST /api/crm/personal-shopper-v2/click         Log click sur recommandation
+GET  /api/crm/onboarding/options                Catalogue styles/occasions/budgets (public)
+POST /api/crm/clients/{id}/onboarding           Cold-start taste profile (manager)
+POST /api/crm/account/onboarding                Cold-start taste profile (public, body: email + choix)
 GET  /api/crm/clients/{id}/avoir             Solde + historique avoir (store credit)
 GET  /api/crm/clients/{id}/consents          Consentements RGPD (état courant + historique)
 POST /api/crm/clients/{id}/consents          Enregistrer consentement (purpose+granted+source)

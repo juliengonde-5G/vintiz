@@ -150,9 +150,14 @@ async def _run_monthly_scoring() -> None:
         from sqlalchemy import select
         from sqlalchemy.ext.asyncio import AsyncSession
         from app.models.product import Product, ProductStatus
+        from app.services.category_trends import refresh_cache
         from app.services.scoring_service import compute_score
 
         async with AsyncSession(engine) as db:
+            # Refresh the per-category trend cache once for the whole batch
+            # (P2-010) so each product gets the live signal instead of 50.0.
+            category_trends = await refresh_cache(db)
+
             result = await db.execute(
                 select(Product).where(
                     Product.status.in_([ProductStatus.stock, ProductStatus.display])
@@ -174,6 +179,9 @@ async def _run_monthly_scoring() -> None:
                     condition=getattr(product, "condition", "tres_bon") or "tres_bon",
                     brand=product.brand,
                     photo_url=product.photo_url,
+                    category_trend=category_trends.get(
+                        str(product.category_id), 50.0
+                    ),
                 )
                 product.trend_score = score_data["total_score"]
             await db.commit()
