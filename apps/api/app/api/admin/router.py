@@ -1083,12 +1083,27 @@ async def monthly_scoring_update(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Recompute trend score for all active products. Triggered on the 1st Wednesday of each month."""
+    from app.models.product import ProductPhoto
+    from app.services.brand_tiers import get_brand_score
     from app.services.category_trends import refresh_cache
     from app.services.scoring_service import compute_score
 
     # Refresh the per-category trend cache once for the whole pass (P2-010)
     # — replaces the static 50.0 default in the scoring formula.
     category_trends = await refresh_cache(db)
+
+    # Pre-aggregate photo data (P2-011) to avoid an N+1 in the loop.
+    photo_agg = await db.execute(
+        select(
+            ProductPhoto.product_id,
+            func.count(ProductPhoto.id).label("n"),
+            func.avg(ProductPhoto.ai_confidence).label("avg_conf"),
+        ).group_by(ProductPhoto.product_id)
+    )
+    photo_data = {
+        row[0]: (int(row[1]), float(row[2]) if row[2] is not None else None)
+        for row in photo_agg.all()
+    }
 
     result = await db.execute(
         select(Product).where(
@@ -1104,6 +1119,9 @@ async def monthly_scoring_update(
         )
         avg_price = float(avg_result.scalar_one_or_none() or product.sale_price)
 
+        brand_score = await get_brand_score(db, product.brand)
+        photo_count, photo_avg_conf = photo_data.get(product.id, (0, None))
+
         score_data = compute_score(
             shelf_date=product.shelf_date,
             sale_price=float(product.sale_price),
@@ -1112,6 +1130,9 @@ async def monthly_scoring_update(
             brand=product.brand,
             photo_url=product.photo_url,
             category_trend=category_trends.get(str(product.category_id), 50.0),
+            brand_score=brand_score,
+            photo_count=photo_count,
+            photo_avg_confidence=photo_avg_conf,
         )
         product.trend_score = score_data["total_score"]
         updated += 1
@@ -1329,6 +1350,129 @@ async def recompute_embeddings(
     )
     await db.commit()
     return summary
+
+
+# ---------------------------------------------------------------------------
+# Brand tiers (P2-012) — manager-curated DB replacing the hardcoded sets
+# ---------------------------------------------------------------------------
+
+
+class BrandTierRequest(BaseModel):
+    name: str
+    tier: str  # luxury / premium / mid / basic
+    score_override: float | None = None
+
+
+@router.get("/brand-tiers", dependencies=[Depends(manager_only)])
+async def list_brand_tiers(db: Annotated[AsyncSession, Depends(get_db)]):
+    from app.models.brand_tier import BRAND_TIER_SCORE, BrandTier
+
+    result = await db.execute(select(BrandTier).order_by(BrandTier.name))
+    return [
+        {
+            "id": str(r.id),
+            "name": r.name,
+            "tier": r.tier.value,
+            "score_override": r.score_override,
+            "effective_score": (
+                r.score_override
+                if r.score_override is not None
+                else BRAND_TIER_SCORE[r.tier]
+            ),
+        }
+        for r in result.scalars().all()
+    ]
+
+
+@router.post(
+    "/brand-tiers",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(manager_only)],
+)
+async def create_brand_tier(
+    request: BrandTierRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.brand_tier import BrandTier, BrandTierLevel
+    from app.services.brand_tiers import invalidate_cache
+
+    try:
+        tier = BrandTierLevel(request.tier)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "tier must be one of: "
+                + ", ".join(t.value for t in BrandTierLevel)
+            ),
+        )
+    row = BrandTier(
+        name=request.name.strip().lower(),
+        tier=tier,
+        score_override=request.score_override,
+    )
+    db.add(row)
+    try:
+        await db.flush()
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail=f"Brand already exists or invalid: {exc}"
+        )
+    await db.commit()
+    invalidate_cache()
+    return {"id": str(row.id), "name": row.name}
+
+
+@router.put(
+    "/brand-tiers/{tier_id}",
+    dependencies=[Depends(manager_only)],
+)
+async def update_brand_tier(
+    tier_id: uuid.UUID,
+    request: BrandTierRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.brand_tier import BrandTier, BrandTierLevel
+    from app.services.brand_tiers import invalidate_cache
+
+    result = await db.execute(select(BrandTier).where(BrandTier.id == tier_id))
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Brand tier not found")
+    try:
+        tier = BrandTierLevel(request.tier)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid tier")
+    row.name = request.name.strip().lower()
+    row.tier = tier
+    row.score_override = request.score_override
+    await db.flush()
+    await db.commit()
+    invalidate_cache()
+    return {"id": str(row.id), "name": row.name}
+
+
+@router.delete(
+    "/brand-tiers/{tier_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(manager_only)],
+)
+async def delete_brand_tier(
+    tier_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.brand_tier import BrandTier
+    from app.services.brand_tiers import invalidate_cache
+
+    result = await db.execute(select(BrandTier).where(BrandTier.id == tier_id))
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Brand tier not found")
+    await db.delete(row)
+    await db.commit()
+    invalidate_cache()
+    return None
 
 
 # ---------------------------------------------------------------------------
