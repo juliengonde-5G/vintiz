@@ -10,6 +10,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.core.audit_context import (
+    reset_current_user_id,
+    set_current_user_id,
+)
+
 logger = logging.getLogger("vintiz")
 
 
@@ -61,6 +66,47 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
                 },
             )
         return response
+
+
+class AuditContextMiddleware(BaseHTTPMiddleware):
+    """Decode the JWT (best-effort) and stash the user id in the audit ContextVar.
+
+    The SQLAlchemy event listeners that write AuditLog rows rely on this
+    ContextVar to attribute changes. If the request is unauthenticated or
+    the token is invalid, audit rows are written with user_id=NULL — that
+    is intentional and matches the AuditLog schema (FK is nullable).
+    """
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        token_str: str | None = None
+        auth = request.headers.get("authorization")
+        if auth and auth.lower().startswith("bearer "):
+            token_str = auth.split(" ", 1)[1].strip() or None
+
+        user_id: uuid.UUID | None = None
+        if token_str:
+            # Lazy import to avoid pulling JWT deps at module import time.
+            try:
+                from app.core.security import verify_token
+
+                payload = verify_token(token_str)
+                sub = payload.get("sub")
+                if sub:
+                    try:
+                        user_id = uuid.UUID(sub)
+                    except (ValueError, TypeError):
+                        user_id = None
+            except Exception:
+                # verify_token raises HTTPException on failure — swallow it
+                # here so anonymous-friendly endpoints still work; downstream
+                # auth deps will reject the request if needed.
+                user_id = None
+
+        token_handle = set_current_user_id(user_id)
+        try:
+            return await call_next(request)
+        finally:
+            reset_current_user_id(token_handle)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):

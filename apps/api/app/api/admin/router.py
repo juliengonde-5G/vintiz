@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import engine, get_db
 from app.core.security import RoleChecker, get_current_user, hash_password
 from app.models.base import Base
+from app.models.audit import AuditLog
 from app.models.client import Client, LoyaltyAccount, LoyaltyTransaction, LoyaltyTxType
 from app.models.inventory import Supplier
 from app.models.pos import (
@@ -1139,3 +1140,51 @@ async def delete_zone(
     await db.delete(zone)
     await db.flush()
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Audit log inspection (P1-013) — manager only
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/audit-logs",
+    dependencies=[Depends(manager_only)],
+)
+async def list_audit_logs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    entity: str | None = None,
+    action: str | None = None,
+    user_id: uuid.UUID | None = None,
+    skip: int = 0,
+    limit: int = 100,
+):
+    """Paginated audit log listing, newest first.
+
+    Optional filters: entity (e.g. "transaction"), action (create/update/delete),
+    user_id. Limit capped at 500 to keep responses snappy.
+    """
+    capped_limit = min(max(limit, 1), 500)
+    query = select(AuditLog).order_by(AuditLog.created_at.desc())
+    if entity:
+        query = query.where(AuditLog.entity == entity)
+    if action:
+        query = query.where(AuditLog.action == action)
+    if user_id is not None:
+        query = query.where(AuditLog.user_id == user_id)
+    query = query.offset(max(skip, 0)).limit(capped_limit)
+
+    result = await db.execute(query)
+    rows = result.scalars().all()
+    return [
+        {
+            "id": str(row.id),
+            "user_id": str(row.user_id) if row.user_id else None,
+            "action": row.action,
+            "entity": row.entity,
+            "entity_id": str(row.entity_id) if row.entity_id else None,
+            "data": row.data,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]

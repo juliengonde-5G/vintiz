@@ -9,7 +9,12 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.database import engine
 from app.core.logging_config import setup_logging
-from app.core.middleware import RequestIdMiddleware, SecurityHeadersMiddleware
+from app.core.middleware import (
+    AuditContextMiddleware,
+    RequestIdMiddleware,
+    SecurityHeadersMiddleware,
+)
+from app.services.audit import register_audit_listeners
 from app.models import Base
 from app.api.auth.router import router as auth_router
 from app.api.inventory.router import router as inventory_router
@@ -81,6 +86,10 @@ _RUNTIME_MIGRATIONS = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Register SQLAlchemy event listeners that auto-populate audit_logs.
+    # Idempotent — safe across hot reloads.
+    register_audit_listeners()
+
     # Create all DB tables on startup (idempotent — safe to run on every restart)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -133,6 +142,7 @@ app.add_middleware(
     expose_headers=["x-request-id"],
 )
 app.add_middleware(RequestIdMiddleware)
+app.add_middleware(AuditContextMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
 
