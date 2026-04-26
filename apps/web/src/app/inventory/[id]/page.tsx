@@ -9,6 +9,7 @@ import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
 import PhotoGallery from '@/components/inventory/PhotoGallery';
+import ProductHistory from '@/components/inventory/ProductHistory';
 import { api } from '@/lib/api';
 
 interface ProductDetail {
@@ -379,6 +380,10 @@ export default function ProductDetailPage() {
                 productId={product.id}
                 onChange={() => fetchProduct()}
               />
+            </Card>
+
+            <Card title="Historique des mouvements">
+              <ProductHistory productId={product.id} />
             </Card>
 
             <Card title="Transactions">

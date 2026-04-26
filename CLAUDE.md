@@ -143,6 +143,8 @@ POST /api/inventory/products/{id}/photos     Ajouter une photo (url + AI fields)
 POST /api/inventory/products/{id}/photos/{pid}/primary  Définir la photo primaire
 POST /api/inventory/products/{id}/photos/reorder        Réordonner (drag/drop)
 DELETE /api/inventory/products/{id}/photos/{pid}        Supprimer une photo
+POST /api/inventory/products/import-csv      Import en masse depuis CSV (multipart, ?dry_run=true)
+GET  /api/inventory/products/{id}/history    Historique mouvements (audit_logs)
 POST /api/pos/transactions                   Créer une vente (idempotent via client_uuid optionnel — replay offline safe)
 POST /api/pos/transactions/{id}/refund       Refund partiel/total (cash/card/cheque/avoir)
 GET  /api/pos/transactions/{id}/receipt      Texte du ticket (80 mm)
