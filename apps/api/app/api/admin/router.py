@@ -1910,6 +1910,154 @@ async def list_coupons(
 
 
 # ---------------------------------------------------------------------------
+# L2.4 — Local calendar (Vernon + Giverny + school holidays) + operations
+# ---------------------------------------------------------------------------
+
+
+class LocalEventPayload(BaseModel):
+    title: str
+    date_start: str  # ISO date
+    date_end: str
+    location: str = "Vernon"
+    expected_traffic_boost_pct: int = 0
+    description: str | None = None
+    source_url: str | None = None
+    is_school_holiday: bool = False
+
+
+@router.get("/local-events", dependencies=[Depends(manager_only)])
+async def list_local_events(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+):
+    """List LocalEvent entries, optionally filtered by date range."""
+    from app.models.local_calendar import LocalEvent
+    from datetime import date as _date
+
+    stmt = select(LocalEvent).order_by(LocalEvent.date_start)
+    if date_from:
+        stmt = stmt.where(LocalEvent.date_end >= _date.fromisoformat(date_from))
+    if date_to:
+        stmt = stmt.where(LocalEvent.date_start <= _date.fromisoformat(date_to))
+    rows = await db.execute(stmt)
+    return [
+        {
+            "id": str(e.id),
+            "title": e.title,
+            "date_start": e.date_start.isoformat(),
+            "date_end": e.date_end.isoformat(),
+            "location": e.location,
+            "expected_traffic_boost_pct": e.expected_traffic_boost_pct,
+            "description": e.description,
+            "is_school_holiday": e.is_school_holiday,
+        }
+        for e in rows.scalars().all()
+    ]
+
+
+@router.post("/local-events", dependencies=[Depends(manager_only)])
+async def create_local_event(
+    payload: LocalEventPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Create a LocalEvent."""
+    from app.models.local_calendar import LocalEvent
+    from datetime import date as _date
+
+    ev = LocalEvent(
+        title=payload.title,
+        date_start=_date.fromisoformat(payload.date_start),
+        date_end=_date.fromisoformat(payload.date_end),
+        location=payload.location,
+        expected_traffic_boost_pct=payload.expected_traffic_boost_pct,
+        description=payload.description,
+        source_url=payload.source_url,
+        is_school_holiday=payload.is_school_holiday,
+    )
+    db.add(ev)
+    await db.flush()
+    await db.refresh(ev)
+    return {"id": str(ev.id)}
+
+
+class CommercialOperationPayload(BaseModel):
+    name: str
+    date_start: str
+    date_end: str
+    status: str = "draft"
+    description: str | None = None
+    op_type: str = "soldes"
+    discount_pct: int = 0
+    applicable_categories: list[str] | None = None
+    applicable_zones: list[str] | None = None
+    visible_pos: bool = True
+    visible_site: bool = False
+
+
+@router.get("/operations", dependencies=[Depends(manager_only)])
+async def list_operations(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    only_active: bool = Query(default=False),
+):
+    from app.models.local_calendar import CommercialOperation
+    from datetime import date as _date
+
+    stmt = select(CommercialOperation).order_by(CommercialOperation.date_start.desc())
+    if only_active:
+        today = _date.today()
+        stmt = stmt.where(
+            CommercialOperation.status == "active",
+            CommercialOperation.date_start <= today,
+            CommercialOperation.date_end >= today,
+        )
+    rows = await db.execute(stmt)
+    return [
+        {
+            "id": str(o.id),
+            "name": o.name,
+            "date_start": o.date_start.isoformat(),
+            "date_end": o.date_end.isoformat(),
+            "status": o.status,
+            "op_type": o.op_type,
+            "discount_pct": o.discount_pct,
+            "applicable_categories": o.applicable_categories,
+            "applicable_zones": o.applicable_zones,
+            "visible_pos": o.visible_pos,
+            "visible_site": o.visible_site,
+        }
+        for o in rows.scalars().all()
+    ]
+
+
+@router.post("/operations", dependencies=[Depends(manager_only)])
+async def create_operation(
+    payload: CommercialOperationPayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.models.local_calendar import CommercialOperation
+    from datetime import date as _date
+
+    op = CommercialOperation(
+        name=payload.name,
+        date_start=_date.fromisoformat(payload.date_start),
+        date_end=_date.fromisoformat(payload.date_end),
+        status=payload.status,
+        description=payload.description,
+        op_type=payload.op_type,
+        discount_pct=payload.discount_pct,
+        applicable_categories=payload.applicable_categories,
+        applicable_zones=payload.applicable_zones,
+        visible_pos=payload.visible_pos,
+        visible_site=payload.visible_site,
+    )
+    db.add(op)
+    await db.flush()
+    await db.refresh(op)
+    return {"id": str(op.id)}
+
+
+# ---------------------------------------------------------------------------
 # L4 — Scoring config (DB-backed weights with hot reload)
 # ---------------------------------------------------------------------------
 

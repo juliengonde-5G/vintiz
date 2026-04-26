@@ -260,3 +260,151 @@ async def get_weekday_weights(
     recompute: int = 0,
 ):
     return await svc.get_weekday_weights(db, force_recompute=bool(recompute))
+
+
+# ---------------------------------------------------------------------------
+# L2.4 — Cahier 2 temps : prévisionnel J + archive J-1 + historique
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{report_date}/forecast")
+async def get_day_forecast(
+    report_date: date,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Bandeau prévisionnel pour le jour J (CA prévu, événements, opérations).
+
+    Combine :
+    - season_coef + holiday_coef + event_coef via local_calendar
+    - weekday weight (recomputed from history)
+    - monthly target (cahier_service)
+    - active commercial operations on the date
+    """
+    from app.services.local_calendar import (
+        active_operations,
+        events_around,
+        school_holiday_for,
+        traffic_coef_for,
+    )
+
+    coef = await traffic_coef_for(db, report_date)
+    holidays = coef["holiday"]
+    events = coef["events"]
+    operations = await active_operations(db, report_date)
+
+    # Weekday weight
+    ww = await svc.get_weekday_weights(db, force_recompute=False)
+    weights = ww.get("weights", [])
+    weekday_idx = report_date.weekday()  # 0..6
+    weekday_weight = weights[weekday_idx] if weights and weekday_idx < len(weights) else 1.0
+
+    # Monthly target → prorata day
+    target = await svc.get_monthly_target(db, report_date.year, report_date.month)
+    monthly_target = float(target.get("target_eur", 0)) if target else 0
+    # Approximate per-day target = monthly × weekday_weight × final_coef
+    day_forecast = monthly_target / 30 * weekday_weight * coef["final_coef"] if monthly_target else 0
+
+    return {
+        "date": report_date.isoformat(),
+        "season_coef": coef["season_coef"],
+        "weekday_weight": weekday_weight,
+        "school_holiday": holidays,
+        "events": events,
+        "operations": operations,
+        "monthly_target": monthly_target,
+        "day_forecast_revenue": round(day_forecast, 2),
+        "final_coef": coef["final_coef"],
+    }
+
+
+class CahierArchivePayload(BaseModel):
+    report_date: date
+    manager_morning_note: str | None = None
+    manager_evening_comment: str | None = None
+    forecast_revenue: float | None = None
+    actual_revenue: float | None = None
+
+
+@router.put("/archive", dependencies=[Depends(manager_only)])
+async def upsert_cahier_archive(
+    payload: CahierArchivePayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Save (or update) a cahier_day_archive row.
+
+    The morning note can be saved in advance (J-1 evening or earlier).
+    The evening comment is added the next day. After J+7, the row is
+    locked (locked_at) and further edits are refused.
+    """
+    from app.models.local_calendar import CahierDayArchive
+    from sqlalchemy import select as _select
+
+    res = await db.execute(
+        _select(CahierDayArchive).where(CahierDayArchive.report_date == payload.report_date)
+    )
+    row = res.scalar_one_or_none()
+    if row and row.locked_at:
+        raise HTTPException(status_code=403, detail="Cette page est archivée et verrouillée.")
+
+    if not row:
+        row = CahierDayArchive(report_date=payload.report_date)
+        db.add(row)
+
+    if payload.manager_morning_note is not None:
+        row.manager_morning_note = payload.manager_morning_note
+    if payload.manager_evening_comment is not None:
+        row.manager_evening_comment = payload.manager_evening_comment
+    if payload.forecast_revenue is not None:
+        row.forecast_revenue = payload.forecast_revenue
+    if payload.actual_revenue is not None:
+        row.actual_revenue = payload.actual_revenue
+
+    # Auto-lock à J+7
+    days_since = (date.today() - payload.report_date).days
+    if days_since >= 7:
+        row.locked_at = datetime.now()
+
+    await db.flush()
+    await db.refresh(row)
+    return {
+        "report_date": row.report_date.isoformat(),
+        "locked": row.locked_at is not None,
+        "manager_morning_note": row.manager_morning_note,
+        "manager_evening_comment": row.manager_evening_comment,
+    }
+
+
+@router.get("/archive/history")
+async def cahier_archive_history(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    limit: int = 30,
+):
+    """List recent archived cahier days, newest first."""
+    from app.models.local_calendar import CahierDayArchive
+    from sqlalchemy import select as _select
+
+    res = await db.execute(
+        _select(CahierDayArchive)
+        .order_by(CahierDayArchive.report_date.desc())
+        .limit(limit)
+    )
+    rows = res.scalars().all()
+    return [
+        {
+            "report_date": r.report_date.isoformat(),
+            "forecast_revenue": float(r.forecast_revenue or 0),
+            "actual_revenue": float(r.actual_revenue or 0),
+            "delta_pct": (
+                round(((float(r.actual_revenue or 0) - float(r.forecast_revenue or 0))
+                       / float(r.forecast_revenue or 1)) * 100, 1)
+                if r.forecast_revenue
+                else None
+            ),
+            "manager_morning_note": r.manager_morning_note,
+            "manager_evening_comment": r.manager_evening_comment,
+            "locked": r.locked_at is not None,
+        }
+        for r in rows
+    ]

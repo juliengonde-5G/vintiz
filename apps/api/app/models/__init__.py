@@ -37,6 +37,11 @@ from app.models.ai_task import AITask
 from app.models.newsletter import NewsletterSubscriber
 from app.models.coupon import Coupon, CouponDiscountType, CouponSource
 from app.models.reservation import Reservation, ReservationStatus
+from app.models.local_calendar import (
+    CahierDayArchive,
+    CommercialOperation,
+    LocalEvent,
+)
 
 __all__ = [
     "Base",
@@ -62,4 +67,5 @@ __all__ = [
     "NewsletterSubscriber",
     "Coupon", "CouponDiscountType", "CouponSource",
     "Reservation", "ReservationStatus",
+    "LocalEvent", "CommercialOperation", "CahierDayArchive",
 ]

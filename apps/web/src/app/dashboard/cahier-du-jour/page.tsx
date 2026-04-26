@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Button from '@/components/ui/Button';
+import CahierForecastPanel from '@/components/dashboard/CahierForecastPanel';
 import { api } from '@/lib/api';
 
 interface CahierPayload {
@@ -259,6 +260,9 @@ export default function CahierDuJourPage() {
                 Archive — consultation uniquement
               </div>
             )}
+
+            {/* L2.4 — Bandeau prévisionnel : saison + vacances + événements + opérations */}
+            <CahierForecastPanel date={selectedDate} />
 
             {/* Header */}
             <section>
