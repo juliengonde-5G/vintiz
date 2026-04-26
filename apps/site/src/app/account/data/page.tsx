@@ -34,6 +34,16 @@ interface ClientLookup {
   }[];
 }
 
+interface PublicReservation {
+  id: string;
+  product_name: string;
+  product_barcode: string;
+  sale_price: number;
+  status: string;
+  expires_at: string | null;
+  created_at: string | null;
+}
+
 function formatCurrency(v: number): string {
   return v.toFixed(2).replace(".", ",") + " €";
 }
@@ -50,6 +60,7 @@ function formatDate(s: string | null): string {
 export default function AccountDataPage() {
   const [email, setEmail] = useState("");
   const [data, setData] = useState<ClientLookup | null>(null);
+  const [reservations, setReservations] = useState<PublicReservation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [actionMsg, setActionMsg] = useState("");
@@ -71,6 +82,20 @@ export default function AccountDataPage() {
         setError(body?.detail || "Aucun compte trouvé pour cet email.");
       } else {
         setData(body);
+        // Fire and forget — reservations are a nice-to-have on the page.
+        fetch(
+          `${API_URL}/api/reservations/lookup?email=${encodeURIComponent(email)}`,
+          { cache: "no-store" }
+        )
+          .then(async (r) => {
+            if (r.ok) {
+              const payload = await r.json();
+              setReservations(payload.reservations || []);
+            } else {
+              setReservations([]);
+            }
+          })
+          .catch(() => setReservations([]));
       }
     } catch {
       setError("Impossible de contacter le serveur. Réessayez plus tard.");
@@ -271,6 +296,50 @@ export default function AccountDataPage() {
                   </div>
                 )}
               </section>
+
+              {reservations.filter((r) => r.status === "active").length > 0 && (
+                <section className="bg-white rounded-2xl shadow-sm p-6">
+                  <h2 className="text-lg font-semibold text-black mb-3">
+                    Vos pièces réservées
+                  </h2>
+                  <ul className="divide-y divide-gray-100">
+                    {reservations
+                      .filter((r) => r.status === "active")
+                      .map((r) => (
+                        <li key={r.id} className="py-3">
+                          <div className="flex justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-black">
+                                {r.product_name}
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                Réservée jusqu&apos;au{" "}
+                                {r.expires_at
+                                  ? new Date(r.expires_at).toLocaleString(
+                                      "fr-FR",
+                                      {
+                                        day: "2-digit",
+                                        month: "long",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      },
+                                    )
+                                  : "—"}
+                              </p>
+                            </div>
+                            <span className="font-semibold text-teal whitespace-nowrap">
+                              {formatCurrency(r.sale_price)}
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                  </ul>
+                  <p className="mt-3 text-xs text-gray-500">
+                    Passez en boutique au 36 rue d&apos;Albuféra avant l&apos;expiration
+                    pour récupérer vos pièces.
+                  </p>
+                </section>
+              )}
 
               <section className="bg-white rounded-2xl shadow-sm p-6">
                 <h2 className="text-lg font-semibold text-black mb-3">

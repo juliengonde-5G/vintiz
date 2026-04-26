@@ -36,6 +36,7 @@ from app.models.embeddings import (
 from app.models.ai_task import AITask
 from app.models.newsletter import NewsletterSubscriber
 from app.models.coupon import Coupon, CouponDiscountType, CouponSource
+from app.models.reservation import Reservation, ReservationStatus
 
 __all__ = [
     "Base",
@@ -60,4 +61,5 @@ __all__ = [
     "AITask",
     "NewsletterSubscriber",
     "Coupon", "CouponDiscountType", "CouponSource",
+    "Reservation", "ReservationStatus",
 ]
