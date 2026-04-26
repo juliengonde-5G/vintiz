@@ -99,6 +99,30 @@ async def _run_weekly_window_display() -> None:
         logger.error("Window-display job failed: %s", exc)
 
 
+async def _run_nightly_markdown_engine() -> None:
+    """Background job (P3-001): apply Camille's markdown rules.
+
+    Runs daily at 01:00 Paris time — before the return-to-sorting cron
+    so an item that's been discounted then sat too long can still
+    transition to returned_to_sorting on the same night."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.markdown_engine import MarkdownEngineService
+
+        async with AsyncSession(engine) as db:
+            summary = await MarkdownEngineService(db).run_batch()
+            await db.commit()
+            logger.info(
+                "Markdown engine: scanned=%d, matched=%d, applied=%d",
+                summary.scanned,
+                summary.matched,
+                summary.applied,
+            )
+    except Exception as exc:
+        logger.error("Markdown engine job failed: %s", exc)
+
+
 async def _run_daily_return_to_sorting() -> None:
     """Background job (P3-007): return aged unsold products to the sorting
     centre. Runs daily at 02:00 Paris — before the embedding refresh so the
@@ -243,6 +267,12 @@ async def lifespan(app: FastAPI):
             _run_daily_embedding_refresh,
             CronTrigger(hour=4, minute=0),
             id="daily_embedding_refresh",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_nightly_markdown_engine,
+            CronTrigger(hour=1, minute=0),
+            id="nightly_markdown_engine",
             replace_existing=True,
         )
         scheduler.add_job(

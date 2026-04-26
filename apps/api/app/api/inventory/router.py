@@ -194,7 +194,7 @@ async def get_product_label(
 ):
     """Generate and return a PNG label for a product."""
     from fastapi.responses import Response
-    from app.services.label import generate_label
+    from app.services.label import generate_label, life_cycle_tag_color
     from app.services.barcode import generate_barcode
 
     result = await db.execute(select(Product).where(Product.id == product_id))
@@ -212,6 +212,12 @@ async def get_product_label(
     except Exception:
         barcode_png = None
 
+    # Pick the life-cycle tag colour (P3-002).
+    tag_color = life_cycle_tag_color(
+        status=product.status.value,
+        displayed_at=product.displayed_at,
+    )
+
     # Generate full label
     label_png = generate_label(
         product_name=product.name,
@@ -220,6 +226,7 @@ async def get_product_label(
         price=f"{float(product.sale_price):.2f} €",
         week=week,
         barcode_image=barcode_png,
+        tag_color=tag_color,
     )
 
     return Response(content=label_png, media_type="image/png")
