@@ -128,13 +128,23 @@ Base URL: `http://localhost:8000`
 ### Endpoints clés
 
 ```
-POST /api/auth/login                         Connexion
+POST /api/auth/login                         Connexion (manager username/password)
+POST /api/pos/cashier/login                  Identifier le cashier au POS via PIN 4 chiffres
+POST /api/pos/cashier/set-pin                Définir/changer un PIN (manager only)
+POST /api/pos/cashier/clear-pin              Retirer un PIN (manager only)
+GET  /api/pos/cashier/list                   Lister utilisateurs + statut PIN (manager only)
 GET  /api/inventory/products                 Liste produits (paginée)
 GET  /api/inventory/products/search?q=…      Recherche (filtre stock+display par défaut, &include_sold=true sinon)
 GET  /api/inventory/products/{id}            Fiche produit
 GET  /api/inventory/products/{id}/label      Étiquette PNG
 GET  /api/inventory/products/{id}/score      Score détaillé
+GET  /api/inventory/products/{id}/photos     Liste multi-photos
+POST /api/inventory/products/{id}/photos     Ajouter une photo (url + AI fields)
+POST /api/inventory/products/{id}/photos/{pid}/primary  Définir la photo primaire
+POST /api/inventory/products/{id}/photos/reorder        Réordonner (drag/drop)
+DELETE /api/inventory/products/{id}/photos/{pid}        Supprimer une photo
 POST /api/pos/transactions                   Créer une vente
+POST /api/pos/transactions/{id}/refund       Refund partiel/total (cash/card/cheque/avoir)
 GET  /api/pos/transactions/{id}/receipt      Texte du ticket (80 mm)
 POST /api/pos/transactions/{id}/resend       Renvoyer ticket (email/SMS)
 POST /api/pos/drawer/open                    Ouvrir la caisse (fond initial)
@@ -148,12 +158,42 @@ GET  /api/pos/payments/cb/sandbox/state      Event log sandbox (live)
 POST /api/pos/payments/cb/sandbox/{id}/approve  Valider manuellement
 POST /api/pos/payments/cb/sandbox/{id}/decline  Refuser manuellement
 GET  /api/admin/weather                      Météo Vernon
+GET  /api/admin/audit-logs                   Journal AuditLog (manager only, filtres entity/action/user_id)
+GET  /api/admin/fiscal-export?from=&to=&format=xml|json  Export fiscal NF525/DGFiP (manager only)
+GET  /api/admin/data-quality?days=7          Volumes events_log par type + courbe (manager only)
+POST /api/admin/embeddings/recompute         Recalcul embeddings catalogue (manager only)
+POST /api/admin/embeddings/customer/{id}     Refresh taste profile cliente (manager only)
+GET  /api/admin/return-to-sorting/preview    Dry-run retour automatique tri (manager only)
+POST /api/admin/return-to-sorting/run        Trigger manuel retour automatique (manager only)
+POST /api/inventory/products/{id}/transition Transition cycle de vie produit (FSM)
+POST /api/inventory/batches                  Créer un lot d'arrivage (carton)
+GET  /api/inventory/batches                  Liste des lots
+GET  /api/inventory/batches/{id}             Détail lot + produits assignés
+POST /api/inventory/batches/{id}/assign-product  Rattacher produit au lot
+GET  /api/inventory/products/{id}/suggest-zone   Reco placement zone (P2-006)
+GET  /api/inventory/locate?q=                Localiser un produit en boutique (P2-008)
+GET  /api/admin/store-plan                   Plan zones + occupation + score moyen (manager only)
+GET  /api/admin/window-display/current       Proposition vitrine semaine courante (manager only)
+POST /api/admin/window-display/regenerate    Régénérer la proposition (manager only)
+POST /api/admin/window-display/{id}/accept   Valider la vitrine (manager only)
 GET  /api/ai/weekly-checklist                Checklist semaine IA
 GET  /api/ai/trends                          Tendances mode
 POST /api/ai/persona/marketing               Rapport marketing IA
 POST /api/ai/persona/juridique               Audit RGPD IA
 GET  /api/crm/clients/lookup?email=…         Lookup client public
-GET  /api/crm/clients/personal-shopper?email=…  Personal shopper
+GET  /api/crm/clients/personal-shopper?email=…  Personal shopper v1 (legacy règles)
+GET  /api/crm/clients/{id}/personal-shopper-v2  Personal shopper v2 (embeddings + Claude Haiku)
+GET  /api/crm/personal-shopper-v2?email=        Personal shopper v2 public (lookup email)
+POST /api/crm/personal-shopper-v2/click         Log click sur recommandation
+GET  /api/crm/clients/{id}/avoir             Solde + historique avoir (store credit)
+GET  /api/crm/clients/{id}/consents          Consentements RGPD (état courant + historique)
+POST /api/crm/clients/{id}/consents          Enregistrer consentement (purpose+granted+source)
+GET  /api/crm/clients/{id}/data-export       Export RGPD JSON portable (Article 20)
+POST /api/crm/clients/{id}/deletion-request  Demande suppression (soft, fenêtre 30j)
+POST /api/crm/clients/{id}/deletion-cancel   Annuler demande de suppression
+GET  /api/crm/account/data-export?email=     Public — export RGPD JSON par email
+POST /api/crm/account/deletion-request       Public — demande suppression (body: email)
+POST /api/crm/account/deletion-cancel        Public — annuler suppression (body: email)
 ```
 
 ## Fonctionnalités principales

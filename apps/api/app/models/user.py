@@ -21,3 +21,5 @@ class User(Base):
         Enum(UserRole, name="user_role"), nullable=False, default=UserRole.collaborateur
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # 4-digit POS PIN, bcrypt-hashed. Nullable: managers don't need a POS PIN.
+    pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)

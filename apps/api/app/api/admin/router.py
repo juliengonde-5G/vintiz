@@ -6,7 +6,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, List
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import engine, get_db
 from app.core.security import RoleChecker, get_current_user, hash_password
 from app.models.base import Base
+from app.models.audit import AuditLog
 from app.models.client import Client, LoyaltyAccount, LoyaltyTransaction, LoyaltyTxType
 from app.models.inventory import Supplier
 from app.models.pos import (
@@ -1139,3 +1141,347 @@ async def delete_zone(
     await db.delete(zone)
     await db.flush()
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Audit log inspection (P1-013) — manager only
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/audit-logs",
+    dependencies=[Depends(manager_only)],
+)
+async def list_audit_logs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    entity: str | None = None,
+    action: str | None = None,
+    user_id: uuid.UUID | None = None,
+    skip: int = 0,
+    limit: int = 100,
+):
+    """Paginated audit log listing, newest first.
+
+    Optional filters: entity (e.g. "transaction"), action (create/update/delete),
+    user_id. Limit capped at 500 to keep responses snappy.
+    """
+    capped_limit = min(max(limit, 1), 500)
+    query = select(AuditLog).order_by(AuditLog.created_at.desc())
+    if entity:
+        query = query.where(AuditLog.entity == entity)
+    if action:
+        query = query.where(AuditLog.action == action)
+    if user_id is not None:
+        query = query.where(AuditLog.user_id == user_id)
+    query = query.offset(max(skip, 0)).limit(capped_limit)
+
+    result = await db.execute(query)
+    rows = result.scalars().all()
+    return [
+        {
+            "id": str(row.id),
+            "user_id": str(row.user_id) if row.user_id else None,
+            "action": row.action,
+            "entity": row.entity,
+            "entity_id": str(row.entity_id) if row.entity_id else None,
+            "data": row.data,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Fiscal export NF525 / DGFiP (P1-015 — closes P1-001)
+# ---------------------------------------------------------------------------
+
+
+def _parse_iso_date(value: str | None, field: str) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        # Accept "YYYY-MM-DD" or full ISO 8601.
+        if "T" in value:
+            return datetime.fromisoformat(value)
+        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {field}: expected ISO date (YYYY-MM-DD or full ISO 8601)",
+        ) from exc
+
+
+@router.get(
+    "/fiscal-export",
+    dependencies=[Depends(manager_only)],
+)
+async def fiscal_export(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    period_from: str | None = Query(None, alias="from"),
+    period_to: str | None = Query(None, alias="to"),
+    fmt: str = Query("xml", alias="format", pattern="^(xml|json)$"),
+    merchant_name: str = Query("Frip & Co Vernon"),
+    merchant_id: str = Query(""),
+):
+    """Build a NF525-compliant fiscal export over the given period.
+
+    Always includes the SHA-256 hash chain so a tax auditor can verify
+    no transaction has been altered after the fact. Manager only.
+    """
+    from app.services.fiscal_export import FiscalExportService
+
+    period_from_dt = _parse_iso_date(period_from, "from")
+    period_to_dt = _parse_iso_date(period_to, "to")
+
+    svc = FiscalExportService(db)
+    snapshot = await svc.build_snapshot(
+        period_from=period_from_dt,
+        period_to=period_to_dt,
+        merchant_name=merchant_name,
+        merchant_id=merchant_id,
+    )
+
+    suffix = period_from_dt.date().isoformat() if period_from_dt else "all"
+    filename = f"vintiz-fiscal-export-{suffix}.{fmt}"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    }
+    if fmt == "json":
+        return Response(
+            content=svc.to_json(snapshot),
+            media_type="application/json",
+            headers=headers,
+        )
+    return Response(
+        content=svc.to_xml(snapshot),
+        media_type="application/xml",
+        headers=headers,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Data quality / event store observability (P1-003)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/data-quality",
+    dependencies=[Depends(manager_only)],
+)
+async def data_quality(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    days: int = 7,
+):
+    """Surface event-store coverage so silent instrumentation regressions
+    (e.g. zero ``product.viewed`` events for a day = JS broke) are spotted.
+
+    Returns counts by event_type over the last ``days`` (default 7) plus
+    a daily total. Manager only.
+    """
+    from app.services.events import EventService
+
+    days = max(1, min(days, 90))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    svc = EventService(db)
+    by_type = await svc.counts_by_type(since=since)
+    daily = await svc.daily_volume(since=since)
+    return {
+        "since": since.isoformat(),
+        "window_days": days,
+        "by_event_type": by_type,
+        "daily_total": daily,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Embeddings recompute (P1-004) — admin trigger, mirrors the daily cron
+# ---------------------------------------------------------------------------
+
+
+class RecomputeRequest(BaseModel):
+    only_missing: bool = False
+
+
+@router.post(
+    "/embeddings/recompute",
+    dependencies=[Depends(manager_only)],
+)
+async def recompute_embeddings(
+    request: RecomputeRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Recompute product embeddings for the catalogue.
+
+    ``only_missing=True`` skips products whose embeddings already match
+    the current encoder version — useful for incremental backfill.
+    Manager only.
+    """
+    from app.services.embeddings import EmbeddingService
+
+    summary = await EmbeddingService(db).recompute_all_products(
+        only_missing=request.only_missing
+    )
+    await db.commit()
+    return summary
+
+
+@router.get(
+    "/return-to-sorting/preview",
+    dependencies=[Depends(manager_only)],
+)
+async def preview_return_to_sorting(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Dry-run of the return-to-sorting policy — what would be moved if the
+    cron ran right now. Useful for reviewing the threshold before flipping
+    auto-mode in production."""
+    from app.services.return_to_sorting import ReturnToSortingService
+
+    svc = ReturnToSortingService(db)
+    candidates = await svc.find_eligible()
+    return {
+        "policy": svc._policy_dict(),
+        "candidate_count": len(candidates),
+        "candidates": [
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "barcode": p.barcode,
+                "status": p.status.value,
+                "trend_score": p.trend_score,
+                "displayed_at": p.displayed_at.isoformat() if p.displayed_at else None,
+                "intake_batch_id": str(p.intake_batch_id) if p.intake_batch_id else None,
+            }
+            for p in candidates
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Store plan + window display (P2-005 + P2-007)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/store-plan",
+    dependencies=[Depends(manager_only)],
+)
+async def store_plan(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Return all zones with their canvas coordinates, current occupancy
+    and the score-bucket colour code so the front can render the SVG
+    plan directly (P2-005)."""
+    from app.services.merchandising import MerchandisingService
+
+    return {"zones": await MerchandisingService(db).zone_occupancy()}
+
+
+@router.get(
+    "/window-display/current",
+    dependencies=[Depends(manager_only)],
+)
+async def get_current_window_display(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Return the current ISO week's window-display proposal, or 404 if
+    the cron hasn't run yet."""
+    from app.services.merchandising import MerchandisingService
+
+    proposal = await MerchandisingService(db).get_current_window_proposal()
+    if proposal is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Aucune proposition vitrine pour la semaine en cours.",
+        )
+    return {
+        "id": str(proposal.id),
+        "iso_week": proposal.iso_week,
+        "proposal": proposal.proposal,
+        "used_llm": proposal.used_llm,
+        "accepted_at": proposal.accepted_at.isoformat() if proposal.accepted_at else None,
+        "accepted_by_user_id": str(proposal.accepted_by_user_id) if proposal.accepted_by_user_id else None,
+    }
+
+
+@router.post(
+    "/window-display/regenerate",
+    dependencies=[Depends(manager_only)],
+)
+async def regenerate_window_display(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Force a fresh window-display proposal for the current ISO week.
+    Same effect as waiting for the Monday 06:00 cron."""
+    from app.services.merchandising import MerchandisingService
+
+    proposal = await MerchandisingService(db).propose_weekly_window()
+    await db.commit()
+    return {
+        "id": str(proposal.id),
+        "iso_week": proposal.iso_week,
+        "proposal": proposal.proposal,
+    }
+
+
+@router.post(
+    "/window-display/{proposal_id}/accept",
+    dependencies=[Depends(manager_only)],
+)
+async def accept_window_display(
+    proposal_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    from app.services.merchandising import MerchandisingService
+
+    proposal = await MerchandisingService(db).accept_window_proposal(
+        proposal_id, current_user.id
+    )
+    await db.commit()
+    return {
+        "id": str(proposal.id),
+        "iso_week": proposal.iso_week,
+        "accepted_at": proposal.accepted_at.isoformat() if proposal.accepted_at else None,
+    }
+
+
+@router.post(
+    "/return-to-sorting/run",
+    dependencies=[Depends(manager_only)],
+)
+async def run_return_to_sorting(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Manually trigger the return-to-sorting cron pass. Same effect as
+    waiting for the 02:00 daily run."""
+    from app.services.return_to_sorting import ReturnToSortingService
+
+    summary = await ReturnToSortingService(db).run()
+    await db.commit()
+    return summary
+
+
+@router.post(
+    "/embeddings/customer/{client_id}",
+    dependencies=[Depends(manager_only)],
+)
+async def recompute_taste_profile(
+    client_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Refresh one customer's taste centroid (admin tool / debugging)."""
+    from app.services.embeddings import EmbeddingService
+
+    profile = await EmbeddingService(db).recompute_taste_profile(client_id)
+    if profile is None:
+        return {
+            "client_id": str(client_id),
+            "computed": False,
+            "reason": "No analyzable purchases",
+        }
+    await db.commit()
+    return {
+        "client_id": str(client_id),
+        "computed": True,
+        "n_purchases_analyzed": profile.n_purchases_analyzed,
+        "algo_version": profile.algo_version,
+    }

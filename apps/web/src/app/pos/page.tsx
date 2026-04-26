@@ -7,7 +7,16 @@ import NumPad from '@/components/ui/NumPad';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import Card from '@/components/ui/Card';
+import CashierPinModal from '@/components/cashier/CashierPinModal';
 import { api } from '@/lib/api';
+
+interface Cashier {
+  id: string;
+  username: string;
+  role: string;
+}
+
+const CASHIER_STORAGE_KEY = 'vintiz_pos_cashier';
 
 interface SearchProduct {
   id: string;
@@ -28,7 +37,7 @@ interface CartItem {
 }
 
 interface PaymentLine {
-  method: 'especes' | 'carte' | 'cheque';
+  method: 'especes' | 'carte' | 'cheque' | 'avoir';
   amount: number;
 }
 
@@ -49,6 +58,7 @@ interface ClientDetail {
   email?: string;
   notes?: string;
   loyalty: { points: number; tier: string } | null;
+  avoir_balance?: number;
   purchases: { id: string; transaction_number: number; total_ttc: number; created_at: string }[];
 }
 
@@ -119,6 +129,11 @@ export default function POSPage() {
   const [zReport, setZReport] = useState<{ z_report_number: number; total_sales: number; total_refunds: number; total_net: number; transaction_count: number; difference: number } | null>(null);
   const [drawerSubmitting, setDrawerSubmitting] = useState(false);
 
+  // Cashier identification (NF525 — P1-002)
+  const [cashier, setCashier] = useState<Cashier | null>(null);
+  const [showCashierModal, setShowCashierModal] = useState(false);
+  const [cashierModalDismissible, setCashierModalDismissible] = useState(false);
+
   // General
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -144,6 +159,40 @@ export default function POSPage() {
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   const remaining = cartTotalAfterLoyalty - totalPaid;
 
+  // ── Cashier identification ──────────────────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = sessionStorage.getItem(CASHIER_STORAGE_KEY);
+    if (stored) {
+      try {
+        setCashier(JSON.parse(stored) as Cashier);
+        return;
+      } catch {
+        sessionStorage.removeItem(CASHIER_STORAGE_KEY);
+      }
+    }
+    setCashierModalDismissible(false);
+    setShowCashierModal(true);
+  }, []);
+
+  const handleCashierAuthenticated = (next: Cashier) => {
+    setCashier(next);
+    sessionStorage.setItem(CASHIER_STORAGE_KEY, JSON.stringify(next));
+    setShowCashierModal(false);
+  };
+
+  const switchCashier = () => {
+    setCashierModalDismissible(true);
+    setShowCashierModal(true);
+  };
+
+  const logoutCashier = () => {
+    sessionStorage.removeItem(CASHIER_STORAGE_KEY);
+    setCashier(null);
+    setCashierModalDismissible(false);
+    setShowCashierModal(true);
+  };
+
   // ── Cash drawer ─────────────────────────────────────────────────
   useEffect(() => {
     api.get('/api/pos/drawer/current').then(async (res) => {
@@ -154,7 +203,10 @@ export default function POSPage() {
   const handleOpenDrawer = async () => {
     setDrawerSubmitting(true);
     try {
-      const res = await api.post('/api/pos/drawer/open', { opening_amount: drawerAmount });
+      const res = await api.post('/api/pos/drawer/open', {
+        opening_amount: drawerAmount,
+        cashier_id: cashier?.id,
+      });
       if (res.ok) {
         const data = await res.json();
         setDrawer({ open: true, drawer_id: data.drawer_id, opening_amount: data.opening_amount });
@@ -168,7 +220,10 @@ export default function POSPage() {
   const handleCloseDrawer = async () => {
     setDrawerSubmitting(true);
     try {
-      const res = await api.post('/api/pos/drawer/close', { closing_amount: drawerAmount });
+      const res = await api.post('/api/pos/drawer/close', {
+        closing_amount: drawerAmount,
+        cashier_id: cashier?.id,
+      });
       if (res.ok) {
         const data = await res.json();
         setZReport(data);
@@ -458,7 +513,12 @@ export default function POSPage() {
 
   // ── Payment ──────────────────────────────────────────────────────
   const addPayment = (method: PaymentLine['method']) => {
-    const autoAmount = Math.max(0, parseFloat((cartTotalAfterLoyalty - totalPaid).toFixed(2)));
+    const remainingBeforeLine = Math.max(0, parseFloat((cartTotalAfterLoyalty - totalPaid).toFixed(2)));
+    let autoAmount = remainingBeforeLine;
+    if (method === 'avoir') {
+      const balance = selectedClient?.avoir_balance || 0;
+      autoAmount = Math.min(remainingBeforeLine, balance);
+    }
     const newIndex = payments.length;
     setPayments(prev => [...prev, { method, amount: autoAmount }]);
     if (method === 'carte') {
@@ -467,6 +527,7 @@ export default function POSPage() {
       setCashGiven('');
       setNumpadTarget({ type: 'cash', index: newIndex });
     } else {
+      // chèque + avoir → numpad d'édition (avoir capé côté validateurs).
       setNumpadTarget({ type: 'payment', index: newIndex });
     }
   };
@@ -525,6 +586,7 @@ export default function POSPage() {
         redeem_loyalty_discount: redeemPoints ? loyaltyDiscount : 0,
       };
       if (selectedClient) body.client_id = selectedClient.id;
+      if (cashier) body.cashier_id = cashier.id;
 
       const res = await api.post('/api/pos/transactions', body);
       if (!res.ok) {
@@ -602,6 +664,7 @@ export default function POSPage() {
     especes: 'Especes',
     carte: 'Carte (CB)',
     cheque: 'Cheque',
+    avoir: 'Avoir client',
   };
 
   return (
@@ -613,6 +676,43 @@ export default function POSPage() {
 
         {/* ── LEFT PANEL: Order / Cart ────────────────────────────── */}
         <div className="w-[42%] flex flex-col bg-white border-r border-gray-200 shadow-sm">
+
+          {/* Cashier identification strip */}
+          <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs bg-teal-50 border-b border-teal-100">
+            <span className="font-medium text-teal-800">
+              {cashier
+                ? <>Cashier : <strong>{cashier.username}</strong></>
+                : 'Aucun cashier identifié'}
+            </span>
+            <div className="flex items-center gap-1.5">
+              {cashier && (
+                <>
+                  <button
+                    onClick={switchCashier}
+                    className="text-xs px-2 py-1 rounded bg-white border border-teal-200 text-teal hover:bg-teal-100 transition-colors"
+                    title="Changer de cashier (relève)"
+                  >
+                    Changer
+                  </button>
+                  <button
+                    onClick={logoutCashier}
+                    className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+                    title="Déconnecter le cashier"
+                  >
+                    Déconnexion
+                  </button>
+                </>
+              )}
+              {!cashier && (
+                <button
+                  onClick={() => { setCashierModalDismissible(false); setShowCashierModal(true); }}
+                  className="text-xs px-2 py-1 rounded bg-teal text-white hover:bg-teal-700 transition-colors"
+                >
+                  S&apos;identifier
+                </button>
+              )}
+            </div>
+          </div>
 
           {/* Cash drawer status strip */}
           {drawer !== null && (
@@ -1049,7 +1149,12 @@ export default function POSPage() {
 
           {/* Payment methods */}
           <div>
-            <p className="text-sm font-medium text-black mb-2">Moyen de paiement</p>
+            <p className="text-sm font-medium text-black mb-2">
+              Moyen de paiement{' '}
+              <span className="text-xs font-normal text-gray-500">
+                (cumulables — paiement mixte)
+              </span>
+            </p>
             <div className="flex gap-3 flex-wrap">
               <Button variant="outline" size="sm" onClick={() => addPayment('especes')}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-1.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
@@ -1065,7 +1170,23 @@ export default function POSPage() {
                 Carte (CB)
               </Button>
               <Button variant="outline" size="sm" onClick={() => addPayment('cheque')}>Chèque</Button>
+              {(selectedClient?.avoir_balance || 0) > 0 && !payments.some(p => p.method === 'avoir') && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => addPayment('avoir')}
+                  title={`Solde avoir : ${formatCurrency(selectedClient?.avoir_balance || 0)}`}
+                >
+                  Avoir ({formatCurrency(selectedClient?.avoir_balance || 0)})
+                </Button>
+              )}
             </div>
+            {selectedClient?.avoir_balance != null && selectedClient.avoir_balance > 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                {selectedClient.first_name} dispose d&apos;un avoir de{' '}
+                <strong>{formatCurrency(selectedClient.avoir_balance)}</strong>.
+              </p>
+            )}
           </div>
 
           {/* CB Status display */}
@@ -1261,6 +1382,14 @@ export default function POSPage() {
           </div>
         )}
       </Modal>
+
+      {/* Cashier PIN modal — required at session start, dismissible during shift change */}
+      <CashierPinModal
+        open={showCashierModal}
+        dismissible={cashierModalDismissible}
+        onAuthenticated={handleCashierAuthenticated}
+        onCancel={() => setShowCashierModal(false)}
+      />
     </div>
   );
 }

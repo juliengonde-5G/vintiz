@@ -1,7 +1,8 @@
 import enum
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +15,21 @@ class LoyaltyTxType(str, enum.Enum):
     adjust = "adjust"
 
 
+class AvoirTxType(str, enum.Enum):
+    credit = "credit"  # Issued from a refund — increases client balance
+    debit = "debit"    # Spent at checkout — decreases client balance
+    adjust = "adjust"  # Manual adjustment by manager
+
+
+class ConsentPurpose(str, enum.Enum):
+    """RGPD consent buckets tracked in the Consent ledger."""
+
+    email_marketing = "email_marketing"
+    sms_marketing = "sms_marketing"
+    profiling = "profiling"        # Personal Shopper / AI recommendations
+    data_sharing = "data_sharing"  # Future B2B sharing — kept for forward compat
+
+
 class Client(Base):
     __tablename__ = "clients"
 
@@ -24,6 +40,16 @@ class Client(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     email_optin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     sms_optin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Store credit (avoir) balance — incremented on refunds with method "avoir",
+    # decremented when used at checkout. AvoirTransaction holds the audit trail.
+    avoir_credit: Mapped[float] = mapped_column(
+        Numeric(10, 2), nullable=False, default=0
+    )
+    # RGPD soft-delete: set when the client requests erasure. A daily cron
+    # hard-deletes rows whose timestamp is older than 30 days.
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     loyalty_account: Mapped["LoyaltyAccount | None"] = relationship(
         "LoyaltyAccount", back_populates="client", uselist=False, lazy="selectin"
@@ -62,3 +88,52 @@ class LoyaltyTransaction(Base):
     account: Mapped["LoyaltyAccount"] = relationship(
         "LoyaltyAccount", back_populates="transactions", lazy="selectin"
     )
+
+
+class Consent(Base):
+    """Append-only ledger of RGPD consent decisions per client × purpose.
+
+    Each row captures a single grant/revoke event with metadata sufficient
+    for an audit (who recorded it, on which policy version, from where).
+    The current consent for a purpose is the most recent row's ``granted``.
+    """
+
+    __tablename__ = "consents"
+
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False
+    )
+    purpose: Mapped[ConsentPurpose] = mapped_column(
+        Enum(ConsentPurpose, name="consent_purpose"), nullable=False
+    )
+    granted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # e.g. "site_signup", "pos", "admin", "import"
+    recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+
+
+class AvoirTransaction(Base):
+    """Append-only ledger of avoir credits and debits.
+
+    Sums of (credit - debit) by client_id reproduce Client.avoir_credit and
+    serve as the audit trail required by NF525 for refunds settled in
+    store credit.
+    """
+
+    __tablename__ = "avoir_transactions"
+
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False
+    )
+    transaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("transactions.id"), nullable=True
+    )
+    tx_type: Mapped[AvoirTxType] = mapped_column(
+        Enum(AvoirTxType, name="avoir_tx_type"), nullable=False
+    )
+    amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -1,7 +1,7 @@
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -10,7 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.client import Client, LoyaltyAccount, LoyaltyTransaction, LoyaltyTxType
+from app.models.client import (
+    AvoirTransaction,
+    Client,
+    Consent,
+    ConsentPurpose,
+    LoyaltyAccount,
+    LoyaltyTransaction,
+    LoyaltyTxType,
+)
 from app.models.pos import Transaction
 from app.models.product import Product, ProductStatus
 from app.models.user import User
@@ -86,10 +94,15 @@ async def lookup_client(
 
     return {
         "client": {
+            "id": str(client.id),
             "first_name": client.first_name,
             "last_name": client.last_name,
             "email": client.email,
             "phone": client.phone,
+            "email_optin": client.email_optin,
+            "sms_optin": client.sms_optin,
+            "avoir_balance": float(client.avoir_credit or 0),
+            "deletion_pending": client.deletion_requested_at is not None,
         },
         "loyalty": loyalty_data,
         "recent_transactions": [
@@ -258,6 +271,7 @@ async def get_client(
         "email_optin": client.email_optin,
         "sms_optin": client.sms_optin,
         "loyalty": loyalty_data,
+        "avoir_balance": float(client.avoir_credit or 0),
         "purchases": [
             {
                 "id": str(t.id),
@@ -824,3 +838,359 @@ Pièces sélectionnées pour elle : {items_str}.
         "recommendations": recommendations,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Avoir / store credit (P1-016)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/clients/{client_id}/avoir")
+async def get_client_avoir(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the client's avoir balance and transaction history."""
+    from app.services.refund import RefundService
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    refund_service = RefundService(db)
+    history = await refund_service.list_avoir_history(client_id)
+    return {
+        "client_id": str(client.id),
+        "balance": float(client.avoir_credit or 0),
+        "history": history,
+    }
+
+
+# ---------------------------------------------------------------------------
+# RGPD endpoints (P1-007) — manager only
+# ---------------------------------------------------------------------------
+
+
+class ConsentRequest(BaseModel):
+    purpose: str  # email_marketing | sms_marketing | profiling | data_sharing
+    granted: bool
+    source: str = "admin"  # site_signup | pos | admin | import
+    policy_version: str | None = None
+
+
+@router.get("/clients/{client_id}/consents")
+async def get_client_consents(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return current consent state per purpose + full history."""
+    from app.services.rgpd import RgpdService
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    svc = RgpdService(db)
+    return {
+        "client_id": str(client.id),
+        "current": await svc.current_consents(client.id),
+        "history": await svc.consent_history(client.id),
+    }
+
+
+@router.post("/clients/{client_id}/consents")
+async def record_client_consent(
+    client_id: uuid.UUID,
+    request: ConsentRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record a consent grant or revoke for a single purpose."""
+    from app.services.rgpd import RgpdService
+
+    try:
+        purpose = ConsentPurpose(request.purpose)
+    except ValueError:
+        valid = ", ".join(p.value for p in ConsentPurpose)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid consent purpose. Valid values: {valid}",
+        )
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    svc = RgpdService(db)
+    entry = await svc.record_consent(
+        client=client,
+        purpose=purpose,
+        granted=request.granted,
+        source=request.source,
+        recorded_by_user_id=current_user.id,
+        policy_version=request.policy_version,
+    )
+    await db.commit()
+    return {
+        "id": str(entry.id),
+        "purpose": entry.purpose.value,
+        "granted": entry.granted,
+        "policy_version": entry.policy_version,
+        "recorded_at": entry.created_at.isoformat() if entry.created_at else None,
+    }
+
+
+@router.get("/clients/{client_id}/data-export")
+async def export_client_data(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return a portable JSON snapshot of everything we hold about the client
+    (Article 20 RGPD — data portability)."""
+    from app.services.rgpd import RgpdService
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    return await RgpdService(db).export_client_data(client)
+
+
+@router.post("/clients/{client_id}/deletion-request")
+async def request_client_deletion(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Soft-delete: stamps the 30-day grace window. The daily cron purges
+    clients whose request is older than DELETION_WINDOW."""
+    from app.services.rgpd import RgpdService
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    requested_at = await RgpdService(db).request_deletion(client)
+    await db.commit()
+    return {
+        "client_id": str(client.id),
+        "deletion_requested_at": requested_at.isoformat(),
+        "purge_after": (requested_at + timedelta(days=30)).isoformat(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Public account self-service (P1-007 — accessed from apps/site /account/data)
+# ---------------------------------------------------------------------------
+
+
+class AccountActionRequest(BaseModel):
+    email: str
+
+
+def _normalize_email(value: str) -> str:
+    cleaned = value.strip().lower()
+    if "@" not in cleaned or "." not in cleaned.split("@", 1)[-1]:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+    return cleaned
+
+
+@router.get("/account/data-export")
+async def public_account_data_export(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public RGPD data export (Article 20 portability) by email lookup.
+
+    Returns the JSON portable snapshot directly. The audit logger records the
+    request via the SQLAlchemy listener; a future iteration will replace this
+    with a magic-link confirmation flow to prevent email enumeration leakage.
+    """
+    from app.services.rgpd import RgpdService
+
+    cleaned = _normalize_email(email)
+    result = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    return await RgpdService(db).export_client_data(client)
+
+
+@router.post("/account/deletion-request")
+async def public_account_deletion_request(
+    request: AccountActionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public RGPD deletion request (Article 17 erasure) by email lookup.
+
+    Stamps the soft-delete timestamp; the daily cron purges past 30 days.
+    The customer can cancel by re-submitting via the same flow within the
+    window (a future iteration will surface a "cancel" button on the site).
+    """
+    from app.services.rgpd import RgpdService
+
+    cleaned = _normalize_email(request.email)
+    result = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+
+    if client.deletion_requested_at is not None:
+        return {
+            "client_email": cleaned,
+            "deletion_requested_at": client.deletion_requested_at.isoformat(),
+            "purge_after": (
+                client.deletion_requested_at + timedelta(days=30)
+            ).isoformat(),
+            "already_pending": True,
+        }
+    requested_at = await RgpdService(db).request_deletion(client)
+    await db.commit()
+    return {
+        "client_email": cleaned,
+        "deletion_requested_at": requested_at.isoformat(),
+        "purge_after": (requested_at + timedelta(days=30)).isoformat(),
+        "already_pending": False,
+    }
+
+
+@router.post("/account/deletion-cancel")
+async def public_account_deletion_cancel(
+    request: AccountActionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public cancellation of a pending deletion request (within the 30-day window)."""
+    from app.services.rgpd import RgpdService
+
+    cleaned = _normalize_email(request.email)
+    result = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    if client.deletion_requested_at is None:
+        return {"client_email": cleaned, "deletion_cancelled": True, "was_pending": False}
+    await RgpdService(db).cancel_deletion(client)
+    await db.commit()
+    return {"client_email": cleaned, "deletion_cancelled": True, "was_pending": True}
+
+
+# ---------------------------------------------------------------------------
+# Personal Shopper v2 (P2-003) — embeddings + Claude rewrite
+# ---------------------------------------------------------------------------
+
+
+class RecommendationClickRequest(BaseModel):
+    recommendation_set_id: uuid.UUID
+    product_id: uuid.UUID
+    customer_email: str | None = None
+    position_in_list: int | None = None
+
+
+@router.get("/clients/{client_id}/personal-shopper-v2")
+async def personal_shopper_v2(
+    client_id: uuid.UUID,
+    top_n: int = 4,
+    weather: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Build a Personal Shopper v2 recommendation set for a client.
+
+    Pipeline: embedding similarity → diversify by category → size filter →
+    Claude Haiku rewrite (fallback to deterministic template if the API
+    isn't reachable). Manager / staff only — the public flavour goes
+    through ``/api/crm/personal-shopper-v2``.
+    """
+    from app.services.personal_shopper import PersonalShopperService
+
+    try:
+        result = await PersonalShopperService(db).recommend(
+            client_id, top_n=max(1, min(top_n, 10)), weather_summary=weather,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    await db.commit()
+    return result
+
+
+@router.get("/personal-shopper-v2")
+async def public_personal_shopper_v2(
+    email: str = Query(..., min_length=5, max_length=255),
+    top_n: int = 4,
+    weather: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public flavour of Personal Shopper v2 — email-based lookup.
+
+    Same pipeline as the authenticated endpoint; the email is the only
+    identification, which mirrors the existing public lookup pattern.
+    Future iteration: magic-link verification before serving (consistent
+    with the RGPD endpoints).
+    """
+    from app.services.personal_shopper import PersonalShopperService
+
+    cleaned = _normalize_email(email)
+    result_row = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result_row.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    result = await PersonalShopperService(db).recommend(
+        client.id, top_n=max(1, min(top_n, 10)), weather_summary=weather,
+    )
+    await db.commit()
+    return result
+
+
+@router.post("/personal-shopper-v2/click")
+async def personal_shopper_click(
+    request: RecommendationClickRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public click-through endpoint. Logs ``customer.recommendation_clicked``."""
+    from app.services.personal_shopper import PersonalShopperService
+
+    customer_id: uuid.UUID | None = None
+    if request.customer_email:
+        cleaned = _normalize_email(request.customer_email)
+        result_row = await db.execute(
+            select(Client).where(Client.email == cleaned)
+        )
+        client = result_row.scalar_one_or_none()
+        if client is not None:
+            customer_id = client.id
+
+    await PersonalShopperService(db).record_click(
+        recommendation_set_id=request.recommendation_set_id,
+        product_id=request.product_id,
+        customer_id=customer_id,
+        position_in_list=request.position_in_list,
+    )
+    await db.commit()
+    return {"recorded": True}
+
+
+@router.post("/clients/{client_id}/deletion-cancel")
+async def cancel_client_deletion(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel a pending deletion request (only valid before the cron runs)."""
+    from app.services.rgpd import RgpdService
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    await RgpdService(db).cancel_deletion(client)
+    await db.commit()
+    return {"client_id": str(client.id), "deletion_cancelled": True}

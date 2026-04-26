@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
+import PhotoGallery from '@/components/inventory/PhotoGallery';
 import { api } from '@/lib/api';
 
 interface ProductDetail {
@@ -373,12 +374,12 @@ export default function ProductDetailPage() {
 
           {/* Right: Photo + History */}
           <div className="space-y-6">
-            {product.photo_url && (
-              <Card title="Photo">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={product.photo_url} alt={product.name} className="w-full rounded-lg object-cover max-h-64" />
-              </Card>
-            )}
+            <Card title="Photos">
+              <PhotoGallery
+                productId={product.id}
+                onChange={() => fetchProduct()}
+              />
+            </Card>
 
             <Card title="Transactions">
               {transactions.length === 0 ? (
