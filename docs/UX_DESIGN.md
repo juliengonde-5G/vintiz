@@ -378,7 +378,20 @@ Exemples bons / mauvais :
 
 ## 13. Roadmap UX (à designer)
 
-Idées en backlog, du plus prioritaire au moins :
+### Livré Phase 4 (avril 2026)
+
+- ✅ **Mobile back-office (partiel)** — strip KPI sticky compact sur le
+  dashboard mobile (CA / tickets / panier) en plus du grid responsive
+  existant. Reste à faire : bottom-nav iOS-style.
+- ✅ **Cards retail KPIs / ESS / RFM** sur `/reports` (P4-001 / 002 / 007).
+- ✅ **Page Réservations 48h** (`/reservations`) avec autocomplete cliente
+  + article (P4-005).
+- ✅ **Badges IA POS** sous chaque ligne du panier (P4-010) — vélocité,
+  stale, marque, score, hold.
+- ✅ **Wallet preview card** sur l'espace client public `/account/data`
+  (P4-004) — preview seulement, signing Apple/Google reste à plugger.
+
+### Backlog encore à designer (post-Phase 4)
 
 1. **Refonte Dashboard** — actuellement un peu chargé, besoin d'un hero
    plus visuel (météo + KPI principal + CTA "Voir le cahier")
@@ -388,13 +401,15 @@ Idées en backlog, du plus prioritaire au moins :
    (carrousel de pièces, ajout à une wishlist, RDV en boutique)
 4. **Nouveau onboarding inventaire** — wizard 3 étapes (photo → IA →
    confirmation) au lieu du formulaire long actuel
-5. **Mobile back-office** — actuellement la sidebar pousse trop le contenu.
-   Refonte avec bottom-nav iOS-style (4 icônes : Dashboard, Caisse,
-   Inventaire, Plus)
+5. **Bottom-nav iOS-style mobile** (4 icônes : Dashboard, Caisse,
+   Inventaire, Plus) — finir le travail commencé avec le sticky bar.
 6. **Vue plan boutique heatmap** — animer les zones (saturation = vente
    récente)
 7. **Notification system** — toast persistants empilés + centre de
-   notifications (cloche en sidebar)
+   notifications (cloche en sidebar). Les emails transactionnels Brevo
+   (P4-003) couvrent déjà le canal email.
+8. **Add to Wallet bouton réel** — une fois la signature `.pkpass` /
+   Google JWT plugée côté ops, remplacer la preview card par un vrai CTA.
 
 ---
 

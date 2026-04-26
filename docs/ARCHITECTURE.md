@@ -154,3 +154,29 @@ pre-integres pour la mise en service (`docs/POS_TEST_BARCODES.md`).
 ### Phase 5 -- Site vitrine complet & Social
 
 Site vintiz.fr public complet, extranet client, gestion reseaux sociaux, SEO local.
+
+### Audit avril 2026 -- Phases P1 -> P4 (LIVREE)
+
+Plan d'action issu de l'audit `docs/AUDIT_2026_04.md`, livre du 16 au 26 avril
+2026. Voir `docs/AUDIT_2026_04_PHASE4_CLOSE.md` pour la cartographie complete
+ticket -> PR.
+
+- **P1** -- conformite NF525 (hash chain renforce + DGFiP export), RGPD
+  (consent ledger + export portable + soft delete 30j + cron purge),
+  cashier PIN, refund flow CB/cheque/avoir, multi-photos produit.
+- **P2** -- event store generique, embeddings pgvector (256-dim),
+  Personal Shopper v2, life-cycle FSM produit, mapping booster vitrine,
+  POS offline (IndexedDB + replay idempotent).
+- **P3** -- markdown engine (regles declaratives + cron nocturne),
+  brand tiers (table editable manager), visibility module (snapshots SEO,
+  posts sociaux Claude, suggested replies avis Google), import CSV.
+- **P4** -- KPIs retail (sell-through, GMROI, AIT, CA/m^2/mois),
+  rapport ESS Solidarite Textiles, segmentation RFM mensuelle,
+  email gateway Brevo (Brevo > SMTP > simulation), Wallet pass payload
+  (Apple .pkpass + Google LoyaltyObject), email anniversaire + coupon
+  -10% 7j, email hebdo nouvelles arrivees, reservation 48h (modele +
+  service + UI + cron + redemption auto au POS), badges IA POS
+  (velocite / stale / marque / score / hold), mobile dashboard sticky.
+
+Suite : 362 tests pytest, 18 migrations Alembic, 12 crons APScheduler,
+~110 endpoints REST, 13 pages admin web.

@@ -59,6 +59,14 @@ curl -I https://app.vintiz.fr
 
 # Consulter les logs
 docker compose -f docker/docker-compose.prod.yml logs -f
+
+# Smoke test complet (read-only, valide les routes Phase 4)
+bash scripts/smoke_prod.sh https://api.vintiz.fr
+# avec token manager pour les checks authentifies :
+export VINTIZ_API_TOKEN="$(curl -s -X POST https://api.vintiz.fr/api/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"username":"admin","password":"vintiz2026"}' | jq -r .access_token)"
+bash scripts/smoke_prod.sh https://api.vintiz.fr
 ```
 
 ## Mise a jour
@@ -90,6 +98,33 @@ Trois modes :
 - **simulation** (defaut sans cle) — sandbox en memoire. Event log visible
   dans `/settings > Paiement`, approve/decline manuel par checkout, transition
   PENDING → PAID apres `SUMUP_SANDBOX_AUTO_DELAY_SEC` secondes.
+
+### 1bis. Configuration Phase 4 (email + wallet)
+
+```env
+# Email transactional (P4-003) — gateway unifie Brevo > SMTP > simulation.
+# Si BREVO_API_KEY est posee, Brevo gagne. Sinon fallback SMTP.
+# Sinon simulation (logge la tentative, ne plante pas).
+BREVO_API_KEY=                    # xkeysib-xxx
+EMAIL_FROM_ADDRESS=noreply@vintiz.fr
+EMAIL_FROM_NAME=Vintiz Vernon
+
+# Wallet pass (P4-004) — payload pret, signing a plugger cote ops
+WALLET_PASS_TYPE_IDENTIFIER=pass.fr.vintiz.loyalty
+WALLET_TEAM_IDENTIFIER=           # ABCDE12345 (Apple Developer)
+WALLET_GOOGLE_ISSUER_ID=          # 19 chiffres (Google Pay & Wallet)
+WALLET_GOOGLE_CLASS_SUFFIX=vintiz_loyalty
+```
+
+Sans `BREVO_API_KEY`, les crons anniversaire (09:00 quotidien) et nouvelles
+arrivees (vendredi 10:00) tournent en mode simulation : les coupons sont
+crees en DB mais aucun email n'est envoye. Logs API : "[email simulated]".
+
+La signature reelle des passes Apple `.pkpass` (cert p12 + WWDR + ZIP
+manifest) et Google Wallet (Service Account JSON + JWT RS256) n'est PAS
+implementee. Le payload est expose via `GET /api/crm/account/wallet?email=`
+et l'espace client `/account/data` affiche une carte preview avec QR. Le
+"Add to Wallet" est laisse en TODO ops.
 
 ### 2. Seeder les 15 produits de test
 

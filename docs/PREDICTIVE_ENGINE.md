@@ -190,6 +190,21 @@ GET /api/inventory/products/{id}/score
 
 Si `ANTHROPIC_API_KEY` est configuré : appel Claude haiku avec prompt contextuel (saison courante, localisation Normandie). Sinon : fallback sur données statiques printemps/été 2026.
 
+### Signaux temps réel (Phase 4)
+
+Depuis avril 2026, le moteur prédictif s'appuie aussi sur des KPIs retail
+quantitatifs calculés à la demande :
+
+- `GET /api/reports/retail-kpis?period_days=30` → sell-through, GMROI,
+  days-on-hand, AIT, CA/m²/mois, top/bottom catégories, %change vs N-1.
+- `GET /api/reports/ess?period_days=90` → taux de réemploi, tonnage,
+  CA reversé Solidarité Textiles.
+- `GET /api/inventory/products/{id}/insights` → badges contextuels par
+  produit (vélocité, stale, marque, score, hold).
+
+Ces endpoints alimentent les cards `/reports` et le badge IA POS.
+Voir `docs/AUDIT_2026_04_PHASE4_CLOSE.md` pour la cartographie complète.
+
 ---
 
 ## 4. Personal Shopper IA
