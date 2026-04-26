@@ -7,15 +7,18 @@ Generation rules:
   combinations × prefix).
 - Anniversary coupons are 7-day windows from issue.
 
-The redemption side (POS validation, atomic redeem) is intentionally
-left out of this PR — we land the model + the issuance flow now and
-plug it into the POS in a follow-up.
+Redemption:
+- ``validate_coupon`` is read-only — surfaces eligibility + computed
+  discount for the cashier preview.
+- ``redeem_coupon`` is atomic, called from the transaction-creation
+  flow after the sale is signed.
 """
 
 from __future__ import annotations
 
 import secrets
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
@@ -25,6 +28,22 @@ from app.models.coupon import Coupon, CouponDiscountType, CouponSource
 
 
 _ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no I/O/0/1 — easier to read on receipts
+
+
+class CouponError(ValueError):
+    """Domain-level rejection — surfaced as 4xx by the API layer."""
+
+
+@dataclass
+class CouponPreview:
+    coupon_id: uuid.UUID
+    code: str
+    discount_type: str          # "percent" | "amount"
+    discount_value: float
+    discount_amount: float      # what to actually subtract from cart_total
+    new_total: float
+    source: str
+    valid_until: datetime
 
 
 def _gen_code(prefix: str, length: int = 6) -> str:
@@ -87,5 +106,107 @@ async def issue_anniversary_coupon(
         is_active=True,
     )
     db.add(coupon)
+    await db.flush()
+    return coupon
+
+
+# ---------------------------------------------------------------------------
+# Validation + redemption (POS)
+# ---------------------------------------------------------------------------
+
+
+def _compute_discount(coupon: Coupon, cart_total: float) -> float:
+    """Cap the discount at the cart total so we never go negative."""
+    if coupon.discount_type == CouponDiscountType.percent:
+        raw = cart_total * float(coupon.discount_value) / 100.0
+    else:
+        raw = float(coupon.discount_value)
+    return round(min(raw, cart_total), 2)
+
+
+async def _load_by_code(db: AsyncSession, code: str) -> Coupon | None:
+    result = await db.execute(
+        select(Coupon).where(Coupon.code == code.strip().upper())
+    )
+    return result.scalar_one_or_none()
+
+
+async def validate_coupon(
+    db: AsyncSession,
+    *,
+    code: str,
+    cart_total: float,
+    client_id: uuid.UUID | None = None,
+    now: datetime | None = None,
+) -> CouponPreview:
+    """Read-only validation. Raises ``CouponError`` with one of:
+
+    - ``not_found``         — code unknown
+    - ``inactive``          — manually disabled by manager
+    - ``redeemed``          — already used
+    - ``expired``           — past ``valid_until``
+    - ``not_yet_valid``     — before ``valid_from``
+    - ``wrong_client``      — coupon is nominative for another client
+    - ``no_client``         — nominative coupon but no client at the till
+    """
+    now = now or datetime.now(timezone.utc)
+    coupon = await _load_by_code(db, code)
+    if coupon is None:
+        raise CouponError("not_found")
+    if not coupon.is_active:
+        raise CouponError("inactive")
+    if coupon.redeemed_at is not None:
+        raise CouponError("redeemed")
+
+    valid_from = coupon.valid_from
+    valid_until = coupon.valid_until
+    if valid_from.tzinfo is None:
+        valid_from = valid_from.replace(tzinfo=timezone.utc)
+    if valid_until.tzinfo is None:
+        valid_until = valid_until.replace(tzinfo=timezone.utc)
+
+    if now < valid_from:
+        raise CouponError("not_yet_valid")
+    if now > valid_until:
+        raise CouponError("expired")
+
+    if coupon.client_id is not None:
+        if client_id is None:
+            raise CouponError("no_client")
+        if coupon.client_id != client_id:
+            raise CouponError("wrong_client")
+
+    discount = _compute_discount(coupon, cart_total)
+    return CouponPreview(
+        coupon_id=coupon.id,
+        code=coupon.code,
+        discount_type=coupon.discount_type.value,
+        discount_value=float(coupon.discount_value),
+        discount_amount=discount,
+        new_total=round(max(0.0, cart_total - discount), 2),
+        source=coupon.source.value,
+        valid_until=valid_until,
+    )
+
+
+async def redeem_coupon(
+    db: AsyncSession,
+    coupon_id: uuid.UUID,
+    transaction_id: uuid.UUID,
+    *,
+    now: datetime | None = None,
+) -> Coupon:
+    """Mark the coupon as used and link to the sale. Atomic — must be
+    called inside the same transaction as the sale insert."""
+    now = now or datetime.now(timezone.utc)
+    coupon = (await db.execute(
+        select(Coupon).where(Coupon.id == coupon_id)
+    )).scalar_one_or_none()
+    if coupon is None:
+        raise CouponError("not_found")
+    if coupon.redeemed_at is not None:
+        raise CouponError("redeemed")
+    coupon.redeemed_at = now
+    coupon.redeemed_transaction_id = transaction_id
     await db.flush()
     return coupon

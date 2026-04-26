@@ -98,6 +98,18 @@ export default function POSPage() {
   // P4-010 — per-product insights (badges) cached by product_id.
   const [insights, setInsights] = useState<Record<string, { icon: string; label: string; severity: string }[]>>({});
 
+  // P4-005 redemption — active reservation holder per product (so we
+  // can warn when ringing up an article held for someone else).
+  interface HolderInfo { client_id: string; client_name: string; client_email: string | null; expires_at: string | null }
+  const [holders, setHolders] = useState<Record<string, HolderInfo | null>>({});
+
+  // P4-008 redemption — coupon entered by the cashier.
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponApplied, setCouponApplied] = useState<{ code: string; source: string } | null>(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponBusy, setCouponBusy] = useState(false);
+
   // Client
   const [clientSearch, setClientSearch] = useState('');
   const [clientResults, setClientResults] = useState<ClientResult[]>([]);
@@ -171,7 +183,9 @@ export default function POSPage() {
   // Loyalty discount: 1 point = 0.10 EUR, max 50% of cart
   const loyaltyPoints = selectedClient?.loyalty?.points || 0;
   const loyaltyDiscount = redeemPoints ? Math.min(loyaltyPoints * 0.10, cartTotal * 0.5) : 0;
-  const cartTotalAfterLoyalty = Math.max(0, cartTotal - loyaltyDiscount);
+  // ``cartTotalAfterLoyalty`` is the amount the cashier needs to collect.
+  // Coupon discount (P4-008) stacks on top of loyalty.
+  const cartTotalAfterLoyalty = Math.max(0, cartTotal - loyaltyDiscount - couponDiscount);
 
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   const remaining = cartTotalAfterLoyalty - totalPaid;
@@ -652,6 +666,36 @@ export default function POSPage() {
     return () => { cancelled = true; };
   }, [cart, insights]);
 
+  // P4-005 — fetch reservation holder for each product in the cart.
+  useEffect(() => {
+    const ids = Array.from(
+      new Set(
+        cart
+          .filter((i) => !i.isManual && i.product_id)
+          .map((i) => i.product_id as string),
+      ),
+    ).filter((id) => !(id in holders));
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const fresh: Record<string, HolderInfo | null> = {};
+      for (const id of ids) {
+        try {
+          const res = await api.get(`/api/pos/products/${id}/reservation-holder`);
+          if (!res.ok) { fresh[id] = null; continue; }
+          const data = await res.json();
+          fresh[id] = data.reserved
+            ? { client_id: data.client_id, client_name: data.client_name, client_email: data.client_email, expires_at: data.expires_at }
+            : null;
+        } catch { fresh[id] = null; }
+      }
+      if (!cancelled && Object.keys(fresh).length) {
+        setHolders((prev) => ({ ...prev, ...fresh }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [cart, holders]);
+
   const handleValidate = async () => {
     setSubmitting(true);
     setError('');
@@ -677,6 +721,7 @@ export default function POSPage() {
       };
       if (selectedClient) body.client_id = selectedClient.id;
       if (cashier) body.cashier_id = cashier.id;
+      if (couponApplied) body.coupon_code = couponApplied.code;
 
       // Offline path (P1-005): no card transactions allowed without
       // network (the SumUp Solo TPE itself needs Wi-Fi). Cash / cheque /
@@ -790,6 +835,8 @@ export default function POSPage() {
     setSelectedClient(null);
     setClientSearch('');
     setError('');
+    setCouponCode(''); setCouponDiscount(0); setCouponApplied(null); setCouponError('');
+    setHolders({});
     setCbCheckoutId(null);
     setCbStatus('idle');
     setRedeemPoints(false);
@@ -1078,6 +1125,32 @@ export default function POSPage() {
 
           {/* Footer: Total + Pay button */}
           <div className="flex-shrink-0 border-t border-gray-200 bg-white px-4 py-3 space-y-3">
+            {/* P4-005 — warnings on held articles */}
+            {(() => {
+              const heldByOther = cart
+                .map((it) => it.product_id && holders[it.product_id])
+                .filter((h): h is HolderInfo => !!h && h.client_id !== selectedClient?.id);
+              const heldBySelected = cart
+                .map((it) => it.product_id && holders[it.product_id])
+                .filter((h): h is HolderInfo => !!h && h.client_id === selectedClient?.id);
+              return (
+                <>
+                  {heldByOther.length > 0 && (
+                    <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                      ⚠ Article réservé par <strong>{heldByOther[0].client_name}</strong>
+                      {heldByOther.length > 1 ? ` (+${heldByOther.length - 1})` : ''}
+                      {' '}— vérifier avant d'encaisser.
+                    </div>
+                  )}
+                  {heldBySelected.length > 0 && (
+                    <div className="p-2 bg-teal/10 border border-teal/30 rounded-lg text-xs text-teal">
+                      ✓ Réservation pour cette cliente — sera marquée encaissée à la validation.
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+
             {/* Loyalty redemption */}
             {selectedClient?.loyalty && loyaltyPoints > 0 && (
               <div className="flex items-center justify-between p-2 bg-purple-50 rounded-lg">
@@ -1089,6 +1162,61 @@ export default function POSPage() {
                   <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${redeemPoints ? 'translate-x-4' : 'translate-x-0.5'}`} />
                 </button>
               </div>
+            )}
+
+            {/* P4-008 — Coupon code (anniversaire, win-back, etc.) */}
+            {couponApplied ? (
+              <div className="flex items-center justify-between p-2 bg-pink-50 border border-pink rounded-lg">
+                <p className="text-xs font-medium text-black">
+                  🎟 Code <strong>{couponApplied.code}</strong> — −{formatCurrency(couponDiscount)}
+                </p>
+                <button
+                  onClick={() => { setCouponApplied(null); setCouponDiscount(0); setCouponCode(''); setCouponError(''); }}
+                  className="text-xs text-gray-500 hover:text-black"
+                >
+                  Retirer
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={couponCode}
+                  onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(''); }}
+                  placeholder="Code promo"
+                  className="flex-1 px-2 py-1.5 text-xs border border-gray-200 rounded uppercase tracking-wider"
+                />
+                <button
+                  disabled={!couponCode || couponBusy || cart.length === 0}
+                  onClick={async () => {
+                    setCouponBusy(true); setCouponError('');
+                    try {
+                      const body: Record<string, unknown> = {
+                        code: couponCode,
+                        cart_total: cartTotal - loyaltyDiscount,
+                      };
+                      if (selectedClient) body.client_id = selectedClient.id;
+                      const res = await api.post('/api/pos/coupons/validate', body);
+                      const data = await res.json();
+                      if (!res.ok) {
+                        setCouponError(data?.detail || 'Code refusé.');
+                      } else {
+                        setCouponDiscount(data.discount_amount);
+                        setCouponApplied({ code: data.code, source: data.source });
+                      }
+                    } catch {
+                      setCouponError('Erreur réseau.');
+                    }
+                    setCouponBusy(false);
+                  }}
+                  className="px-3 py-1.5 text-xs bg-black text-white rounded disabled:opacity-30"
+                >
+                  {couponBusy ? '…' : 'OK'}
+                </button>
+              </div>
+            )}
+            {couponError && (
+              <p className="text-xs text-red-500 -mt-1">{couponError}</p>
             )}
 
             <div className="flex items-center justify-between">
