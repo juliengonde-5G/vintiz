@@ -1,5 +1,75 @@
 # Changelog Vintiz
 
+## [0.7.0] - 2026-04-26 — Phase 4 (analytics, communication, UX) + POS redemption
+
+### Added — Analytics & reporting (P4-001 / P4-002 / P4-007)
+- **Retail KPIs** : sell-through, GMROI, days-on-hand, AIT, CA/m²/mois, top/bottom catégories, %change vs N-1.
+  Endpoint `GET /api/reports/retail-kpis?period_days=30`. Settings éditables via `GET/PUT /api/admin/kpis-config`.
+- **Rapport ESS Solidarité Textiles** : pièces reçues/vendues/données/retour-tri, taux de réemploi, tonnage estimé,
+  CA reversé. Endpoint `GET /api/reports/ess?period_days=90`.
+- **Segmentation RFM** : scoring quintile R/F/M + 9 segments (champion, loyal, new, promising, cant_lose, at_risk,
+  hibernating, lost, regular). Persisté sur `Client.rfm_segment` via cron mensuel (1er du mois 04:00).
+  Endpoints `POST /api/admin/rfm/run`, `GET /api/crm/segments`, `GET /api/crm/segments/{segment}`.
+- 3 cards UI sur `/reports` : `RetailKpisCard`, `EssReportCard`, `RfmSegmentsCard`.
+- Migration 0016 : `clients.rfm_segment`.
+
+### Added — Communication automatique (P4-003 / P4-004 / P4-008 / P4-009)
+- **Email gateway unifié** : Brevo > SMTP > simulation, sélectionné runtime via env (`BREVO_API_KEY`,
+  `EMAIL_FROM_ADDRESS`, `EMAIL_FROM_NAME`). Refactor des call-sites SMTP inline (`crm/send-email`, `pos/resend`).
+- **Wallet pass payload** : Apple `.pkpass` + Google LoyaltyObject pré-remplis, exposés via
+  `GET /api/crm/account/wallet?email=...`. Carte preview sur `/account/data` (site public). Signing différé (cert
+  Apple p12 + service account Google requis côté ops).
+- **Email anniversaire** : cron quotidien 09:00 → coupon `ANNIV-XXXXXX` -10% pendant 7j + email transactionnel.
+  Idempotent par jour calendaire.
+- **Email nouvelles arrivées** : cron hebdo vendredi 10:00 → digest des 5 dernières pièces *display*. Personal
+  Shopper utilisé si profil de goût, fallback générique sinon.
+- Migration 0017 : `clients.birth_date` + table `coupons` + enums `coupon_discount_type`, `coupon_source`.
+
+### Added — UX manager + cliente (P4-005 / P4-006 / P4-010)
+- **Réservation 48h** : modèle + index partiel unique (un seul hold actif par article) + service complet (create /
+  cancel / redeem / expire) + UI manager `/reservations` + section "Vos pièces réservées" sur `/account/data`.
+  Endpoints `GET /api/reservations`, `POST /api/reservations`, `POST /api/reservations/{id}/cancel`,
+  `GET /api/reservations/lookup?email=`. Cron horaire d'expiration (hh:15).
+- **Mobile dashboard** : strip KPI sticky compact (CA / tickets / panier) visible uniquement sur mobile.
+- **Badge IA POS** : endpoint `GET /api/inventory/products/{id}/insights` + 5 types de badges (🔥 vélocité,
+  ⏳ stale, ⭐ marque, 🎯 score, 🛍 hold) affichés sous chaque ligne du panier.
+- Migration 0018 : table `reservations` + enum `reservation_status`.
+
+### Added — Coupon + reservation redemption au POS
+- `POST /api/pos/coupons/validate` : preview cashier (read-only, vérifie statut/expiration/client).
+- `POST /api/pos/transactions` : accepte un `coupon_code` optionnel, redime atomiquement après signature fiscale.
+- `GET /api/pos/products/{id}/reservation-holder` : warning bandeau pour la caisse (rouge si tenu pour quelqu'un
+  d'autre, vert si correspondance cliente).
+- Auto-redemption : à la création de vente, toute réservation active dont le produit est dans le panier passe à
+  `redeemed` + lien `redeemed_transaction_id`.
+
+### Hotfix
+- **Migration 0014** : `INSERT … VALUES (…, :tier, …)` plantait sur PG (asyncpg) car le bind param VARCHAR n'était
+  pas auto-coerced vers l'enum `brand_tier_level`. Wrappé dans `CAST(:tier AS brand_tier_level)`.
+
+### Tests
+- 5 PR Phase 4 + 1 hotfix mergés (#25, #27, #28, #29, #30).
+- Suite : 362 tests passent (vs 280 avant Phase 4).
+- 9 nouveaux fichiers de test : `test_retail_kpis.py`, `test_rfm.py`, `test_email_gateway.py`,
+  `test_wallet_service.py`, `test_anniversary_coupons.py`, `test_new_arrivals.py`,
+  `test_reservation_service.py`, `test_product_insights.py`, `test_coupon_redemption.py`.
+
+### Variables d'environnement nouvelles
+```env
+BREVO_API_KEY=
+EMAIL_FROM_ADDRESS=noreply@vintiz.fr
+EMAIL_FROM_NAME=Vintiz Vernon
+WALLET_PASS_TYPE_IDENTIFIER=pass.fr.vintiz.loyalty
+WALLET_TEAM_IDENTIFIER=
+WALLET_GOOGLE_ISSUER_ID=
+WALLET_GOOGLE_CLASS_SUFFIX=vintiz_loyalty
+```
+
+### Suivi (laissé en TODO)
+- **Apple `.pkpass` signing** (cert p12 + WWDR) — payload prêt, signing à plugger côté ops.
+- **Google Wallet JWT signing** (Service Account) — payload prêt, signing à plugger côté ops.
+- Pagination de l'autocomplete cliente côté `/reservations` quand >1k clientes.
+
 ## [0.3.0] - 2026-04-16 — Hardware-ready POS
 ### Added
 - **SumUp sandbox** — service refactoré avec 3 modes (`production`, `sandbox`,
