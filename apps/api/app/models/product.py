@@ -122,6 +122,10 @@ class Product(Base):
     trend_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     shelf_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Flag for seed / demo data that should be selectively purged before
+    # public opening. The pre-opening base (real intake) keeps the default
+    # ``False`` and is therefore safe from ``scripts/purge_test_data.py``.
+    is_test: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     category: Mapped["Category"] = relationship(
         "Category", back_populates="products", lazy="selectin"

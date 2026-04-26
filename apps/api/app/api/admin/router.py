@@ -1907,3 +1907,73 @@ async def list_coupons(
         }
         for c in coupons
     ]
+
+
+# ---------------------------------------------------------------------------
+# L3.1 — Test data purge (selective, idempotent)
+# ---------------------------------------------------------------------------
+
+
+class PurgeTestDataRequest(BaseModel):
+    dry_run: bool = True
+
+
+@router.post("/test-data/purge", dependencies=[Depends(manager_only)])
+async def purge_test_data(
+    payload: PurgeTestDataRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Delete every Product and Client row marked ``is_test=True``.
+
+    The pre-opening real base (rows with the default ``is_test=False``) is
+    untouched. Cascade through SQLAlchemy relationships removes attached
+    photos, embeddings, transactions, taste profiles, consents.
+
+    ``dry_run=True`` (default) returns the counts that *would* be deleted
+    without actually deleting anything. Pass ``dry_run=False`` to commit.
+
+    Audit log entries are produced automatically by ``services/audit.py``
+    event listeners on each deletion.
+    """
+    product_count_q = await db.execute(
+        select(func.count()).select_from(Product).where(Product.is_test.is_(True))
+    )
+    product_count = int(product_count_q.scalar() or 0)
+
+    client_count_q = await db.execute(
+        select(func.count()).select_from(Client).where(Client.is_test.is_(True))
+    )
+    client_count = int(client_count_q.scalar() or 0)
+
+    if payload.dry_run:
+        return {
+            "dry_run": True,
+            "would_delete": {
+                "products": product_count,
+                "clients": client_count,
+            },
+        }
+
+    # Real delete — fetch and delete one-by-one so cascade + event listeners
+    # fire (DELETE … WHERE bypasses ORM cascade for some setups).
+    products_res = await db.execute(
+        select(Product).where(Product.is_test.is_(True))
+    )
+    for prod in products_res.scalars().all():
+        await db.delete(prod)
+
+    clients_res = await db.execute(
+        select(Client).where(Client.is_test.is_(True))
+    )
+    for cli in clients_res.scalars().all():
+        await db.delete(cli)
+
+    await db.commit()
+
+    return {
+        "dry_run": False,
+        "deleted": {
+            "products": product_count,
+            "clients": client_count,
+        },
+    }
