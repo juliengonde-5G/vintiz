@@ -1291,3 +1291,62 @@ async def data_quality(
         "by_event_type": by_type,
         "daily_total": daily,
     }
+
+
+# ---------------------------------------------------------------------------
+# Embeddings recompute (P1-004) — admin trigger, mirrors the daily cron
+# ---------------------------------------------------------------------------
+
+
+class RecomputeRequest(BaseModel):
+    only_missing: bool = False
+
+
+@router.post(
+    "/embeddings/recompute",
+    dependencies=[Depends(manager_only)],
+)
+async def recompute_embeddings(
+    request: RecomputeRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Recompute product embeddings for the catalogue.
+
+    ``only_missing=True`` skips products whose embeddings already match
+    the current encoder version — useful for incremental backfill.
+    Manager only.
+    """
+    from app.services.embeddings import EmbeddingService
+
+    summary = await EmbeddingService(db).recompute_all_products(
+        only_missing=request.only_missing
+    )
+    await db.commit()
+    return summary
+
+
+@router.post(
+    "/embeddings/customer/{client_id}",
+    dependencies=[Depends(manager_only)],
+)
+async def recompute_taste_profile(
+    client_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Refresh one customer's taste centroid (admin tool / debugging)."""
+    from app.services.embeddings import EmbeddingService
+
+    profile = await EmbeddingService(db).recompute_taste_profile(client_id)
+    if profile is None:
+        return {
+            "client_id": str(client_id),
+            "computed": False,
+            "reason": "No analyzable purchases",
+        }
+    await db.commit()
+    return {
+        "client_id": str(client_id),
+        "computed": True,
+        "n_purchases_analyzed": profile.n_purchases_analyzed,
+        "algo_version": profile.algo_version,
+    }

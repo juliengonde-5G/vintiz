@@ -34,6 +34,48 @@ setup_logging()
 logger = logging.getLogger("vintiz")
 
 
+async def _run_daily_embedding_refresh() -> None:
+    """Background job (P1-004): refresh product embeddings + customer taste
+    profiles. Runs daily at 04:00 Paris time so the recommender always
+    sees the previous day's intake."""
+    try:
+        from sqlalchemy import select
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.models.client import Client
+        from app.services.embeddings import EmbeddingService
+
+        async with AsyncSession(engine) as db:
+            svc = EmbeddingService(db)
+            product_summary = await svc.recompute_all_products(only_missing=False)
+
+            # Refresh taste profiles for clients with at least one purchase.
+            from app.models.pos import Transaction, TransactionType
+
+            customer_ids = (await db.execute(
+                select(Transaction.client_id)
+                .where(
+                    Transaction.client_id.is_not(None),
+                    Transaction.transaction_type == TransactionType.sale,
+                )
+                .distinct()
+            )).scalars().all()
+            taste_count = 0
+            for cid in customer_ids:
+                profile = await svc.recompute_taste_profile(cid)
+                if profile is not None:
+                    taste_count += 1
+            await db.commit()
+            logger.info(
+                "Embedding refresh: products=%d (recomputed=%d), tastes=%d",
+                product_summary["scanned"],
+                product_summary["recomputed"],
+                taste_count,
+            )
+    except Exception as exc:
+        logger.error("Embedding refresh job failed: %s", exc)
+
+
 async def _run_daily_rgpd_purge() -> None:
     """Background job: hard-delete clients whose 30-day deletion window
     has elapsed (P1-007). Runs daily at 03:00 Paris time."""
@@ -143,6 +185,12 @@ async def lifespan(app: FastAPI):
             _run_daily_rgpd_purge,
             CronTrigger(hour=3, minute=0),
             id="daily_rgpd_purge",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_daily_embedding_refresh,
+            CronTrigger(hour=4, minute=0),
+            id="daily_embedding_refresh",
             replace_existing=True,
         )
         scheduler.start()

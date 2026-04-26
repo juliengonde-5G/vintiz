@@ -161,6 +161,8 @@ GET  /api/admin/weather                      Météo Vernon
 GET  /api/admin/audit-logs                   Journal AuditLog (manager only, filtres entity/action/user_id)
 GET  /api/admin/fiscal-export?from=&to=&format=xml|json  Export fiscal NF525/DGFiP (manager only)
 GET  /api/admin/data-quality?days=7          Volumes events_log par type + courbe (manager only)
+POST /api/admin/embeddings/recompute         Recalcul embeddings catalogue (manager only)
+POST /api/admin/embeddings/customer/{id}     Refresh taste profile cliente (manager only)
 GET  /api/ai/weekly-checklist                Checklist semaine IA
 GET  /api/ai/trends                          Tendances mode
 POST /api/ai/persona/marketing               Rapport marketing IA
