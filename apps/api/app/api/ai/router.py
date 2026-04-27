@@ -332,7 +332,7 @@ async def get_weekly_checklist(
     ]
 
     # Optionally enrich with Claude if API key is available
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    anthropic_key = settings.ANTHROPIC_API_KEY or ""
     ai_summary = None
     if anthropic_key:
         try:
@@ -417,7 +417,7 @@ async def get_fashion_trends(
             except (json.JSONDecodeError, KeyError, ValueError):
                 pass
 
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    anthropic_key = settings.ANTHROPIC_API_KEY or ""
 
     channels = None
     if anthropic_key:
@@ -538,7 +538,7 @@ async def generate_marketing_persona(
         "articles_vendus_total": sold_count,
     }
 
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    anthropic_key = settings.ANTHROPIC_API_KEY or ""
     if anthropic_key:
         try:
             import anthropic

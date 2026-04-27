@@ -64,7 +64,7 @@ class Category(Base):
         "Category", remote_side="Category.id", lazy="selectin"
     )
     products: Mapped[list["Product"]] = relationship(
-        "Product", back_populates="category", lazy="selectin"
+        "Product", back_populates="category", lazy="noload"
     )
 
 
@@ -96,7 +96,7 @@ class Product(Base):
     )
     condition: Mapped[str | None] = mapped_column(String(50), nullable=True)
     week_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    sold_at: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Life-cycle anchors (P1-006). ``received_at`` is set on first arrival
     # in the boutique; ``displayed_at`` snaps when the product first hits
     # the floor. They drive both the sell-through KPI (DOH) and the

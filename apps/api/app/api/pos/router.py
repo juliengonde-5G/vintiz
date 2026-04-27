@@ -1,5 +1,4 @@
 import logging
-import os
 import uuid
 from decimal import Decimal
 
@@ -8,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import RoleChecker, get_current_user
 from app.models.user import User
@@ -110,80 +110,12 @@ async def create_transaction(
     # Generate fiscal hash chain
     await fiscal_service.sign_transaction(transaction)
 
-    # Redeem any coupon code passed from the POS. Failures here surface
-    # to the user but the sale itself is preserved (already signed).
-    if request.coupon_code:
-        from app.services.coupon import (
-            CouponError,
-            redeem_coupon,
-            validate_coupon,
-        )
-
-        try:
-            preview = await validate_coupon(
-                db,
-                code=request.coupon_code,
-                cart_total=float(transaction.total_ttc),
-                client_id=transaction.client_id,
-            )
-            await redeem_coupon(db, preview.coupon_id, transaction.id)
-        except CouponError as exc:
-            logger.warning(
-                "Coupon redemption failed for tx=%s code=%s reason=%s",
-                transaction.id, request.coupon_code, exc,
-            )
-
-    # Auto-redeem any active reservation tied to the cart's products
-    # for this client (P4-005). Best-effort — never blocks the sale.
-    if transaction.client_id and transaction.items:
-        from app.models.reservation import Reservation, ReservationStatus
-
-        product_ids = [
-            item.product_id for item in transaction.items
-            if item.product_id is not None
-        ]
-        if product_ids:
-            held = (await db.execute(
-                select(Reservation).where(
-                    Reservation.client_id == transaction.client_id,
-                    Reservation.product_id.in_(product_ids),
-                    Reservation.status == ReservationStatus.active,
-                )
-            )).scalars().all()
-            for reservation in held:
-                reservation.status = ReservationStatus.redeemed
-                reservation.redeemed_transaction_id = transaction.id
-
-    # Emit analytics events (P1-003). One row per sold item + a customer
-    # visit if a client was attached. Failures are swallowed by EventService.
-    from app.models.events import EventSource, EventType
-    events = EventService(db)
-    if transaction.client_id is not None:
-        await events.emit(
-            EventType.customer_visited,
-            source=EventSource.pos,
-            customer_id=transaction.client_id,
-            transaction_id=transaction.id,
-            user_id=current_user.id,
-        )
-    for item in (transaction.items or []):
-        if item.product_id is None:
-            continue  # manual / free-form line, not a stocked product
-        await events.emit(
-            EventType.product_sold,
-            source=EventSource.pos,
-            customer_id=transaction.client_id,
-            product_id=item.product_id,
-            transaction_id=transaction.id,
-            user_id=current_user.id,
-            meta={
-                "quantity": int(item.quantity),
-                "unit_price": float(item.unit_price),
-                "discount_percent": float(item.discount_percent or 0),
-            },
-        )
-
-    await db.commit()
+    # Coupon redemption, reservation auto-redeem, analytics events
+    await pos_service.finalize_sale(
+        transaction,
+        coupon_code=request.coupon_code,
+        user_id=current_user.id,
+    )
 
     return {
         "id": str(transaction.id),
@@ -319,7 +251,6 @@ async def open_drawer(
         },
     )
 
-    await db.commit()
     return {
         "drawer_id": str(drawer.id),
         "opening_amount": float(drawer.opening_amount),
@@ -361,8 +292,6 @@ async def close_drawer(
             "transaction_count": z_report.transaction_count,
         },
     )
-
-    await db.commit()
 
     return {
         "drawer_id": str(drawer.id),
@@ -599,14 +528,13 @@ async def resend_transaction(
     elif request.channel == "sms":
         if not client.get("phone"):
             raise HTTPException(status_code=400, detail="Ce client n'a pas de numero de telephone")
-        twilio_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
-        if twilio_sid:
+        if settings.TWILIO_ACCOUNT_SID:
             try:
                 from twilio.rest import Client as TwilioClient
-                tw = TwilioClient(twilio_sid, os.getenv("TWILIO_AUTH_TOKEN", ""))
+                tw = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
                 tw.messages.create(
                     body=f"Vintiz - Ticket #{ticket_num} - Total {total:.2f}EUR. Merci !",
-                    from_=os.getenv("TWILIO_FROM", ""),
+                    from_=settings.TWILIO_FROM,
                     to=client["phone"],
                 )
                 logger.info("Receipt SMS sent for transaction %s", transaction_id)
@@ -736,7 +664,6 @@ async def set_cashier_pin(
         raise HTTPException(status_code=404, detail="User not found")
     cashier_service = CashierService(db)
     await cashier_service.set_pin(user, request.pin)
-    await db.commit()
     return {"user_id": str(user.id), "has_pin": True}
 
 
@@ -755,7 +682,6 @@ async def clear_cashier_pin(
         raise HTTPException(status_code=404, detail="User not found")
     cashier_service = CashierService(db)
     await cashier_service.clear_pin(user)
-    await db.commit()
     return {"user_id": str(user.id), "has_pin": False}
 
 
@@ -862,8 +788,6 @@ async def refund_transaction(
                 "original_transaction_id": str(refund_tx.original_transaction_id),
             },
         )
-
-    await db.commit()
 
     return {
         "id": str(refund_tx.id),

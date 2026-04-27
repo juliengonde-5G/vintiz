@@ -31,6 +31,16 @@ class Settings(BaseSettings):
     # AI
     ANTHROPIC_API_KEY: str | None = None
 
+    # SMTP transactional email (fallback when Brevo is not configured)
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+
+    # Admin bootstrap (used by /admin/create-tables — separate from SECRET_KEY)
+    ADMIN_BOOTSTRAP_KEY: str = ""
+
     # CORS - comma-separated string, parsed via property
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
 
@@ -40,6 +50,11 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = False
+
+    # Twilio SMS (optional — simulation if unset)
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_FROM: str = ""
 
     # SEO / Analytics
     PUBLIC_SITE_URL: str = "https://vintiz.fr"

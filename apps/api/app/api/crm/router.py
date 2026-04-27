@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.client import (
@@ -43,16 +44,8 @@ async def lookup_client(
     404 message when no account exists, to limit account enumeration. A proper
     fix requires a magic-link / OTP flow (see correction plan).
     """
-    email_clean = email.strip().lower()
-    if "@" not in email_clean or "." not in email_clean.split("@", 1)[-1]:
-        raise HTTPException(status_code=400, detail="Adresse email invalide")
-
-    result = await db.execute(
-        select(Client).where(Client.email == email_clean)
-    )
-    client = result.scalar_one_or_none()
-    if not client:
-        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    from app.services.client_lookup import get_client_by_email
+    client = await get_client_by_email(db, email, raise_if_missing=True)
 
     loyalty_data = None
     if client.loyalty_account:
@@ -158,19 +151,10 @@ async def lookup_client_brief(
     `LoyaltyCustomerCard` panel with last visit, favorite categories, and
     3 PS picks ready to be tapped into the cart.
     """
+    from app.services.client_lookup import get_client_by_email
     from app.services.customer_brief import get_customer_brief
 
-    email_clean = email.strip().lower()
-    if "@" not in email_clean or "." not in email_clean.split("@", 1)[-1]:
-        raise HTTPException(status_code=400, detail="Adresse email invalide")
-
-    result = await db.execute(
-        select(Client).where(Client.email == email_clean)
-    )
-    client = result.scalar_one_or_none()
-    if not client:
-        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
-
+    client = await get_client_by_email(db, email, raise_if_missing=True)
     brief = await get_customer_brief(db, client.id)
     return brief
 
@@ -401,26 +385,11 @@ async def activate_loyalty(
     current_user: User = Depends(get_current_user),
 ):
     """Activate a loyalty account for a client."""
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    client = result.scalar_one_or_none()
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-
-    if client.loyalty_account:
-        raise HTTPException(status_code=400, detail="Loyalty already active")
-
-    account = LoyaltyAccount(
-        client_id=client.id,
-        points=0,
-        tier="bronze",
-    )
-    db.add(account)
-    await db.flush()
-    await db.refresh(account)
-    await db.commit()
+    from app.services.loyalty import LoyaltyService
+    account = await LoyaltyService(db).activate(client_id)
     return {
         "account_id": str(account.id),
-        "client_id": str(client.id),
+        "client_id": str(account.client_id),
         "points": account.points,
         "tier": account.tier,
     }
@@ -433,29 +402,10 @@ async def get_loyalty(
     current_user: User = Depends(get_current_user),
 ):
     """Get loyalty balance for a client."""
-    result = await db.execute(
-        select(LoyaltyAccount).where(LoyaltyAccount.client_id == client_id)
-    )
-    account = result.scalar_one_or_none()
-    if not account:
-        raise HTTPException(status_code=404, detail="No loyalty account found")
-
-    return {
-        "account_id": str(account.id),
-        "client_id": str(client_id),
-        "points": account.points,
-        "tier": account.tier,
-        "transactions": [
-            {
-                "id": str(lt.id),
-                "type": lt.tx_type.value,
-                "points": lt.points,
-                "description": lt.description,
-                "created_at": lt.created_at.isoformat() if lt.created_at else None,
-            }
-            for lt in (account.transactions or [])
-        ],
-    }
+    from app.services.loyalty import LoyaltyService
+    svc = LoyaltyService(db)
+    account = await svc.get_account(client_id)
+    return svc.serialize(account)
 
 
 class LoyaltyPointsRequest(BaseModel):
@@ -471,26 +421,8 @@ async def earn_loyalty_points(
     current_user: User = Depends(get_current_user),
 ):
     """Add points to a client's loyalty account."""
-    result = await db.execute(
-        select(LoyaltyAccount).where(LoyaltyAccount.client_id == client_id)
-    )
-    account = result.scalar_one_or_none()
-    if not account:
-        raise HTTPException(status_code=404, detail="No loyalty account found")
-
-    account.points += request.points
-
-    tx = LoyaltyTransaction(
-        account_id=account.id,
-        tx_type=LoyaltyTxType.earn,
-        points=request.points,
-        description=request.description,
-    )
-    db.add(tx)
-    await db.flush()
-    await db.refresh(account)
-    await db.commit()
-
+    from app.services.loyalty import LoyaltyService
+    account = await LoyaltyService(db).earn(client_id, request.points, request.description)
     return {
         "account_id": str(account.id),
         "client_id": str(client_id),
@@ -507,32 +439,8 @@ async def redeem_loyalty_points(
     current_user: User = Depends(get_current_user),
 ):
     """Redeem points from a client's loyalty account."""
-    result = await db.execute(
-        select(LoyaltyAccount).where(LoyaltyAccount.client_id == client_id)
-    )
-    account = result.scalar_one_or_none()
-    if not account:
-        raise HTTPException(status_code=404, detail="No loyalty account found")
-
-    if account.points < request.points:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Insufficient points. Available: {account.points}, requested: {request.points}",
-        )
-
-    account.points -= request.points
-
-    tx = LoyaltyTransaction(
-        account_id=account.id,
-        tx_type=LoyaltyTxType.redeem,
-        points=request.points,
-        description=request.description,
-    )
-    db.add(tx)
-    await db.flush()
-    await db.refresh(account)
-    await db.commit()
-
+    from app.services.loyalty import LoyaltyService
+    account = await LoyaltyService(db).redeem(client_id, request.points, request.description)
     return {
         "account_id": str(account.id),
         "client_id": str(client_id),
@@ -617,18 +525,14 @@ async def send_sms(
     if not client.phone:
         raise HTTPException(status_code=400, detail="Client has no phone number")
 
-    twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
-    twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
-    twilio_from_number = os.getenv("TWILIO_FROM_NUMBER", "")
-
-    if twilio_account_sid and twilio_auth_token and twilio_from_number:
+    if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_FROM:
         try:
             from twilio.rest import Client as TwilioClient
 
-            twilio_client = TwilioClient(twilio_account_sid, twilio_auth_token)
+            twilio_client = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
             message = twilio_client.messages.create(
                 body=request.message,
-                from_=twilio_from_number,
+                from_=settings.TWILIO_FROM,
                 to=client.phone,
             )
             return {
@@ -694,11 +598,11 @@ async def send_welcome_campaign(
     )
     clients = result.scalars().all()
 
-    smtp_host = os.getenv("SMTP_HOST", "")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER", "")
-    smtp_password = os.getenv("SMTP_PASSWORD", "")
-    smtp_from = os.getenv("SMTP_FROM", smtp_user or "noreply@vintiz.fr")
+    smtp_host = settings.SMTP_HOST
+    smtp_port = settings.SMTP_PORT
+    smtp_user = settings.SMTP_USER
+    smtp_password = settings.SMTP_PASSWORD
+    smtp_from = settings.SMTP_FROM or smtp_user or "noreply@vintiz.fr"
 
     sent = 0
     simulated = 0
@@ -757,16 +661,8 @@ async def get_personal_shopper(
     Public endpoint (no auth) — uses email as identifier. As with /clients/lookup,
     this should be moved to a magic-link flow for proper protection.
     """
-    email_clean = email.strip().lower()
-    if "@" not in email_clean or "." not in email_clean.split("@", 1)[-1]:
-        raise HTTPException(status_code=400, detail="Adresse email invalide")
-
-    result = await db.execute(
-        select(Client).where(Client.email == email_clean)
-    )
-    client = result.scalar_one_or_none()
-    if not client:
-        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    from app.services.client_lookup import get_client_by_email
+    client = await get_client_by_email(db, email, raise_if_missing=True)
 
     # Collect all products purchased by this client
     tx_result = await db.execute(
@@ -854,7 +750,7 @@ async def get_personal_shopper(
 
     # Claude-powered narrative
     narrative = None
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    anthropic_key = settings.ANTHROPIC_API_KEY or ""
     if anthropic_key and top_matches:
         try:
             import anthropic

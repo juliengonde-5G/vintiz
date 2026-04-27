@@ -2,9 +2,13 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.exceptions import (
+    CartEmpty, InsufficientBalance, InvalidOperation, PaymentShortfall,
+    ProductNotAvailable, ResourceNotFound,
+)
 
 from app.models.client import AvoirTransaction, AvoirTxType, Client
 from app.models.pos import (
@@ -64,7 +68,7 @@ class PosService:
                 return existing
 
         if not items:
-            raise HTTPException(status_code=400, detail="Cart is empty")
+            raise CartEmpty()
 
         total_ttc = Decimal("0")
         # (product | None, quantity, unit_price, discount_percent, item_name)
@@ -77,15 +81,9 @@ class PosService:
                 )
                 product = result.scalar_one_or_none()
                 if product is None:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"Product {cart_item.product_id} not found",
-                    )
+                    raise ResourceNotFound("Product", cart_item.product_id)
                 if product.status not in (ProductStatus.display, ProductStatus.stock):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Product {product.name} is not available for sale (status: {product.status.value})",
-                    )
+                    raise ProductNotAvailable(product.name, product.status.value)
                 unit_price = Decimal(str(cart_item.unit_price)) if cart_item.unit_price else Decimal(str(product.sale_price))
                 discount = cart_item.discount_percent or 0
                 line_total = (unit_price * cart_item.quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
@@ -94,10 +92,7 @@ class PosService:
             else:
                 # Manual item (e.g. sac)
                 if not cart_item.name or not cart_item.unit_price:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Manual items require name and unit_price",
-                    )
+                    raise InvalidOperation("Manual items require name and unit_price")
                 unit_price = Decimal(str(cart_item.unit_price))
                 discount = cart_item.discount_percent or 0
                 line_total = (unit_price * cart_item.quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
@@ -111,16 +106,23 @@ class PosService:
         # Validate payments
         total_paid = sum(Decimal(str(p.amount)) for p in payments)
         if total_paid < total_ttc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Insufficient payment: {total_paid} < {total_ttc}",
-            )
+            raise PaymentShortfall(total_paid, total_ttc)
 
-        # Generate transaction number
-        max_num_result = await self.db.execute(
-            select(func.coalesce(func.max(Transaction.transaction_number), 0))
-        )
-        next_number = max_num_result.scalar_one() + 1
+        # Generate transaction number.
+        # On PostgreSQL use the dedicated sequence (NF525 — no gaps under concurrency).
+        # On SQLite (tests) fall back to MAX+1 because sequences don't exist.
+        from sqlalchemy import text
+        dialect = self.db.bind.dialect.name if self.db.bind else "postgresql"
+        if dialect == "sqlite":
+            max_num_result = await self.db.execute(
+                select(func.coalesce(func.max(Transaction.transaction_number), 0))
+            )
+            next_number = max_num_result.scalar_one() + 1
+        else:
+            seq_result = await self.db.execute(
+                text("SELECT nextval('transaction_number_seq')")
+            )
+            next_number = seq_result.scalar_one()
 
         transaction = Transaction(
             transaction_number=next_number,
@@ -153,7 +155,7 @@ class PosService:
             # Mark product as sold (only real products)
             if product:
                 product.status = ProductStatus.sold
-                product.sold_at = datetime.now(timezone.utc).isoformat()
+                product.sold_at = datetime.now(timezone.utc)
 
         # Create payment records
         method_map = {
@@ -176,24 +178,17 @@ class PosService:
         # Avoir checkout: validate balance, debit client and write ledger.
         if avoir_total > 0:
             if client_id is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Avoir payment requires a client to be selected",
-                )
+                raise InvalidOperation("Avoir payment requires a client to be selected")
             client_result = await self.db.execute(
                 select(Client).where(Client.id == client_id)
             )
             client = client_result.scalar_one_or_none()
             if client is None:
-                raise HTTPException(status_code=404, detail="Client not found")
+                raise ResourceNotFound("Client", client_id)
             current_balance = Decimal(str(client.avoir_credit or 0))
             if avoir_total > current_balance:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Insufficient avoir balance: requested {avoir_total}, "
-                        f"available {current_balance}"
-                    ),
+                raise InsufficientBalance(
+                    f"Avoir: requested {avoir_total}, available {current_balance}"
                 )
             client.avoir_credit = float(current_balance - avoir_total)
             self.db.add(
@@ -317,9 +312,7 @@ class PosService:
         """Open a new cash drawer. Raises if one is already open."""
         existing = await self.get_open_drawer()
         if existing:
-            raise HTTPException(
-                status_code=400, detail="A cash drawer is already open"
-            )
+            raise InvalidOperation("A cash drawer is already open")
         drawer = CashDrawer(
             user_id=user_id,
             cashier_id=cashier_id,
@@ -346,9 +339,7 @@ class PosService:
         """
         drawer = await self.get_open_drawer()
         if not drawer:
-            raise HTTPException(
-                status_code=400, detail="No open cash drawer found"
-            )
+            raise ResourceNotFound("CashDrawer")
         if cashier_id is not None:
             drawer.cashier_id = cashier_id
 
@@ -380,3 +371,83 @@ class PosService:
             select(CashDrawer).where(CashDrawer.is_open.is_(True)).limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def finalize_sale(
+        self,
+        transaction: Transaction,
+        *,
+        coupon_code: str | None,
+        user_id: uuid.UUID,
+    ) -> None:
+        """Post-sign finalization: coupon redemption, reservation auto-redeem, event emission.
+
+        Called from the router after FiscalService.sign_transaction(). Failures in
+        any step are logged and swallowed — they never roll back the signed sale.
+        """
+        import logging as _logging
+        _log = _logging.getLogger("vintiz")
+
+        # Coupon redemption
+        if coupon_code:
+            from app.services.coupon import CouponError, redeem_coupon, validate_coupon
+            try:
+                preview = await validate_coupon(
+                    self.db,
+                    code=coupon_code,
+                    cart_total=float(transaction.total_ttc),
+                    client_id=transaction.client_id,
+                )
+                await redeem_coupon(self.db, preview.coupon_id, transaction.id)
+            except CouponError as exc:
+                _log.warning(
+                    "Coupon redemption failed for tx=%s code=%s reason=%s",
+                    transaction.id, coupon_code, exc,
+                )
+
+        # Auto-redeem active reservations for sold products (P4-005)
+        if transaction.client_id and transaction.items:
+            from app.models.reservation import Reservation, ReservationStatus
+            product_ids = [
+                item.product_id for item in transaction.items
+                if item.product_id is not None
+            ]
+            if product_ids:
+                held = (await self.db.execute(
+                    select(Reservation).where(
+                        Reservation.client_id == transaction.client_id,
+                        Reservation.product_id.in_(product_ids),
+                        Reservation.status == ReservationStatus.active,
+                    )
+                )).scalars().all()
+                for reservation in held:
+                    reservation.status = ReservationStatus.redeemed
+                    reservation.redeemed_transaction_id = transaction.id
+
+        # Emit analytics events (P1-003)
+        from app.models.events import EventSource, EventType
+        from app.services.events import EventService
+        events = EventService(self.db)
+        if transaction.client_id is not None:
+            await events.emit(
+                EventType.customer_visited,
+                source=EventSource.pos,
+                customer_id=transaction.client_id,
+                transaction_id=transaction.id,
+                user_id=user_id,
+            )
+        for item in (transaction.items or []):
+            if item.product_id is None:
+                continue
+            await events.emit(
+                EventType.product_sold,
+                source=EventSource.pos,
+                customer_id=transaction.client_id,
+                product_id=item.product_id,
+                transaction_id=transaction.id,
+                user_id=user_id,
+                meta={
+                    "quantity": int(item.quantity),
+                    "unit_price": float(item.unit_price),
+                    "discount_percent": float(item.discount_percent or 0),
+                },
+            )

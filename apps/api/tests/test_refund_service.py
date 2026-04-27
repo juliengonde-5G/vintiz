@@ -226,13 +226,13 @@ async def test_avoir_refund_credits_client(session):
 
 @pytest.mark.anyio
 async def test_avoir_refund_without_client_fails(session):
-    from fastapi import HTTPException
+    from app.core.exceptions import RefundError
 
     user = await _make_user(session)
     sale = await _make_sale(session, user, client=None, items=[("Hat", 10.0, 1)])
     item = sale.items[0]
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(RefundError) as exc:
         await RefundService(session).refund_transaction(
             original_tx_id=sale.id,
             items=[RefundLineInput(item.id, 1)],
@@ -241,8 +241,7 @@ async def test_avoir_refund_without_client_fails(session):
             cashier_id=None,
             reason=None,
         )
-    assert exc.value.status_code == 400
-    assert "client" in exc.value.detail.lower()
+    assert "client" in str(exc.value).lower()
 
 
 # ---------------------------------------------------------------------------
@@ -302,14 +301,14 @@ async def test_cannot_refund_more_than_remaining(session):
     )
 
     # Try to refund 2 more (only 1 remaining) → must fail
-    with pytest.raises(HTTPException) as exc:
+    from app.core.exceptions import RefundError
+    with pytest.raises(RefundError) as exc:
         await RefundService(session).refund_transaction(
             original_tx_id=sale.id,
             items=[RefundLineInput(item.id, 2)],
             refund_method="cash", user_id=user.id, cashier_id=None, reason=None,
         )
-    assert exc.value.status_code == 400
-    assert "remain" in exc.value.detail.lower()
+    assert "remain" in str(exc.value).lower()
 
     # Refund the last 1 → ok
     await RefundService(session).refund_transaction(
@@ -326,7 +325,7 @@ async def test_cannot_refund_more_than_remaining(session):
 
 @pytest.mark.anyio
 async def test_cannot_refund_a_refund(session):
-    from fastapi import HTTPException
+    from app.core.exceptions import RefundError
 
     user = await _make_user(session)
     sale = await _make_sale(session, user)
@@ -336,46 +335,43 @@ async def test_cannot_refund_a_refund(session):
         refund_method="cash", user_id=user.id, cashier_id=None, reason=None,
     )
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(RefundError):
         await RefundService(session).refund_transaction(
             original_tx_id=refund.id,
             items=[RefundLineInput(sale.items[0].id, 1)],
             refund_method="cash", user_id=user.id, cashier_id=None, reason=None,
         )
-    assert exc.value.status_code == 400
 
 
 @pytest.mark.anyio
 async def test_invalid_refund_method_rejected(session):
-    from fastapi import HTTPException
+    from app.core.exceptions import RefundError
 
     user = await _make_user(session)
     sale = await _make_sale(session, user)
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(RefundError) as exc:
         await RefundService(session).refund_transaction(
             original_tx_id=sale.id,
             items=[RefundLineInput(sale.items[0].id, 1)],
             refund_method="bitcoin", user_id=user.id, cashier_id=None, reason=None,
         )
-    assert exc.value.status_code == 400
-    assert "method" in exc.value.detail.lower()
+    assert "method" in str(exc.value).lower()
 
 
 @pytest.mark.anyio
 async def test_zero_quantity_rejected(session):
-    from fastapi import HTTPException
+    from app.core.exceptions import RefundError
 
     user = await _make_user(session)
     sale = await _make_sale(session, user)
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(RefundError):
         await RefundService(session).refund_transaction(
             original_tx_id=sale.id,
             items=[RefundLineInput(sale.items[0].id, 0)],
             refund_method="cash", user_id=user.id, cashier_id=None, reason=None,
         )
-    assert exc.value.status_code == 400
 
 
 # ---------------------------------------------------------------------------

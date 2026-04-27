@@ -7,10 +7,10 @@ Lifecycle: pending -> accepted | snoozed | dismissed | completed.
 from datetime import datetime
 
 from sqlalchemy import DateTime, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
+from app.models.types import JSONType
 
 
 class AITask(Base):
@@ -32,7 +32,7 @@ class AITask(Base):
     action_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Free-form payload (linked product id, price suggestion, zone id, etc.)
-    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    payload: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
 
     # Source endpoint or skill (e.g. "weekly-checklist", "pricing/markdowns")
     source: Mapped[str | None] = mapped_column(String(100), nullable=True)
