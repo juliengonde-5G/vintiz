@@ -375,3 +375,146 @@ async def dashboard(
         "top_products_week": top_products,
         "recent_transactions": recent_transactions,
     }
+
+
+# ---------------------------------------------------------------------------
+# Daily recap (Lot 5) — full per-date dashboard
+# ---------------------------------------------------------------------------
+
+
+@router.get("/daily-recap")
+async def daily_recap(
+    target_date: date = Query(..., alias="date"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Per-day recap: sales, stock movements, payment mix, top products,
+    cahier text, weekly tasks summary, and weather snapshot.
+
+    Read-only; safe to call for any past date."""
+    from app.models.audit import Settings
+    from app.models.pos import Payment, PaymentMethod
+    from app.models.weekly_task import WeeklyTask
+    import json as _json
+
+    day_start = datetime.combine(target_date, datetime.min.time())
+    day_end = datetime.combine(target_date + timedelta(days=1), datetime.min.time())
+
+    # Sales aggregate
+    sales_q = await db.execute(
+        select(
+            func.coalesce(func.sum(Transaction.total_ttc), 0),
+            func.count(Transaction.id),
+        ).where(
+            Transaction.transaction_type == TransactionType.sale,
+            Transaction.created_at >= day_start,
+            Transaction.created_at < day_end,
+        )
+    )
+    revenue, n_tx = sales_q.one()
+    revenue = float(revenue or 0)
+    avg_basket = round(revenue / n_tx, 2) if n_tx else 0
+
+    # Top 5 products of the day
+    top_q = await db.execute(
+        select(
+            Product.id, Product.name, Product.barcode,
+            func.sum(TransactionItem.quantity).label("n"),
+            func.sum(TransactionItem.line_total).label("ca"),
+        )
+        .join(TransactionItem, TransactionItem.product_id == Product.id)
+        .join(Transaction, Transaction.id == TransactionItem.transaction_id)
+        .where(
+            Transaction.transaction_type == TransactionType.sale,
+            Transaction.created_at >= day_start,
+            Transaction.created_at < day_end,
+        )
+        .group_by(Product.id, Product.name, Product.barcode)
+        .order_by(func.sum(TransactionItem.quantity).desc())
+        .limit(5)
+    )
+    top_products = [
+        {"id": str(r[0]), "name": r[1], "barcode": r[2], "qty": int(r[3] or 0), "ca": float(r[4] or 0)}
+        for r in top_q.all()
+    ]
+
+    # Payment mix
+    pay_q = await db.execute(
+        select(Payment.method, func.coalesce(func.sum(Payment.amount), 0))
+        .join(Transaction, Transaction.id == Payment.transaction_id)
+        .where(
+            Transaction.transaction_type == TransactionType.sale,
+            Transaction.created_at >= day_start,
+            Transaction.created_at < day_end,
+        )
+        .group_by(Payment.method)
+    )
+    payment_mix = {row[0].value: float(row[1] or 0) for row in pay_q.all()}
+
+    # Stock movements (use sold_at + status changes via product table)
+    sold_q = await db.execute(
+        select(func.count(Product.id))
+        .where(
+            Product.status == ProductStatus.sold,
+            Product.sold_at >= day_start,
+            Product.sold_at < day_end,
+        )
+    )
+    sold_today = int(sold_q.scalar() or 0)
+
+    # Cahier texts
+    msg_setting = (await db.execute(
+        select(Settings).where(Settings.key == f"cahier.message_du_jour.{target_date.isoformat()}")
+    )).scalar_one_or_none()
+    op_setting = (await db.execute(
+        select(Settings).where(Settings.key == f"cahier.operation.{target_date.isoformat()}")
+    )).scalar_one_or_none()
+    msg_text = (_json.loads(msg_setting.value).get("text") if msg_setting and msg_setting.value else None) or ""
+    op_text = (_json.loads(op_setting.value).get("text") if op_setting and op_setting.value else None) or ""
+
+    # Weather snapshot
+    weather: dict | None = None
+    weather_setting = (await db.execute(
+        select(Settings).where(Settings.key == "weather_history")
+    )).scalar_one_or_none()
+    if weather_setting and weather_setting.value:
+        try:
+            history = _json.loads(weather_setting.value)
+            for entry in history:
+                if entry.get("date") == target_date.isoformat():
+                    weather = entry
+                    break
+        except Exception:
+            pass
+
+    # Weekly tasks for this day
+    tasks_q = await db.execute(
+        select(WeeklyTask).where(WeeklyTask.scheduled_for == target_date)
+    )
+    tasks = [
+        {
+            "id": str(t.id),
+            "kind": t.kind.value,
+            "status": t.status.value,
+            "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+        }
+        for t in tasks_q.scalars().all()
+    ]
+
+    return {
+        "date": target_date.isoformat(),
+        "sales": {
+            "revenue": revenue,
+            "transaction_count": int(n_tx or 0),
+            "avg_basket": avg_basket,
+            "top_products": top_products,
+            "payment_mix": payment_mix,
+        },
+        "stock": {"sold": sold_today},
+        "cahier": {
+            "message_du_jour": msg_text,
+            "operation_en_cours": op_text,
+        },
+        "weather": weather,
+        "tasks": tasks,
+    }

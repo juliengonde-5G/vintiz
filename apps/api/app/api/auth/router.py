@@ -55,7 +55,11 @@ async def login(
     await reset_login_rate_limit(request)
     logger.info("Successful login: user_id=%s username=%s", user.id, user.username)
     access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
-    return Token(access_token=access_token)
+    return Token(
+        access_token=access_token,
+        username=user.username,
+        role=user.role.value,
+    )
 
 
 @router.post("/refresh", response_model=Token)

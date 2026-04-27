@@ -40,12 +40,6 @@ class DailyTextIn(BaseModel):
     operation_en_cours: str | None = None
 
 
-class SignatureIn(BaseModel):
-    date: date
-    collaborateur: str | None = None
-    manager: str | None = None
-
-
 # ---------------------------------------------------------------------------
 # GET /api/cahier/{report_date}
 # ---------------------------------------------------------------------------
@@ -56,10 +50,13 @@ async def get_cahier(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    """Full daily notebook payload for report_date."""
+    """Full daily notebook payload for report_date.
+
+    Future dates are allowed (the manager can pre-fill the cahier
+    in advance). Live KPIs are zero on those days; the daily target
+    is computed from monthly_target × weekday_weights.
+    """
     today = date.today()
-    if report_date > today:
-        raise HTTPException(status_code=400, detail="Date in the future not supported")
 
     # Monthly target setting
     target_key = f"cahier.monthly_target.{report_date.year:04d}-{report_date.month:02d}"
@@ -84,13 +81,11 @@ async def get_cahier(
     cible_horaire = svc.compute_progression_cible(ca_objectif_jour or 0.0)
     prog_mois = await svc.compute_monthly_progress(db, report_date)
 
-    # Read per-day texts and signature
+    # Read per-day texts (signatures supprimées Lot 5)
     msg_key = f"cahier.message_du_jour.{report_date.isoformat()}"
     op_key = f"cahier.operation.{report_date.isoformat()}"
-    sig_key = f"cahier.signature.{report_date.isoformat()}"
     msg_row = await svc.read_setting_json(db, msg_key)
     op_row = await svc.read_setting_json(db, op_key)
-    sig_row = await svc.read_setting_json(db, sig_key)
 
     # Weather — only fetch live weather for today; older dates use stored snapshot
     weather: dict | None = None
@@ -147,7 +142,6 @@ async def get_cahier(
         "crm_gold": crm_gold,
         "progression_horaire": prog_horaire,
         "progression_cible_horaire": cible_horaire,
-        "signature": sig_row or {"collaborateur": None, "manager": None, "signed_at": None},
     }
 
 
@@ -200,6 +194,8 @@ async def set_daily_text(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
+    """Update daily message + operation. Past dates are read-only;
+    today and future dates can be edited (pre-fill in advance)."""
     today = date.today()
     if payload.date < today:
         raise HTTPException(
@@ -213,39 +209,6 @@ async def set_daily_text(
     if payload.operation_en_cours is not None:
         key = f"cahier.operation.{payload.date.isoformat()}"
         await svc.write_setting_json(db, key, {"text": payload.operation_en_cours, "updated_at": now})
-    return {"status": "ok"}
-
-
-# ---------------------------------------------------------------------------
-# Signature
-# ---------------------------------------------------------------------------
-
-@router.put("/signature")
-async def set_signature(
-    payload: SignatureIn,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-):
-    today = date.today()
-    # Past dates: allow only if no previous signature yet (rattrapage J+1)
-    if payload.date < today:
-        key = f"cahier.signature.{payload.date.isoformat()}"
-        existing = await svc.read_setting_json(db, key)
-        if existing and (existing.get("collaborateur") or existing.get("manager")):
-            raise HTTPException(
-                status_code=403,
-                detail="Signature déjà enregistrée pour cette date.",
-            )
-    key = f"cahier.signature.{payload.date.isoformat()}"
-    await svc.write_setting_json(
-        db,
-        key,
-        {
-            "collaborateur": payload.collaborateur,
-            "manager": payload.manager,
-            "signed_at": datetime.utcnow().isoformat(),
-        },
-    )
     return {"status": "ok"}
 
 

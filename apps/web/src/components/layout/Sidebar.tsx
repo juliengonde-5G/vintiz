@@ -201,12 +201,17 @@ const navGroups: NavGroup[] = [
   },
 ];
 
+// Hidden for role=collaborateur (Lot 7).
+const COLLAB_HIDDEN_GROUPS = new Set(['Configuration']);
+const COLLAB_HIDDEN_PATHS = new Set(['/seo', '/admin/operations']);
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [userName, setUserName] = useState<string>('Admin');
+  const [role, setRole] = useState<'manager' | 'collaborateur' | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -214,9 +219,18 @@ export default function Sidebar() {
     if (!token) router.replace('/login');
     const stored = localStorage.getItem('username');
     if (stored) setUserName(stored);
+    const storedRole = localStorage.getItem('role') as 'manager' | 'collaborateur' | null;
+    if (storedRole) setRole(storedRole);
+    // Lot 7 — restrict /admin/*, /settings, /seo to managers
+    if (storedRole === 'collaborateur') {
+      const blocked = ['/admin', '/settings', '/seo'];
+      if (blocked.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+        router.replace('/dashboard');
+      }
+    }
     const sidebarPref = localStorage.getItem('vintiz_sidebar_state');
     if (sidebarPref === 'collapsed') setDesktopCollapsed(true);
-  }, [router]);
+  }, [router, pathname]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -289,7 +303,14 @@ export default function Sidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 py-3 overflow-y-auto">
-          {navGroups.map((group) => (
+          {navGroups
+            .filter((group) => role !== 'collaborateur' || !COLLAB_HIDDEN_GROUPS.has(group.label))
+            .map((group) => {
+              const items = group.items.filter(
+                (item) => role !== 'collaborateur' || !COLLAB_HIDDEN_PATHS.has(item.href),
+              );
+              if (items.length === 0) return null;
+              return (
             <div key={group.label} className="mb-4">
               {!desktopCollapsed && (
                 <p className="md:px-6 px-6 mb-1 text-[10px] font-semibold tracking-[0.22em] uppercase text-gray-400">
@@ -297,7 +318,7 @@ export default function Sidebar() {
                 </p>
               )}
               <ul className={`space-y-0.5 ${desktopCollapsed ? 'md:px-2' : 'px-3'}`}>
-                {group.items.map((item) => {
+                {items.map((item) => {
                   const isActive = isItemActive(item.href);
                   return (
                     <li key={item.href}>
@@ -324,7 +345,8 @@ export default function Sidebar() {
                 })}
               </ul>
             </div>
-          ))}
+              );
+            })}
         </nav>
 
         {/* User + Logout */}

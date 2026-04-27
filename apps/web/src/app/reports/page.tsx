@@ -445,7 +445,153 @@ export default function ReportsPage() {
             </div>
           </Card>
         )}
+
+        {/* Historique journalier (Lot 5) */}
+        <DailyRecapSection />
       </main>
     </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Daily recap (Lot 5)
+// ---------------------------------------------------------------------------
+
+interface DailyRecap {
+  date: string;
+  sales: {
+    revenue: number;
+    transaction_count: number;
+    avg_basket: number;
+    top_products: { id: string; name: string; barcode: string; qty: number; ca: number }[];
+    payment_mix: Record<string, number>;
+  };
+  stock: { sold: number };
+  cahier: { message_du_jour: string; operation_en_cours: string };
+  weather: { temp: number; description: string; icon: string; temp_min: number; temp_max: number } | null;
+  tasks: { id: string; kind: string; status: string; completed_at: string | null }[];
+}
+
+function DailyRecapSection() {
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+  const [date, setDate] = React.useState<string>(todayISO());
+  const [data, setData] = React.useState<DailyRecap | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const load = React.useCallback(async (d: string) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.get(`/api/reports/daily-recap?date=${d}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setData(await res.json());
+    } catch (e: any) {
+      setError(`Chargement échoué : ${e?.message || e}`);
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { load(date); }, [load, date]);
+
+  return (
+    <Card className="mt-6">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <h2 className="font-display text-lg">Historique journalier</h2>
+        <input
+          type="date"
+          value={date}
+          max={todayISO()}
+          onChange={(e) => setDate(e.target.value)}
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+        />
+      </div>
+
+      {loading && <p className="text-sm text-gray-500">Chargement…</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {data && !loading && (
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Ventes */}
+          <div className="bg-cream/40 rounded-xl p-3">
+            <h3 className="text-xs uppercase tracking-wider text-teal mb-2">Ventes</h3>
+            <p className="text-sm">
+              <strong>{data.sales.revenue.toFixed(2)} €</strong> · {data.sales.transaction_count} ticket(s)
+              · panier moyen {data.sales.avg_basket.toFixed(2)} €
+            </p>
+            {data.sales.top_products.length > 0 && (
+              <ul className="mt-2 space-y-1 text-xs">
+                {data.sales.top_products.map((p) => (
+                  <li key={p.id} className="flex justify-between border-b border-gray-100 py-1">
+                    <span className="truncate">{p.name}</span>
+                    <span className="font-mono whitespace-nowrap ml-2">×{p.qty} · {p.ca.toFixed(2)} €</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {Object.keys(data.sales.payment_mix).length > 0 && (
+              <p className="text-xs text-gray-500 mt-2">
+                {Object.entries(data.sales.payment_mix)
+                  .map(([m, v]) => `${m}: ${v.toFixed(0)} €`)
+                  .join(' · ')}
+              </p>
+            )}
+          </div>
+
+          {/* Stock + tasks */}
+          <div className="bg-cream/40 rounded-xl p-3">
+            <h3 className="text-xs uppercase tracking-wider text-teal mb-2">Mouvements stock</h3>
+            <p className="text-sm">{data.stock.sold} produit(s) vendu(s)</p>
+            <h3 className="text-xs uppercase tracking-wider text-teal mt-3 mb-2">Tâches du jour</h3>
+            {data.tasks.length === 0 ? (
+              <p className="text-xs text-gray-500">Aucune tâche</p>
+            ) : (
+              <ul className="space-y-1 text-xs">
+                {data.tasks.map((t) => (
+                  <li key={t.id} className="flex justify-between">
+                    <span>{t.kind.replace(/_/g, ' ')}</span>
+                    <span className={t.status === 'done' ? 'text-teal' : t.status === 'skipped' ? 'text-gray-400' : 'text-orange-500'}>
+                      {t.status}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Météo */}
+          <div className="bg-cream/40 rounded-xl p-3">
+            <h3 className="text-xs uppercase tracking-wider text-teal mb-2">Météo</h3>
+            {data.weather ? (
+              <p className="text-sm">
+                {data.weather.description} · {Math.round(data.weather.temp)}°C
+                <span className="text-gray-400 text-xs ml-2">
+                  ({Math.round(data.weather.temp_min)} → {Math.round(data.weather.temp_max)} °C)
+                </span>
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500">Pas de snapshot météo pour ce jour</p>
+            )}
+          </div>
+
+          {/* Cahier */}
+          <div className="bg-cream/40 rounded-xl p-3">
+            <h3 className="text-xs uppercase tracking-wider text-teal mb-2">Cahier du jour</h3>
+            {data.cahier.message_du_jour && (
+              <p className="text-sm mb-2"><strong>Message :</strong> {data.cahier.message_du_jour}</p>
+            )}
+            {data.cahier.operation_en_cours && (
+              <p className="text-sm"><strong>Opération :</strong> {data.cahier.operation_en_cours}</p>
+            )}
+            {!data.cahier.message_du_jour && !data.cahier.operation_en_cours && (
+              <p className="text-xs text-gray-500">Aucune note pour ce jour</p>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }

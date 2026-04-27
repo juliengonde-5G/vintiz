@@ -297,7 +297,7 @@ interface TrendsMode {
 
 
 export default function IAPage() {
-  const [tab, setTab] = useState<'recos_du_jour' | 'vision' | 'trends' | 'pricing' | 'mapping' | 'checklist' | 'tendances_mode'>('recos_du_jour');
+  const [tab, setTab] = useState<'recos_du_jour' | 'checklist' | 'fashion_book' | 'trends_scoring'>('recos_du_jour');
   const [trends, setTrends] = useState<TrendItem[]>([]);
   const [markdowns, setMarkdowns] = useState<MarkdownItem[]>([]);
   const [zones, setZones] = useState<ZoneStat[]>([]);
@@ -415,12 +415,10 @@ export default function IAPage() {
 
 
   useEffect(() => {
-    if (tab === 'trends') loadTrends();
-    else if (tab === 'pricing') loadMarkdowns();
-    else if (tab === 'mapping') loadZones();
+    if (tab === 'trends_scoring') loadTrends();
     else if (tab === 'checklist') loadChecklist();
-    else if (tab === 'tendances_mode') loadTrendsMode();
-  }, [tab, loadTrends, loadMarkdowns, loadZones, loadChecklist, loadTrendsMode]);
+    else if (tab === 'fashion_book') loadTrendsMode();
+  }, [tab, loadTrends, loadChecklist, loadTrendsMode]);
 
   const refreshScores = async () => {
     setRefreshing(true);
@@ -483,12 +481,9 @@ export default function IAPage() {
 
   const tabs = [
     { key: 'recos_du_jour' as const, label: 'Recos du jour', icon: '💡' },
-    { key: 'vision' as const, label: 'Analyse Photo', icon: '📷' },
-    { key: 'trends' as const, label: 'Tendances', icon: '📈' },
-    { key: 'pricing' as const, label: 'Prix & Demarques', icon: '🏷️' },
-    { key: 'mapping' as const, label: 'Mapping Boutique', icon: '🗺️' },
-    { key: 'checklist' as const, label: 'Checklist Semaine', icon: '✅' },
-    { key: 'tendances_mode' as const, label: 'Tendances Mode', icon: '👗' },
+    { key: 'checklist' as const, label: 'Checklist semaine', icon: '✅' },
+    { key: 'fashion_book' as const, label: 'Fashion Book', icon: '👗' },
+    { key: 'trends_scoring' as const, label: 'Trends scoring', icon: '📈' },
   ];
 
   return (
@@ -542,99 +537,8 @@ export default function IAPage() {
           <RecosDuJourTab />
         )}
 
-        {/* VISION TAB */}
-        {tab === 'vision' && (
-          <div className="space-y-6">
-            <Card title="Analyse de photo produit">
-              <p className="text-sm text-gray-500 mb-4">
-                Uploadez une photo de vetement. L&apos;IA detectera automatiquement le type, la couleur, la matiere, la marque, la taille et l&apos;etat.
-              </p>
-              <div className="flex items-center gap-4">
-                <label className="cursor-pointer inline-flex items-center gap-2 px-6 py-3 bg-teal text-white rounded-lg hover:bg-teal-600 transition-colors min-h-[48px]">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="17 8 12 3 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
-                  {loading ? 'Analyse en cours...' : 'Choisir une photo'}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handlePhotoUpload}
-                    className="hidden"
-                    disabled={loading}
-                  />
-                </label>
-              </div>
-            </Card>
-
-            {visionResult && !visionResult.error && (
-              <Card title="Resultat de l'analyse">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Type</span>
-                      <span className="font-medium text-black">{visionResult.type}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Couleur</span>
-                      <span className="font-medium text-black">{visionResult.couleur}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Matiere</span>
-                      <span className="font-medium text-black">{visionResult.matiere}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Marque</span>
-                      <span className="font-medium text-black">{visionResult.marque}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Taille</span>
-                      <span className="font-medium text-black">{visionResult.taille}</span>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Etat</span>
-                      <span className="font-medium text-black">{visionResult.etat}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Saison</span>
-                      <span className="font-medium text-black">{visionResult.saison}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Style</span>
-                      <span className="font-medium text-black">{visionResult.style}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Gamme</span>
-                      <span className="font-medium text-black">{visionResult.gamme_estimee}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Confiance</span>
-                      <span className="font-medium text-black">{visionResult.confiance ? `${Math.round(visionResult.confiance * 100)}%` : '-'}</span>
-                    </div>
-                  </div>
-                </div>
-                {visionResult.description && (
-                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-500 mb-1">Description suggeree</p>
-                    <p className="text-black">{visionResult.description}</p>
-                  </div>
-                )}
-              </Card>
-            )}
-
-            {visionResult?.error && (
-              <Card>
-                <p className="text-red-600">{visionResult.error}</p>
-              </Card>
-            )}
-          </div>
-        )}
-
-        {/* TRENDS TAB */}
-        {tab === 'trends' && (
+        {/* TRENDS SCORING TAB (renommé Lot 6) */}
+        {tab === 'trends_scoring' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-black">Scores de tendance</h2>
@@ -684,290 +588,6 @@ export default function IAPage() {
             )}
           </div>
         )}
-
-        {/* PRICING TAB */}
-        {tab === 'pricing' && (
-          <div className="space-y-6">
-            <h2 className="text-lg font-semibold text-black">Suggestions de demarques</h2>
-
-            {loading ? (
-              <Card><p className="text-gray-400 text-center py-8">Chargement...</p></Card>
-            ) : markdowns.length === 0 ? (
-              <Card><p className="text-gray-400 text-center py-8">Aucune demarque suggeree - tous les produits sont recents</p></Card>
-            ) : (
-              <Card>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="pb-3 text-sm font-semibold text-gray-600">Produit</th>
-                        <th className="pb-3 text-sm font-semibold text-gray-600">Categorie</th>
-                        <th className="pb-3 text-sm font-semibold text-gray-600 text-right">Prix actuel</th>
-                        <th className="pb-3 text-sm font-semibold text-gray-600 text-right">Prix suggere</th>
-                        <th className="pb-3 text-sm font-semibold text-gray-600 text-right">Remise</th>
-                        <th className="pb-3 text-sm font-semibold text-gray-600 text-right">Semaines</th>
-                        <th className="pb-3 text-sm font-semibold text-gray-600">Urgence</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {markdowns.map((m) => (
-                        <tr key={m.product_id} className="border-b border-gray-50">
-                          <td className="py-3 text-sm text-black font-medium">{m.product_name}</td>
-                          <td className="py-3 text-sm text-gray-500">{m.category || '-'}</td>
-                          <td className="py-3 text-sm text-right text-gray-600">{formatCurrency(m.current_price)}</td>
-                          <td className="py-3 text-sm text-right font-bold text-teal">{formatCurrency(m.suggested_price)}</td>
-                          <td className="py-3 text-sm text-right text-red-600">-{m.discount_percent}%</td>
-                          <td className="py-3 text-sm text-right text-gray-600">{m.weeks_on_shelf}</td>
-                          <td className="py-3">
-                            <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${urgencyColor(m.urgency)}`}>
-                              {m.urgency}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            )}
-          </div>
-        )}
-
-        {/* MAPPING TAB */}
-        {tab === 'mapping' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-black">Mapping de la boutique</h2>
-              <div className="flex gap-2">
-                {zones.length === 0 && (
-                  <Button onClick={initZones} variant="secondary" disabled={loading}>
-                    Initialiser les zones
-                  </Button>
-                )}
-                <Button onClick={generateRecommendations} disabled={recoLoading}>
-                  {recoLoading ? 'Generation IA...' : 'Recommandations IA'}
-                </Button>
-              </div>
-            </div>
-
-            {loading ? (
-              <Card><p className="text-gray-400 text-center py-8">Chargement...</p></Card>
-            ) : zones.length === 0 ? (
-              <Card>
-                <p className="text-gray-400 text-center py-8">
-                  Aucune zone configuree. Cliquez sur &quot;Initialiser les zones&quot; pour creer le plan de base.
-                </p>
-              </Card>
-            ) : (
-              <>
-                {/* Visual floor plan + detail panel */}
-                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                  <div className="lg:col-span-3">
-                    <Card title="Plan de la boutique">
-                      <FloorPlan
-                        zones={zones}
-                        onSelectZone={handleSelectZone}
-                        selectedZoneId={selectedZone?.zone_id ?? null}
-                      />
-                    </Card>
-                  </div>
-                  <div className="lg:col-span-2 space-y-4">
-                    {selectedZone ? (
-                      <>
-                        <Card>
-                          <div className="flex items-start justify-between mb-4">
-                            <div>
-                              <h3 className="text-lg font-semibold text-black">{selectedZone.zone_name}</h3>
-                              <p className="text-xs text-gray-400 mt-1">{selectedZone.description}</p>
-                            </div>
-                            <button
-                              onClick={() => handleSelectZone(null)}
-                              className="text-gray-400 hover:text-gray-600 min-h-[36px] min-w-[36px] flex items-center justify-center"
-                            >
-                              &times;
-                            </button>
-                          </div>
-                          <div className="space-y-3 text-sm">
-                            <div className="flex justify-between py-2 border-b border-gray-100">
-                              <span className="text-gray-500">Occupation</span>
-                              <span className="font-medium text-black">{selectedZone.product_count} / {selectedZone.capacity} produits</span>
-                            </div>
-                            <div className="w-full bg-gray-100 rounded-full h-3">
-                              <div
-                                className={`h-3 rounded-full transition-all ${
-                                  selectedZone.occupancy_percent > 80 ? 'bg-red-400' :
-                                  selectedZone.occupancy_percent > 50 ? 'bg-yellow-400' :
-                                  'bg-green-400'
-                                }`}
-                                style={{ width: `${Math.min(100, selectedZone.occupancy_percent)}%` }}
-                              />
-                            </div>
-                            <div className="flex justify-between py-2 border-b border-gray-100">
-                              <span className="text-gray-500">Valeur en rayon</span>
-                              <span className="font-medium text-teal">{formatCurrency(selectedZone.total_value)}</span>
-                            </div>
-                            <div className="flex justify-between py-2">
-                              <span className="text-gray-500">Score tendance moyen</span>
-                              <span className={`font-bold ${scoreColor(selectedZone.avg_trend_score)}`}>
-                                {selectedZone.avg_trend_score}/100
-                              </span>
-                            </div>
-                          </div>
-                        </Card>
-
-                        {/* Products in zone */}
-                        <Card title={`Produits dans cette zone (${zoneProducts.length})`}>
-                          {zoneProductsLoading ? (
-                            <div className="flex justify-center py-4"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal" /></div>
-                          ) : zoneProducts.length === 0 ? (
-                            <p className="text-gray-400 text-sm text-center py-4">Aucun produit dans cette zone</p>
-                          ) : (
-                            <div className="space-y-2 max-h-80 overflow-y-auto">
-                              {zoneProducts.map((p) => (
-                                <Link key={p.id} href={`/inventory/${p.id}`}
-                                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-pink-50 transition-colors border border-gray-100 group">
-                                  <div className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden">
-                                    {p.photo_url ? (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img src={p.photo_url} alt={p.name} className="w-full h-full object-cover" />
-                                    ) : (
-                                      <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-black truncate group-hover:text-teal">{p.name}</p>
-                                    <p className="text-xs text-gray-400">{p.brand || ''}{p.brand && p.size ? ' · ' : ''}{p.size || ''}</p>
-                                  </div>
-                                  <div className="text-right flex-shrink-0">
-                                    <p className="text-sm font-bold text-teal">{formatCurrency(p.sale_price)}</p>
-                                    {p.trend_score != null && (
-                                      <p className={`text-xs font-medium ${scoreColor(p.trend_score)}`}>{p.trend_score}</p>
-                                    )}
-                                  </div>
-                                </Link>
-                              ))}
-                            </div>
-                          )}
-                        </Card>
-                      </>
-                    ) : (
-                      <Card>
-                        <div className="flex flex-col items-center justify-center py-12 text-center">
-                          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-4">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="12" y1="16" x2="12" y2="12" />
-                            <line x1="12" y1="8" x2="12.01" y2="8" />
-                          </svg>
-                          <p className="text-gray-400 text-sm">Cliquez sur une zone du plan pour voir ses détails et produits</p>
-                        </div>
-                      </Card>
-                    )}
-                  </div>
-                </div>
-
-                {/* Zone cards grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {zones.map((z) => (
-                    <Card key={z.zone_id}>
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h3 className="font-semibold text-black">{z.zone_name}</h3>
-                          <p className="text-xs text-gray-400">{z.description}</p>
-                        </div>
-                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                          z.occupancy_percent > 80 ? 'bg-red-100 text-red-700' :
-                          z.occupancy_percent > 50 ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-green-100 text-green-700'
-                        }`}>
-                          {z.occupancy_percent}%
-                        </span>
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Produits</span>
-                          <span className="text-black font-medium">{z.product_count} / {z.capacity}</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2">
-                          <div
-                            className={`h-2 rounded-full ${
-                              z.occupancy_percent > 80 ? 'bg-red-400' :
-                              z.occupancy_percent > 50 ? 'bg-yellow-400' :
-                              'bg-green-400'
-                            }`}
-                            style={{ width: `${Math.min(100, z.occupancy_percent)}%` }}
-                          />
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Valeur</span>
-                          <span className="text-black font-medium">{formatCurrency(z.total_value)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Score tendance moy.</span>
-                          <span className={`font-medium ${scoreColor(z.avg_trend_score)}`}>
-                            {z.avg_trend_score}
-                          </span>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* Recommandations IA */}
-            {aiReco && !aiReco.error && (
-              <Card title="Recommandations IA">
-                {aiReco.resume && (
-                  <div className="p-3 bg-teal-50 rounded-lg mb-4">
-                    <p className="text-sm text-teal-800">{aiReco.resume}</p>
-                  </div>
-                )}
-
-                {aiReco.recommendations && aiReco.recommendations.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="font-semibold text-black mb-2">Actions recommandees</h4>
-                    <div className="space-y-2">
-                      {aiReco.recommendations.map((r, i) => (
-                        <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                            r.action === 'mettre_en_avant' ? 'bg-green-100 text-green-700' :
-                            r.action === 'deplacer' ? 'bg-blue-100 text-blue-700' :
-                            r.action === 'demarquer' ? 'bg-yellow-100 text-yellow-700' :
-                            'bg-red-100 text-red-700'
-                          }`}>
-                            {r.action}
-                          </span>
-                          <div>
-                            <p className="text-sm text-black font-medium">{r.product_name}</p>
-                            {r.to_zone && <p className="text-xs text-gray-500">Vers : {r.to_zone}</p>}
-                            <p className="text-xs text-gray-400 mt-1">{r.reason}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {aiReco.zone_suggestions && aiReco.zone_suggestions.length > 0 && (
-                  <div>
-                    <h4 className="font-semibold text-black mb-2">Suggestions par zone</h4>
-                    <div className="space-y-2">
-                      {aiReco.zone_suggestions.map((s, i) => (
-                        <div key={i} className="p-3 bg-gray-50 rounded-lg">
-                          <p className="text-sm font-medium text-black">{s.zone} - {s.theme_suggere}</p>
-                          <p className="text-xs text-gray-500 mt-1">{s.conseil}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </Card>
-            )}
-          </div>
-        )}
-
         {/* CHECKLIST SEMAINE TAB */}
         {tab === 'checklist' && (
           <div className="space-y-6">
@@ -1051,11 +671,12 @@ export default function IAPage() {
               </div>
             </>
           )}
+          <WeeklyTasksTimeline />
         </div>
         )}
 
-        {/* TENDANCES MODE TAB */}
-        {tab === 'tendances_mode' && (
+        {/* FASHION BOOK TAB (renommé Lot 6, intent éditorial) */}
+        {tab === 'fashion_book' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1136,5 +757,122 @@ export default function IAPage() {
 
       </main>
     </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Weekly tasks timeline (Lot 4 backend → surfaced in Companion IA, Lot 6)
+// ---------------------------------------------------------------------------
+
+interface WeeklyTaskRow {
+  id: string;
+  kind: string;
+  scheduled_for: string;
+  status: 'pending' | 'done' | 'skipped';
+  payload: Record<string, unknown>;
+  completed_at: string | null;
+}
+
+const KIND_LABEL: Record<string, string> = {
+  monday_scoring_update: 'Repositionnement (Lundi)',
+  morning_restock: 'Mise en rayon du matin',
+  tuesday_window_refresh: 'Vitrine (Mardi)',
+  wednesday_featured_refresh: 'Vedettes Tendance (Mercredi)',
+  thursday_six_weeks_exit: 'Sortie 6 semaines (Jeudi)',
+};
+
+function WeeklyTasksTimeline() {
+  const [grouped, setGrouped] = React.useState<Record<string, WeeklyTaskRow[]>>({});
+  const [loading, setLoading] = React.useState(false);
+  const [busy, setBusy] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/api/checklist/this-week');
+      if (res.ok) {
+        const data = await res.json();
+        setGrouped(data.by_day || {});
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const markComplete = async (id: string, action: 'complete' | 'skip') => {
+    setBusy(id);
+    try {
+      await api.post(`/api/checklist/${id}/${action}`, {});
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const days = Object.keys(grouped).sort();
+
+  return (
+    <Card title="Tâches automatiques de la semaine" className="mt-4">
+      {loading && <p className="text-sm text-gray-500">Chargement…</p>}
+      {!loading && days.length === 0 && (
+        <p className="text-sm text-gray-500">
+          Aucune tâche programmée — les crons n’ont pas encore tourné cette semaine.
+        </p>
+      )}
+      <div className="space-y-3">
+        {days.map((day) => (
+          <div key={day} className="border-l-2 border-teal/30 pl-3">
+            <p className="text-xs uppercase tracking-wider text-gray-500 mb-1">
+              {new Date(day + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+            <ul className="space-y-1">
+              {grouped[day].map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-2 text-sm py-1">
+                  <span className="flex-1">
+                    <span className={`font-medium ${
+                      t.status === 'done' ? 'text-teal' :
+                      t.status === 'skipped' ? 'text-gray-400 line-through' : 'text-black'
+                    }`}>
+                      {KIND_LABEL[t.kind] || t.kind}
+                    </span>
+                    {(t.payload as { total?: number; total_eligible?: number })?.total !== undefined && (
+                      <span className="ml-2 text-xs text-gray-400">
+                        ({String((t.payload as { total: number }).total)} produit(s))
+                      </span>
+                    )}
+                    {(t.payload as { transitioned?: number })?.transitioned !== undefined && (
+                      <span className="ml-2 text-xs text-orange-500">
+                        {String((t.payload as { transitioned: number }).transitioned)} sortis
+                      </span>
+                    )}
+                  </span>
+                  {t.status === 'pending' && (
+                    <span className="flex gap-1 shrink-0">
+                      <button
+                        onClick={() => markComplete(t.id, 'complete')}
+                        disabled={busy === t.id}
+                        className="text-xs px-2 py-0.5 rounded bg-teal/10 text-teal hover:bg-teal/20"
+                      >
+                        Validé
+                      </button>
+                      <button
+                        onClick={() => markComplete(t.id, 'skip')}
+                        disabled={busy === t.id}
+                        className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-500 hover:bg-gray-200"
+                      >
+                        Passer
+                      </button>
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
