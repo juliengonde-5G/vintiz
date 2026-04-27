@@ -167,7 +167,7 @@ export default function StorePlanPage() {
             Plan boutique
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Vue d&apos;ensemble des 7 zones avec densité de produits, score moyen
+            Vue d&apos;ensemble des 11 zones avec densité de produits, score moyen
             et proposition vitrine de la semaine.
           </p>
         </header>
@@ -181,7 +181,7 @@ export default function StorePlanPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Plan SVG */}
           <div className="lg:col-span-2">
-            <Card title="Plan 2D — boutique 98 m²">
+            <Card title="Plan 2D — boutique 184 m² (Lot N°2)">
               {loading ? (
                 <div className="text-center text-gray-400 py-12">Chargement…</div>
               ) : zones.length === 0 ? (

@@ -417,7 +417,7 @@ POST   /api/pos/transactions                       (modifié) accepte coupon_cod
 - Voir `docs/PREDICTIVE_ENGINE.md` pour la logique de répartition
 
 ### 6. Paramétrage zones
-- 7 zones prédéfinies (plan boutique L 98m²)
+- 11 zones prédéfinies (plan boutique L, Lot N°2 ~184 m² utiles dont ~99 m² magasin) — voir `plan.jpg` + photos `apps/web/public/zones/*.jpeg`
 - Édition : nom, description, capacité, types de produits, couleur, photo, **objectif CA mensuel par zone**
 - Plan 2D : positions (`pos_x`, `pos_y`, `width`, `height`, `shape`, `display_order`)
   pilotables visuellement (utilisé par `IA Booster > Mapping Boutique`)

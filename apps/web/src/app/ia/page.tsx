@@ -83,25 +83,27 @@ function formatCurrency(v: number) {
 }
 
 // ---------------------------------------------------------------------------
-// Visual floor plan of the boutique (L-shaped, ~98m2)
-// Zones are positioned to match the real layout:
-//   - Vitrine gauche (front left)
-//   - Podium entree (entry area)
-//   - Mur gauche (left wall)
-//   - Mur droit (right wall / cash desk)
-//   - Mur fond (back wall)
-//   - Zone centrale (center around pillar)
-//   - Cabine essayage (fitting room, back)
+// Visual floor plan of the boutique (Lot N°2, ~184 m² utiles).
+// Zones are positioned to match the real layout (plan.jpg) :
+//   - Petits Prix 1/2 + Extra 1/2 sur le mur du fond (top)
+//   - Chaussures F + cabines + Portants Standards 1/2 cote gauche/centre
+//   - Chaussures H + Hommes + Tendance + Vitrine sur la facade (bottom)
+//   - Entrée à droite
+// Coordinates use a 380x380 viewBox (cf. <svg viewBox="0 0 390 380">).
 // ---------------------------------------------------------------------------
 
 const ZONE_LAYOUT: Record<string, { x: number; y: number; w: number; h: number; label: string; shortLabel: string }> = {
-  'Vitrine gauche':      { x: 10,  y: 10,  w: 120, h: 70,  label: 'Vitrine gauche',     shortLabel: 'Vitrine' },
-  'Podium entree':       { x: 140, y: 10,  w: 160, h: 70,  label: 'Podium entree',      shortLabel: 'Podium' },
-  'Mur gauche':          { x: 10,  y: 90,  w: 60,  h: 200, label: 'Mur gauche',         shortLabel: 'Mur G' },
-  'Mur droit':           { x: 310, y: 10,  w: 60,  h: 160, label: 'Mur droit / Caisse', shortLabel: 'Caisse' },
-  'Zone centrale':       { x: 100, y: 110, w: 180, h: 130, label: 'Zone centrale',      shortLabel: 'Centre' },
-  'Mur fond':            { x: 10,  y: 300, w: 270, h: 60,  label: 'Mur fond',           shortLabel: 'Fond' },
-  'Cabine essayage':     { x: 290, y: 200, w: 80,  h: 160, label: 'Cabine essayage',    shortLabel: 'Cabine' },
+  'Petits Prix 1':         { x: 282, y: 10,  w: 96,  h: 46,  label: 'Petits Prix 1',         shortLabel: 'PP1' },
+  'Petits Prix 2':         { x: 180, y: 10,  w: 98,  h: 46,  label: 'Petits Prix 2',         shortLabel: 'PP2' },
+  'Extra 1':               { x: 92,  y: 14,  w: 84,  h: 50,  label: 'Extra 1',               shortLabel: 'E1' },
+  'Extra 2':               { x: 50,  y: 70,  w: 50,  h: 80,  label: 'Extra 2',               shortLabel: 'E2' },
+  'Chaussures F':          { x: 50,  y: 158, w: 50,  h: 64,  label: 'Chaussures F',          shortLabel: 'Ch.F' },
+  'Portants Standards 1':  { x: 170, y: 108, w: 86,  h: 64,  label: 'Portants Standards 1',  shortLabel: 'PS1' },
+  'Portants Standards 2':  { x: 86,  y: 222, w: 86,  h: 64,  label: 'Portants Standards 2',  shortLabel: 'PS2' },
+  'Chaussures H':          { x: 88,  y: 304, w: 56,  h: 56,  label: 'Chaussures H',          shortLabel: 'Ch.H' },
+  'Hommes':                { x: 150, y: 314, w: 70,  h: 50,  label: 'Hommes',                shortLabel: 'H' },
+  'Tendance':              { x: 226, y: 304, w: 92,  h: 56,  label: 'Tendance',              shortLabel: 'Tend' },
+  'Vitrine':               { x: 324, y: 304, w: 50,  h: 56,  label: 'Vitrine',               shortLabel: 'Vit' },
 };
 
 function zoneOccupancyFill(percent: number): string {
@@ -131,25 +133,25 @@ function FloorPlan({ zones, onSelectZone, selectedZoneId }: {
         {/* Background / building outline */}
         <rect x="5" y="5" width="370" height="365" rx="8" fill="#FFF5F8" stroke="#E8B4D0" strokeWidth="2" />
 
-        {/* Street indicator */}
+        {/* Facade / vitrine line (bottom) */}
         <text x="195" y="378" textAnchor="middle" fontSize="9" fill="#9CA3AF" fontFamily="sans-serif">
-          &#x2191; Rue Saint-Jacques &#x2191;
+          Facade — Vitrine
         </text>
 
-        {/* Entry arrow */}
-        <line x1="220" y1="5" x2="220" y2="0" stroke="#2A8B8B" strokeWidth="2" markerEnd="url(#arrowhead)" />
+        {/* Entry arrow — entrée à droite */}
         <defs>
           <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="4" refY="3" orient="auto">
             <polygon points="0 0, 8 3, 0 6" fill="#2A8B8B" />
           </marker>
         </defs>
-        <text x="220" y="-4" textAnchor="middle" fontSize="8" fill="#2A8B8B" fontFamily="sans-serif" fontWeight="600">
+        <line x1="385" y1="200" x2="378" y2="200" stroke="#2A8B8B" strokeWidth="2" markerEnd="url(#arrowhead)" />
+        <text x="378" y="192" textAnchor="end" fontSize="8" fill="#2A8B8B" fontFamily="sans-serif" fontWeight="600">
           ENTREE
         </text>
 
-        {/* Pillar in center */}
-        <rect x="182" y="168" width="16" height="16" rx="2" fill="#D1D5DB" stroke="#9CA3AF" strokeWidth="1" />
-        <text x="190" y="178" textAnchor="middle" fontSize="6" fill="#6B7280" fontFamily="sans-serif">P</text>
+        {/* Cabines essayage (left wall) */}
+        <rect x="20" y="158" width="22" height="58" rx="3" fill="#F3E8FF" stroke="#A78BFA" strokeWidth="1" strokeDasharray="2 2" />
+        <text x="31" y="190" textAnchor="middle" fontSize="6" fill="#6B7280" fontFamily="sans-serif">Cabines</text>
 
         {/* Zone rectangles */}
         {Object.entries(ZONE_LAYOUT).map(([name, rect]) => {

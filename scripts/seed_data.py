@@ -188,22 +188,30 @@ async def seed_store_zones(db: AsyncSession) -> list[StoreZone]:
         result = await db.execute(select(StoreZone))
         return list(result.scalars().all())
 
+    # Aligned with apps/api/app/services/ai_mapping.py DEFAULT_ZONES — 11 zones
+    # qui matchent le plan boutique (Petits Prix, Extra, Chaussures F/H,
+    # Portants Standards, Hommes, Tendance, Vitrine).
     zones_data = [
-        ("Vitrine gauche", "Zone vitrine avant gauche", 15, '["Robe", "Haut femme", "Accessoire"]', "#008678", 4, 4, 28, 14, "rounded", "sparkles", 1),
-        ("Podium entree", "Podium d'entrée avec les nouvelles arrivées", 20, '["Tout type"]', "#FFC5DF", 36, 8, 20, 20, "rounded", "star", 2),
-        ("Mur gauche", "Mur gauche — hauts et robes", 60, '["Haut femme", "Robe", "Jupe"]', "#26A695", 4, 22, 14, 50, "rect", "shirt", 3),
-        ("Mur droit / Caisse", "Zone caisse et accessoires", 30, '["Accessoire", "Sac", "Chaussures"]', "#CC4889", 78, 32, 18, 30, "rect", "cash", 4),
-        ("Zone centrale", "Portants centraux — mixte", 80, '["Manteau", "Veste", "Pantalon"]', "#FF97C0", 34, 40, 34, 28, "rounded", "grid", 5),
-        ("Mur fond", "Mur du fond — hommes et enfants", 60, '["Homme", "Enfant"]', "#006B61", 22, 78, 54, 14, "rect", "bag", 6),
-        ("Cabine essayage", "Espace cabines d'essayage", 5, '["Réservé essayage"]', "#B3DDD8", 82, 6, 14, 18, "rounded", "door", 7),
+        ("Petits Prix 1",        "Mur du fond cote entree — femme, prix doux",      200, '["Robe", "Haut femme", "Pantalon", "Jupe"]',    "#26A695", 72, 2,  24, 12, "rect",    "shirt",    1,  "/zones/standard-1.jpeg"),
+        ("Petits Prix 2",        "Mur du fond centre — femme, prix doux",           200, '["Robe", "Haut femme", "Pantalon", "Jupe"]',    "#26A695", 46, 2,  24, 12, "rect",    "shirt",    2,  "/zones/standard-2.jpeg"),
+        ("Extra 1",              "Mur du fond — selection extra femme",             150, '["Robe", "Manteau", "Veste", "Ensemble"]',      "#008678", 24, 4,  20, 14, "rect",    "shirt",    3,  "/zones/extra-1.jpeg"),
+        ("Extra 2",              "Retour mur — selection extra femme",              150, '["Robe", "Manteau", "Veste", "Ensemble"]',      "#008678", 12, 18, 12, 22, "rect",    "shirt",    4,  "/zones/extra-2.jpeg"),
+        ("Chaussures F",         "Mur gauche pres des cabines — chaussures femme",   30, '["Chaussures"]',                                "#FFC5DF", 12, 42, 12, 18, "rect",    "bag",      5,  "/zones/chaussures-f.jpeg"),
+        ("Portants Standards 1", "Portant central femme (haut)",                    120, '["Robe", "Haut femme", "Manteau / Veste"]',     "#FF97C0", 44, 28, 22, 18, "rounded", "grid",     6,  None),
+        ("Portants Standards 2", "Portant central femme (bas)",                     120, '["Robe", "Haut femme", "Manteau / Veste"]',     "#FF97C0", 22, 58, 22, 18, "rounded", "grid",     7,  None),
+        ("Chaussures H",         "Coin facade gauche — chaussures homme",            30, '["Chaussures"]',                                "#3B82F6", 22, 80, 14, 15, "rect",    "bag",      8,  "/zones/chaussures-h.jpeg"),
+        ("Hommes",               "Mur facade — collection homme complete",          150, '["Homme"]',                                     "#1E3A8A", 38, 82, 18, 13, "rect",    "shirt",    9,  "/zones/hommes.jpeg"),
+        ("Tendance",             "Tete de gondole facade — tendance femme",         200, '["Robe", "Haut femme", "Manteau / Veste"]',     "#CC4889", 58, 80, 24, 15, "rounded", "sparkles", 10, "/zones/tendance.jpeg"),
+        ("Vitrine",              "Vitrine devanture cote entree — exposition uniquement", 8, '["Robe", "Tendance"]',                       "#006B61", 84, 80, 12, 15, "rounded", "star",     11, "/zones/vitrine.jpeg"),
     ]
 
     result_zones = []
-    for name, desc, cap, ptypes, color, px, py, w, h, shape, icon, order in zones_data:
+    for name, desc, cap, ptypes, color, px, py, w, h, shape, icon, order, photo_url in zones_data:
         zone = StoreZone(name=name, description=desc, capacity=cap,
                          product_types=ptypes, color_code=color,
                          pos_x=px, pos_y=py, width=w, height=h,
-                         shape=shape, icon=icon, display_order=order)
+                         shape=shape, icon=icon, display_order=order,
+                         photo_url=photo_url)
         db.add(zone)
         result_zones.append(zone)
         print(f"  [+] Zone: {name}")
@@ -302,9 +310,9 @@ async def seed_products(
     femme_cats = [c for c in categories if c.gender == Gender.femme]
     homme_cats = [c for c in categories if c.gender == Gender.homme]
 
-    # Zone assignment weights
+    # Zone assignment weights — exclude vitrine (display only) from random spread.
     zone_map = {z.name: z for z in zones}
-    zone_names = [z.name for z in zones if z.name != "Cabine essayage"]
+    zone_names = [z.name for z in zones if z.name not in ("Cabine essayage", "Vitrine")]
 
     products: list[Product] = []
     status_weights = [
