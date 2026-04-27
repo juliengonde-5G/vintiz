@@ -207,3 +207,20 @@ docker compose -f docker/docker-compose.prod.yml restart api
 # Restauration d'un backup
 gunzip -c /opt/vintiz/backups/vintiz_XXXXXXXX.sql.gz | docker exec -i vintiz-db psql -U vintiz vintiz
 ```
+
+## Pieges connus migrations / build
+
+- **Numerotation des revisions Alembic** : si deux PR ajoutent en parallele
+  une migration `revision = "00XX"` (exemple recent : `0022_add_fk_indexes`
+  vs `0022_remap_store_zones`), `alembic upgrade head` echoue avec
+  `Multiple head revisions`. Toujours re-baser les revisions sur la vraie
+  tete (`alembic heads` localement avant de pousser).
+- **Hash de mot de passe** : `app/core/security.py` importe `bcrypt`
+  directement (et plus via `passlib`). Le pin `bcrypt>=4.1.0` doit rester
+  dans `apps/api/pyproject.toml`, sinon le boot uvicorn casse avec
+  `ModuleNotFoundError: bcrypt`.
+- **Migration 0026 (remap zones)** : passe les `products.zone_id` qui
+  pointent vers les anciennes zones (Vitrine gauche, Mur fond, …) a
+  `NULL`. C'est attendu — les produits restent visibles dans
+  l'inventaire, ils sont juste a re-affecter a une des 11 nouvelles
+  zones via `/zones/{id}` ou `merchandising.suggest_zone()`.
