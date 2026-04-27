@@ -178,5 +178,6 @@ ticket -> PR.
   service + UI + cron + redemption auto au POS), badges IA POS
   (velocite / stale / marque / score / hold), mobile dashboard sticky.
 
-Suite : 362 tests pytest, 18 migrations Alembic, 12 crons APScheduler,
-~110 endpoints REST, 13 pages admin web.
+Suite : 362 tests pytest, 26 migrations Alembic (dont 0026 — remap des
+11 zones boutique sur `plan.jpg`), 12 crons APScheduler, ~110 endpoints
+REST, 13 pages admin web.

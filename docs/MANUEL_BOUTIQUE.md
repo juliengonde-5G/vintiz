@@ -135,7 +135,7 @@ Dashboard → cliquer sur la transaction → modal détail → boutons
 2. **Bouton "Analyse IA"** → Claude Vision détecte type, couleur, marque,
    taille, état, saison, gamme de prix estimée
 3. Compléter / corriger les champs
-4. Choisir une **zone** (Vitrine, Podium, Mur gauche…)
+4. Choisir une **zone** (Petits Prix 1/2, Extra 1/2, Tendance, Hommes, Chaussures F/H…)
 5. Sauvegarder → un code-barres unique est généré + l'étiquette est imprimable
 
 ### Étiquette produit
@@ -189,10 +189,11 @@ Onglet `/ia` (renommé "Compagnon IA") — 5 outils :
 
 ### Mapping Boutique
 
-- Plan 2D des 7 zones avec heatmap d'occupation (vert / jaune / rouge)
-- Cliquer une zone → détail : produits présents, valeur, score moyen
+- Plan 2D des 11 zones (cf. `plan.jpg`, Lot N°2 ~184 m² utiles dont ~99 m² magasin)
+  avec heatmap d'occupation (vert / jaune / rouge)
+- Cliquer une zone → détail : produits présents, valeur, score moyen, photo
 - Bouton **Recommandations IA** : Claude propose des réagencements
-  (ex : "déplacer la robe Sandro de Mur Gauche vers Vitrine")
+  (ex : "déplacer la robe Sandro de Petits Prix 2 vers Tendance")
 
 ### Checklist Semaine
 
@@ -237,7 +238,7 @@ est disponible via le lien en pied de chaque newsletter.
 | **Paiement** | SumUp env / sandbox / simulation, log d'événements live, approve manuel |
 | **Cahier** | Objectif CA mensuel, poids historiques des jours |
 | **Catégories** | Femme / Homme / Enfant — types de produits |
-| **Zones** | 7 zones boutique : nom, capacité, types autorisés, photo |
+| **Zones** | 11 zones boutique (plan.jpg) : nom, capacité, types autorisés, photo, position 2D |
 | **Materiel** | Imprimante ticket / tiroir / imprimante étiquette / douchette / TPE — IP, ports, tests |
 | **Système** | Initialisation seed, infos versions |
 
@@ -271,8 +272,8 @@ est disponible via le lien en pied de chaque newsletter.
   net_revenue / coût d'inventaire en vitrine
 - **Days on Hand** : jours moyens passés sur la surface de vente
 - **AIT** (average items per ticket) : panier moyen en nombre d'articles
-- **CA / m² / mois** : revenu mensualisé rapporté à la surface (par défaut 98 m²,
-  éditable dans `Settings > KPIs config`)
+- **CA / m² / mois** : revenu mensualisé rapporté à la surface (Lot N°2 ~98,70 m²
+  zone magasin, éditable dans `Settings > KPIs config`)
 - Top et bottom catégories
 - % de variation vs période précédente
 

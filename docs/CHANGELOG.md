@@ -1,5 +1,37 @@
 # Changelog Vintiz
 
+## [0.7.1] - 2026-04-27 — Remap boutique 11 zones (plan.jpg)
+
+### Changed — Plan boutique aligné sur le Lot N°2 réel
+- **Zones boutique : 7 → 11** alignées sur `plan.jpg` (Lot N°2 ~184 m² utiles dont ~99 m² magasin) :
+  - `Petits Prix 1` / `Petits Prix 2` (200 + 200) — mur du fond, femme
+  - `Extra 1` / `Extra 2` (150 + 150) — mur du fond / retour gauche, femme
+  - `Chaussures F` (30) — mur gauche près des cabines
+  - `Portants Standards 1` / `Portants Standards 2` (120 + 120) — portants centraux femme
+  - `Chaussures H` (30) — coin façade gauche
+  - `Hommes` (150) — mur façade
+  - `Tendance` (200) — tête de gondole façade femme
+  - `Vitrine` (8, expo uniquement) — devanture côté entrée
+  Toutes féminines sauf `Hommes` + `Chaussures H`. Les anciennes zones
+  (`Vitrine gauche`, `Mur gauche`, `Mur fond`, `Mur droit`, `Podium entree`,
+  `Zone centrale`, `Cabine essayage`) sont supprimées par la migration ;
+  les `products.zone_id` orphelins sont nullifiés.
+- Photos zones exposées sous `/zones/*.jpeg` (apps/web + apps/site).
+- Plan IA (`/ia` > Mapping Boutique) repositionné : entrée à droite, façade en bas.
+- Prompt Claude Merchandising mis à jour avec les 11 noms réels.
+
+### Added
+- Migration `0026_remap_store_zones` idempotente : upsert des 11 zones cibles,
+  détache `products.zone_id`, supprime les zones legacy (cascade `ZoneProduct`,
+  `ZoneTag`, `FurnitureItem`).
+- `apps/{web,site}/public/zones/*.jpeg` + `plan.jpg` (assets exposés au front).
+
+### Fixed
+- `app/core/security.py` importe désormais `bcrypt` directement → ajout du pin
+  `bcrypt>=4.1.0` dans `pyproject.toml` (dropé par erreur lors du refactor C1-C5
+  qui retirait `passlib[bcrypt]`). Sans ce pin, l'API ne bootait plus
+  (`ModuleNotFoundError: bcrypt`).
+
 ## [0.7.0] - 2026-04-26 — Phase 4 (analytics, communication, UX) + POS redemption
 
 ### Added — Analytics & reporting (P4-001 / P4-002 / P4-007)
