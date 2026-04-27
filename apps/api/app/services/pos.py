@@ -116,11 +116,21 @@ class PosService:
                 detail=f"Insufficient payment: {total_paid} < {total_ttc}",
             )
 
-        # Generate transaction number
-        max_num_result = await self.db.execute(
-            select(func.coalesce(func.max(Transaction.transaction_number), 0))
-        )
-        next_number = max_num_result.scalar_one() + 1
+        # Generate transaction number.
+        # On PostgreSQL use the dedicated sequence (NF525 — no gaps under concurrency).
+        # On SQLite (tests) fall back to MAX+1 because sequences don't exist.
+        from sqlalchemy import text
+        dialect = self.db.bind.dialect.name if self.db.bind else "postgresql"
+        if dialect == "sqlite":
+            max_num_result = await self.db.execute(
+                select(func.coalesce(func.max(Transaction.transaction_number), 0))
+            )
+            next_number = max_num_result.scalar_one() + 1
+        else:
+            seq_result = await self.db.execute(
+                text("SELECT nextval('transaction_number_seq')")
+            )
+            next_number = seq_result.scalar_one()
 
         transaction = Transaction(
             transaction_number=next_number,
@@ -380,3 +390,83 @@ class PosService:
             select(CashDrawer).where(CashDrawer.is_open.is_(True)).limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def finalize_sale(
+        self,
+        transaction: Transaction,
+        *,
+        coupon_code: str | None,
+        user_id: uuid.UUID,
+    ) -> None:
+        """Post-sign finalization: coupon redemption, reservation auto-redeem, event emission.
+
+        Called from the router after FiscalService.sign_transaction(). Failures in
+        any step are logged and swallowed — they never roll back the signed sale.
+        """
+        import logging as _logging
+        _log = _logging.getLogger("vintiz")
+
+        # Coupon redemption
+        if coupon_code:
+            from app.services.coupon import CouponError, redeem_coupon, validate_coupon
+            try:
+                preview = await validate_coupon(
+                    self.db,
+                    code=coupon_code,
+                    cart_total=float(transaction.total_ttc),
+                    client_id=transaction.client_id,
+                )
+                await redeem_coupon(self.db, preview.coupon_id, transaction.id)
+            except CouponError as exc:
+                _log.warning(
+                    "Coupon redemption failed for tx=%s code=%s reason=%s",
+                    transaction.id, coupon_code, exc,
+                )
+
+        # Auto-redeem active reservations for sold products (P4-005)
+        if transaction.client_id and transaction.items:
+            from app.models.reservation import Reservation, ReservationStatus
+            product_ids = [
+                item.product_id for item in transaction.items
+                if item.product_id is not None
+            ]
+            if product_ids:
+                held = (await self.db.execute(
+                    select(Reservation).where(
+                        Reservation.client_id == transaction.client_id,
+                        Reservation.product_id.in_(product_ids),
+                        Reservation.status == ReservationStatus.active,
+                    )
+                )).scalars().all()
+                for reservation in held:
+                    reservation.status = ReservationStatus.redeemed
+                    reservation.redeemed_transaction_id = transaction.id
+
+        # Emit analytics events (P1-003)
+        from app.models.events import EventSource, EventType
+        from app.services.events import EventService
+        events = EventService(self.db)
+        if transaction.client_id is not None:
+            await events.emit(
+                EventType.customer_visited,
+                source=EventSource.pos,
+                customer_id=transaction.client_id,
+                transaction_id=transaction.id,
+                user_id=user_id,
+            )
+        for item in (transaction.items or []):
+            if item.product_id is None:
+                continue
+            await events.emit(
+                EventType.product_sold,
+                source=EventSource.pos,
+                customer_id=transaction.client_id,
+                product_id=item.product_id,
+                transaction_id=transaction.id,
+                user_id=user_id,
+                meta={
+                    "quantity": int(item.quantity),
+                    "unit_price": float(item.unit_price),
+                    "discount_percent": float(item.discount_percent or 0),
+                },
+            )
