@@ -5,42 +5,22 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
 
-type Weights = {
-  age: number;
-  price: number;
-  condition: number;
-  brand: number;
-  category: number;
-  photos: number;
-  season_transition: number;
-  fashion_watch: number;
-};
+// ============================================================
+// Types — must match apps/api/app/services/scoring_config.py
+// ============================================================
 
-type AgeDecay = {
-  curve: 'linear' | 'exponential' | 'step';
-  max_score_days: number;
-  min_score_days: number;
-  saturation_days: number;
-};
+type WeightKey = 'attractivity' | 'season' | 'age' | 'trend' | 'price';
 
-type SeasonBoost = {
-  enabled: boolean;
-  boost_pct: number;
-  category_calendar: Record<string, number[]>;
-};
-
-type ConsignmentThreshold = {
-  enabled: boolean;
-  max_days: number;
-  action_after: string;
-};
+type Weights = Record<WeightKey, number>;
 
 type ScoringConfig = {
   version: number;
   weights: Weights;
-  age_decay: AgeDecay;
-  season_boost: SeasonBoost;
-  consignment_threshold: ConsignmentThreshold;
+  age_weeks_table: number[];
+  max_weeks_on_shelf: number;
+  season_calendar: Record<string, number[]>;
+  price_thresholds: number[];
+  price_points: number[];
   updated_by?: string | null;
   updated_at?: string | null;
 };
@@ -55,28 +35,38 @@ type PreviewSample = {
   action_after: string;
 };
 
-const WEIGHT_LABELS: { key: keyof Weights; label: string; max: number; v2: boolean }[] = [
-  { key: 'age', label: 'Ancienneté en rayon', max: 0.5, v2: false },
-  { key: 'price', label: 'Compétitivité prix', max: 0.5, v2: false },
-  { key: 'condition', label: 'État du produit', max: 0.5, v2: false },
-  { key: 'brand', label: 'Tier marque', max: 0.5, v2: false },
-  { key: 'category', label: 'Tendance catégorie', max: 0.3, v2: false },
-  { key: 'photos', label: 'Qualité photos', max: 0.3, v2: false },
-  { key: 'season_transition', label: 'Transition saison (NEW v2)', max: 0.3, v2: true },
-  { key: 'fashion_watch', label: 'Signal fashion-watch (NEW v2)', max: 0.3, v2: true },
+type BreakdownStats = {
+  top_categories_velocity: { category_id: string; category_name: string; sales_per_week: number }[];
+  top_brands_90d: { brand: string; sales_90d: number }[];
+  category_trends_snapshot: Record<string, number>;
+  shelf_distribution: Record<string, number>;
+};
+
+const CRITERIA: { key: WeightKey; label: string; sub: string }[] = [
+  { key: 'attractivity', label: 'Attractivité',         sub: 'Vitesse de rotation 90j (catégorie + marque + état)' },
+  { key: 'season',       label: 'Saison',               sub: 'Calendrier mensuel par catégorie' },
+  { key: 'age',          label: 'Ancienneté',           sub: 'Décroissance hebdomadaire sur 6 semaines' },
+  { key: 'trend',        label: 'Tendance',             sub: 'Tendance catégorie + signal fashion-watch' },
+  { key: 'price',        label: 'Positionnement prix',  sub: 'Comparaison Vinted/LBC (Claude)' },
 ];
 
-const MONTH_LABELS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+const MONTH_SHORT = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+
+// ============================================================
+// Component
+// ============================================================
 
 export default function ScoringWeightsPanel() {
   const [config, setConfig] = useState<ScoringConfig | null>(null);
   const [original, setOriginal] = useState<ScoringConfig | null>(null);
+  const [stats, setStats] = useState<BreakdownStats | null>(null);
+  const [openCard, setOpenCard] = useState<WeightKey | null>('attractivity');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState<PreviewSample[] | null>(null);
-  const [message, setMessage] = useState<string>('');
-  const [error, setError] = useState<string>('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -87,83 +77,92 @@ export default function ScoringWeightsPanel() {
       const data: ScoringConfig = await res.json();
       setConfig(data);
       setOriginal(data);
+      const s = await api.get('/api/admin/scoring-config/breakdown-stats');
+      if (s.ok) setStats(await s.json());
     } catch (e: any) {
-      setError(`Chargement échoué : ${e?.message || e}`);
+      setError(e.message || 'Erreur de chargement');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  if (!config) {
-    return (
-      <Card>
-        <p className="text-sm text-gray-500">{loading ? 'Chargement…' : (error || 'Pas de config')}</p>
-      </Card>
-    );
+  if (loading || !config) {
+    return <Card title="Moteur de notation"><p>Chargement…</p></Card>;
   }
 
-  const totalWeight = Object.values(config.weights).reduce((a, b) => a + b, 0);
-  const isValid = Math.abs(totalWeight - 1.0) < 0.01;
+  const totalPct = Math.round(
+    Object.values(config.weights).reduce((s, v) => s + v, 0) * 100,
+  );
+  const weightsValid = Math.abs(totalPct - 100) <= 1;
 
-  const updateWeight = (k: keyof Weights, v: number) => {
-    setConfig({ ...config, weights: { ...config.weights, [k]: v } });
-    setPreview(null);
-  };
-
-  const setDecayField = (k: keyof AgeDecay, v: any) => {
-    setConfig({ ...config, age_decay: { ...config.age_decay, [k]: v } });
-    setPreview(null);
-  };
-
-  const toggleMonth = (cat: string, month: number) => {
-    const cur = config.season_boost.category_calendar[cat] || [];
-    const next = cur.includes(month) ? cur.filter((m) => m !== month) : [...cur, month].sort((a, b) => a - b);
+  const setWeight = (key: WeightKey, pct: number) => {
     setConfig({
       ...config,
-      season_boost: {
-        ...config.season_boost,
-        category_calendar: { ...config.season_boost.category_calendar, [cat]: next },
-      },
+      weights: { ...config.weights, [key]: pct / 100 },
     });
-    setPreview(null);
   };
 
-  const reset = async (version: 1 | 2) => {
-    if (!confirm(`Restaurer les valeurs par défaut v${version} ?`)) return;
-    setSaving(true);
-    try {
-      const res = await api.post(`/api/admin/scoring-config/reset?version=${version}`, {});
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      await load();
-      setMessage(`Configuration v${version} restaurée.`);
-    } catch (e: any) {
-      setError(`Reset échoué : ${e?.message || e}`);
-    }
-    setSaving(false);
+  const setAgeWeek = (idx: number, pts: number) => {
+    const next = [...config.age_weeks_table];
+    next[idx] = Math.max(0, Math.min(20, pts));
+    setConfig({ ...config, age_weeks_table: next });
+  };
+
+  const toggleSeasonMonth = (category: string, month: number) => {
+    const cur = config.season_calendar[category] || [];
+    const next = cur.includes(month)
+      ? cur.filter((m) => m !== month)
+      : [...cur, month].sort((a, b) => a - b);
+    setConfig({
+      ...config,
+      season_calendar: { ...config.season_calendar, [category]: next },
+    });
+  };
+
+  const setPriceCutoff = (idx: number, value: number) => {
+    const next = [...config.price_thresholds];
+    next[idx] = value;
+    setConfig({ ...config, price_thresholds: next });
   };
 
   const save = async () => {
-    if (!isValid) {
-      setError('La somme des poids doit valoir 1.0 (±1%).');
-      return;
-    }
     setSaving(true);
+    setMessage('');
     setError('');
     try {
       const res = await api.put('/api/admin/scoring-config', config);
       if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`HTTP ${res.status} ${txt}`);
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
       }
-      await load();
-      setMessage('Configuration scoring sauvegardée.');
+      const data = await res.json();
+      setConfig(data);
+      setOriginal(data);
+      setMessage('Configuration enregistrée');
     } catch (e: any) {
-      setError(`Sauvegarde échouée : ${e?.message || e}`);
+      setError(e.message || 'Erreur lors de la sauvegarde');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
+  };
+
+  const restore = async () => {
+    if (!confirm('Restaurer la configuration par défaut ?')) return;
+    setSaving(true);
+    try {
+      const res = await api.post('/api/admin/scoring-config/reset', {});
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setConfig(data);
+      setOriginal(data);
+      setMessage('Configuration restaurée');
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const runPreview = async () => {
@@ -175,280 +174,302 @@ export default function ScoringWeightsPanel() {
       const data = await res.json();
       setPreview(data.samples || []);
     } catch (e: any) {
-      setError(`Simulation échouée : ${e?.message || e}`);
+      setError(e.message);
+    } finally {
+      setPreviewing(false);
     }
-    setPreviewing(false);
   };
 
-  return (
-    <div className="space-y-4">
-      {message && (
-        <div className="p-3 bg-green-50 text-green-700 rounded-lg text-sm">
-          {message}
-          <button onClick={() => setMessage('')} className="ml-2 font-bold">&times;</button>
-        </div>
-      )}
-      {error && (
-        <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
-          {error}
-          <button onClick={() => setError('')} className="ml-2 font-bold">&times;</button>
-        </div>
-      )}
+  const dirty = JSON.stringify(config) !== JSON.stringify(original);
 
-      {/* Section 1 : Pondération */}
-      <Card>
-        <h3 className="font-display text-lg mb-2">Pondération du score (8 composantes)</h3>
+  return (
+    <div className="space-y-6">
+      <Card title="Moteur de notation Vintiz — 5 critères">
         <p className="text-sm text-gray-500 mb-4">
-          Ajustez l'importance relative de chaque signal dans le calcul du score [0-100].
-          La somme des 8 poids doit valoir 100%.
+          Le score (0-100) est mis à jour chaque lundi à 04h00 (jour de fermeture).
+          Modifie les poids puis enregistre. Les détails de chaque critère sont
+          consultables dans les cartes ci-dessous.
         </p>
+
         <div className="space-y-3">
-          {WEIGHT_LABELS.map(({ key, label, max, v2 }) => (
-            <div key={key} className="flex items-center gap-3">
-              <label className="text-sm text-black w-56 flex-shrink-0 flex items-center gap-2">
-                {label}
-                {v2 && <span className="text-[10px] bg-teal text-white px-1.5 py-0.5 rounded">v2</span>}
-              </label>
+          {CRITERIA.map(({ key, label, sub }) => (
+            <div key={key} className="flex items-center gap-3 py-1.5">
+              <div className="w-44 shrink-0">
+                <p className="text-sm font-medium text-black">{label}</p>
+                <p className="text-xs text-gray-400">{sub}</p>
+              </div>
               <input
                 type="range"
-                min="0"
-                max={max}
-                step="0.01"
-                value={config.weights[key]}
-                onChange={(e) => updateWeight(key, parseFloat(e.target.value))}
+                min={0}
+                max={50}
+                step={1}
+                value={Math.round(config.weights[key] * 100)}
+                onChange={(e) => setWeight(key, Number(e.target.value))}
                 className="flex-1"
               />
-              <span className="text-sm font-medium text-black w-14 text-right tabular-nums">
-                {Math.round(config.weights[key] * 100)}%
-              </span>
-            </div>
-          ))}
-        </div>
-        <div className={`mt-4 p-3 rounded-lg text-sm ${isValid ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-          Somme des poids : <strong>{(totalWeight * 100).toFixed(1)}%</strong> {isValid ? '✓' : '✗ doit faire 100%'}
-        </div>
-        <div className="flex gap-2 mt-4">
-          <Button onClick={() => reset(2)} variant="outline" disabled={saving}>Restaurer v2</Button>
-          <Button onClick={() => reset(1)} variant="outline" disabled={saving}>Restaurer v1 (legacy)</Button>
-        </div>
-      </Card>
-
-      {/* Section 2 : Décroissance temporelle */}
-      <Card>
-        <h3 className="font-display text-lg mb-2">Décroissance temporelle (sub-score "ancienneté")</h3>
-        <p className="text-sm text-gray-500 mb-4">
-          Comment le score d'un produit décroît avec son temps en rayon.
-        </p>
-        <div className="space-y-3">
-          <div>
-            <label className="text-sm text-black mb-1 block">Courbe de décroissance</label>
-            <div className="flex gap-2">
-              {(['linear', 'exponential', 'step'] as const).map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setDecayField('curve', c)}
-                  className={`px-3 py-2 rounded-lg text-sm min-h-[44px] ${
-                    config.age_decay.curve === c
-                      ? 'bg-teal text-white'
-                      : 'bg-white border border-gray-200 text-gray-600'
-                  }`}
-                >
-                  {c === 'linear' ? 'Linéaire' : c === 'exponential' ? 'Exponentielle' : 'Par paliers'}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Score max jusqu'à J+</label>
               <input
                 type="number"
                 min={0}
-                max={60}
-                value={config.age_decay.max_score_days}
-                onChange={(e) => setDecayField('max_score_days', parseInt(e.target.value))}
-                className="w-full p-2 border rounded"
+                max={50}
+                step={1}
+                value={Math.round(config.weights[key] * 100)}
+                onChange={(e) => setWeight(key, Number(e.target.value))}
+                className="w-16 px-2 py-1 text-sm border border-gray-200 rounded text-right"
               />
+              <span className="w-4 text-sm text-gray-400">%</span>
             </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Score min atteint à J+</label>
-              <input
-                type="number"
-                min={30}
-                max={365}
-                value={config.age_decay.min_score_days}
-                onChange={(e) => setDecayField('min_score_days', parseInt(e.target.value))}
-                className="w-full p-2 border rounded"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Saturation totale à J+</label>
-              <input
-                type="number"
-                min={60}
-                max={365}
-                value={config.age_decay.saturation_days}
-                onChange={(e) => setDecayField('saturation_days', parseInt(e.target.value))}
-                className="w-full p-2 border rounded"
-              />
-            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+          <span className={`text-sm font-medium ${weightsValid ? 'text-teal' : 'text-red-600'}`}>
+            Total : {totalPct}% {weightsValid ? '✓' : '— doit valoir 100% ±1'}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={runPreview} disabled={!weightsValid || previewing}>
+              {previewing ? 'Aperçu…' : 'Aperçu sur 10 produits'}
+            </Button>
+            <Button variant="outline" onClick={restore} disabled={saving}>Restaurer défaut</Button>
+            <Button onClick={save} disabled={!weightsValid || saving || !dirty}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
           </div>
         </div>
+
+        {message && <p className="mt-3 text-sm text-teal">{message}</p>}
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </Card>
 
-      {/* Section 3 : Boost saisonnier */}
-      <Card>
-        <h3 className="font-display text-lg mb-2">Boost saisonnier (mois favorables par catégorie)</h3>
-        <div className="flex items-center gap-3 mb-4">
-          <label className="text-sm text-black">Activé</label>
-          <input
-            type="checkbox"
-            checked={config.season_boost.enabled}
-            onChange={(e) => {
-              setConfig({
-                ...config,
-                season_boost: { ...config.season_boost, enabled: e.target.checked },
-              });
-            }}
-          />
-        </div>
-        {config.season_boost.enabled && (
-          <div className="space-y-2">
-            {Object.keys(config.season_boost.category_calendar).map((cat) => (
-              <div key={cat} className="flex items-center gap-2">
-                <span className="w-28 text-sm text-black flex-shrink-0">{cat}</span>
-                <div className="flex gap-1">
-                  {MONTH_LABELS.map((label, i) => {
-                    const month = i + 1;
-                    const active = config.season_boost.category_calendar[cat]?.includes(month);
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => toggleMonth(cat, month)}
-                        className={`w-7 h-7 text-[10px] min-h-0 min-w-0 rounded ${
-                          active ? 'bg-teal text-white' : 'bg-gray-100 text-gray-500'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+      {/* Detail card 1 — Attractivité */}
+      <DetailCard
+        open={openCard === 'attractivity'}
+        onToggle={() => setOpenCard(openCard === 'attractivity' ? null : 'attractivity')}
+        title="Détail : Attractivité"
+        intro="Mesurée sur les 90 derniers jours de ventes. Combine vitesse de rotation par catégorie + tier marque + état."
+      >
+        {stats?.top_categories_velocity?.length ? (
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Top catégories (90j)</h4>
+              <ul className="space-y-1 text-sm">
+                {stats.top_categories_velocity.map((c) => (
+                  <li key={c.category_id} className="flex justify-between border-b border-gray-100 py-1">
+                    <span>{c.category_name}</span>
+                    <span className="font-mono">{c.sales_per_week.toFixed(2)}/sem.</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Top marques (90j)</h4>
+              <ul className="space-y-1 text-sm">
+                {stats.top_brands_90d.map((b) => (
+                  <li key={b.brand} className="flex justify-between border-b border-gray-100 py-1">
+                    <span>{b.brand}</span>
+                    <span className="font-mono">{b.sales_90d}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
+        ) : (
+          <p className="text-sm text-gray-500">Pas encore de ventes sur 90 jours.</p>
         )}
-      </Card>
+      </DetailCard>
 
-      {/* Section 4 : Seuil de consignation */}
-      <Card>
-        <h3 className="font-display text-lg mb-2">Seuil de consignation longue</h3>
-        <p className="text-sm text-gray-500 mb-3">
-          Au-delà de N jours en rayon, l'action est forcée à RETIRER quel que soit le score.
-        </p>
-        <div className="flex items-center gap-3 mb-3">
-          <label className="text-sm text-black">Activé</label>
-          <input
-            type="checkbox"
-            checked={config.consignment_threshold.enabled}
-            onChange={(e) => {
-              setConfig({
-                ...config,
-                consignment_threshold: { ...config.consignment_threshold, enabled: e.target.checked },
-              });
-            }}
-          />
-        </div>
-        {config.consignment_threshold.enabled && (
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Seuil (jours)</label>
-              <input
-                type="number"
-                min={60}
-                max={365}
-                value={config.consignment_threshold.max_days}
-                onChange={(e) =>
-                  setConfig({
-                    ...config,
-                    consignment_threshold: { ...config.consignment_threshold, max_days: parseInt(e.target.value) },
-                  })
-                }
-                className="w-full p-2 border rounded"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Action après seuil</label>
-              <select
-                value={config.consignment_threshold.action_after}
-                onChange={(e) =>
-                  setConfig({
-                    ...config,
-                    consignment_threshold: { ...config.consignment_threshold, action_after: e.target.value },
-                  })
-                }
-                className="w-full p-2 border rounded min-h-[44px]"
-              >
-                <option value="RETURNED_TO_SORTING">Retour centre de tri</option>
-                <option value="DONATED">Don</option>
-              </select>
-            </div>
-          </div>
-        )}
-      </Card>
-
-      {/* Section 5 : Aperçu impact */}
-      <Card>
-        <h3 className="font-display text-lg mb-2">Aperçu de l'impact</h3>
-        <p className="text-sm text-gray-500 mb-3">
-          Simule la nouvelle config sur 10 produits aléatoires (sans sauvegarder).
-        </p>
-        <Button onClick={runPreview} disabled={previewing || !isValid}>
-          {previewing ? 'Simulation…' : 'Simuler'}
-        </Button>
-        {preview && preview.length > 0 && (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-2">Produit</th>
-                  <th className="text-right py-2">Avant</th>
-                  <th className="text-right py-2">Après</th>
-                  <th className="text-right py-2">Δ</th>
-                  <th className="text-left py-2">Action après</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.map((s) => (
-                  <tr key={s.product_id} className="border-b border-gray-100">
-                    <td className="py-2 text-black">{s.name.slice(0, 40)}</td>
-                    <td className="py-2 text-right tabular-nums text-gray-500">{s.score_before.toFixed(1)}</td>
-                    <td className="py-2 text-right tabular-nums font-medium text-black">{s.score_after.toFixed(1)}</td>
-                    <td
-                      className={`py-2 text-right tabular-nums font-bold ${
-                        s.delta > 0 ? 'text-green-600' : s.delta < 0 ? 'text-red-600' : 'text-gray-400'
+      {/* Detail card 2 — Saison */}
+      <DetailCard
+        open={openCard === 'season'}
+        onToggle={() => setOpenCard(openCard === 'season' ? null : 'season')}
+        title="Détail : Saison"
+        intro="Calendrier mois-en-saison par catégorie. En saison = 20 pts, ±1 mois = 12, hors saison = 5, pas de calendrier = 10."
+      >
+        <div className="space-y-2">
+          {Object.keys(config.season_calendar).map((category) => (
+            <div key={category} className="flex items-center gap-2">
+              <span className="w-24 text-sm font-medium">{category}</span>
+              <div className="flex gap-1">
+                {MONTH_SHORT.map((m, idx) => {
+                  const month = idx + 1;
+                  const active = (config.season_calendar[category] || []).includes(month);
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => toggleSeasonMonth(category, month)}
+                      className={`w-7 h-7 text-xs font-medium rounded ${
+                        active ? 'bg-teal text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                       }`}
                     >
-                      {s.delta > 0 ? '+' : ''}{s.delta.toFixed(1)}
-                    </td>
-                    <td className="py-2 text-xs text-gray-500">{s.action_after}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </DetailCard>
+
+      {/* Detail card 3 — Ancienneté */}
+      <DetailCard
+        open={openCard === 'age'}
+        onToggle={() => setOpenCard(openCard === 'age' ? null : 'age')}
+        title="Détail : Ancienneté"
+        intro="Points par semaine en rayon. Au-delà de la dernière case, le produit est sorti automatiquement le jeudi."
+      >
+        <div className="grid grid-cols-6 gap-2">
+          {config.age_weeks_table.map((pts, i) => (
+            <div key={i} className="text-center">
+              <p className="text-xs text-gray-500 mb-1">
+                {i === config.age_weeks_table.length - 1 ? `S${i + 1}+` : `S${i + 1}`}
+              </p>
+              <input
+                type="number"
+                min={0}
+                max={20}
+                step={1}
+                value={pts}
+                onChange={(e) => setAgeWeek(i, Number(e.target.value))}
+                className="w-full px-2 py-1 text-sm border border-gray-200 rounded text-center"
+              />
+            </div>
+          ))}
+        </div>
+        {stats?.shelf_distribution && (
+          <div className="mt-4 text-sm">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">
+              Produits actuellement en rayon, par semaine
+            </h4>
+            <div className="grid grid-cols-7 gap-2">
+              {Object.entries(stats.shelf_distribution).map(([bucket, count]) => (
+                <div key={bucket} className="text-center bg-gray-50 rounded p-2">
+                  <p className="text-xs text-gray-400">{bucket.replace('week_', 'S').replace('_plus', '+')}</p>
+                  <p className="font-mono">{count}</p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
-      </Card>
+      </DetailCard>
 
-      {/* Section 6 : Sauvegarde */}
-      <div className="flex justify-between items-center">
-        <p className="text-xs text-gray-400">
-          {config.updated_by && `Dernière modif : ${config.updated_by} — ${config.updated_at?.slice(0, 16)}`}
-        </p>
-        <Button onClick={save} disabled={!isValid || saving}>
-          {saving ? 'Sauvegarde…' : 'Enregistrer'}
-        </Button>
-      </div>
+      {/* Detail card 4 — Tendance */}
+      <DetailCard
+        open={openCard === 'trend'}
+        onToggle={() => setOpenCard(openCard === 'trend' ? null : 'trend')}
+        title="Détail : Tendance"
+        intro="Snapshot des tendances catégorie (4 dernières semaines de ventes) + signal fashion-watch."
+      >
+        {stats?.category_trends_snapshot ? (
+          <ul className="space-y-1 text-sm">
+            {Object.entries(stats.category_trends_snapshot)
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 10)
+              .map(([catId, value]) => (
+                <li key={catId} className="flex justify-between border-b border-gray-100 py-1">
+                  <span className="font-mono text-xs text-gray-400">{catId.slice(0, 8)}…</span>
+                  <span className="font-mono">{Math.round(value)}/100</span>
+                </li>
+              ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500">Snapshot tendances indisponible.</p>
+        )}
+      </DetailCard>
+
+      {/* Detail card 5 — Prix */}
+      <DetailCard
+        open={openCard === 'price'}
+        onToggle={() => setOpenCard(openCard === 'price' ? null : 'price')}
+        title="Détail : Positionnement prix"
+        intro="Ratio prix de vente / prix marché estimé par Claude (Vinted/LBC). Plus le ratio est bas, plus le score est haut."
+      >
+        <div className="space-y-2 text-sm">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center gap-3">
+              <span className="w-32 text-gray-500">Ratio ≤</span>
+              <input
+                type="number"
+                step={0.05}
+                min={0}
+                max={2}
+                value={config.price_thresholds[i]}
+                onChange={(e) => setPriceCutoff(i, Number(e.target.value))}
+                className="w-24 px-2 py-1 border border-gray-200 rounded"
+              />
+              <span className="text-gray-500">→</span>
+              <span className="font-mono">{config.price_points[i]} pts</span>
+            </div>
+          ))}
+          <div className="flex items-center gap-3">
+            <span className="w-32 text-gray-500">Sinon</span>
+            <span className="font-mono">{config.price_points[4]} pts</span>
+          </div>
+        </div>
+      </DetailCard>
+
+      {/* Preview output */}
+      {preview && preview.length > 0 && (
+        <Card title={`Aperçu — ${preview.length} produits`}>
+          <table className="w-full text-sm">
+            <thead className="text-xs text-gray-500 uppercase">
+              <tr><th className="text-left py-1">Produit</th>
+                <th className="text-right">Avant</th>
+                <th className="text-right">Après</th>
+                <th className="text-right">Δ</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.map((p) => (
+                <tr key={p.product_id} className="border-t border-gray-100">
+                  <td className="py-1">{p.name}</td>
+                  <td className="text-right font-mono">{p.score_before.toFixed(0)}</td>
+                  <td className="text-right font-mono">{p.score_after.toFixed(0)}</td>
+                  <td className={`text-right font-mono ${p.delta >= 0 ? 'text-teal' : 'text-red-600'}`}>
+                    {p.delta >= 0 ? '+' : ''}{p.delta.toFixed(1)}
+                  </td>
+                  <td className="text-xs">{p.action_after}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Reusable detail card with chevron + intro
+// ----------------------------------------------------------------------------
+
+function DetailCard({
+  open,
+  onToggle,
+  title,
+  intro,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  title: string;
+  intro: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-pink/20 overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-5 py-3 hover:bg-cream/40"
+      >
+        <div className="text-left">
+          <h3 className="font-display text-base text-black">{title}</h3>
+          <p className="text-xs text-gray-400 mt-0.5">{intro}</p>
+        </div>
+        <span className={`text-teal transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+      </button>
+      {open && <div className="px-5 pb-5">{children}</div>}
     </div>
   );
 }
