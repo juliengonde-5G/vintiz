@@ -215,12 +215,6 @@ async def search_products(
     result = await db.execute(query)
     products = result.scalars().all()
 
-    # P4-005: products currently held by an active reservation are
-    # surfaced with a flag so the cashier can refuse the sale or look
-    # up the holder in the reservations page.
-    from app.services.reservation import list_active_reservation_product_ids
-
-    reserved_ids = await list_active_reservation_product_ids(db)
     return [
         {
             "id": str(p.id),
@@ -229,7 +223,6 @@ async def search_products(
             "sale_price": float(p.sale_price),
             "status": p.status.value,
             "category": p.category.name if p.category else None,
-            "reserved": p.id in reserved_ids,
         }
         for p in products
     ]
@@ -352,9 +345,11 @@ async def get_product_score(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Compute and return detailed score for a product."""
-    from app.models.product import ProductPhoto
     from app.services.brand_tiers import get_brand_score
     from app.services.category_trends import get_category_trend
+    from app.services.category_velocity import get_velocity_for_category
+    from app.services.market_price_estimator import get_or_refresh_estimate
+    from app.services.scoring_config import get_scoring_config
     from app.services.scoring_service import compute_score
 
     result = await db.execute(select(Product).where(Product.id == product_id))
@@ -362,42 +357,24 @@ async def get_product_score(
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    # Get category avg price
-    avg_result = await db.execute(
-        select(func.avg(Product.sale_price)).where(Product.category_id == product.category_id)
-    )
-    avg_price = avg_result.scalar_one_or_none() or float(product.sale_price)
-
-    # Plug in the live category trend (P2-010) — replaces the old static 50.0.
+    config = await get_scoring_config(db)
     trend = await get_category_trend(db, product.category_id)
-
-    # Plug in the DB-driven brand tier (P2-012).
     brand_score = await get_brand_score(db, product.brand)
-
-    # Plug in photo count + Vision confidence (P2-011). Aggregating in
-    # the request handler keeps compute_score sync + pure.
-    photo_rows = (await db.execute(
-        select(ProductPhoto.ai_confidence)
-        .where(ProductPhoto.product_id == product_id)
-    )).all()
-    photo_count = len(photo_rows)
-    confidences = [c for (c,) in photo_rows if c is not None]
-    photo_avg_confidence = (
-        sum(confidences) / len(confidences) if confidences else None
-    )
+    velocity = await get_velocity_for_category(db, product.category_id)
+    market_estimate = await get_or_refresh_estimate(db, product)
 
     score = compute_score(
         shelf_date=product.shelf_date,
         sale_price=float(product.sale_price),
-        category_avg_price=float(avg_price),
-        condition="tres_bon",
-        brand=product.brand,
-        photo_url=product.photo_url,
+        market_price_estimate=market_estimate,
+        category_name=product.category.name if product.category else None,
         category_trend=trend,
+        category_avg_velocity=velocity,
         brand_score=brand_score,
-        photo_count=photo_count,
-        photo_avg_confidence=photo_avg_confidence,
+        condition=getattr(product, "condition", None),
+        config=config,
     )
+    await db.commit()
     return score
 
 

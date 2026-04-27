@@ -33,15 +33,16 @@ interface ProductDetail {
 
 interface ScoreDetail {
   total_score: number;
+  score_attractivity: number;
+  score_season: number;
   score_age: number;
-  score_prix: number;
-  score_condition: number;
-  score_brand: number;
-  score_category: number;
-  score_photos: number;
+  score_trend: number;
+  score_price: number;
+  weeks_on_shelf: number | null;
+  sortie_forcee: boolean;
   action: string;
   action_color: string;
-  days_on_shelf: number | null;
+  breakdown?: any;
 }
 
 interface Transaction {
@@ -350,25 +351,32 @@ export default function ProductDetailPage() {
                     <div className={`inline-block px-3 py-1.5 rounded-lg border text-sm font-medium ${actionBg(score.action_color)}`}>
                       {score.action}
                     </div>
-                    {score.days_on_shelf !== null && (
-                      <p className="text-xs text-gray-500 mt-2">En rayon depuis {score.days_on_shelf} jour{score.days_on_shelf > 1 ? 's' : ''}</p>
+                    {score.weeks_on_shelf !== null && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Semaine {score.weeks_on_shelf + 1} en rayon{score.sortie_forcee ? ' — sortie automatique' : ''}
+                      </p>
                     )}
                   </div>
                 </div>
 
                 <div className="space-y-3">
-                  <ScoreBar value={score.score_age} label="Fraîcheur (ancienneté)" />
-                  <ScoreBar value={score.score_prix} label="Compétitivité prix" />
-                  <ScoreBar value={score.score_condition} label="État / Condition" />
-                  <ScoreBar value={score.score_brand} label="Notoriété marque" />
-                  <ScoreBar value={score.score_category} label="Tendance catégorie" />
-                  <ScoreBar value={score.score_photos} label="Photos disponibles" />
+                  <ScoreBar value={score.score_attractivity} label="Attractivité (25%)" />
+                  <ScoreBar value={score.score_season}       label="Saison (20%)" />
+                  <ScoreBar value={score.score_age}          label="Ancienneté (25%)" />
+                  <ScoreBar value={score.score_trend}        label="Tendance (15%)" />
+                  <ScoreBar value={score.score_price}        label="Positionnement prix (15%)" />
                 </div>
 
-                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs text-gray-500 font-medium mb-1">Formule de calcul :</p>
-                  <p className="text-xs text-gray-400">Score = Fraîcheur×30% + Prix×20% + Condition×20% + Marque×15% + Tendance×10% + Photos×5%</p>
-                </div>
+                {score.breakdown && (
+                  <details className="mt-4 group">
+                    <summary className="cursor-pointer text-xs text-teal font-medium">
+                      Voir le détail du calcul
+                    </summary>
+                    <pre className="mt-2 p-3 bg-gray-50 rounded-lg text-[10px] leading-snug overflow-x-auto">
+{JSON.stringify(score.breakdown, null, 2)}
+                    </pre>
+                  </details>
+                )}
               </Card>
             )}
           </div>

@@ -13,7 +13,6 @@ Function ``get_customer_brief`` aggregates :
 - Lifetime value + favorite categories (top 3) + brands (top 2) + colors (top 2)
 - Size profile (deduced from purchases)
 - 3 Personal Shopper picks (best-effort, falls back to top-scored displayed)
-- Active reservation (P4-005)
 - Anniversary coupon (P4-008)
 """
 
@@ -169,27 +168,6 @@ async def get_customer_brief(
                 "score": prod.trend_score,
             })
 
-    # --- Active reservation (P4-005) ---
-    active_reservation = None
-    try:
-        from app.models.reservation import Reservation, ReservationStatus
-
-        res_q = await db.execute(
-            select(Reservation).where(
-                Reservation.client_id == client_id,
-                Reservation.status == ReservationStatus.active,
-            ).limit(1)
-        )
-        res = res_q.scalar_one_or_none()
-        if res:
-            active_reservation = {
-                "id": str(res.id),
-                "product_id": str(res.product_id) if res.product_id else None,
-                "expires_at": res.expires_at.isoformat() if res.expires_at else None,
-            }
-    except Exception:
-        pass
-
     # --- Anniversary coupon (P4-008) ---
     anniversary_coupon = None
     try:
@@ -229,7 +207,6 @@ async def get_customer_brief(
         "size_profile": size_profile,
         "last_purchases": last_purchases,
         "personal_shopper_picks_today": ps_picks,
-        "active_reservation": active_reservation,
         "anniversary_coupon": anniversary_coupon,
         "consents": {
             "marketing_email": bool(client.email_optin),

@@ -55,7 +55,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Vintiz | Boutique seconde main premium à Vernon",
     description:
-      "Mode premium de seconde main. Pièces uniques sélectionnées avec soin à Vernon, Normandie. Ouverture prochaine — 6 rue Saint-Jacques.",
+      "Votre nouvelle destination Slow Fashion premium à Vernon, Normandie. Pièces uniques sélectionnées avec soin — 6 rue Saint-Jacques.",
     type: "website",
     locale: "fr_FR",
     siteName: "Vintiz",
@@ -72,7 +72,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Vintiz | Boutique seconde main premium",
-    description: "Mode premium de seconde main à Vernon, Normandie.",
+    description: "Votre nouvelle destination Slow Fashion premium à Vernon, Normandie.",
     images: ["/logo-teal.png"],
   },
   alternates: {

@@ -25,7 +25,6 @@ from app.models.reporting import DailyReport, CommercialAction, ActionResult
 from app.models.audit import AuditLog, Settings
 from app.models.batch import IntakeBatch, IntakeSource
 from app.models.brand_tier import BrandTier, BrandTierLevel
-from app.models.markdown import MarkdownRule
 from app.models.merchandising import WindowDisplayProposal
 from app.models.visibility import (
     GoogleReview,
@@ -44,7 +43,6 @@ from app.models.embeddings import (
 from app.models.ai_task import AITask
 from app.models.newsletter import NewsletterSubscriber
 from app.models.coupon import Coupon, CouponDiscountType, CouponSource
-from app.models.reservation import Reservation, ReservationStatus
 from app.models.local_calendar import (
     CahierDayArchive,
     CommercialOperation,
@@ -68,13 +66,11 @@ __all__ = [
     "IntakeBatch", "IntakeSource",
     "BrandTier", "BrandTierLevel",
     "WindowDisplayProposal",
-    "MarkdownRule",
     "SEOSnapshot", "SocialPost", "SocialPostCategory", "SocialPlatform",
     "SocialMention", "GoogleReview",
     "ProductEmbedding", "CustomerTasteProfile", "EMBEDDING_DIM",
     "AITask",
     "NewsletterSubscriber",
     "Coupon", "CouponDiscountType", "CouponSource",
-    "Reservation", "ReservationStatus",
     "LocalEvent", "CommercialOperation", "CahierDayArchive",
 ]

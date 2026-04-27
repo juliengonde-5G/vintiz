@@ -127,7 +127,7 @@ async def get_client_brief(
     - Lifetime value
     - Favorite categories / brands / colors / sizes
     - 3 Personal Shopper picks (with fallback to top-score)
-    - Active reservation + anniversary coupon
+    - Anniversary coupon
     - RFM segment
 
     See ``services/customer_brief.py`` for the aggregation logic.

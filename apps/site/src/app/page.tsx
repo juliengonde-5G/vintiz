@@ -60,9 +60,9 @@ export default function Home() {
           </div>
 
           <h1 className="animate-fade-in-up animation-delay-200 font-display text-4xl sm:text-5xl lg:text-6xl text-black mb-6 leading-tight">
-            Mode <em className="text-teal not-italic">Premium</em>,
+            Votre nouvelle destination
             <br />
-            Seconde Vie.
+            <em className="text-teal not-italic">Slow Fashion</em> premium.
           </h1>
 
           <p className="animate-fade-in-up animation-delay-400 text-lg sm:text-xl text-black/70 max-w-xl mx-auto mb-10 leading-relaxed">

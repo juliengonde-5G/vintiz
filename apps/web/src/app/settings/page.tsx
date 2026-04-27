@@ -316,68 +316,6 @@ export default function SettingsPage() {
     }
   };
 
-  const runSeed = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await api.post('/api/admin/seed', {});
-      if (res.ok) {
-        const data = await res.json();
-        setMessage(data.messages?.join('\n') || 'Seed termine');
-      } else {
-        setError('Erreur lors du seed');
-      }
-    } catch {
-      setError('Erreur de connexion');
-    }
-    setLoading(false);
-  };
-
-  const runReset = async () => {
-    if (!confirm('Supprimer toutes les donnees (produits, clients, transactions, zones) ? Cette action est irreversible.')) return;
-    setLoading(true);
-    setError('');
-    try {
-      const res = await api.post('/api/admin/reset-data', {});
-      if (res.ok) {
-        const data = await res.json();
-        const deleted = Object.entries(data.deleted || {}).map(([k, v]) => `${v} ${k}`).join(', ');
-        setMessage(`Donnees supprimees : ${deleted || 'rien a supprimer'}`);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setError(err.detail || 'Erreur lors du reset');
-      }
-    } catch (e) {
-      setError('Erreur de connexion: ' + (e instanceof Error ? e.message : String(e)));
-    }
-    setLoading(false);
-  };
-
-  const runTestData = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await api.post('/api/admin/test-data', {});
-      if (res.ok) {
-        const data = await res.json();
-        if (data.status === 'skip') {
-          setMessage(data.message);
-        } else {
-          const s = data.summary;
-          setMessage(
-            `Donnees de test generees :\n${s.products} produits, ${s.clients} clients, ${s.loyalty_accounts} comptes fidelite, ${s.transactions} transactions (${s.revenue} EUR)`
-          );
-        }
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setError(err.detail || err.message || 'Erreur lors de la generation');
-      }
-    } catch (e) {
-      setError('Erreur de connexion: ' + (e instanceof Error ? e.message : String(e)));
-    }
-    setLoading(false);
-  };
-
   const loadCahierData = async () => {
     setCahierLoading(true);
     try {
@@ -1264,37 +1202,6 @@ export default function SettingsPage() {
         {/* SYSTEM TAB */}
         {tab === 'system' && (
           <div className="space-y-6">
-            <Card title="Initialisation">
-              <p className="text-sm text-gray-500 mb-4">
-                Initialise les donnees de base : categories, grilles de prix, fournisseur par defaut, zones boutique.
-              </p>
-              <Button onClick={runSeed} disabled={loading}>
-                {loading ? 'Initialisation...' : 'Lancer le seed'}
-              </Button>
-            </Card>
-
-            <Card title="Donnees de test">
-              <p className="text-sm text-gray-500 mb-4">
-                Genere des produits, clients, comptes fidelite et transactions realistes pour tester l&apos;application.
-                Necessite d&apos;avoir lance le seed au prealable.
-              </p>
-              <div className="flex gap-3">
-                <Button onClick={runTestData} disabled={loading} variant="secondary">
-                  {loading ? 'Generation...' : 'Generer les donnees de test'}
-                </Button>
-              </div>
-            </Card>
-
-            <Card title="Reinitialisation">
-              <p className="text-sm text-gray-500 mb-4">
-                Supprime toutes les donnees (produits, clients, transactions, zones) pour repartir a zero.
-                Les categories et grilles de prix sont conservees.
-              </p>
-              <Button onClick={runReset} disabled={loading} variant="outline">
-                {loading ? 'Suppression...' : 'Reinitialiser les donnees'}
-              </Button>
-            </Card>
-
             <Card title="Informations systeme">
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between py-2 border-b border-gray-100">

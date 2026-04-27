@@ -105,36 +105,29 @@ async def get_weather_history(
 
 
 # ---------------------------------------------------------------------------
-# Monthly scoring automation
+# Weekly scoring (lundi 04:00 cron + manual trigger)
 # ---------------------------------------------------------------------------
 
-@router.post("/scoring/monthly-update")
-async def monthly_scoring_update(
+@router.post("/scoring/weekly-update")
+async def weekly_scoring_update(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    """Recompute trend score for all active products. Triggered on the 1st Wednesday of each month."""
-    from app.models.product import ProductPhoto
+    """Manual trigger of the v3 weekly scoring (same effect as Monday 04:00 cron)."""
     from app.services.brand_tiers import get_brand_score
-    from app.services.category_trends import refresh_cache
+    from app.services.category_trends import refresh_cache as refresh_trends
+    from app.services.category_velocity import refresh_cache as refresh_velocity
+    from app.services.market_price_estimator import (
+        get_or_refresh_estimate,
+        refresh_stale_estimates,
+    )
+    from app.services.scoring_config import get_scoring_config
     from app.services.scoring_service import compute_score
 
-    # Refresh the per-category trend cache once for the whole pass (P2-010)
-    # — replaces the static 50.0 default in the scoring formula.
-    category_trends = await refresh_cache(db)
-
-    # Pre-aggregate photo data (P2-011) to avoid an N+1 in the loop.
-    photo_agg = await db.execute(
-        select(
-            ProductPhoto.product_id,
-            func.count(ProductPhoto.id).label("n"),
-            func.avg(ProductPhoto.ai_confidence).label("avg_conf"),
-        ).group_by(ProductPhoto.product_id)
-    )
-    photo_data = {
-        row[0]: (int(row[1]), float(row[2]) if row[2] is not None else None)
-        for row in photo_agg.all()
-    }
+    config = await get_scoring_config(db)
+    category_trends = await refresh_trends(db)
+    velocity_by_cat = await refresh_velocity(db)
+    n_estimates = await refresh_stale_estimates(db, limit=500)
 
     result = await db.execute(
         select(Product).where(
@@ -144,26 +137,20 @@ async def monthly_scoring_update(
     products = result.scalars().all()
     updated = 0
     for product in products:
-        # Get category average price for context
-        avg_result = await db.execute(
-            select(func.avg(Product.sale_price)).where(Product.category_id == product.category_id)
-        )
-        avg_price = float(avg_result.scalar_one_or_none() or product.sale_price)
-
+        trend = float(category_trends.get(str(product.category_id), 50.0))
+        velocity = float(velocity_by_cat.get(str(product.category_id), 0.0))
         brand_score = await get_brand_score(db, product.brand)
-        photo_count, photo_avg_conf = photo_data.get(product.id, (0, None))
-
+        market_estimate = await get_or_refresh_estimate(db, product)
         score_data = compute_score(
             shelf_date=product.shelf_date,
             sale_price=float(product.sale_price),
-            category_avg_price=avg_price,
-            condition=getattr(product, "condition", "tres_bon") or "tres_bon",
-            brand=product.brand,
-            photo_url=product.photo_url,
-            category_trend=category_trends.get(str(product.category_id), 50.0),
+            market_price_estimate=market_estimate,
+            category_name=product.category.name if product.category else None,
+            category_trend=trend,
+            category_avg_velocity=velocity,
             brand_score=brand_score,
-            photo_count=photo_count,
-            photo_avg_confidence=photo_avg_conf,
+            condition=getattr(product, "condition", None),
+            config=config,
         )
         product.trend_score = score_data["total_score"]
         updated += 1
@@ -171,6 +158,7 @@ async def monthly_scoring_update(
     await db.commit()
     return {
         "updated": updated,
+        "market_estimates_refreshed": n_estimates,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "message": f"Scores recalcules pour {updated} produits actifs",
     }
@@ -482,168 +470,8 @@ async def delete_brand_tier(
 
 
 # ---------------------------------------------------------------------------
-# Markdown engine (P3-001) — manager CRUD + dry-run + manual trigger
+# Return-to-sorting (P3-007)
 # ---------------------------------------------------------------------------
-
-
-class MarkdownRuleRequest(BaseModel):
-    name: str
-    active: bool = True
-    priority: int = 100
-    conditions: dict
-    action: dict
-
-
-@router.get("/markdown-rules", dependencies=[Depends(manager_only)])
-async def list_markdown_rules(db: Annotated[AsyncSession, Depends(get_db)]):
-    from app.models.markdown import MarkdownRule
-
-    result = await db.execute(
-        select(MarkdownRule).order_by(MarkdownRule.priority, MarkdownRule.created_at)
-    )
-    return [
-        {
-            "id": str(r.id),
-            "name": r.name,
-            "active": r.active,
-            "priority": r.priority,
-            "conditions": r.conditions,
-            "action": r.action,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-        }
-        for r in result.scalars().all()
-    ]
-
-
-@router.post(
-    "/markdown-rules",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(manager_only)],
-)
-async def create_markdown_rule(
-    request: MarkdownRuleRequest,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-):
-    from app.models.markdown import MarkdownRule
-    from app.services.markdown_engine import _validate_action
-
-    # Surface schema errors immediately so Camille doesn't save a rule
-    # the cron would then silently skip.
-    try:
-        _validate_action(request.action)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-    rule = MarkdownRule(
-        name=request.name,
-        active=request.active,
-        priority=request.priority,
-        conditions=request.conditions,
-        action=request.action,
-        updated_by_user_id=current_user.id,
-    )
-    db.add(rule)
-    await db.flush()
-    await db.commit()
-    return {"id": str(rule.id), "name": rule.name}
-
-
-@router.put(
-    "/markdown-rules/{rule_id}",
-    dependencies=[Depends(manager_only)],
-)
-async def update_markdown_rule(
-    rule_id: uuid.UUID,
-    request: MarkdownRuleRequest,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-):
-    from app.models.markdown import MarkdownRule
-    from app.services.markdown_engine import _validate_action
-
-    result = await db.execute(
-        select(MarkdownRule).where(MarkdownRule.id == rule_id)
-    )
-    rule = result.scalar_one_or_none()
-    if rule is None:
-        raise HTTPException(status_code=404, detail="Rule not found")
-
-    try:
-        _validate_action(request.action)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-    rule.name = request.name
-    rule.active = request.active
-    rule.priority = request.priority
-    rule.conditions = request.conditions
-    rule.action = request.action
-    rule.updated_by_user_id = current_user.id
-    await db.flush()
-    await db.commit()
-    return {"id": str(rule.id), "name": rule.name}
-
-
-@router.delete(
-    "/markdown-rules/{rule_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(manager_only)],
-)
-async def delete_markdown_rule(
-    rule_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    from app.models.markdown import MarkdownRule
-
-    result = await db.execute(
-        select(MarkdownRule).where(MarkdownRule.id == rule_id)
-    )
-    rule = result.scalar_one_or_none()
-    if rule is None:
-        raise HTTPException(status_code=404, detail="Rule not found")
-    await db.delete(rule)
-    await db.commit()
-    return None
-
-
-@router.get("/markdown-rules/preview", dependencies=[Depends(manager_only)])
-async def preview_markdown_run(db: Annotated[AsyncSession, Depends(get_db)]):
-    """Dry-run of the markdown engine — what would the next nightly pass do?"""
-    from app.services.markdown_engine import MarkdownEngineService
-
-    summary = await MarkdownEngineService(db).run_batch(dry_run=True)
-    return {
-        "scanned": summary.scanned,
-        "matched": summary.matched,
-        "would_apply": summary.matched,
-        "errors": summary.errors,
-        "actions": summary.actions,
-    }
-
-
-@router.post("/markdown-rules/run", dependencies=[Depends(manager_only)])
-async def run_markdown_now(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-):
-    """Manually trigger the markdown engine — same effect as waiting for
-    the nightly cron."""
-    from app.services.markdown_engine import MarkdownEngineService
-
-    summary = await MarkdownEngineService(db).run_batch(
-        dry_run=False, user_id=current_user.id
-    )
-    await db.commit()
-    return {
-        "scanned": summary.scanned,
-        "matched": summary.matched,
-        "applied": summary.applied,
-        "skipped": summary.skipped,
-        "errors": summary.errors,
-        "actions": summary.actions,
-    }
 
 
 @router.get(
@@ -1104,7 +932,7 @@ async def update_ai_routing(
 async def get_scoring_config_endpoint(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Return the current scoring config (or defaults v2 if unset)."""
+    """Return the current scoring config (v3, 5 criteria) or the defaults."""
     from app.services.scoring_config import get_scoring_config
 
     return await get_scoring_config(db)
@@ -1118,8 +946,10 @@ async def update_scoring_config_endpoint(
 ):
     """Validate & persist a new scoring config (manager only).
 
-    The body must contain at least ``weights`` (8 components summing to 1.0).
-    Optional : ``age_decay``, ``season_boost``, ``consignment_threshold``.
+    The body must contain ``weights`` with the 5 v3 keys
+    (attractivity / season / age / trend / price) summing to 1.0.
+    Optional : ``age_weeks_table``, ``season_calendar``, ``price_thresholds``,
+    ``price_points``, ``max_weeks_on_shelf``.
     """
     from app.services.scoring_config import update_scoring_config
 
@@ -1132,14 +962,11 @@ async def update_scoring_config_endpoint(
 async def reset_scoring_config_endpoint(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    version: int = Query(default=2, ge=1, le=2),
 ):
-    """Restore default config (v1 = 6 components, v2 = 8 components)."""
+    """Restore the v3 default config."""
     from app.services.scoring_config import reset_scoring_config
 
-    return await reset_scoring_config(
-        db, version=version, user_email=current_user.email
-    )
+    return await reset_scoring_config(db, user_email=current_user.email)
 
 
 @router.post("/scoring-config/preview", dependencies=[Depends(manager_only)])
@@ -1147,57 +974,44 @@ async def preview_scoring_config(
     payload: dict,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Dry-run a scoring config against the live catalog.
-
-    Returns up to 10 sample products with their score before/after the
-    proposed config — Camille can validate the impact before saving.
-    """
+    """Dry-run a scoring config against the live catalog (max 10 samples)."""
+    from app.services.brand_tiers import get_brand_score
+    from app.services.category_trends import get_category_trend
+    from app.services.category_velocity import get_velocity_for_category
+    from app.services.market_price_estimator import get_or_refresh_estimate
     from app.services.scoring_config import _validate_payload, get_scoring_config
     from app.services.scoring_service import compute_score
-    from datetime import datetime, timezone as tz
 
     _validate_payload(payload)
     current = await get_scoring_config(db)
 
-    # Sample 10 products in displayed status (or stock if none)
     result = await db.execute(
         select(Product).where(
-            Product.status.in_(
-                [ProductStatus.displayed, ProductStatus.stock]
-            ),
-            Product.is_test.is_(False),
+            Product.status.in_([ProductStatus.stock, ProductStatus.display]),
         ).limit(10)
     )
     products = result.scalars().all()
 
     samples = []
     for p in products:
-        # Need average price per category — query lazily
-        avg_q = await db.execute(
-            select(func.avg(Product.sale_price)).where(
-                Product.category_id == p.category_id
-            )
-        )
-        avg = float(avg_q.scalar() or 0)
+        trend = await get_category_trend(db, p.category_id)
+        velocity = await get_velocity_for_category(db, p.category_id)
+        brand_score = await get_brand_score(db, p.brand)
+        market_estimate = await get_or_refresh_estimate(db, p)
 
-        before = compute_score(
+        common = dict(
             shelf_date=p.shelf_date,
             sale_price=float(p.sale_price),
-            category_avg_price=avg,
-            condition=p.condition or "tres_bon",
-            brand=p.brand,
-            photo_url=p.photo_url,
-            config=current,
+            market_price_estimate=market_estimate,
+            category_name=p.category.name if p.category else None,
+            category_trend=trend,
+            category_avg_velocity=velocity,
+            brand_score=brand_score,
+            condition=getattr(p, "condition", None),
         )
-        after = compute_score(
-            shelf_date=p.shelf_date,
-            sale_price=float(p.sale_price),
-            category_avg_price=avg,
-            condition=p.condition or "tres_bon",
-            brand=p.brand,
-            photo_url=p.photo_url,
-            config=payload,
-        )
+        before = compute_score(**common, config=current)
+        after = compute_score(**common, config=payload)
+
         samples.append({
             "product_id": str(p.id),
             "name": p.name,
@@ -1212,6 +1026,71 @@ async def preview_scoring_config(
         "config_proposed": payload,
         "samples": samples,
         "n_sampled": len(samples),
+    }
+
+
+@router.get("/scoring-config/breakdown-stats", dependencies=[Depends(manager_only)])
+async def scoring_breakdown_stats(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Stats used by the admin scoring page to render the per-criterion detail.
+
+    Returns:
+      - top_categories_velocity : 90j sales / week
+      - top_brands              : count of sales by brand 90j (top 10)
+      - category_trends_snapshot: live category_trends cache
+      - shelf_distribution      : how many products per week-on-shelf bucket
+    """
+    from datetime import timedelta
+    from app.models.pos import Transaction, TransactionItem, TransactionType
+    from app.services.category_trends import refresh_cache as refresh_trends
+    from app.services.category_velocity import top_categories
+
+    velocity_top = await top_categories(db, limit=10)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    brand_q = await db.execute(
+        select(Product.brand, func.count(TransactionItem.id))
+        .join(TransactionItem, TransactionItem.product_id == Product.id)
+        .join(Transaction, Transaction.id == TransactionItem.transaction_id)
+        .where(
+            Transaction.transaction_type == TransactionType.sale,
+            Transaction.created_at >= cutoff,
+            Product.brand.is_not(None),
+        )
+        .group_by(Product.brand)
+        .order_by(func.count(TransactionItem.id).desc())
+        .limit(10)
+    )
+    top_brands = [
+        {"brand": row[0], "sales_90d": int(row[1])} for row in brand_q.all()
+    ]
+
+    trends_snapshot = await refresh_trends(db)
+
+    shelf_buckets = {f"week_{i+1}": 0 for i in range(6)}
+    shelf_buckets["week_6_plus"] = 0
+    pq = await db.execute(
+        select(Product).where(
+            Product.status.in_([ProductStatus.stock, ProductStatus.display]),
+        )
+    )
+    now = datetime.now(timezone.utc)
+    for p in pq.scalars().all():
+        if p.shelf_date is None:
+            continue
+        sd = p.shelf_date
+        if sd.tzinfo is None:
+            sd = sd.replace(tzinfo=timezone.utc)
+        weeks = (now - sd).days // 7
+        if weeks >= 6:
+            shelf_buckets["week_6_plus"] += 1
+        else:
+            shelf_buckets[f"week_{weeks + 1}"] += 1
+
+    return {
+        "top_categories_velocity": velocity_top,
+        "top_brands_90d": top_brands,
+        "category_trends_snapshot": trends_snapshot,
+        "shelf_distribution": shelf_buckets,
     }
 
 

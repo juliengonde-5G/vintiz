@@ -20,7 +20,6 @@ export type CustomerBrief = {
   size_profile: { haut?: string; bas?: string };
   last_purchases: { date?: string; name: string; price: number }[];
   personal_shopper_picks_today: { id: string; name: string; thumb?: string | null; score?: number | null }[];
-  active_reservation?: any | null;
   anniversary_coupon?: { code: string; discount_value: number; valid_until?: string | null } | null;
   rfm_segment?: string | null;
 };
@@ -127,13 +126,6 @@ export default function LoyaltyCustomerCard({ brief, onTapPick, onClose }: Props
           {brief.anniversary_coupon.valid_until && (
             <> · jusqu'au {brief.anniversary_coupon.valid_until.slice(0, 10)}</>
           )}
-        </div>
-      )}
-
-      {/* Active reservation warning */}
-      {brief.active_reservation && (
-        <div className="text-xs bg-amber-50 text-amber-700 rounded-lg p-2 mb-2">
-          ⚠ Réservation 48h active · {brief.active_reservation.expires_at?.slice(0, 16)}
         </div>
       )}
 
