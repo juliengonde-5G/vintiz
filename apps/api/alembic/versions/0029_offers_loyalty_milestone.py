@@ -28,6 +28,17 @@ def upgrade() -> None:
     # ------------------------------------------------------------------
     # Create offers table
     # ------------------------------------------------------------------
+    is_pg = bind.dialect.name == "postgresql"
+
+    # Skip the whole migration if the table already exists — defends
+    # against environments where ``Base.metadata.create_all`` (run from
+    # FastAPI's lifespan) created the table on first boot before alembic
+    # could advance the version table.
+    if "offers" in set(sa.inspect(bind).get_table_names()):
+        return
+
+    # Use ``create_type=False`` so SQLAlchemy doesn't try to ``CREATE TYPE``
+    # implicitly — we control creation explicitly with ``checkfirst=True``.
     offer_type = sa.Enum(
         "end_of_series",
         "birthday",
@@ -36,19 +47,26 @@ def upgrade() -> None:
         "bundle_3_for_2",
         "seasonal_gift",
         name="offer_type",
+        create_type=False,
     )
-    if bind.dialect.name == "postgresql":
-        offer_type.create(bind, checkfirst=True)
+    if is_pg:
+        sa.Enum(
+            "end_of_series",
+            "birthday",
+            "shoes_third_free",
+            "progressive_voucher",
+            "bundle_3_for_2",
+            "seasonal_gift",
+            name="offer_type",
+        ).create(bind, checkfirst=True)
 
     op.create_table(
         "offers",
         sa.Column(
             "id",
-            sa.dialects.postgresql.UUID(as_uuid=True) if bind.dialect.name == "postgresql"
-            else sa.String(36),
+            sa.dialects.postgresql.UUID(as_uuid=True) if is_pg else sa.String(36),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()") if bind.dialect.name == "postgresql"
-            else None,
+            server_default=sa.text("gen_random_uuid()") if is_pg else None,
             nullable=False,
         ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
@@ -61,14 +79,12 @@ def upgrade() -> None:
         sa.Column("valid_from", sa.DateTime(timezone=True), nullable=True),
         sa.Column("valid_until", sa.DateTime(timezone=True), nullable=True),
         sa.Column("requires_loyalty", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("config", sa.JSON(), nullable=False, server_default=sa.text("'{}'::json"
-            if bind.dialect.name == "postgresql" else "'{}'")),
+        sa.Column("config", sa.JSON(), nullable=False, server_default=sa.text("'{}'::json" if is_pg else "'{}'")),
         sa.Column("priority", sa.Integer(), nullable=False, server_default=sa.text("100")),
         sa.Column("notes", sa.String(500), nullable=True),
         sa.Column(
             "updated_by_user_id",
-            sa.dialects.postgresql.UUID(as_uuid=True) if bind.dialect.name == "postgresql"
-            else sa.String(36),
+            sa.dialects.postgresql.UUID(as_uuid=True) if is_pg else sa.String(36),
             nullable=True,
         ),
     )
