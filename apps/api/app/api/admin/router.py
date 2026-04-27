@@ -985,7 +985,9 @@ async def zone_analytics(
             "code": "saturation",
             "message": "Zone satureee — envisage de redistribuer",
         })
-    stale_cutoff = now - timedelta(days=60)
+    # Product.shelf_date is TIMESTAMP WITHOUT TIME ZONE → strip tz to satisfy
+    # asyncpg's strict naive/aware separation (otherwise DataError).
+    stale_cutoff = (now - timedelta(days=60)).replace(tzinfo=None)
     stale_res = await db.execute(
         select(func.count(Product.id)).where(
             Product.zone_id == zone_id,
