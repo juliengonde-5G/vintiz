@@ -910,7 +910,7 @@ async def zone_analytics(
     sold_30 = await db.execute(
         select(
             func.count(TransactionItem.id),
-            func.coalesce(func.sum(TransactionItem.price), 0),
+            func.coalesce(func.sum(TransactionItem.unit_price), 0),
         )
         .join(Product, Product.id == TransactionItem.product_id)
         .join(Transaction, Transaction.id == TransactionItem.transaction_id)
@@ -926,7 +926,7 @@ async def zone_analytics(
     sold_prev = await db.execute(
         select(
             func.count(TransactionItem.id),
-            func.coalesce(func.sum(TransactionItem.price), 0),
+            func.coalesce(func.sum(TransactionItem.unit_price), 0),
         )
         .join(Product, Product.id == TransactionItem.product_id)
         .join(Transaction, Transaction.id == TransactionItem.transaction_id)
@@ -946,7 +946,7 @@ async def zone_analytics(
             Product.name,
             Product.brand,
             func.count(TransactionItem.id).label("units"),
-            func.coalesce(func.sum(TransactionItem.price), 0).label("revenue"),
+            func.coalesce(func.sum(TransactionItem.unit_price), 0).label("revenue"),
         )
         .join(TransactionItem, TransactionItem.product_id == Product.id)
         .join(Transaction, Transaction.id == TransactionItem.transaction_id)
@@ -1007,7 +1007,7 @@ async def zone_analytics(
         day_start = now - timedelta(days=day_offset)
         day_end = day_start + timedelta(days=1)
         day_res = await db.execute(
-            select(func.coalesce(func.sum(TransactionItem.price), 0))
+            select(func.coalesce(func.sum(TransactionItem.unit_price), 0))
             .join(Transaction, Transaction.id == TransactionItem.transaction_id)
             .join(Product, Product.id == TransactionItem.product_id)
             .where(
