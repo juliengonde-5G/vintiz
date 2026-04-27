@@ -16,10 +16,10 @@ import uuid
 from decimal import Decimal
 from typing import Iterable
 
-from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import RefundError, ResourceNotFound
 from app.models.client import AvoirTransaction, AvoirTxType, Client
 from app.models.pos import (
     Payment,
@@ -71,12 +71,9 @@ class RefundService:
         )
         original = result.scalar_one_or_none()
         if original is None:
-            raise HTTPException(status_code=404, detail="Transaction not found")
+            raise ResourceNotFound("Transaction", original_id)
         if original.transaction_type != TransactionType.sale:
-            raise HTTPException(
-                status_code=400,
-                detail="Only sales can be refunded",
-            )
+            raise RefundError("Only sales can be refunded")
         return original
 
     async def _already_refunded_qty(
@@ -88,8 +85,6 @@ class RefundService:
         Manual items (product_id is NULL) match by item id directly.
         """
         if original_item.product_id is None:
-            # Without a product link we fall back to matching by item id; there
-            # is no single source of truth across refunds for manual items.
             return 0
         result = await self.db.execute(
             select(func.coalesce(func.sum(TransactionItem.quantity), 0))
@@ -117,85 +112,66 @@ class RefundService:
     ) -> Transaction:
         method = (refund_method or "").strip().lower()
         if method not in _VALID_REFUND_METHODS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid refund method: {refund_method!r}",
-            )
+            raise RefundError(f"Invalid refund method: {refund_method!r}")
 
         original = await self._load_original(original_tx_id)
 
-        # Pre-load the original items into a dict keyed by id for validation.
         original_items: dict[uuid.UUID, TransactionItem] = {
             item.id: item for item in (original.items or [])
         }
         if not original_items:
-            raise HTTPException(
-                status_code=400,
-                detail="Original transaction has no refundable items",
-            )
+            raise RefundError("Original transaction has no refundable items")
 
         items_list = list(items)
         if not items_list:
-            raise HTTPException(status_code=400, detail="No items to refund")
+            raise RefundError("No items to refund")
 
-        # Validate every requested line against the original.
         refund_amount_ttc = Decimal("0")
         plan: list[tuple[TransactionItem, int, Decimal]] = []
         for line in items_list:
             if line.quantity <= 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Refund quantity must be positive",
-                )
+                raise RefundError("Refund quantity must be positive")
             original_item = original_items.get(line.transaction_item_id)
             if original_item is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Item {line.transaction_item_id} does not belong to "
-                        f"transaction {original_tx_id}"
-                    ),
+                raise RefundError(
+                    f"Item {line.transaction_item_id} does not belong to "
+                    f"transaction {original_tx_id}"
                 )
-            already = await self._already_refunded_qty(
-                original_tx_id, original_item
-            )
+            already = await self._already_refunded_qty(original_tx_id, original_item)
             remaining = original_item.quantity - already
             if line.quantity > remaining:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Cannot refund {line.quantity} units of "
-                        f"{line.transaction_item_id}: only {remaining} remain"
-                    ),
+                raise RefundError(
+                    f"Cannot refund {line.quantity} units of "
+                    f"{line.transaction_item_id}: only {remaining} remain"
                 )
             unit_after_discount = (
                 Decimal(str(original_item.unit_price))
                 * (Decimal("100") - Decimal(str(original_item.discount_percent or 0)))
                 / Decimal("100")
             ).quantize(Decimal("0.01"))
-            line_total = (unit_after_discount * line.quantity).quantize(
-                Decimal("0.01")
-            )
+            line_total = (unit_after_discount * line.quantity).quantize(Decimal("0.01"))
             refund_amount_ttc += line_total
             plan.append((original_item, line.quantity, line_total))
 
         if refund_amount_ttc <= 0:
-            raise HTTPException(
-                status_code=400, detail="Refund total is zero — nothing to refund"
-            )
+            raise RefundError("Refund total is zero — nothing to refund")
 
-        # Avoir refunds need a client to credit.
         if method == "avoir" and original.client_id is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Avoir refund requires the original sale to have a client",
-            )
+            raise RefundError("Avoir refund requires the original sale to have a client")
 
-        # Allocate the refund's transaction number.
-        max_num = await self.db.execute(
-            select(func.coalesce(func.max(Transaction.transaction_number), 0))
-        )
-        next_number = (max_num.scalar_one() or 0) + 1
+        # Allocate the refund's transaction number (same dialect-safe logic as sale).
+        from sqlalchemy import text
+        dialect = self.db.bind.dialect.name if self.db.bind else "postgresql"
+        if dialect == "sqlite":
+            max_num = await self.db.execute(
+                select(func.coalesce(func.max(Transaction.transaction_number), 0))
+            )
+            next_number = (max_num.scalar_one() or 0) + 1
+        else:
+            seq_result = await self.db.execute(
+                text("SELECT nextval('transaction_number_seq')")
+            )
+            next_number = seq_result.scalar_one()
 
         total_ht = (refund_amount_ttc / Decimal("1.20")).quantize(Decimal("0.01"))
         total_tva = (refund_amount_ttc - total_ht).quantize(Decimal("0.01"))
@@ -216,7 +192,6 @@ class RefundService:
         self.db.add(refund_tx)
         await self.db.flush()
 
-        # Mirror each refunded line and put the product back on display.
         for original_item, qty, line_total in plan:
             self.db.add(
                 TransactionItem(
@@ -237,13 +212,7 @@ class RefundService:
                     product.status = ProductStatus.display
                     product.sold_at = None
 
-        # Settlement: cash/card/cheque → Payment row; avoir → AvoirTransaction.
         if method == "avoir":
-            if original.client_id is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Avoir refund requires the original sale to have a client",
-                )
             client_result = await self.db.execute(
                 select(Client).where(Client.id == original.client_id)
             )

@@ -83,6 +83,38 @@ app.add_middleware(AuditContextMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
 
+# Domain exception → HTTP translation (must be registered before the catch-all below)
+from app.core.exceptions import (
+    AuthenticationError, CartEmpty, InsufficientBalance, InvalidOperation,
+    InvalidState, PaymentShortfall, PermissionDenied, ProductNotAvailable,
+    RefundError, ResourceConflict, ResourceNotFound, VintizError,
+)
+from fastapi import HTTPException as _HTTPException
+from fastapi.responses import JSONResponse as _JSONResponse
+
+_DOMAIN_STATUS: dict[type, int] = {
+    ResourceNotFound: 404,
+    ResourceConflict: 409,
+    InvalidState: 409,
+    InsufficientBalance: 400,
+    CartEmpty: 400,
+    PaymentShortfall: 400,
+    ProductNotAvailable: 400,
+    RefundError: 400,
+    AuthenticationError: 401,
+    PermissionDenied: 403,
+    InvalidOperation: 422,
+}
+
+
+@app.exception_handler(VintizError)
+async def domain_exception_handler(request: Request, exc: VintizError):
+    status_code = next(
+        (v for k, v in _DOMAIN_STATUS.items() if isinstance(exc, k)), 422
+    )
+    return _JSONResponse(status_code=status_code, content={"detail": str(exc)})
+
+
 # Global exception handler — ensures CORS headers are present even on 500.
 # In production we hide the exception type/message to avoid information disclosure;
 # in development we keep them for easier debugging. The full traceback is always logged.

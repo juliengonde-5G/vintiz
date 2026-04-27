@@ -2,9 +2,13 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.exceptions import (
+    CartEmpty, InsufficientBalance, InvalidOperation, PaymentShortfall,
+    ProductNotAvailable, ResourceNotFound,
+)
 
 from app.models.client import AvoirTransaction, AvoirTxType, Client
 from app.models.pos import (
@@ -64,7 +68,7 @@ class PosService:
                 return existing
 
         if not items:
-            raise HTTPException(status_code=400, detail="Cart is empty")
+            raise CartEmpty()
 
         total_ttc = Decimal("0")
         # (product | None, quantity, unit_price, discount_percent, item_name)
@@ -77,15 +81,9 @@ class PosService:
                 )
                 product = result.scalar_one_or_none()
                 if product is None:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"Product {cart_item.product_id} not found",
-                    )
+                    raise ResourceNotFound("Product", cart_item.product_id)
                 if product.status not in (ProductStatus.display, ProductStatus.stock):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Product {product.name} is not available for sale (status: {product.status.value})",
-                    )
+                    raise ProductNotAvailable(product.name, product.status.value)
                 unit_price = Decimal(str(cart_item.unit_price)) if cart_item.unit_price else Decimal(str(product.sale_price))
                 discount = cart_item.discount_percent or 0
                 line_total = (unit_price * cart_item.quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
@@ -94,10 +92,7 @@ class PosService:
             else:
                 # Manual item (e.g. sac)
                 if not cart_item.name or not cart_item.unit_price:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Manual items require name and unit_price",
-                    )
+                    raise InvalidOperation("Manual items require name and unit_price")
                 unit_price = Decimal(str(cart_item.unit_price))
                 discount = cart_item.discount_percent or 0
                 line_total = (unit_price * cart_item.quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
@@ -111,10 +106,7 @@ class PosService:
         # Validate payments
         total_paid = sum(Decimal(str(p.amount)) for p in payments)
         if total_paid < total_ttc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Insufficient payment: {total_paid} < {total_ttc}",
-            )
+            raise PaymentShortfall(total_paid, total_ttc)
 
         # Generate transaction number.
         # On PostgreSQL use the dedicated sequence (NF525 — no gaps under concurrency).
@@ -186,24 +178,17 @@ class PosService:
         # Avoir checkout: validate balance, debit client and write ledger.
         if avoir_total > 0:
             if client_id is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Avoir payment requires a client to be selected",
-                )
+                raise InvalidOperation("Avoir payment requires a client to be selected")
             client_result = await self.db.execute(
                 select(Client).where(Client.id == client_id)
             )
             client = client_result.scalar_one_or_none()
             if client is None:
-                raise HTTPException(status_code=404, detail="Client not found")
+                raise ResourceNotFound("Client", client_id)
             current_balance = Decimal(str(client.avoir_credit or 0))
             if avoir_total > current_balance:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Insufficient avoir balance: requested {avoir_total}, "
-                        f"available {current_balance}"
-                    ),
+                raise InsufficientBalance(
+                    f"Avoir: requested {avoir_total}, available {current_balance}"
                 )
             client.avoir_credit = float(current_balance - avoir_total)
             self.db.add(
@@ -327,9 +312,7 @@ class PosService:
         """Open a new cash drawer. Raises if one is already open."""
         existing = await self.get_open_drawer()
         if existing:
-            raise HTTPException(
-                status_code=400, detail="A cash drawer is already open"
-            )
+            raise InvalidOperation("A cash drawer is already open")
         drawer = CashDrawer(
             user_id=user_id,
             cashier_id=cashier_id,
@@ -356,9 +339,7 @@ class PosService:
         """
         drawer = await self.get_open_drawer()
         if not drawer:
-            raise HTTPException(
-                status_code=400, detail="No open cash drawer found"
-            )
+            raise ResourceNotFound("CashDrawer")
         if cashier_id is not None:
             drawer.cashier_id = cashier_id
 

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import engine, get_db
 from app.core.security import RoleChecker, get_current_user, hash_password
 from app.models.base import Base
@@ -185,10 +186,9 @@ async def create_tables(
     (we no longer alias SECRET_KEY here, which would have allowed anyone with
     the JWT signing key to forge admin operations).
     """
-    import os
     import hmac
 
-    expected = os.getenv("ADMIN_BOOTSTRAP_KEY", "")
+    expected = settings.ADMIN_BOOTSTRAP_KEY
     if not expected:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
