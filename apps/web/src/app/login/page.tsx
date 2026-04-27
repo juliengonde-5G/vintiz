@@ -38,6 +38,8 @@ export default function LoginPage() {
       }
       const data = await res.json();
       localStorage.setItem('token', data.access_token || data.token);
+      if (data.username) localStorage.setItem('username', data.username);
+      if (data.role) localStorage.setItem('role', data.role);
       router.push('/dashboard');
     } catch {
       setError('Erreur de connexion au serveur');

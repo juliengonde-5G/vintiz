@@ -25,6 +25,8 @@ class UserResponse(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    username: str | None = None
+    role: str | None = None
 
 
 class TokenData(BaseModel):
