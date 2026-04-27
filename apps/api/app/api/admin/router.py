@@ -917,7 +917,7 @@ async def zone_analytics(
         .where(
             Product.zone_id == zone_id,
             Transaction.created_at >= start_30,
-            Transaction.type == TransactionType.sale,
+            Transaction.transaction_type == TransactionType.sale,
         )
     )
     sold_count, sold_revenue = sold_30.one()
@@ -934,7 +934,7 @@ async def zone_analytics(
             Product.zone_id == zone_id,
             Transaction.created_at >= start_60,
             Transaction.created_at < start_30,
-            Transaction.type == TransactionType.sale,
+            Transaction.transaction_type == TransactionType.sale,
         )
     )
     prev_count, prev_revenue = sold_prev.one()
@@ -953,7 +953,7 @@ async def zone_analytics(
         .where(
             Product.zone_id == zone_id,
             Transaction.created_at >= start_30,
-            Transaction.type == TransactionType.sale,
+            Transaction.transaction_type == TransactionType.sale,
         )
         .group_by(Product.id, Product.name, Product.brand)
         .order_by(func.count(TransactionItem.id).desc())
@@ -1014,7 +1014,7 @@ async def zone_analytics(
                 Product.zone_id == zone_id,
                 Transaction.created_at >= day_start,
                 Transaction.created_at < day_end,
-                Transaction.type == TransactionType.sale,
+                Transaction.transaction_type == TransactionType.sale,
             )
         )
         spark.append(float(day_res.scalar_one() or 0))
