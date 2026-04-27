@@ -17,6 +17,7 @@ from app.models.user import User
 
 from app.api.admin import seeding as _seeding_module
 from app.api.admin import zones as _zones_module
+from app.api.admin import offers as _offers_module
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -24,6 +25,7 @@ manager_only = RoleChecker(["manager"])
 
 router.include_router(_seeding_module.router)
 router.include_router(_zones_module.router)
+router.include_router(_offers_module.router)
 
 
 # ---------------------------------------------------------------------------

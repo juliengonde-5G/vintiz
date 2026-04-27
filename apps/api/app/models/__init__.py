@@ -43,6 +43,7 @@ from app.models.embeddings import (
 from app.models.ai_task import AITask
 from app.models.newsletter import NewsletterSubscriber
 from app.models.coupon import Coupon, CouponDiscountType, CouponSource
+from app.models.offer import Offer, OfferType
 from app.models.local_calendar import (
     CahierDayArchive,
     CommercialOperation,
@@ -72,5 +73,6 @@ __all__ = [
     "AITask",
     "NewsletterSubscriber",
     "Coupon", "CouponDiscountType", "CouponSource",
+    "Offer", "OfferType",
     "LocalEvent", "CommercialOperation", "CahierDayArchive",
 ]
