@@ -54,11 +54,6 @@ interface CahierPayload {
   };
   progression_horaire: { hour: number; ca_cumul: number }[];
   progression_cible_horaire: { hour: number; ca_target: number }[];
-  signature: {
-    collaborateur: string | null;
-    manager: string | null;
-    signed_at: string | null;
-  };
 }
 
 const CURRENCY = (n: number | null | undefined) =>
@@ -80,8 +75,6 @@ export default function CahierDuJourPage() {
   const [selectedDate, setSelectedDate] = useState<string>(todayISO());
   const [messageDraft, setMessageDraft] = useState('');
   const [operationDraft, setOperationDraft] = useState('');
-  const [signCollaborator, setSignCollaborator] = useState('');
-  const [signManager, setSignManager] = useState('');
   const [editingText, setEditingText] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
@@ -106,8 +99,6 @@ export default function CahierDuJourPage() {
         setData(payload);
         setMessageDraft(payload.header.message_du_jour || '');
         setOperationDraft(payload.header.operation_en_cours || '');
-        setSignCollaborator(payload.signature.collaborateur || '');
-        setSignManager(payload.signature.manager || '');
       }
     } catch {
       setError('Erreur reseau');
@@ -133,7 +124,6 @@ export default function CahierDuJourPage() {
     const d = new Date(selectedDate + 'T00:00:00');
     d.setDate(d.getDate() + offset);
     const iso = d.toISOString().slice(0, 10);
-    if (iso > todayISO()) return;
     setSelectedDate(iso);
     const url = new URL(window.location.href);
     if (iso === todayISO()) url.searchParams.delete('date');
@@ -142,7 +132,6 @@ export default function CahierDuJourPage() {
   };
 
   const setDateDirect = (iso: string) => {
-    if (iso > todayISO()) return;
     setSelectedDate(iso);
     const url = new URL(window.location.href);
     if (iso === todayISO()) url.searchParams.delete('date');
@@ -165,24 +154,6 @@ export default function CahierDuJourPage() {
       fetchCahier(selectedDate);
     } else {
       setError('Enregistrement impossible');
-    }
-  };
-
-  const saveSignature = async () => {
-    setSaving(true);
-    const res = await api.put('/api/cahier/signature', {
-      date: selectedDate,
-      collaborateur: signCollaborator || null,
-      manager: signManager || null,
-    });
-    setSaving(false);
-    if (res.ok) {
-      setToast('Signatures enregistrees');
-      setTimeout(() => setToast(''), 2000);
-      fetchCahier(selectedDate);
-    } else {
-      const body = await res.json().catch(() => ({}));
-      setError(body.detail || 'Signature impossible');
     }
   };
 
@@ -217,7 +188,6 @@ export default function CahierDuJourPage() {
             <input
               type="date"
               value={selectedDate}
-              max={todayISO()}
               onChange={(e) => setDateDirect(e.target.value)}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm min-h-[36px]"
             />
@@ -225,7 +195,6 @@ export default function CahierDuJourPage() {
               variant="outline"
               size="sm"
               onClick={() => navigateDay(1)}
-              disabled={selectedDate >= todayISO()}
             >
               Jour suivant &raquo;
             </Button>
@@ -523,48 +492,6 @@ export default function CahierDuJourPage() {
               </div>
             </section>
 
-            {/* Signatures */}
-            <section className="pt-4 border-t border-gray-100">
-              <h2 className="text-sm font-display font-semibold text-black uppercase tracking-wider mb-3">
-                Signatures
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Collaborateur</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                    value={signCollaborator}
-                    onChange={(e) => setSignCollaborator(e.target.value)}
-                    disabled={readOnly && !!data.signature.collaborateur}
-                    placeholder="Nom ou initiales"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Manager</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                    value={signManager}
-                    onChange={(e) => setSignManager(e.target.value)}
-                    disabled={readOnly && !!data.signature.manager}
-                    placeholder="Nom ou initiales"
-                  />
-                </div>
-              </div>
-              <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
-                <span className="text-xs text-gray-400">
-                  {data.signature.signed_at ? `Signe le ${new Date(data.signature.signed_at).toLocaleString('fr-FR')}` : 'Non signe'}
-                </span>
-                <Button
-                  onClick={saveSignature}
-                  disabled={saving || (readOnly && !!(data.signature.collaborateur || data.signature.manager))}
-                  size="sm"
-                >
-                  {saving ? 'Enregistrement...' : 'Enregistrer les signatures'}
-                </Button>
-              </div>
-            </section>
           </div>
         )}
       </main>
