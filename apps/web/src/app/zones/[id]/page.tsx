@@ -142,12 +142,35 @@ export default function ZoneDetailPage() {
     }
   };
 
-  if (loading || !zone) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-cream">
         <Sidebar />
         <main className="md:ml-64 p-8">
           <p className="text-sm text-gray-500">Chargement…</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (!zone) {
+    return (
+      <div className="min-h-screen bg-cream">
+        <Sidebar />
+        <main className="md:ml-64 p-8">
+          <Link href="/zones" className="inline-flex items-center gap-2 text-sm text-teal hover:text-teal-700 mb-4">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Retour au plan
+          </Link>
+          <Card>
+            <h2 className="font-display text-lg mb-2">Zone introuvable</h2>
+            <p className="text-sm text-gray-500">
+              L'identifiant <code className="text-xs bg-gray-100 px-1 rounded">{zoneId}</code> ne correspond
+              à aucun espace de la boutique. Le plan a peut-être été ré-initialisé depuis votre dernière visite.
+            </p>
+          </Card>
         </main>
       </div>
     );
