@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = False
 
+    # Twilio SMS (optional — simulation if unset)
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_FROM: str = ""
+
     # SEO / Analytics
     PUBLIC_SITE_URL: str = "https://vintiz.fr"
     GA_MEASUREMENT_ID: str | None = None

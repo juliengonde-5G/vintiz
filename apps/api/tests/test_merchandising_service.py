@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.models import Base
 from app.models.merchandising import WindowDisplayProposal
 from app.models.product import Category, Product, ProductPhoto, ProductStatus
-from app.models.store import StoreZone, ZoneProduct
+from app.models.store import FurnitureItem, StoreZone, ZoneProduct, ZoneTag
 from app.models.user import User
 from app.services.merchandising import (
     MerchandisingService,
@@ -29,6 +29,8 @@ async def engine():
         User.__table__,
         Category.__table__,
         StoreZone.__table__,
+        ZoneTag.__table__,
+        FurnitureItem.__table__,
         ZoneProduct.__table__,
         Product.__table__,
         ProductPhoto.__table__,

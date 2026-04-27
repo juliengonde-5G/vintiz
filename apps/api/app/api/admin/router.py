@@ -535,7 +535,7 @@ async def _generate_test_data_impl(db: AsyncSession):
 
         # Mark product as sold
         product.status = ProductStatus.sold
-        product.sold_at = tx_time.isoformat()
+        product.sold_at = tx_time
 
         tx_count += 1
         total_revenue += total_ttc

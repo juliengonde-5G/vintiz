@@ -239,7 +239,11 @@ class RefundService:
 
         # Settlement: cash/card/cheque → Payment row; avoir → AvoirTransaction.
         if method == "avoir":
-            assert original.client_id is not None
+            if original.client_id is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Avoir refund requires the original sale to have a client",
+                )
             client_result = await self.db.execute(
                 select(Client).where(Client.id == original.client_id)
             )

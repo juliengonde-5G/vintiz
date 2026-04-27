@@ -153,7 +153,7 @@ class PosService:
             # Mark product as sold (only real products)
             if product:
                 product.status = ProductStatus.sold
-                product.sold_at = datetime.now(timezone.utc).isoformat()
+                product.sold_at = datetime.now(timezone.utc)
 
         # Create payment records
         method_map = {

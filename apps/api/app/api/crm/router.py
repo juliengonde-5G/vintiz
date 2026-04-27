@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.client import (
@@ -617,18 +618,14 @@ async def send_sms(
     if not client.phone:
         raise HTTPException(status_code=400, detail="Client has no phone number")
 
-    twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
-    twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
-    twilio_from_number = os.getenv("TWILIO_FROM_NUMBER", "")
-
-    if twilio_account_sid and twilio_auth_token and twilio_from_number:
+    if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_FROM:
         try:
             from twilio.rest import Client as TwilioClient
 
-            twilio_client = TwilioClient(twilio_account_sid, twilio_auth_token)
+            twilio_client = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
             message = twilio_client.messages.create(
                 body=request.message,
-                from_=twilio_from_number,
+                from_=settings.TWILIO_FROM,
                 to=client.phone,
             )
             return {

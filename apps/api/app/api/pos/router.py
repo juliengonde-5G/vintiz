@@ -1,5 +1,4 @@
 import logging
-import os
 import uuid
 from decimal import Decimal
 
@@ -8,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import RoleChecker, get_current_user
 from app.models.user import User
@@ -599,14 +599,13 @@ async def resend_transaction(
     elif request.channel == "sms":
         if not client.get("phone"):
             raise HTTPException(status_code=400, detail="Ce client n'a pas de numero de telephone")
-        twilio_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
-        if twilio_sid:
+        if settings.TWILIO_ACCOUNT_SID:
             try:
                 from twilio.rest import Client as TwilioClient
-                tw = TwilioClient(twilio_sid, os.getenv("TWILIO_AUTH_TOKEN", ""))
+                tw = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
                 tw.messages.create(
                     body=f"Vintiz - Ticket #{ticket_num} - Total {total:.2f}EUR. Merci !",
-                    from_=os.getenv("TWILIO_FROM", ""),
+                    from_=settings.TWILIO_FROM,
                     to=client["phone"],
                 )
                 logger.info("Receipt SMS sent for transaction %s", transaction_id)

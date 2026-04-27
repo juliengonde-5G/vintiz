@@ -321,13 +321,20 @@ async def _run_monthly_scoring() -> None:
                 )
             )
             products = result.scalars().all()
+
+            # Pre-compute avg sale_price per category in one query (avoids N+1).
+            avg_by_cat_result = await db.execute(
+                select(
+                    Product.category_id,
+                    func.avg(Product.sale_price).label("avg_price"),
+                ).group_by(Product.category_id)
+            )
+            avg_by_category: dict[str, float] = {
+                str(row[0]): float(row[1]) for row in avg_by_cat_result.all()
+            }
+
             for product in products:
-                avg_result = await db.execute(
-                    select(func.avg(Product.sale_price)).where(
-                        Product.category_id == product.category_id
-                    )
-                )
-                avg_price = float(avg_result.scalar_one_or_none() or product.sale_price)
+                avg_price = avg_by_category.get(str(product.category_id), float(product.sale_price))
                 brand_score = await get_brand_score(db, product.brand)
                 photo_count, photo_avg_conf = photo_data.get(product.id, (0, None))
                 score_data = compute_score(
