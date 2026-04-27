@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import enum
 import uuid
+from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Enum, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -50,10 +51,10 @@ class Offer(Base):
         Enum(OfferType, name="offer_type"), nullable=False
     )
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    valid_from: Mapped["datetime | None"] = mapped_column(  # type: ignore[name-defined]
+    valid_from: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    valid_until: Mapped["datetime | None"] = mapped_column(  # type: ignore[name-defined]
+    valid_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     requires_loyalty: Mapped[bool] = mapped_column(
@@ -66,7 +67,3 @@ class Offer(Base):
     updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         nullable=True
     )
-
-
-# Re-export ``datetime`` so the forward refs above resolve at runtime.
-from datetime import datetime  # noqa: E402,F401
