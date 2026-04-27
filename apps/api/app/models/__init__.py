@@ -44,6 +44,8 @@ from app.models.ai_task import AITask
 from app.models.newsletter import NewsletterSubscriber
 from app.models.coupon import Coupon, CouponDiscountType, CouponSource
 from app.models.offer import Offer, OfferType
+from app.models.weekly_task import WeeklyTask, WeeklyTaskKind, WeeklyTaskStatus
+from app.models.window_decor import WindowDecor
 from app.models.local_calendar import (
     CahierDayArchive,
     CommercialOperation,
@@ -74,5 +76,7 @@ __all__ = [
     "NewsletterSubscriber",
     "Coupon", "CouponDiscountType", "CouponSource",
     "Offer", "OfferType",
+    "WeeklyTask", "WeeklyTaskKind", "WeeklyTaskStatus",
+    "WindowDecor",
     "LocalEvent", "CommercialOperation", "CahierDayArchive",
 ]
