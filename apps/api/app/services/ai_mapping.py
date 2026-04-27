@@ -22,43 +22,78 @@ from app.models.store import (
 
 logger = logging.getLogger("vintiz.ai.mapping")
 
-# Default zones for Vintiz boutique (from architectural analysis)
-# pos_x / pos_y / width / height : percentage of canvas (0-100), positioned on a L-shape floor plan.
+# Default zones for Vintiz boutique — Lot N°2, S. utile 183,95 m² (magasin 98,70 m²).
+# Layout aligned with `plan.jpg` and the photo plate (Standard 1/2, Extra 1/2,
+# Chaussures F/H, Hommes, Tendances, Vitrine). Coordinates are percentages of
+# the canvas (0-100) ; the entrée is à droite, la vitrine tendance en façade.
 DEFAULT_ZONES = [
+    # ---- Mur du fond (back wall, top of plan), de droite (entrée) à gauche ----
     {
-        "name": "Vitrine gauche", "description": "Exposition exterieure cote gauche",
-        "capacity": 6, "color_code": "#008678", "icon": "sparkles",
-        "pos_x": 4, "pos_y": 4, "width": 28, "height": 14, "shape": "rounded", "display_order": 1,
+        "name": "Petits Prix 1", "description": "Mur du fond cote entree — femme, prix doux",
+        "capacity": 200, "color_code": "#26A695", "icon": "shirt",
+        "pos_x": 72, "pos_y": 2, "width": 24, "height": 12, "shape": "rect", "display_order": 1,
+        "photo_url": "/zones/standard-1.jpeg",
     },
     {
-        "name": "Podium entree", "description": "Zone mise en avant a l'entree (6.5m2)",
-        "capacity": 10, "color_code": "#FFC5DF", "icon": "star",
-        "pos_x": 36, "pos_y": 8, "width": 20, "height": 20, "shape": "rounded", "display_order": 2,
+        "name": "Petits Prix 2", "description": "Mur du fond centre — femme, prix doux",
+        "capacity": 200, "color_code": "#26A695", "icon": "shirt",
+        "pos_x": 46, "pos_y": 2, "width": 24, "height": 12, "shape": "rect", "display_order": 2,
+        "photo_url": "/zones/standard-2.jpeg",
     },
     {
-        "name": "Mur gauche", "description": "Barres murales portants lineaires",
-        "capacity": 30, "color_code": "#26A695", "icon": "shirt",
-        "pos_x": 4, "pos_y": 22, "width": 14, "height": 50, "shape": "rect", "display_order": 3,
+        "name": "Extra 1", "description": "Mur du fond — selection extra femme",
+        "capacity": 150, "color_code": "#008678", "icon": "shirt",
+        "pos_x": 24, "pos_y": 4, "width": 20, "height": 14, "shape": "rect", "display_order": 3,
+        "photo_url": "/zones/extra-1.jpeg",
     },
     {
-        "name": "Mur droit", "description": "Zone meuble caisse + stockage",
-        "capacity": 15, "color_code": "#CC4889", "icon": "cash",
-        "pos_x": 78, "pos_y": 32, "width": 18, "height": 30, "shape": "rect", "display_order": 4,
+        "name": "Extra 2", "description": "Retour mur — selection extra femme",
+        "capacity": 150, "color_code": "#008678", "icon": "shirt",
+        "pos_x": 12, "pos_y": 18, "width": 12, "height": 22, "shape": "rect", "display_order": 4,
+        "photo_url": "/zones/extra-2.jpeg",
+    },
+    # ---- Cote gauche (left wall + portants centraux femme) ----
+    {
+        "name": "Chaussures F", "description": "Mur gauche pres des cabines — chaussures femme",
+        "capacity": 30, "color_code": "#FFC5DF", "icon": "bag",
+        "pos_x": 12, "pos_y": 42, "width": 12, "height": 18, "shape": "rect", "display_order": 5,
+        "photo_url": "/zones/chaussures-f.jpeg",
     },
     {
-        "name": "Mur fond", "description": "Barres murales + etageres bois",
-        "capacity": 25, "color_code": "#006B61", "icon": "bag",
-        "pos_x": 22, "pos_y": 78, "width": 54, "height": 14, "shape": "rect", "display_order": 5,
+        "name": "Portants Standards 1", "description": "Portant central femme (haut)",
+        "capacity": 120, "color_code": "#FF97C0", "icon": "grid",
+        "pos_x": 44, "pos_y": 28, "width": 22, "height": 18, "shape": "rounded", "display_order": 6,
     },
     {
-        "name": "Zone centrale", "description": "Autour du pilier - portants libres",
-        "capacity": 20, "color_code": "#FF97C0", "icon": "grid",
-        "pos_x": 34, "pos_y": 40, "width": 34, "height": 28, "shape": "rounded", "display_order": 6,
+        "name": "Portants Standards 2", "description": "Portant central femme (bas)",
+        "capacity": 120, "color_code": "#FF97C0", "icon": "grid",
+        "pos_x": 22, "pos_y": 58, "width": 22, "height": 18, "shape": "rounded", "display_order": 7,
+    },
+    # ---- Mur facade (bottom of plan), de gauche a droite ----
+    {
+        "name": "Chaussures H", "description": "Coin facade gauche — chaussures homme",
+        "capacity": 30, "color_code": "#3B82F6", "icon": "bag",
+        "pos_x": 22, "pos_y": 80, "width": 14, "height": 15, "shape": "rect", "display_order": 8,
+        "photo_url": "/zones/chaussures-h.jpeg",
     },
     {
-        "name": "Cabine essayage", "description": "Zone fond boutique - suggestions",
-        "capacity": 0, "color_code": "#B3DDD8", "icon": "door",
-        "pos_x": 82, "pos_y": 6, "width": 14, "height": 18, "shape": "rounded", "display_order": 7,
+        "name": "Hommes", "description": "Mur facade — collection homme complete",
+        "capacity": 150, "color_code": "#1E3A8A", "icon": "shirt",
+        "pos_x": 38, "pos_y": 82, "width": 18, "height": 13, "shape": "rect", "display_order": 9,
+        "photo_url": "/zones/hommes.jpeg",
+    },
+    {
+        "name": "Tendance", "description": "Tete de gondole facade — tendance femme",
+        "capacity": 200, "color_code": "#CC4889", "icon": "sparkles",
+        "pos_x": 58, "pos_y": 80, "width": 24, "height": 15, "shape": "rounded", "display_order": 10,
+        "photo_url": "/zones/tendance.jpeg",
+    },
+    # ---- Vitrine (devanture cote entree, exposition uniquement) ----
+    {
+        "name": "Vitrine", "description": "Vitrine devanture cote entree — exposition uniquement",
+        "capacity": 8, "color_code": "#006B61", "icon": "star",
+        "pos_x": 84, "pos_y": 80, "width": 12, "height": 15, "shape": "rounded", "display_order": 11,
+        "photo_url": "/zones/vitrine.jpeg",
     },
 ]
 
@@ -215,23 +250,31 @@ async def generate_arrangement_recommendations(db: AsyncSession) -> dict:
     message = await client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2048,
-        system="""Tu es un conseiller merchandising expert pour Vintiz, une boutique de vetements seconde main premium feminin a Vernon.
+        system="""Tu es un conseiller merchandising expert pour Vintiz, une boutique de vetements seconde main premium a Vernon (Lot N°2, surface utile 183,95 m² dont 98,70 m² magasin).
 
-La boutique fait ~98m2 en forme de L avec 7 zones :
-1. Vitrine gauche (exposition exterieure)
-2. Podium entree (6.5m2, mise en avant)
-3. Mur gauche (barres murales, portants lineaires)
-4. Mur droit (meuble caisse + stockage)
-5. Mur fond (barres murales + etageres)
-6. Zone centrale (autour pilier, portants libres)
-7. Cabine essayage (suggestions visuelles)
+La boutique est en forme de L, entree a droite, 11 zones :
+1. Petits Prix 1 (mur du fond cote entree, femme, 200 pieces)
+2. Petits Prix 2 (mur du fond centre, femme, 200 pieces)
+3. Extra 1 (mur du fond, femme, 150 pieces)
+4. Extra 2 (retour mur cote gauche, femme, 150 pieces)
+5. Chaussures F (mur gauche pres des cabines, 30 paires)
+6. Portants Standards 1 (portant central femme haut, 120 pieces)
+7. Portants Standards 2 (portant central femme bas, 120 pieces)
+8. Chaussures H (coin facade gauche, 30 paires homme)
+9. Hommes (mur facade, collection homme complete, 150 pieces)
+10. Tendance (tete de gondole facade femme, 200 pieces)
+11. Vitrine (devanture cote entree, exposition uniquement, ~8 pieces)
+
+Toutes les zones sont feminines a l'exception de Chaussures H et Hommes.
 
 Principes merchandising :
-- Vitrine et podium : pieces les plus attractives (tendance haute, prix moyen-haut)
-- Entree droite/gauche : categories qui se vendent le mieux
-- Fond : pieces a decouvrir, petits prix, destockage
-- Zone centrale : mix tendance + nouveautes
-- Les produits stagnants doivent etre deplaces vers des zones plus visibles ou demarques
+- Vitrine et Tendance : pieces tendance haute, prix moyen-haut, rotation hebdo
+- Petits Prix 1/2 : entree de gamme femme, fortes capacites, rotation rapide
+- Extra 1/2 : selections premium femme, mise en valeur
+- Portants Standards : mix tendance + nouveautes femme au centre
+- Chaussures F/H : focus matiere et taille, peu de stock
+- Hommes : zone homme dediee en facade
+- Les produits stagnants sont deplaces vers Tendance/Vitrine ou demarques en Petits Prix
 
 Reponds en JSON avec :
 {
