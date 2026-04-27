@@ -110,7 +110,7 @@ async def create_transaction(
     # Generate fiscal hash chain
     await fiscal_service.sign_transaction(transaction)
 
-    # Coupon redemption, reservation auto-redeem, analytics events
+    # Coupon redemption + analytics events
     await pos_service.finalize_sale(
         transaction,
         coupon_code=request.coupon_code,
@@ -164,39 +164,6 @@ async def validate_pos_coupon(
         "new_total": preview.new_total,
         "source": preview.source,
         "valid_until": preview.valid_until.isoformat(),
-    }
-
-
-@router.get("/products/{product_id}/reservation-holder")
-async def get_reservation_holder(
-    product_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Return the active reservation holder (if any) for a product so
-    the POS can warn the cashier before ringing up a held article."""
-    from app.models.reservation import Reservation, ReservationStatus
-    from app.models.client import Client
-
-    row = (await db.execute(
-        select(Reservation, Client)
-        .join(Client, Client.id == Reservation.client_id)
-        .where(
-            Reservation.product_id == product_id,
-            Reservation.status == ReservationStatus.active,
-        )
-        .limit(1)
-    )).first()
-    if row is None:
-        return {"reserved": False}
-    reservation, client = row
-    return {
-        "reserved": True,
-        "reservation_id": str(reservation.id),
-        "client_id": str(client.id),
-        "client_name": f"{client.first_name} {client.last_name}".strip(),
-        "client_email": client.email,
-        "expires_at": reservation.expires_at.isoformat() if reservation.expires_at else None,
     }
 
 

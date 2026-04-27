@@ -17,7 +17,6 @@ from app.models.client import (
 )
 from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.product import Category, Gender, Product, ProductPhoto, ProductStatus
-from app.models.reservation import Reservation, ReservationStatus
 from app.models.user import User
 from app.services.product_insights import compute_for_product
 
@@ -43,7 +42,6 @@ async def engine():
         Transaction.__table__,
         TransactionItem.__table__,
         BrandTier.__table__,
-        Reservation.__table__,
     ]
     async with eng.begin() as conn:
         await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=tables))
@@ -189,22 +187,3 @@ async def test_top_score_emits_target_badge(session):
     assert any("92" in label and "Score" in label for label in labels)
 
 
-@pytest.mark.anyio
-async def test_active_reservation_surfaces_hold_badge(session):
-    now = datetime(2026, 4, 26, tzinfo=timezone.utc)
-    product = await _make_product(session)
-    client = Client(first_name="A", last_name="B", email="a@b.fr")
-    session.add(client)
-    await session.flush()
-
-    session.add(Reservation(
-        client_id=client.id,
-        product_id=product.id,
-        status=ReservationStatus.active,
-        expires_at=now + timedelta(hours=20),
-    ))
-    await session.flush()
-
-    result = await compute_for_product(session, product.id, now=now)
-    labels = [i.label for i in result.insights]
-    assert any("Réservée" in label for label in labels)

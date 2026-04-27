@@ -205,22 +205,6 @@ async def run_weekly_new_arrivals_emails() -> None:
         logger.error("New-arrivals cron failed: %s", exc)
 
 
-async def run_hourly_reservation_expiry() -> None:
-    """Expire reservations whose 48h window has elapsed (P4-005). Runs every hour."""
-    try:
-        from sqlalchemy.ext.asyncio import AsyncSession
-
-        from app.services.reservation import expire_due
-
-        async with AsyncSession(engine) as db:
-            n = await expire_due(db)
-            await db.commit()
-            if n:
-                logger.info("Reservation expiry: flipped %d row(s)", n)
-    except Exception as exc:
-        logger.error("Reservation expiry job failed: %s", exc)
-
-
 async def run_monthly_rfm_segmentation() -> None:
     """Recompute RFM scores for all customers on the 1st of each month at 04:00 Paris (P4-007)."""
     try:
@@ -375,11 +359,5 @@ def register_all_jobs(scheduler) -> None:
         run_weekly_new_arrivals_emails,
         CronTrigger(day_of_week="fri", hour=10, minute=0),
         id="weekly_new_arrivals_emails",
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        run_hourly_reservation_expiry,
-        CronTrigger(minute=15),
-        id="hourly_reservation_expiry",
         replace_existing=True,
     )

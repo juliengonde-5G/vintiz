@@ -215,12 +215,6 @@ async def search_products(
     result = await db.execute(query)
     products = result.scalars().all()
 
-    # P4-005: products currently held by an active reservation are
-    # surfaced with a flag so the cashier can refuse the sale or look
-    # up the holder in the reservations page.
-    from app.services.reservation import list_active_reservation_product_ids
-
-    reserved_ids = await list_active_reservation_product_ids(db)
     return [
         {
             "id": str(p.id),
@@ -229,7 +223,6 @@ async def search_products(
             "sale_price": float(p.sale_price),
             "status": p.status.value,
             "category": p.category.name if p.category else None,
-            "reserved": p.id in reserved_ids,
         }
         for p in products
     ]

@@ -99,11 +99,6 @@ export default function POSPage() {
   // P4-010 — per-product insights (badges) cached by product_id.
   const [insights, setInsights] = useState<Record<string, { icon: string; label: string; severity: string }[]>>({});
 
-  // P4-005 redemption — active reservation holder per product (so we
-  // can warn when ringing up an article held for someone else).
-  interface HolderInfo { client_id: string; client_name: string; client_email: string | null; expires_at: string | null }
-  const [holders, setHolders] = useState<Record<string, HolderInfo | null>>({});
-
   // P4-008 redemption — coupon entered by the cashier.
   const [couponCode, setCouponCode] = useState('');
   const [couponDiscount, setCouponDiscount] = useState(0);
@@ -691,36 +686,6 @@ export default function POSPage() {
     return () => { cancelled = true; };
   }, [cart, insights]);
 
-  // P4-005 — fetch reservation holder for each product in the cart.
-  useEffect(() => {
-    const ids = Array.from(
-      new Set(
-        cart
-          .filter((i) => !i.isManual && i.product_id)
-          .map((i) => i.product_id as string),
-      ),
-    ).filter((id) => !(id in holders));
-    if (ids.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      const fresh: Record<string, HolderInfo | null> = {};
-      for (const id of ids) {
-        try {
-          const res = await api.get(`/api/pos/products/${id}/reservation-holder`);
-          if (!res.ok) { fresh[id] = null; continue; }
-          const data = await res.json();
-          fresh[id] = data.reserved
-            ? { client_id: data.client_id, client_name: data.client_name, client_email: data.client_email, expires_at: data.expires_at }
-            : null;
-        } catch { fresh[id] = null; }
-      }
-      if (!cancelled && Object.keys(fresh).length) {
-        setHolders((prev) => ({ ...prev, ...fresh }));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [cart, holders]);
-
   const handleValidate = async () => {
     setSubmitting(true);
     setError('');
@@ -1162,32 +1127,6 @@ export default function POSPage() {
 
           {/* Footer: Total + Pay button */}
           <div className="flex-shrink-0 border-t border-gray-200 bg-white px-4 py-3 space-y-3">
-            {/* P4-005 — warnings on held articles */}
-            {(() => {
-              const heldByOther = cart
-                .map((it) => it.product_id && holders[it.product_id])
-                .filter((h): h is HolderInfo => !!h && h.client_id !== selectedClient?.id);
-              const heldBySelected = cart
-                .map((it) => it.product_id && holders[it.product_id])
-                .filter((h): h is HolderInfo => !!h && h.client_id === selectedClient?.id);
-              return (
-                <>
-                  {heldByOther.length > 0 && (
-                    <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
-                      ⚠ Article réservé par <strong>{heldByOther[0].client_name}</strong>
-                      {heldByOther.length > 1 ? ` (+${heldByOther.length - 1})` : ''}
-                      {' '}— vérifier avant d'encaisser.
-                    </div>
-                  )}
-                  {heldBySelected.length > 0 && (
-                    <div className="p-2 bg-teal/10 border border-teal/30 rounded-lg text-xs text-teal">
-                      ✓ Réservation pour cette cliente — sera marquée encaissée à la validation.
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-
             {/* Loyalty redemption */}
             {selectedClient?.loyalty && loyaltyPoints > 0 && (
               <div className="flex items-center justify-between p-2 bg-purple-50 rounded-lg">

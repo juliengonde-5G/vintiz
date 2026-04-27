@@ -379,7 +379,7 @@ class PosService:
         coupon_code: str | None,
         user_id: uuid.UUID,
     ) -> None:
-        """Post-sign finalization: coupon redemption, reservation auto-redeem, event emission.
+        """Post-sign finalization: coupon redemption + analytics events.
 
         Called from the router after FiscalService.sign_transaction(). Failures in
         any step are logged and swallowed — they never roll back the signed sale.
@@ -403,25 +403,6 @@ class PosService:
                     "Coupon redemption failed for tx=%s code=%s reason=%s",
                     transaction.id, coupon_code, exc,
                 )
-
-        # Auto-redeem active reservations for sold products (P4-005)
-        if transaction.client_id and transaction.items:
-            from app.models.reservation import Reservation, ReservationStatus
-            product_ids = [
-                item.product_id for item in transaction.items
-                if item.product_id is not None
-            ]
-            if product_ids:
-                held = (await self.db.execute(
-                    select(Reservation).where(
-                        Reservation.client_id == transaction.client_id,
-                        Reservation.product_id.in_(product_ids),
-                        Reservation.status == ReservationStatus.active,
-                    )
-                )).scalars().all()
-                for reservation in held:
-                    reservation.status = ReservationStatus.redeemed
-                    reservation.redeemed_transaction_id = transaction.id
 
         # Emit analytics events (P1-003)
         from app.models.events import EventSource, EventType

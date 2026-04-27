@@ -25,7 +25,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.product import Product, ProductStatus
-from app.models.reservation import Reservation, ReservationStatus
 
 
 @dataclass
@@ -107,28 +106,6 @@ async def compute_for_product(
             icon="🎯",
             label=f"Score Vintiz {int(product.trend_score)}/100",
             severity="good",
-        ))
-
-    # 5. Currently held reservation.
-    reservation = (await db.execute(
-        select(Reservation)
-        .where(
-            Reservation.product_id == product_id,
-            Reservation.status == ReservationStatus.active,
-        )
-        .limit(1)
-    )).scalars().first()
-    if reservation is not None:
-        # SQLite drops timezone info on round-trip, so coerce defensively.
-        expires_at = reservation.expires_at
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        remaining = max(expires_at - now, timedelta(0))
-        hours = int(remaining.total_seconds() // 3600)
-        insights.append(Insight(
-            icon="🛍",
-            label=f"Réservée — {hours}h restantes" if hours > 0 else "Réservation expirée",
-            severity="warn",
         ))
 
     return ProductInsights(product_id=product_id, insights=insights)
