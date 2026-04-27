@@ -1,8 +1,8 @@
 """Remap store_zones to the 11 zones from plan.jpg (Petits Prix, Extra,
 Chaussures F/H, Portants Standards 1/2, Hommes, Tendance, Vitrine).
 
-Revision ID: 0022
-Revises: 0021
+Revision ID: 0026
+Revises: 0025
 Create Date: 2026-04-27
 
 Idempotente :
@@ -19,8 +19,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0022"
-down_revision = "0021"
+revision = "0026"
+down_revision = "0025"
 branch_labels = None
 depends_on = None
 
