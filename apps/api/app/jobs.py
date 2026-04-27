@@ -185,6 +185,55 @@ async def run_weekly_new_arrivals_emails() -> None:
         logger.error("New-arrivals cron failed: %s", exc)
 
 
+async def run_morning_restock() -> None:
+    """Generate the daily morning restock checklist (8 a.m. Tue → Sat)."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.checklist import run_morning_restock as _run
+
+        async with AsyncSession(engine) as db:
+            payload = await _run(db)
+            await db.commit()
+            logger.info("Morning restock: %d products to display", payload.get("total", 0))
+    except Exception as exc:
+        logger.error("Morning restock job failed: %s", exc)
+
+
+async def run_monday_position_reco() -> None:
+    """Generate the Monday repositioning checklist (after the 04:00 scoring)."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.checklist import run_monday_position_reco as _run
+
+        async with AsyncSession(engine) as db:
+            payload = await _run(db)
+            await db.commit()
+            logger.info("Monday position reco: %d products flagged", payload.get("total", 0))
+    except Exception as exc:
+        logger.error("Monday position reco failed: %s", exc)
+
+
+async def run_thursday_six_weeks_exit() -> None:
+    """Sortie automatique des produits ≥ 6 semaines en rayon (jeudi 09:00)."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.checklist import run_thursday_six_weeks_exit as _run
+
+        async with AsyncSession(engine) as db:
+            payload = await _run(db)
+            await db.commit()
+            logger.info(
+                "Thursday 6-weeks exit: %d eligible, %d transitioned",
+                payload.get("total_eligible", 0),
+                payload.get("transitioned", 0),
+            )
+    except Exception as exc:
+        logger.error("Thursday 6-weeks exit failed: %s", exc)
+
+
 async def run_monthly_rfm_segmentation() -> None:
     """Recompute RFM scores for all customers on the 1st of each month at 04:00 Paris (P4-007)."""
     try:
@@ -331,5 +380,24 @@ def register_all_jobs(scheduler) -> None:
         run_weekly_new_arrivals_emails,
         CronTrigger(day_of_week="fri", hour=10, minute=0),
         id="weekly_new_arrivals_emails",
+        replace_existing=True,
+    )
+    # Lot 4 — checklist hebdo
+    scheduler.add_job(
+        run_morning_restock,
+        CronTrigger(day_of_week="tue,wed,thu,fri,sat", hour=8, minute=0),
+        id="morning_restock",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_monday_position_reco,
+        CronTrigger(day_of_week="mon", hour=5, minute=0),
+        id="monday_position_reco",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_thursday_six_weeks_exit,
+        CronTrigger(day_of_week="thu", hour=9, minute=0),
+        id="thursday_six_weeks_exit",
         replace_existing=True,
     )

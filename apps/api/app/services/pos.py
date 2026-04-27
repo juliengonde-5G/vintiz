@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -379,7 +379,7 @@ class PosService:
         coupon_code: str | None,
         user_id: uuid.UUID,
     ) -> None:
-        """Post-sign finalization: coupon redemption + analytics events.
+        """Post-sign finalization: coupon redemption + loyalty + analytics events.
 
         Called from the router after FiscalService.sign_transaction(). Failures in
         any step are logged and swallowed — they never roll back the signed sale.
@@ -402,6 +402,16 @@ class PosService:
                 _log.warning(
                     "Coupon redemption failed for tx=%s code=%s reason=%s",
                     transaction.id, coupon_code, exc,
+                )
+
+        # Loyalty: 1 € = 1 pt; every 100 pts crossed → 8 € coupon (60d, auto)
+        if transaction.client_id is not None:
+            try:
+                await self._credit_loyalty_and_emit_milestones(transaction)
+            except Exception as exc:  # noqa: BLE001
+                _log.warning(
+                    "Loyalty milestone hook failed for tx=%s: %s",
+                    transaction.id, exc,
                 )
 
         # Emit analytics events (P1-003)
@@ -432,3 +442,77 @@ class PosService:
                     "discount_percent": float(item.discount_percent or 0),
                 },
             )
+
+    # ------------------------------------------------------------------
+    # Loyalty (1 € = 1 pt, 100 pts = 8 € auto)
+    # ------------------------------------------------------------------
+
+    async def _credit_loyalty_and_emit_milestones(
+        self, transaction: Transaction
+    ) -> None:
+        """Credit points + emit milestone coupons.
+
+        Only invoked when the sale has a client. Loads/creates the
+        ``LoyaltyAccount`` lazily so unenrolled clients still earn points
+        from the moment they share their email.
+        """
+        from app.models.client import (
+            LoyaltyAccount,
+            LoyaltyTransaction,
+            LoyaltyTxType,
+        )
+        from app.models.coupon import Coupon, CouponDiscountType, CouponSource
+        from app.services.coupon import _draw_unique_code  # collision-safe helper
+        from app.services.offers_engine import (
+            LOYALTY_VOUCHER_VALID_DAYS,
+            LOYALTY_VOUCHER_VALUE,
+            milestones_crossed,
+            points_to_credit,
+        )
+
+        amount = float(transaction.total_ttc or 0)
+        points = points_to_credit(amount)
+        if points <= 0:
+            return
+
+        result = await self.db.execute(
+            select(LoyaltyAccount).where(
+                LoyaltyAccount.client_id == transaction.client_id
+            )
+        )
+        account = result.scalar_one_or_none()
+        if account is None:
+            account = LoyaltyAccount(
+                client_id=transaction.client_id, points=0, tier="bronze"
+            )
+            self.db.add(account)
+            await self.db.flush()
+
+        before = int(account.points or 0)
+        account.points = before + points
+        self.db.add(LoyaltyTransaction(
+            account_id=account.id,
+            tx_type=LoyaltyTxType.earn,
+            points=points,
+            description=f"Sale #{transaction.transaction_number}",
+        ))
+
+        crossed = milestones_crossed(before, account.points)
+        if crossed <= 0:
+            return
+
+        now = datetime.now(timezone.utc)
+        valid_until = now + timedelta(days=LOYALTY_VOUCHER_VALID_DAYS)
+        for _ in range(crossed):
+            code = await _draw_unique_code(self.db, "LOYAL")
+            self.db.add(Coupon(
+                code=code,
+                client_id=transaction.client_id,
+                discount_type=CouponDiscountType.amount,
+                discount_value=LOYALTY_VOUCHER_VALUE,
+                source=CouponSource.loyalty_milestone,
+                valid_from=now,
+                valid_until=valid_until,
+                is_active=True,
+                notes=f"Palier {LOYALTY_VOUCHER_VALUE:.0f} € — atteint sur tx #{transaction.transaction_number}",
+            ))

@@ -35,10 +35,12 @@ class CouponDiscountType(str, enum.Enum):
 class CouponSource(str, enum.Enum):
     """Why this coupon was issued. Drives reporting + manager filters."""
 
-    anniversary = "anniversary"   # P4-008 birthday gift
-    winback = "winback"           # at_risk / hibernating clients
-    welcome = "welcome"           # signup nudge
-    manual = "manual"             # admin one-off
+    anniversary = "anniversary"           # legacy — replaced by Offer(birthday)
+    winback = "winback"                   # at_risk / hibernating clients
+    welcome = "welcome"                   # signup nudge
+    manual = "manual"                     # admin one-off
+    progressive = "progressive"           # bon généré sur cumul (Offer.progressive_voucher)
+    loyalty_milestone = "loyalty_milestone"  # palier 100 pts = 8 €
 
 
 class Coupon(Base):
