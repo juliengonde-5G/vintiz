@@ -33,7 +33,7 @@ from app.models.audit import Settings
 from app.models.store import StoreZone
 from app.services.ai_vision import analyze_product_photo, analyze_photo_from_url
 from app.services.ai_trend import compute_trend_scores, update_product_scores, get_stale_products
-from app.services.ai_pricing import suggest_price, suggest_markdowns
+from app.services.ai_pricing import suggest_price
 from app.services.ai_mapping import (
     init_default_zones,
     get_zone_stats,
@@ -161,22 +161,6 @@ async def suggest_product_price(
     """Suggest an optimal sale price for a product."""
     result = await suggest_price(db, category_id, purchase_price, brand, condition)
     return result
-
-
-@router.get("/pricing/markdowns")
-async def get_markdown_suggestions(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-):
-    """Get suggested markdowns for stale products."""
-    suggestions = await suggest_markdowns(db)
-    return {
-        "count": len(suggestions),
-        "total_potential_savings": sum(
-            s["current_price"] - s["suggested_price"] for s in suggestions
-        ),
-        "suggestions": suggestions,
-    }
 
 
 # ---------------------------------------------------------------------------

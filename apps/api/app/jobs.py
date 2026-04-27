@@ -106,26 +106,6 @@ async def run_weekly_window_display() -> None:
         logger.error("Window-display job failed: %s", exc)
 
 
-async def run_nightly_markdown_engine() -> None:
-    """Apply markdown rules nightly at 01:00 Paris (P3-001)."""
-    try:
-        from sqlalchemy.ext.asyncio import AsyncSession
-
-        from app.services.markdown_engine import MarkdownEngineService
-
-        async with AsyncSession(engine) as db:
-            summary = await MarkdownEngineService(db).run_batch()
-            await db.commit()
-            logger.info(
-                "Markdown engine: scanned=%d, matched=%d, applied=%d",
-                summary.scanned,
-                summary.matched,
-                summary.applied,
-            )
-    except Exception as exc:
-        logger.error("Markdown engine job failed: %s", exc)
-
-
 async def run_daily_return_to_sorting() -> None:
     """Return aged unsold products to sorting centre at 02:00 Paris (P3-007)."""
     try:
@@ -311,12 +291,6 @@ def register_all_jobs(scheduler) -> None:
         run_daily_embedding_refresh,
         CronTrigger(hour=4, minute=0),
         id="daily_embedding_refresh",
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        run_nightly_markdown_engine,
-        CronTrigger(hour=1, minute=0),
-        id="nightly_markdown_engine",
         replace_existing=True,
     )
     scheduler.add_job(

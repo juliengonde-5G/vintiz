@@ -25,7 +25,6 @@ from app.models.reporting import DailyReport, CommercialAction, ActionResult
 from app.models.audit import AuditLog, Settings
 from app.models.batch import IntakeBatch, IntakeSource
 from app.models.brand_tier import BrandTier, BrandTierLevel
-from app.models.markdown import MarkdownRule
 from app.models.merchandising import WindowDisplayProposal
 from app.models.visibility import (
     GoogleReview,
@@ -67,7 +66,6 @@ __all__ = [
     "IntakeBatch", "IntakeSource",
     "BrandTier", "BrandTierLevel",
     "WindowDisplayProposal",
-    "MarkdownRule",
     "SEOSnapshot", "SocialPost", "SocialPostCategory", "SocialPlatform",
     "SocialMention", "GoogleReview",
     "ProductEmbedding", "CustomerTasteProfile", "EMBEDDING_DIM",

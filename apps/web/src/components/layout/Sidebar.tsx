@@ -101,17 +101,6 @@ const navGroups: NavGroup[] = [
         ),
       },
       {
-        label: 'Plan boutique',
-        href: '/admin/store-plan',
-        icon: (
-          <svg {...iconProps}>
-            <path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z" />
-            <path d="M9 3v15" />
-            <path d="M15 6v15" />
-          </svg>
-        ),
-      },
-      {
         label: 'Clients',
         href: '/clients',
         icon: (
