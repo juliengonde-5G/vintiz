@@ -120,6 +120,12 @@ class Product(Base):
         UUID(as_uuid=True), ForeignKey("intake_batches.id"), nullable=True
     )
     trend_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # v3 scoring (price positioning) — Claude-estimated median market price
+    # on Vinted/LBC. Refreshed weekly by the Monday cron.
+    market_price_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    market_price_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     shelf_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Flag for seed / demo data that should be selectively purged before

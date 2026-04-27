@@ -205,31 +205,35 @@ async def run_monthly_rfm_segmentation() -> None:
         logger.error("RFM segmentation job failed: %s", exc)
 
 
-async def run_monthly_scoring() -> None:
-    """Recompute trend scores for all active products (1st Wednesday of month at 06:00)."""
+async def run_weekly_scoring() -> None:
+    """Recompute v3 trend scores for all stock+display products.
+
+    Runs every Monday at 04:00 Paris (jour de fermeture). Refreshes:
+      - category_trends (4-week sales signal)
+      - category_velocity (90-day sales velocity per category)
+      - market_price_estimate (Claude, batch refresh of stale entries)
+      - then trend_score on every active product.
+    """
     try:
-        from sqlalchemy import func, select
+        from sqlalchemy import select
         from sqlalchemy.ext.asyncio import AsyncSession
 
-        from app.models.product import Product, ProductPhoto, ProductStatus
+        from app.models.product import Product, ProductStatus
         from app.services.brand_tiers import get_brand_score
-        from app.services.category_trends import refresh_cache
+        from app.services.category_trends import refresh_cache as refresh_trends
+        from app.services.category_velocity import refresh_cache as refresh_velocity
+        from app.services.market_price_estimator import (
+            get_or_refresh_estimate,
+            refresh_stale_estimates,
+        )
+        from app.services.scoring_config import get_scoring_config
         from app.services.scoring_service import compute_score
 
         async with AsyncSession(engine) as db:
-            category_trends = await refresh_cache(db)
-
-            photo_agg = await db.execute(
-                select(
-                    ProductPhoto.product_id,
-                    func.count(ProductPhoto.id).label("n"),
-                    func.avg(ProductPhoto.ai_confidence).label("avg_conf"),
-                ).group_by(ProductPhoto.product_id)
-            )
-            photo_data = {
-                row[0]: (int(row[1]), float(row[2]) if row[2] is not None else None)
-                for row in photo_agg.all()
-            }
+            config = await get_scoring_config(db)
+            category_trends = await refresh_trends(db)
+            velocity_by_cat = await refresh_velocity(db)
+            n_estimates = await refresh_stale_estimates(db, limit=500)
 
             result = await db.execute(
                 select(Product).where(
@@ -238,37 +242,31 @@ async def run_monthly_scoring() -> None:
             )
             products = result.scalars().all()
 
-            avg_by_cat_result = await db.execute(
-                select(
-                    Product.category_id,
-                    func.avg(Product.sale_price).label("avg_price"),
-                ).group_by(Product.category_id)
-            )
-            avg_by_category: dict[str, float] = {
-                str(row[0]): float(row[1]) for row in avg_by_cat_result.all()
-            }
-
             for product in products:
-                avg_price = avg_by_category.get(str(product.category_id), float(product.sale_price))
+                trend = float(category_trends.get(str(product.category_id), 50.0))
+                velocity = float(velocity_by_cat.get(str(product.category_id), 0.0))
                 brand_score = await get_brand_score(db, product.brand)
-                photo_count, photo_avg_conf = photo_data.get(product.id, (0, None))
+                market_estimate = await get_or_refresh_estimate(db, product)
                 score_data = compute_score(
                     shelf_date=product.shelf_date,
                     sale_price=float(product.sale_price),
-                    category_avg_price=avg_price,
-                    condition=getattr(product, "condition", "tres_bon") or "tres_bon",
-                    brand=product.brand,
-                    photo_url=product.photo_url,
-                    category_trend=category_trends.get(str(product.category_id), 50.0),
+                    market_price_estimate=market_estimate,
+                    category_name=product.category.name if product.category else None,
+                    category_trend=trend,
+                    category_avg_velocity=velocity,
                     brand_score=brand_score,
-                    photo_count=photo_count,
-                    photo_avg_confidence=photo_avg_conf,
+                    condition=getattr(product, "condition", None),
+                    config=config,
                 )
                 product.trend_score = score_data["total_score"]
             await db.commit()
-            logger.info("Monthly scoring complete: %d products updated", len(products))
+            logger.info(
+                "Weekly scoring complete: %d products scored, %d market prices refreshed",
+                len(products),
+                n_estimates,
+            )
     except Exception as exc:
-        logger.error("Monthly scoring job failed: %s", exc)
+        logger.error("Weekly scoring job failed: %s", exc)
 
 
 def register_all_jobs(scheduler) -> None:
@@ -276,9 +274,9 @@ def register_all_jobs(scheduler) -> None:
     from apscheduler.triggers.cron import CronTrigger
 
     scheduler.add_job(
-        run_monthly_scoring,
-        CronTrigger(day_of_week="wed", week="1", hour=6, minute=0),
-        id="monthly_scoring",
+        run_weekly_scoring,
+        CronTrigger(day_of_week="mon", hour=4, minute=0),
+        id="weekly_scoring",
         replace_existing=True,
     )
     scheduler.add_job(

@@ -256,17 +256,16 @@ async def create_from_photo(
         ai_analyzed_at=datetime.now(timezone.utc) if vision_used else None,
     )
 
-    # --- 5. Scoring ---
-    avg_price = await _category_avg_price(db, category_id)
+    # --- 5. Scoring (v3 — 5 criteria) ---
     score = compute_score(
         shelf_date=None,
         sale_price=float(product.sale_price),
-        category_avg_price=avg_price,
+        market_price_estimate=None,  # estimated by next Monday cron
+        category_name=None,
+        category_trend=50.0,
+        category_avg_velocity=None,
+        brand_score=None,
         condition=condition,
-        brand=brand,
-        photo_url=photo_url,
-        photo_count=1,
-        photo_avg_confidence=float(confidence) if confidence is not None else 0.0,
     )
     product.trend_score = score["total_score"]
 
