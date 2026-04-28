@@ -318,6 +318,21 @@ async def run_weekly_scoring() -> None:
         logger.error("Weekly scoring job failed: %s", exc)
 
 
+async def run_daily_loyalty_expiry() -> None:
+    """Expire loyalty points after 24mo of inactivity (PR1)."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.loyalty_expiry import expire_inactive_points
+
+        async with AsyncSession(engine) as db:
+            count = await expire_inactive_points(db)
+            await db.commit()
+            logger.info("Loyalty expiry: %d account(s) expired", count)
+    except Exception as exc:
+        logger.error("Loyalty expiry job failed: %s", exc)
+
+
 def register_all_jobs(scheduler) -> None:
     """Register all cron jobs with the given APScheduler instance."""
     from apscheduler.triggers.cron import CronTrigger
@@ -399,5 +414,11 @@ def register_all_jobs(scheduler) -> None:
         run_thursday_six_weeks_exit,
         CronTrigger(day_of_week="thu", hour=9, minute=0),
         id="thursday_six_weeks_exit",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_daily_loyalty_expiry,
+        CronTrigger(hour=3, minute=30),
+        id="daily_loyalty_expiry",
         replace_existing=True,
     )

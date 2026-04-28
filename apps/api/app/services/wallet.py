@@ -1,4 +1,4 @@
-"""Loyalty Wallet pass payload (P4-004).
+"""Loyalty Wallet pass payload (PR1 — single-tier, V###### card).
 
 Apple Wallet (.pkpass) and Google Wallet both accept a JSON description
 of the loyalty card. They differ in:
@@ -28,7 +28,6 @@ warns when the real signing keys aren't configured yet.
 
 from __future__ import annotations
 
-import hashlib
 import os
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -40,32 +39,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.client import Client
 
 
-_DEFAULT_TIER_BENEFITS = {
-    "bronze": "1 pt = 0,10 € de réduction",
-    "silver": "+5% sur tous les articles · 1 pt = 0,12 € de réduction",
-    "gold": "+10% + accès prévente · 1 pt = 0,15 € de réduction",
-}
-
-_TIER_COLOR = {
-    "bronze": "#B87333",
-    "silver": "#C0C0C0",
-    "gold": "#D4AF37",
-}
+PRIMARY_COLOR = "#008678"  # Vintiz teal — single brand color now
+BENEFIT_TEXT = "1 € = 1 pt · 100 pts = bon de 8 €"
 
 
 @dataclass
 class WalletPassPayload:
-    """Backend-agnostic representation of the loyalty card.
-
-    The ``apple`` and ``google`` blocks contain everything needed to
-    sign + ship the real assets — they're filled in regardless of cert
-    availability so the previewer can render the card visually."""
+    """Backend-agnostic representation of the loyalty card."""
 
     client_id: str
     serial_number: str        # stable id derived from client.id
     holder_name: str
-    membership_number: str    # human-readable card number
-    tier: str
+    membership_number: str    # human-readable card number (V######)
     points: int
     benefit_text: str
     primary_color: str
@@ -75,18 +60,12 @@ class WalletPassPayload:
     google: dict = field(default_factory=dict)
 
 
-def _membership_number(client_id: uuid.UUID) -> str:
-    """Stable, short membership number (10 hex chars from a sha1)."""
-    digest = hashlib.sha1(str(client_id).encode("utf-8")).hexdigest()
-    return f"VTZ-{digest[:10].upper()}"
-
-
-def _qr_payload(client_id: uuid.UUID) -> str:
+def _qr_payload(membership_number: str) -> str:
     base = os.getenv("PUBLIC_SITE_URL", "https://vintiz.fr").rstrip("/")
-    return f"{base}/account/data?membership={_membership_number(client_id)}"
+    return f"{base}/account/login?membership={membership_number}"
 
 
-def _apple_block(client: Client, points: int, tier: str) -> dict:
+def _apple_block(client: Client, points: int, membership_number: str) -> dict:
     pass_type_id = os.getenv("WALLET_PASS_TYPE_IDENTIFIER", "pass.fr.vintiz.loyalty")
     team_id = os.getenv("WALLET_TEAM_IDENTIFIER", "TEAMID0000")
     serial = str(client.id)
@@ -108,7 +87,6 @@ def _apple_block(client: Client, points: int, tier: str) -> dict:
                 "value": str(points),
             }],
             "secondaryFields": [
-                {"key": "tier", "label": "Statut", "value": tier.title()},
                 {
                     "key": "holder",
                     "label": "Titulaire",
@@ -118,18 +96,18 @@ def _apple_block(client: Client, points: int, tier: str) -> dict:
             "auxiliaryFields": [{
                 "key": "card",
                 "label": "N° carte",
-                "value": _membership_number(client.id),
+                "value": membership_number,
             }],
         },
         "barcodes": [{
             "format": "PKBarcodeFormatQR",
-            "message": _qr_payload(client.id),
+            "message": _qr_payload(membership_number),
             "messageEncoding": "iso-8859-1",
         }],
     }
 
 
-def _google_block(client: Client, points: int, tier: str) -> dict:
+def _google_block(client: Client, points: int, membership_number: str) -> dict:
     issuer_id = os.getenv("WALLET_GOOGLE_ISSUER_ID", "0000000000000000000")
     class_suffix = os.getenv("WALLET_GOOGLE_CLASS_SUFFIX", "vintiz_loyalty")
     class_id = f"{issuer_id}.{class_suffix}"
@@ -139,20 +117,15 @@ def _google_block(client: Client, points: int, tier: str) -> dict:
         "classId": class_id,
         "state": "ACTIVE",
         "accountName": f"{client.first_name} {client.last_name}".strip(),
-        "accountId": _membership_number(client.id),
+        "accountId": membership_number,
         "loyaltyPoints": {
             "balance": {"int": points},
             "label": "Points",
         },
         "barcode": {
             "type": "QR_CODE",
-            "value": _qr_payload(client.id),
+            "value": _qr_payload(membership_number),
         },
-        "textModulesData": [{
-            "header": "Statut",
-            "body": tier.title(),
-            "id": "tier",
-        }],
     }
 
 
@@ -161,25 +134,23 @@ async def build_pass_for_client(
 ) -> WalletPassPayload | None:
     result = await db.execute(select(Client).where(Client.id == client_id))
     client = result.scalar_one_or_none()
-    if client is None:
+    if client is None or client.loyalty_account is None:
         return None
-    points = client.loyalty_account.points if client.loyalty_account else 0
-    tier = (client.loyalty_account.tier if client.loyalty_account else "bronze").lower()
-    benefit = _DEFAULT_TIER_BENEFITS.get(tier, _DEFAULT_TIER_BENEFITS["bronze"])
+    points = client.loyalty_account.points or 0
+    membership_number = client.loyalty_account.membership_number
 
     return WalletPassPayload(
         client_id=str(client.id),
         serial_number=str(client.id),
         holder_name=f"{client.first_name} {client.last_name}".strip(),
-        membership_number=_membership_number(client.id),
-        tier=tier,
+        membership_number=membership_number,
         points=points,
-        benefit_text=benefit,
-        primary_color=_TIER_COLOR.get(tier, _TIER_COLOR["bronze"]),
+        benefit_text=BENEFIT_TEXT,
+        primary_color=PRIMARY_COLOR,
         issued_at=datetime.now(timezone.utc).isoformat(),
-        qr_payload=_qr_payload(client.id),
-        apple=_apple_block(client, points, tier),
-        google=_google_block(client, points, tier),
+        qr_payload=_qr_payload(membership_number),
+        apple=_apple_block(client, points, membership_number),
+        google=_google_block(client, points, membership_number),
     )
 
 

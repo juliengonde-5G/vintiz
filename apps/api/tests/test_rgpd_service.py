@@ -176,7 +176,7 @@ async def test_data_export_includes_full_snapshot(session):
     client.avoir_credit = 12.50
 
     # Loyalty
-    account = LoyaltyAccount(client_id=client.id, points=120, tier="silver")
+    account = LoyaltyAccount(client_id=client.id, points=120, membership_number="V100001")
     session.add(account)
     await session.flush()
     session.add(LoyaltyTransaction(
@@ -200,7 +200,7 @@ async def test_data_export_includes_full_snapshot(session):
     assert export["client"]["email"] == "julie@example.com"
     assert export["client"]["phone"] == "0612345678"
     assert export["client"]["avoir_credit"] == pytest.approx(12.50)
-    assert export["loyalty"]["tier"] == "silver"
+    assert export["loyalty"]["membership_number"] == "V100001"
     assert export["loyalty"]["points"] == 120
     assert len(export["loyalty"]["transactions"]) == 1
     assert len(export["avoir_history"]) == 1
@@ -286,7 +286,7 @@ async def test_purge_hard_deletes_client_past_window_and_anonymizes_transactions
     )
     session.add(sale)
     # Add a loyalty account + avoir + consent to verify they vanish
-    account = LoyaltyAccount(client_id=client.id, points=10, tier="bronze")
+    account = LoyaltyAccount(client_id=client.id, points=10, membership_number="V100002")
     session.add(account)
     await session.flush()
     session.add(LoyaltyTransaction(

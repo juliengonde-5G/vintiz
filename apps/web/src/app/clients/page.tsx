@@ -21,7 +21,7 @@ interface Client {
   sms_optin?: boolean;
   loyalty_active?: boolean;
   loyalty_points?: number;
-  loyalty_tier?: string;
+  membership_number?: string | null;
 }
 
 interface Transaction {
@@ -508,10 +508,10 @@ export default function ClientsPage() {
                       {selectedClient.loyalty_points ?? 0}
                     </span>
                   </div>
-                  {selectedClient.loyalty_tier && (
+                  {selectedClient.membership_number && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Niveau</span>
-                      <span className="font-medium text-black">{selectedClient.loyalty_tier}</span>
+                      <span className="text-sm text-gray-600">N carte</span>
+                      <span className="font-medium text-black">{selectedClient.membership_number}</span>
                     </div>
                   )}
                 </div>

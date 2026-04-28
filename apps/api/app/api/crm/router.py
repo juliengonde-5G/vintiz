@@ -73,7 +73,7 @@ async def lookup_client(
             "points": la.points,
             "total_earned": total_earned,
             "total_redeemed": total_redeemed,
-            "tier": la.tier,
+            "membership_number": la.membership_number,
         }
 
     # Recent transactions
@@ -254,7 +254,7 @@ async def list_clients(
             sql = text(f"""
                 SELECT c.id, c.first_name, c.last_name, c.phone, c.email,
                        {optin_select}
-                       la.points, la.tier
+                       la.points, la.membership_number
                 FROM clients c
                 LEFT JOIN loyalty_accounts la ON la.client_id = c.id
                 {where}
@@ -279,7 +279,7 @@ async def list_clients(
             "sms_optin": bool(r["sms_optin"]),
             "loyalty_active": r["points"] is not None,
             "loyalty_points": r["points"] or 0,
-            "loyalty_tier": r["tier"] or "bronze",
+            "membership_number": r["membership_number"],
         }
         for r in rows
     ]
@@ -310,7 +310,7 @@ async def get_client(
     if client.loyalty_account:
         loyalty_data = {
             "points": client.loyalty_account.points,
-            "tier": client.loyalty_account.tier,
+            "membership_number": client.loyalty_account.membership_number,
         }
 
     return {
@@ -391,7 +391,7 @@ async def activate_loyalty(
         "account_id": str(account.id),
         "client_id": str(account.client_id),
         "points": account.points,
-        "tier": account.tier,
+        "membership_number": account.membership_number,
     }
 
 

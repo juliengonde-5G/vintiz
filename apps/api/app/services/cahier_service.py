@@ -214,7 +214,7 @@ async def sum_sales_in_range(
 # ---------------------------------------------------------------------------
 
 async def compute_performance(db: AsyncSession, report_date: date) -> dict:
-    """CA, tk, IV, PM, PROD, tx_crm_pct, gold_pct for report_date."""
+    """CA, tk, IV, PM, PROD, tx_crm_pct, loyalty_pct for report_date."""
     day_start = datetime.combine(report_date, time.min)
     day_end = datetime.combine(report_date + timedelta(days=1), time.min)
 
@@ -260,8 +260,8 @@ async def compute_performance(db: AsyncSession, report_date: date) -> dict:
     crm_cnt = int(crm_agg.scalar_one() or 0)
     tx_crm_pct = round(crm_cnt / tk * 100, 1) if tk > 0 else 0.0
 
-    # Gold tier tickets
-    gold_agg = await db.execute(
+    # Loyalty member tickets (any client with a LoyaltyAccount).
+    loyalty_agg = await db.execute(
         select(func.count(Transaction.id))
         .join(Client, Client.id == Transaction.client_id)
         .join(LoyaltyAccount, LoyaltyAccount.client_id == Client.id)
@@ -269,11 +269,10 @@ async def compute_performance(db: AsyncSession, report_date: date) -> dict:
             Transaction.transaction_type == TransactionType.sale,
             Transaction.created_at >= day_start,
             Transaction.created_at < day_end,
-            LoyaltyAccount.tier == "gold",
         )
     )
-    gold_cnt = int(gold_agg.scalar_one() or 0)
-    gold_pct = round(gold_cnt / tk * 100, 1) if tk > 0 else 0.0
+    loyalty_cnt = int(loyalty_agg.scalar_one() or 0)
+    loyalty_pct = round(loyalty_cnt / tk * 100, 1) if tk > 0 else 0.0
 
     return {
         "ca": round(ca, 2),
@@ -282,15 +281,15 @@ async def compute_performance(db: AsyncSession, report_date: date) -> dict:
         "pm": pm,
         "prod": round(ca, 2),  # single operator; CA/vendor-hour not tracked yet
         "tx_crm_pct": tx_crm_pct,
-        "gold_pct": gold_pct,
+        "loyalty_pct": loyalty_pct,
     }
 
 
 # ---------------------------------------------------------------------------
-# CRM / Gold block
+# CRM / Fidelite block
 # ---------------------------------------------------------------------------
 
-async def compute_crm_gold(db: AsyncSession, report_date: date) -> dict:
+async def compute_crm_loyalty(db: AsyncSession, report_date: date) -> dict:
     day_start = datetime.combine(report_date, time.min)
     day_end = datetime.combine(report_date + timedelta(days=1), time.min)
 
@@ -301,14 +300,13 @@ async def compute_crm_gold(db: AsyncSession, report_date: date) -> dict:
     )
     fiches_creees = int(fiches.scalar_one() or 0)
 
-    gold = await db.execute(
+    new_subs = await db.execute(
         select(func.count(LoyaltyAccount.id)).where(
-            LoyaltyAccount.tier == "gold",
-            LoyaltyAccount.updated_at >= day_start,
-            LoyaltyAccount.updated_at < day_end,
+            LoyaltyAccount.created_at >= day_start,
+            LoyaltyAccount.created_at < day_end,
         )
     )
-    abonnements_gold = int(gold.scalar_one() or 0)
+    adhesions_fidelite = int(new_subs.scalar_one() or 0)
 
     fidelo = await db.execute(
         select(func.count(LoyaltyTransaction.id)).where(
@@ -321,7 +319,7 @@ async def compute_crm_gold(db: AsyncSession, report_date: date) -> dict:
 
     return {
         "fiches_creees": fiches_creees,
-        "abonnements_gold": abonnements_gold,
+        "adhesions_fidelite": adhesions_fidelite,
         "reprints": 0,  # Receipt model has no reprint timestamp — best-effort
         "tickets_fidelo": tickets_fidelo,
     }

@@ -1131,3 +1131,44 @@ async def scoring_breakdown_stats(db: Annotated[AsyncSession, Depends(get_db)]):
     }
 
 
+# ---------------------------------------------------------------------------
+# Loyalty subscription config (PR1)
+# ---------------------------------------------------------------------------
+
+
+class LoyaltyConfigRequest(BaseModel):
+    mode: str
+    price_cents: int = 0
+    first_purchase_threshold_cents: int = 0
+
+
+@router.get("/loyalty/config", dependencies=[Depends(manager_only)])
+async def get_loyalty_config(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Read the active loyalty subscription mode + thresholds."""
+    from app.services.loyalty_config import get_subscription_config
+
+    cfg = await get_subscription_config(db)
+    return cfg.to_dict()
+
+
+@router.put("/loyalty/config", dependencies=[Depends(manager_only)])
+async def update_loyalty_config(
+    request: LoyaltyConfigRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Switch between free / paid / first_purchase enrollment modes."""
+    from app.services.loyalty_config import set_subscription_config
+
+    try:
+        cfg = await set_subscription_config(
+            db,
+            mode=request.mode,
+            price_cents=request.price_cents,
+            first_purchase_threshold_cents=request.first_purchase_threshold_cents,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await db.commit()
+    return cfg.to_dict()
+
+

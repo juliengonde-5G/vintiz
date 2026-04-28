@@ -482,8 +482,13 @@ class PosService:
         )
         account = result.scalar_one_or_none()
         if account is None:
+            from app.services.membership_id import generate_membership_number
+
+            membership = await generate_membership_number(self.db)
             account = LoyaltyAccount(
-                client_id=transaction.client_id, points=0, tier="bronze"
+                client_id=transaction.client_id,
+                points=0,
+                membership_number=membership,
             )
             self.db.add(account)
             await self.db.flush()

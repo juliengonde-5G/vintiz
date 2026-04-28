@@ -58,7 +58,6 @@ def _format_currency(value) -> str:
 def _build_user_prompt(
     *,
     customer: Client,
-    tier: str,
     days_since_last_visit: int | None,
     last_purchases: list[dict],
     preferred_sizes: list[str],
@@ -88,7 +87,7 @@ def _build_user_prompt(
         else "première visite ou non connue"
     )
     return (
-        f"Cliente : {customer.first_name}, niveau {tier}, dernière visite "
+        f"Cliente : {customer.first_name}, dernière visite "
         f"{last_visit}.\n\n"
         f"3 derniers achats (du plus récent au plus ancien) :\n"
         f"{purchases_block}\n\n"
@@ -204,7 +203,6 @@ class PersonalShopperService:
 
         # 4. Build the user prompt + call Claude Haiku (with fallback).
         last_purchases = await self._last_purchases(customer_id, limit=3)
-        tier = self._tier_for(customer)
         days_since = await self._days_since_last_visit(customer_id)
         candidates_payload = [
             {
@@ -218,7 +216,6 @@ class PersonalShopperService:
         ]
         message, fallback_used = await self._render_message(
             customer=customer,
-            tier=tier,
             days_since_last_visit=days_since,
             last_purchases=last_purchases,
             preferred_sizes=sorted(preferred_sizes),
@@ -311,13 +308,6 @@ class PersonalShopperService:
         # No profile yet — try to build one inline. This is best-effort:
         # the daily cron normally takes care of it.
         return await EmbeddingService(self.db).recompute_taste_profile(customer_id)
-
-    @staticmethod
-    def _tier_for(customer: Client) -> str:
-        loyalty = getattr(customer, "loyalty_account", None)
-        if loyalty is None:
-            return "Bronze"
-        return getattr(loyalty, "tier", "Bronze").capitalize()
 
     async def _preferred_sizes(self, customer_id: uuid.UUID) -> set[str]:
         """Return the lowercase set of sizes the customer has bought before."""
@@ -478,7 +468,6 @@ class PersonalShopperService:
         self,
         *,
         customer: Client,
-        tier: str,
         days_since_last_visit: int | None,
         last_purchases: list[dict],
         preferred_sizes: list[str],
@@ -496,7 +485,6 @@ class PersonalShopperService:
 
         user_prompt = _build_user_prompt(
             customer=customer,
-            tier=tier,
             days_since_last_visit=days_since_last_visit,
             last_purchases=last_purchases,
             preferred_sizes=preferred_sizes,

@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,22 @@ from app.schemas.user import Token
 
 logger = logging.getLogger("vintiz")
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+class MagicLinkRequest(BaseModel):
+    email: EmailStr
+
+
+class MagicLinkVerify(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class MagicLinkVerifyResponse(BaseModel):
+    access_token: str
+    expires_in: int
+    client_id: str
+    membership_number: str | None
 
 
 @router.post("/login", response_model=Token, dependencies=[Depends(login_rate_limit)])
@@ -85,3 +102,54 @@ async def refresh_token(
         )
     new_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
     return Token(access_token=new_token)
+
+
+# ---------------------------------------------------------------------------
+# Public client space — magic-link OTP (PR1)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/magic-link/request", status_code=status.HTTP_204_NO_CONTENT)
+async def magic_link_request(
+    payload: MagicLinkRequest,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Issue a 6-digit OTP for the public client space.
+
+    Always returns 204 — no information leaked about whether the email
+    exists. Rate-limited per email/IP inside the service to prevent
+    enumeration and Brevo abuse.
+    """
+    from app.services.magic_link import issue
+
+    client_ip = request.client.host if request.client else None
+    await issue(db, payload.email, ip=client_ip)
+    await db.commit()
+    return None
+
+
+@router.post("/magic-link/verify", response_model=MagicLinkVerifyResponse)
+async def magic_link_verify(
+    payload: MagicLinkVerify,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Exchange a valid OTP for a 1h client JWT (role=client)."""
+    from app.services.magic_link import MagicLinkError, verify
+
+    client_ip = request.client.host if request.client else None
+    try:
+        result = await verify(db, payload.email, payload.code, ip=client_ip)
+    except MagicLinkError as exc:
+        await db.commit()  # persist attempt count even on failure
+        if exc.code == "too_many_attempts":
+            raise HTTPException(status_code=429, detail="too_many_attempts")
+        raise HTTPException(status_code=401, detail="invalid_or_expired")
+    await db.commit()
+    return MagicLinkVerifyResponse(
+        access_token=result.access_token,
+        expires_in=result.expires_in,
+        client_id=result.client_id,
+        membership_number=result.membership_number,
+    )

@@ -75,6 +75,40 @@ async def get_current_user(
     return user
 
 
+async def get_current_client(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """FastAPI dependency: validate a client-scoped JWT (PR1 magic-link).
+
+    The JWT carries ``role="client"`` and ``sub=<client_id>``. Returns
+    the resolved Client object so endpoints can read attributes without
+    re-querying. Raises 401 on any invalidity.
+    """
+    from app.models.client import Client
+
+    payload = verify_token(token)
+    if payload.get("role") != "client":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Client token required",
+        )
+    client_id = payload.get("sub")
+    if not client_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Client not found",
+        )
+    return client
+
+
 class RoleChecker:
     """Dependency that checks whether the current user has one of the allowed roles.
 

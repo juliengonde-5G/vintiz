@@ -83,7 +83,7 @@ interface SandboxSnapshot {
 }
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'store' | 'payment' | 'cahier' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
+  const [tab, setTab] = useState<'store' | 'payment' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
   const [hardware, setHardware] = useState<HardwareConfig | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityItem[]>([]);
   const [hwSaving, setHwSaving] = useState(false);
@@ -121,11 +121,18 @@ export default function SettingsPage() {
   const [editingZone, setEditingZone] = useState<Zone | null>(null);
   const [zoneForm, setZoneForm] = useState({ name: '', description: '', capacity: 20, product_types: [] as string[], color_code: '#1A7A6A' });
 
+  // Loyalty subscription config (PR1)
+  const [loyaltyMode, setLoyaltyMode] = useState<'free' | 'paid' | 'first_purchase'>('free');
+  const [loyaltyPriceEuros, setLoyaltyPriceEuros] = useState('5');
+  const [loyaltyThresholdEuros, setLoyaltyThresholdEuros] = useState('30');
+  const [loyaltySaving, setLoyaltySaving] = useState(false);
+
   useEffect(() => {
     if (tab === 'categories') loadCategories();
     if (tab === 'zones') loadZones();
     if (tab === 'hardware') loadHardware();
     if (tab === 'cahier') loadCahierData();
+    if (tab === 'fidelite') loadLoyaltyConfig();
   }, [tab]);
 
   // ── SumUp sandbox: auto-refresh snapshot every 2s while payment tab is open ──
@@ -172,6 +179,43 @@ export default function SettingsPage() {
   const clearSandbox = async () => {
     try { await api.post('/api/pos/payments/cb/sandbox/clear', {}); }
     catch { setError('Erreur reset'); }
+  };
+
+  const loadLoyaltyConfig = async () => {
+    try {
+      const res = await api.get('/api/admin/loyalty/config');
+      if (res.ok) {
+        const data = await res.json();
+        setLoyaltyMode((data.mode as typeof loyaltyMode) || 'free');
+        setLoyaltyPriceEuros(((data.price_cents || 0) / 100).toFixed(2));
+        setLoyaltyThresholdEuros(((data.first_purchase_threshold_cents || 0) / 100).toFixed(0));
+      }
+    } catch {
+      setError('Erreur de chargement de la configuration fidelite');
+    }
+  };
+
+  const saveLoyaltyConfig = async () => {
+    setLoyaltySaving(true);
+    setError('');
+    try {
+      const body = {
+        mode: loyaltyMode,
+        price_cents: Math.round(parseFloat(loyaltyPriceEuros || '0') * 100),
+        first_purchase_threshold_cents: Math.round(parseFloat(loyaltyThresholdEuros || '0') * 100),
+      };
+      const res = await api.put('/api/admin/loyalty/config', body);
+      if (res.ok) {
+        setMessage('Configuration fidelite enregistree');
+        setTimeout(() => setMessage(''), 3000);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setError(err.detail || 'Erreur enregistrement');
+      }
+    } catch {
+      setError('Erreur reseau');
+    }
+    setLoyaltySaving(false);
   };
 
   const loadHardware = async () => {
@@ -385,6 +429,7 @@ export default function SettingsPage() {
     { key: 'store' as const, label: 'Boutique' },
     { key: 'payment' as const, label: 'Paiement' },
     { key: 'cahier' as const, label: 'Cahier de travail' },
+    { key: 'fidelite' as const, label: 'Fidelite' },
     { key: 'categories' as const, label: 'Categories' },
     { key: 'zones' as const, label: 'Zones' },
     { key: 'hardware' as const, label: 'Materiel' },
@@ -1191,6 +1236,91 @@ export default function SettingsPage() {
                   </div>
                 );
               })()}
+            </Card>
+          </div>
+        )}
+
+        {/* FIDELITE TAB */}
+        {tab === 'fidelite' && (
+          <div className="space-y-6">
+            <Card title="Programme fidelite — souscription">
+              <p className="text-sm text-gray-500 mb-4">
+                Choisissez comment les nouveaux membres adherent a la carte de fidelite Vintiz.
+                Le bouton &laquo;&nbsp;Souscription fidelite&nbsp;&raquo; au POS suivra cette regle.
+              </p>
+              <div className="space-y-3">
+                <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name="loyalty-mode"
+                    className="mt-1"
+                    checked={loyaltyMode === 'free'}
+                    onChange={() => setLoyaltyMode('free')}
+                  />
+                  <div>
+                    <div className="font-medium text-black">Adhesion gratuite</div>
+                    <div className="text-sm text-gray-500">Toute cliente peut adherer immediatement, sans frais.</div>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name="loyalty-mode"
+                    className="mt-1"
+                    checked={loyaltyMode === 'paid'}
+                    onChange={() => setLoyaltyMode('paid')}
+                  />
+                  <div className="flex-1">
+                    <div className="font-medium text-black">Adhesion payante</div>
+                    <div className="text-sm text-gray-500 mb-2">La carte est facturee a la souscription.</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">Prix carte (€)</span>
+                      <Input
+                        type="number"
+                        step="0.50"
+                        min="0"
+                        value={loyaltyPriceEuros}
+                        onChange={(e) => setLoyaltyPriceEuros(e.target.value)}
+                        disabled={loyaltyMode !== 'paid'}
+                        className="max-w-[120px]"
+                      />
+                    </div>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name="loyalty-mode"
+                    className="mt-1"
+                    checked={loyaltyMode === 'first_purchase'}
+                    onChange={() => setLoyaltyMode('first_purchase')}
+                  />
+                  <div className="flex-1">
+                    <div className="font-medium text-black">Offerte au 1er achat</div>
+                    <div className="text-sm text-gray-500 mb-2">Souscription gratuite a partir d&apos;un panier minimum.</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">Seuil panier (€)</span>
+                      <Input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={loyaltyThresholdEuros}
+                        onChange={(e) => setLoyaltyThresholdEuros(e.target.value)}
+                        disabled={loyaltyMode !== 'first_purchase'}
+                        className="max-w-[120px]"
+                      />
+                    </div>
+                  </div>
+                </label>
+              </div>
+              <div className="mt-4 flex items-center gap-3">
+                <Button onClick={saveLoyaltyConfig} disabled={loyaltySaving}>
+                  {loyaltySaving ? 'Enregistrement...' : 'Enregistrer'}
+                </Button>
+                <span className="text-xs text-gray-500">
+                  Mecanique : 1 € depense = 1 pt · 100 pts = bon de 8 € · peremption 24 mois sans activite.
+                </span>
+              </div>
             </Card>
           </div>
         )}

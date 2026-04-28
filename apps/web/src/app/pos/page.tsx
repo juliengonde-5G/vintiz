@@ -66,25 +66,13 @@ interface ClientDetail {
   phone?: string;
   email?: string;
   notes?: string;
-  loyalty: { points: number; tier: string } | null;
+  loyalty: { points: number; membership_number: string } | null;
   avoir_balance?: number;
   purchases: { id: string; transaction_number: number; total_ttc: number; created_at: string }[];
 }
 
 function formatCurrency(value: number): string {
   return value.toFixed(2).replace('.', ',') + '\u00A0\u20AC';
-}
-
-function tierLabel(tier: string): string {
-  if (tier === 'gold') return 'Or';
-  if (tier === 'silver') return 'Argent';
-  return 'Bronze';
-}
-
-function tierColor(tier: string): string {
-  if (tier === 'gold') return 'bg-yellow-100 text-yellow-700';
-  if (tier === 'silver') return 'bg-gray-100 text-gray-600';
-  return 'bg-orange-100 text-orange-700';
 }
 
 export default function POSPage() {
@@ -137,6 +125,28 @@ export default function POSPage() {
 
   // Loyalty redemption
   const [redeemPoints, setRedeemPoints] = useState(false);
+
+  // Loyalty subscription (PR1)
+  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+  const [subscribeForm, setSubscribeForm] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    postal_code: '',
+    accept_terms: false,
+    optin_newsletter: false,
+    optin_profiling: false,
+  });
+  const [subscribeBusy, setSubscribeBusy] = useState(false);
+  const [subscribeError, setSubscribeError] = useState('');
+  const [subscribeSuccess, setSubscribeSuccess] = useState<{
+    membership_number: string;
+    client_id: string;
+  } | null>(null);
+  const [subscribeDuplicate, setSubscribeDuplicate] = useState<{
+    membership_number: string;
+    client_id: string;
+  } | null>(null);
 
   // Numpad (touch)
   const [numpadTarget, setNumpadTarget] = useState<{ type: 'cash' | 'payment'; index: number } | null>(null);
@@ -332,16 +342,54 @@ export default function POSPage() {
     } catch { /* silent */ }
   };
 
-  const activateLoyalty = async () => {
-    if (!selectedClient) return;
+  const submitSubscription = async () => {
+    setSubscribeError('');
+    setSubscribeBusy(true);
+    setSubscribeDuplicate(null);
     try {
-      const res = await api.post(`/api/crm/clients/${selectedClient.id}/loyalty/activate`, {});
+      const res = await api.post('/api/pos/loyalty/subscribe', subscribeForm);
       if (res.ok) {
-        // Refresh client detail
-        const detailRes = await api.get(`/api/crm/clients/${selectedClient.id}`);
-        if (detailRes.ok) setSelectedClient(await detailRes.json());
+        const data = await res.json();
+        setSubscribeSuccess({
+          membership_number: data.membership_number,
+          client_id: data.client_id,
+        });
+        // Refresh client detail if a client was selected.
+        if (selectedClient && selectedClient.id === data.client_id) {
+          const detailRes = await api.get(`/api/crm/clients/${data.client_id}`);
+          if (detailRes.ok) setSelectedClient(await detailRes.json());
+        }
+      } else if (res.status === 409) {
+        const err = await res.json();
+        const detail = err.detail || {};
+        setSubscribeDuplicate({
+          membership_number: detail.existing_membership_number,
+          client_id: detail.client_id,
+        });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setSubscribeError(err.detail || 'Erreur de souscription');
       }
-    } catch { setError('Erreur activation fidelite'); }
+    } catch {
+      setSubscribeError('Erreur reseau');
+    }
+    setSubscribeBusy(false);
+  };
+
+  const closeSubscribeModal = () => {
+    setShowSubscribeModal(false);
+    setSubscribeForm({
+      first_name: '',
+      last_name: '',
+      email: '',
+      postal_code: '',
+      accept_terms: false,
+      optin_newsletter: false,
+      optin_profiling: false,
+    });
+    setSubscribeError('');
+    setSubscribeSuccess(null);
+    setSubscribeDuplicate(null);
   };
 
   // ── Cart operations ──────────────────────────────────────────────
@@ -827,7 +875,6 @@ export default function POSPage() {
     setClientSearch('');
     setError('');
     setCouponCode(''); setCouponDiscount(0); setCouponApplied(null); setCouponError('');
-    setHolders({});
     setCbCheckoutId(null);
     setCbStatus('idle');
     setRedeemPoints(false);
@@ -1340,19 +1387,19 @@ export default function POSPage() {
             {selectedClient.loyalty ? (
               <div className="p-4 bg-purple-50 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-purple-800">Programme fidelite</h4>
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${tierColor(selectedClient.loyalty.tier)}`}>
-                    {tierLabel(selectedClient.loyalty.tier)}
+                  <h4 className="font-semibold text-purple-800">Carte fidelite</h4>
+                  <span className="text-xs px-2 py-1 rounded-full font-medium bg-teal-100 text-teal-700">
+                    {selectedClient.loyalty.membership_number}
                   </span>
                 </div>
                 <p className="text-2xl font-bold text-purple-700">{selectedClient.loyalty.points} <span className="text-sm font-normal">points</span></p>
               </div>
             ) : (
               <button
-                onClick={activateLoyalty}
+                onClick={() => setShowSubscribeModal(true)}
                 className="w-full p-4 bg-purple-50 hover:bg-purple-100 rounded-lg text-purple-700 font-medium transition-colors min-h-[48px]"
               >
-                Activer le programme fidelite
+                Souscrire la carte fidelite
               </button>
             )}
 
@@ -1699,6 +1746,122 @@ export default function POSPage() {
         onAuthenticated={handleCashierAuthenticated}
         onCancel={() => setShowCashierModal(false)}
       />
+
+      {/* Loyalty subscription modal (PR1) */}
+      <Modal open={showSubscribeModal} onClose={closeSubscribeModal} title="Souscription fidelite">
+        {subscribeSuccess ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-teal-50 rounded-lg">
+              <p className="text-sm text-gray-600">Carte creee :</p>
+              <p className="text-3xl font-bold text-teal mt-1 tracking-wider">
+                {subscribeSuccess.membership_number}
+              </p>
+            </div>
+            <p className="text-sm text-gray-500">
+              Imprimez le QR ou envoyez la carte au wallet du client depuis la fiche cliente.
+            </p>
+            <Button onClick={closeSubscribeModal} className="w-full">Fermer</Button>
+          </div>
+        ) : subscribeDuplicate ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-orange-50 rounded-lg">
+              <p className="text-sm text-orange-700 font-medium">
+                Cet email a deja une carte de fidelite : {subscribeDuplicate.membership_number}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Identifiez la cliente existante au lieu d&apos;en creer une nouvelle.
+              </p>
+            </div>
+            <Button onClick={closeSubscribeModal} className="w-full">Compris</Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Prenom</label>
+                <Input
+                  value={subscribeForm.first_name}
+                  onChange={(e) => setSubscribeForm({ ...subscribeForm, first_name: e.target.value })}
+                  placeholder="Alice"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Nom</label>
+                <Input
+                  value={subscribeForm.last_name}
+                  onChange={(e) => setSubscribeForm({ ...subscribeForm, last_name: e.target.value })}
+                  placeholder="Martin"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Email</label>
+              <Input
+                type="email"
+                value={subscribeForm.email}
+                onChange={(e) => setSubscribeForm({ ...subscribeForm, email: e.target.value })}
+                placeholder="alice@email.fr"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Code postal</label>
+              <Input
+                value={subscribeForm.postal_code}
+                onChange={(e) => setSubscribeForm({ ...subscribeForm, postal_code: e.target.value })}
+                placeholder="27200"
+              />
+            </div>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={subscribeForm.accept_terms}
+                onChange={(e) => setSubscribeForm({ ...subscribeForm, accept_terms: e.target.checked })}
+              />
+              <span>J&apos;accepte les conditions du programme fidelite Vintiz (1 € = 1 pt, peremption 24 mois).</span>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={subscribeForm.optin_newsletter}
+                onChange={(e) => setSubscribeForm({ ...subscribeForm, optin_newsletter: e.target.checked })}
+              />
+              <span>J&apos;accepte de recevoir la newsletter Vintiz.</span>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={subscribeForm.optin_profiling}
+                onChange={(e) => setSubscribeForm({ ...subscribeForm, optin_profiling: e.target.checked })}
+              />
+              <span>J&apos;accepte le profilage Personal Shopper (recommandations personnalisees).</span>
+            </label>
+            {subscribeError && (
+              <p className="text-sm text-red-600">{subscribeError}</p>
+            )}
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={closeSubscribeModal} className="flex-1">
+                Annuler
+              </Button>
+              <Button
+                onClick={submitSubscription}
+                disabled={
+                  subscribeBusy ||
+                  !subscribeForm.first_name ||
+                  !subscribeForm.last_name ||
+                  !subscribeForm.email ||
+                  !subscribeForm.accept_terms
+                }
+                className="flex-1"
+              >
+                {subscribeBusy ? '...' : 'Creer la carte'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

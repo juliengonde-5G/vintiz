@@ -65,6 +65,19 @@ class Client(Base):
     # we ask for it on the onboarding form but never block account creation.
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    # Loyalty subscription metadata (PR1). subscribed_at = enrollment date,
+    # expires_at = subscribed_at + 24mo (rolling on activity), mode records
+    # which of {free, paid, first_purchase} was applied.
+    loyalty_subscribed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    loyalty_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    loyalty_subscription_mode: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )
+
     loyalty_account: Mapped["LoyaltyAccount | None"] = relationship(
         "LoyaltyAccount", back_populates="client", uselist=False, lazy="selectin"
     )
@@ -77,7 +90,10 @@ class LoyaltyAccount(Base):
         UUID(as_uuid=True), ForeignKey("clients.id"), unique=True, nullable=False
     )
     points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    tier: Mapped[str] = mapped_column(String(50), nullable=False, default="bronze")
+    # Human-readable card number, format V###### (V + 6 digits). Unique.
+    membership_number: Mapped[str] = mapped_column(
+        String(8), unique=True, nullable=False
+    )
 
     client: Mapped["Client"] = relationship(
         "Client", back_populates="loyalty_account", lazy="selectin"

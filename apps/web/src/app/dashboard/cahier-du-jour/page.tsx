@@ -30,7 +30,7 @@ interface CahierPayload {
     prog_vs_obj_pct: number | null;
     delta_vs_n1_pct: number | null;
     tx_crm_pct: number;
-    gold_pct: number;
+    loyalty_pct: number;
     tk: number;
     iv: number;
     pm: number;
@@ -46,9 +46,9 @@ interface CahierPayload {
     delta_pct: number | null;
     units: number;
   }[];
-  crm_gold: {
+  crm_loyalty: {
     fiches_creees: number;
-    abonnements_gold: number;
+    adhesions_fidelite: number;
     reprints: number;
     tickets_fidelo: number;
   };
@@ -401,7 +401,7 @@ export default function CahierDuJourPage() {
                         ) : '—'}
                       </Td>
                       <Td>{data.performance.tx_crm_pct}%</Td>
-                      <Td>{data.performance.gold_pct}%</Td>
+                      <Td>{data.performance.loyalty_pct}%</Td>
                       <Td>{data.performance.tk}</Td>
                     </tr>
                   </tbody>
@@ -479,16 +479,16 @@ export default function CahierDuJourPage() {
               </div>
             </section>
 
-            {/* CRM Gold */}
+            {/* CRM Fidelite */}
             <section>
               <h2 className="text-sm font-display font-semibold text-black uppercase tracking-wider mb-3">
-                Suivi CRM / Gold
+                Suivi CRM / Fidelite
               </h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <StatBlock label="Fiches creees" value={String(data.crm_gold.fiches_creees)} />
-                <StatBlock label="Abonnements Gold" value={String(data.crm_gold.abonnements_gold)} accent="pink" />
-                <StatBlock label="Reprints" value={String(data.crm_gold.reprints)} />
-                <StatBlock label="Tickets fidelite" value={String(data.crm_gold.tickets_fidelo)} />
+                <StatBlock label="Fiches creees" value={String(data.crm_loyalty.fiches_creees)} />
+                <StatBlock label="Adhesions fidelite" value={String(data.crm_loyalty.adhesions_fidelite)} accent="pink" />
+                <StatBlock label="Reprints" value={String(data.crm_loyalty.reprints)} />
+                <StatBlock label="Tickets fidelite" value={String(data.crm_loyalty.tickets_fidelo)} />
               </div>
             </section>
 

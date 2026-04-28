@@ -58,7 +58,7 @@ async def get_customer_brief(
     if loyalty:
         loyalty_block = {
             "points": loyalty.points,
-            "tier": loyalty.tier,
+            "membership_number": loyalty.membership_number,
         }
 
     # --- Transactions in the last 12 months (sale only — refunds excluded) ---
@@ -196,7 +196,8 @@ async def get_customer_brief(
         "phone": client.phone,
         "loyalty": loyalty_block,
         "loyalty_points": loyalty.points if loyalty else 0,
-        "tier": loyalty.tier if loyalty else "Bronze",
+        "loyalty_active": loyalty is not None,
+        "membership_number": loyalty.membership_number if loyalty else None,
         "avoir_credit": float(client.avoir_credit or 0),
         "last_visit": last_visit.isoformat() if last_visit else None,
         "days_since_last_visit": days_since,

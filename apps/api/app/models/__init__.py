@@ -51,6 +51,7 @@ from app.models.local_calendar import (
     CommercialOperation,
     LocalEvent,
 )
+from app.models.auth import MagicLinkToken
 
 __all__ = [
     "Base",
@@ -79,4 +80,5 @@ __all__ = [
     "WeeklyTask", "WeeklyTaskKind", "WeeklyTaskStatus",
     "WindowDecor",
     "LocalEvent", "CommercialOperation", "CahierDayArchive",
+    "MagicLinkToken",
 ]

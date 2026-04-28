@@ -147,7 +147,7 @@ class RgpdService:
             )
             loyalty_transactions = tx_result.scalars().all()
             loyalty = {
-                "tier": account.tier,
+                "membership_number": account.membership_number,
                 "points": account.points,
                 "transactions": [
                     {

@@ -41,7 +41,7 @@ _SENSITIVE_FIELDS: dict[type, tuple[str, ...]] = {
     Product: ("sale_price", "status", "zone_id"),
     User: ("role", "is_active", "pin_hash", "password_hash"),
     Client: ("email", "phone", "first_name", "last_name"),
-    LoyaltyAccount: ("tier", "points"),
+    LoyaltyAccount: ("membership_number", "points"),
 }
 
 # Entity-name labels for AuditLog.entity (kept stable across renames).

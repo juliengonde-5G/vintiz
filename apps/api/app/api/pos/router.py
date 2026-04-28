@@ -592,6 +592,7 @@ async def get_transaction_receipt(
 ):
     """Generate and return receipt text for a transaction."""
     from sqlalchemy import select
+    from app.models.client import Client, LoyaltyTransaction, LoyaltyTxType
     from app.models.pos import Transaction
     from app.services.receipt import ReceiptService
 
@@ -602,8 +603,35 @@ async def get_transaction_receipt(
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
+    # Resolve fidelity context (PR1): the footer surfaces member info or
+    # a "would-have-earned" line for non-members.
+    client = None
+    loyalty_account = None
+    points_earned = None
+    if transaction.client_id is not None:
+        client_row = await db.execute(
+            select(Client).where(Client.id == transaction.client_id)
+        )
+        client = client_row.scalar_one_or_none()
+        if client and client.loyalty_account is not None:
+            loyalty_account = client.loyalty_account
+            earn_row = await db.execute(
+                select(LoyaltyTransaction.points)
+                .where(
+                    LoyaltyTransaction.account_id == loyalty_account.id,
+                    LoyaltyTransaction.tx_type == LoyaltyTxType.earn,
+                    LoyaltyTransaction.description == f"Sale #{transaction.transaction_number}",
+                )
+            )
+            points_earned = earn_row.scalar_one_or_none() or 0
+
     receipt_service = ReceiptService()
-    receipt_text = receipt_service.generate_receipt_text(transaction)
+    receipt_text = receipt_service.generate_receipt_text(
+        transaction,
+        client=client,
+        loyalty_account=loyalty_account,
+        points_earned_on_sale=points_earned,
+    )
 
     return {
         "receipt_text": receipt_text,
@@ -766,4 +794,125 @@ async def refund_transaction(
         "total_ttc": float(refund_tx.total_ttc),
         "refund_method": request.refund_method,
         "hash_chain": refund_tx.hash_chain,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Loyalty subscription + client identification (PR1)
+# ---------------------------------------------------------------------------
+
+
+class LoyaltySubscribeRequest(BaseModel):
+    first_name: str
+    last_name: str
+    email: str
+    postal_code: str | None = None
+    accept_terms: bool
+    optin_newsletter: bool = False
+    optin_profiling: bool = False
+    mode_override: str | None = None  # null = use admin config
+
+
+@router.post(
+    "/loyalty/subscribe",
+    status_code=201,
+    dependencies=[Depends(manager_only)],
+)
+async def subscribe_loyalty(
+    request: LoyaltySubscribeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Enrol a client in the loyalty programme from the POS.
+
+    409 with ``existing_membership_number`` on duplicate email — the POS
+    UI proposes to fuse instead of creating a second account.
+    """
+    if not request.accept_terms:
+        raise HTTPException(status_code=400, detail="Conditions a accepter")
+
+    from app.services.loyalty import LoyaltyDuplicateError, subscribe
+    from app.services.loyalty_config import get_subscription_config
+
+    config = await get_subscription_config(db)
+    mode = request.mode_override or config.mode
+
+    try:
+        client, account = await subscribe(
+            db,
+            first_name=request.first_name,
+            last_name=request.last_name,
+            email=request.email,
+            postal_code=request.postal_code,
+            mode=mode,
+            optin_newsletter=request.optin_newsletter,
+            optin_profiling=request.optin_profiling,
+            user_id=current_user.id,
+        )
+    except LoyaltyDuplicateError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "duplicate_email",
+                "existing_membership_number": exc.membership_number,
+                "client_id": str(exc.client_id),
+            },
+        )
+    await db.commit()
+    return {
+        "client_id": str(client.id),
+        "membership_number": account.membership_number,
+        "mode_applied": mode,
+        "expires_at": client.loyalty_expires_at.isoformat()
+        if client.loyalty_expires_at
+        else None,
+    }
+
+
+@router.get("/clients/identify")
+async def identify_client_pos(
+    q: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resolve a client from a free-form input (membership / email / phone)."""
+    from app.models.client import Client, LoyaltyAccount
+    from app.services.membership_id import (
+        is_membership_number,
+        lookup_by_membership_number,
+    )
+
+    q = (q or "").strip()
+    if not q:
+        raise HTTPException(status_code=400, detail="empty query")
+
+    client: Client | None = None
+    if is_membership_number(q):
+        client = await lookup_by_membership_number(db, q)
+    elif "@" in q:
+        row = await db.execute(select(Client).where(Client.email == q.lower()))
+        client = row.scalar_one_or_none()
+    else:
+        row = await db.execute(select(Client).where(Client.phone == q))
+        client = row.scalar_one_or_none()
+
+    if client is None:
+        raise HTTPException(status_code=404, detail="client_not_found")
+
+    loyalty = client.loyalty_account
+    return {
+        "client_id": str(client.id),
+        "first_name": client.first_name,
+        "last_name": client.last_name,
+        "email": client.email,
+        "phone": client.phone,
+        "membership_number": loyalty.membership_number if loyalty else None,
+        "loyalty": {
+            "active": loyalty is not None,
+            "points": loyalty.points if loyalty else 0,
+            "expires_at": client.loyalty_expires_at.isoformat()
+            if client.loyalty_expires_at
+            else None,
+        },
     }

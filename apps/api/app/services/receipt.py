@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 
+from app.models.client import Client, LoyaltyAccount
 from app.models.pos import Transaction, TransactionType
+from app.services.offers_engine import points_to_credit
 
 
 class ReceiptService:
@@ -9,17 +11,44 @@ class ReceiptService:
     STORE_NAME = "VINTIZ"
     STORE_ADDRESS = "6 rue Saint-Jacques, 27200 Vernon"
 
-    def generate_receipt_text(self, transaction: Transaction) -> str:
-        """Dispatch to the sale or refund template based on transaction type."""
+    def generate_receipt_text(
+        self,
+        transaction: Transaction,
+        *,
+        client: Client | None = None,
+        loyalty_account: LoyaltyAccount | None = None,
+        points_earned_on_sale: int | None = None,
+    ) -> str:
+        """Dispatch to the sale or refund template based on transaction type.
+
+        Optional ``client``/``loyalty_account``/``points_earned_on_sale``
+        drive the new fidelity footer (PR1). When omitted, the receipt
+        prints the legacy form (no footer) — useful for refunds and
+        offline previews where the caller doesn't have the client loaded.
+        """
         if transaction.transaction_type == TransactionType.refund:
             return self._generate_refund_text(transaction)
-        return self._generate_sale_text(transaction)
+        return self._generate_sale_text(
+            transaction,
+            client=client,
+            loyalty_account=loyalty_account,
+            points_earned_on_sale=points_earned_on_sale,
+        )
 
-    def _generate_sale_text(self, transaction: Transaction) -> str:
+    def _generate_sale_text(
+        self,
+        transaction: Transaction,
+        *,
+        client: Client | None = None,
+        loyalty_account: LoyaltyAccount | None = None,
+        points_earned_on_sale: int | None = None,
+    ) -> str:
         """Create a formatted plain-text sale receipt.
 
-        Includes store info, item list, totals, payment methods,
-        and the NF525 fiscal hash for compliance.
+        Includes store info, item list, totals, payment methods, the
+        NF525 fiscal hash, and a fidelity footer (PR1):
+        - members: name, V######, balance, points earned on this sale.
+        - non-members: "Vous auriez gagné X pts" + adhesion CTA.
         """
         lines: list[str] = []
         width = 42
@@ -80,6 +109,31 @@ class ReceiptService:
         # Fiscal hash (NF525 compliance)
         hash_display = transaction.hash_chain[:16] if transaction.hash_chain else ""
         lines.append(f"Hash: {hash_display}")
+
+        # ---- Fidelity footer ---------------------------------------------------
+        lines.append("")
+        lines.append("--- Fidelite Vintiz ---".center(width))
+        if client is not None and loyalty_account is not None:
+            holder = f"{client.first_name} {client.last_name}".strip() or "Membre"
+            if len(holder) > width:
+                holder = holder[: width - 1]
+            lines.append(f"Membre : {holder}")
+            lines.append(f"N {loyalty_account.membership_number}")
+            balance = int(loyalty_account.points or 0)
+            earned = int(points_earned_on_sale or 0)
+            balance_line = f"Solde : {balance} pts"
+            if earned > 0:
+                balance_line += f" (+{earned} sur cet achat)"
+            lines.append(balance_line)
+        else:
+            would_earn = points_earned_on_sale
+            if would_earn is None:
+                would_earn = points_to_credit(float(total_ttc))
+            if would_earn > 0:
+                lines.append(f"Vous auriez gagne {would_earn} pts.")
+            lines.append("Adherez gratuitement a votre prochain passage")
+            lines.append("Carte digitale Apple/Google Wallet")
+
         lines.append("")
         lines.append("Merci de votre visite !".center(width))
         lines.append("")

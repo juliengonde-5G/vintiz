@@ -9,7 +9,8 @@ export type CustomerBrief = {
   email?: string;
   phone?: string;
   loyalty_points: number;
-  tier: string;
+  loyalty_active: boolean;
+  membership_number: string | null;
   avoir_credit: number;
   last_visit?: string | null;
   days_since_last_visit?: number | null;
@@ -28,13 +29,6 @@ type Props = {
   brief: CustomerBrief;
   onTapPick?: (productId: string) => void;
   onClose?: () => void;
-};
-
-const tierColor = (tier: string): string => {
-  const t = (tier || '').toLowerCase();
-  if (t === 'gold' || t === 'or') return 'bg-yellow-50 text-yellow-700 border-yellow-200';
-  if (t === 'silver' || t === 'argent') return 'bg-gray-50 text-gray-700 border-gray-200';
-  return 'bg-orange-50 text-orange-700 border-orange-200';
 };
 
 const formatVisit = (days?: number | null) => {
@@ -63,8 +57,8 @@ export default function LoyaltyCustomerCard({ brief, onTapPick, onClose }: Props
             <div className="font-medium text-black truncate">
               {brief.first_name} {brief.last_name}
             </div>
-            <div className={`inline-block text-[11px] px-2 py-0.5 rounded-full border ${tierColor(brief.tier)}`}>
-              {brief.tier} · {brief.loyalty_points} pts
+            <div className="inline-block text-[11px] px-2 py-0.5 rounded-full border bg-teal-50 text-teal-700 border-teal-200">
+              {brief.membership_number ?? 'Non membre'} · {brief.loyalty_points} pts
               {brief.avoir_credit > 0 && ` · avoir ${brief.avoir_credit.toFixed(2)}€`}
             </div>
           </div>

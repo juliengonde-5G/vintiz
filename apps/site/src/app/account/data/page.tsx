@@ -24,7 +24,7 @@ interface ClientLookup {
     points: number;
     total_earned: number;
     total_redeemed: number;
-    tier: string;
+    membership_number: string;
   } | null;
   recent_transactions: {
     id: string;
@@ -285,7 +285,7 @@ export default function AccountDataPage() {
                     <div>
                       <dt className="text-gray-500">Carte fidélité</dt>
                       <dd className="font-medium capitalize">
-                        {data.loyalty.tier} — {data.loyalty.points} points
+                        {data.loyalty.membership_number} — {data.loyalty.points} points
                       </dd>
                     </div>
                   )}
