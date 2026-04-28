@@ -147,7 +147,7 @@ export default function AccountLoginPage() {
               }}
               className="w-full text-sm text-gray-600 underline"
             >
-              Modifier l'email ou redemander un code
+              Modifier l&apos;email ou redemander un code
             </button>
           </form>
         )}
