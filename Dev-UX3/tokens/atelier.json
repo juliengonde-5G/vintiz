@@ -1,0 +1,26 @@
+{
+  "name": "Vintiz · Atelier",
+  "description": "Direction éditoriale magazine couture — crème chaud, teal forêt, encre noire. Sérif Cormorant Garamond italique en display, Inter Tight en body. Pour Sophie 35-55, registre Aesop / Sézane.",
+  "palette": {
+    "bg": "#F4ECE2",
+    "bgAlt": "#EAE0D2",
+    "surface": "#FFFFFF",
+    "ink": "#1A1714",
+    "inkSoft": "#5C544A",
+    "inkMute": "#9A8F80",
+    "line": "#D9CDB9",
+    "teal": "#1F5D54",
+    "tealDeep": "#143F39",
+    "tealSoft": "#D8E4DF",
+    "accent": "#C2603B",
+    "accentSoft": "#F0DAC9",
+    "gold": "#A8895A"
+  },
+  "typography": {
+    "display": { "family": "Cormorant Garamond", "weights": [400, 500], "italic": true },
+    "body": { "family": "Inter Tight", "weights": [300, 400, 500, 600] },
+    "mono": { "family": "JetBrains Mono", "weights": [400] }
+  },
+  "radius": { "sm": "4px", "lg": "10px" },
+  "shadow": "0 1px 0 rgba(26,23,20,0.04), 0 12px 32px -16px rgba(26,23,20,0.18)"
+}

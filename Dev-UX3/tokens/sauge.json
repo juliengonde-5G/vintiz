@@ -1,0 +1,26 @@
+{
+  "name": "Vintiz · Sauge",
+  "description": "Direction premium naturel responsable — reprend la palette chaude d'Atelier (crème ivoire, teal forêt, terracotta) avec un traitement typographique distinct (Fraunces + Manrope) et des mises en page de documentation. Calme, durable, hint ESS sans militantisme.",
+  "palette": {
+    "bg": "#F4ECE2",
+    "bgAlt": "#EAE0D2",
+    "surface": "#FFFFFF",
+    "ink": "#1A1714",
+    "inkSoft": "#5C544A",
+    "inkMute": "#9A8F80",
+    "line": "#D9CDB9",
+    "teal": "#1F5D54",
+    "tealDeep": "#143F39",
+    "tealSoft": "#D8E4DF",
+    "accent": "#C2603B",
+    "accentSoft": "#F0DAC9",
+    "gold": "#A8895A"
+  },
+  "typography": {
+    "display": { "family": "Fraunces", "weights": [400, 450, 500] },
+    "body": { "family": "Manrope", "weights": [300, 400, 500, 600, 700] },
+    "mono": { "family": "JetBrains Mono", "weights": [400] }
+  },
+  "radius": { "sm": "8px", "lg": "16px" },
+  "shadow": "0 1px 0 rgba(26,23,20,0.03), 0 16px 40px -20px rgba(26,23,20,0.16)"
+}

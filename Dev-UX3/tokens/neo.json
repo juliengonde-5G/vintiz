@@ -1,0 +1,26 @@
+{
+  "name": "Vintiz · Néo",
+  "description": "Direction contemporaine Vinted-natif élevé — off-white froid, teal vif, flash rose magenta. Display Archivo grotesque, body Inter Tight. Énergie, photo grande, pour gagner les 18-30 sans perdre les 35-55.",
+  "palette": {
+    "bg": "#F6F5F1",
+    "bgAlt": "#ECEAE3",
+    "surface": "#FFFFFF",
+    "ink": "#0E0E0C",
+    "inkSoft": "#4A4A47",
+    "inkMute": "#8B8B86",
+    "line": "#D5D3CC",
+    "teal": "#0B7A6A",
+    "tealDeep": "#054238",
+    "tealSoft": "#CDE5DF",
+    "accent": "#E84E8B",
+    "accentSoft": "#FFD5E5",
+    "gold": "#8E7B57"
+  },
+  "typography": {
+    "display": { "family": "Archivo", "weights": [600, 700, 800] },
+    "body": { "family": "Inter Tight", "weights": [400, 500, 600] },
+    "mono": { "family": "JetBrains Mono", "weights": [400, 500] }
+  },
+  "radius": { "sm": "2px", "lg": "6px" },
+  "shadow": "0 1px 0 rgba(14,14,12,0.06), 0 8px 24px -12px rgba(14,14,12,0.2)"
+}
