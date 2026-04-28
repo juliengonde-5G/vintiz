@@ -60,7 +60,7 @@ export default function AccountLoginPage() {
         } catch {
           /* private mode — the account pages still receive the token via redirect */
         }
-        router.push("/account/data");
+        router.push("/account");
       } else if (res.status === 429) {
         setError("Trop de tentatives. Patientez avant de redemander un code.");
       } else {

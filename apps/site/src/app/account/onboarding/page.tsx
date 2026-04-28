@@ -43,7 +43,7 @@ export default function OnboardingPage() {
   }, []);
 
   // Pre-fill email from query string if the customer arrived via a magic
-  // link from /account/data.
+  // link from /account.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -118,7 +118,7 @@ export default function OnboardingPage() {
                 boutique, demandez la sélection à Sophie&nbsp;!
               </p>
               <Link
-                href="/account/data"
+                href="/account"
                 className="inline-block px-4 py-2 bg-teal text-white rounded-lg hover:bg-teal-700"
               >
                 Voir mon espace
@@ -252,7 +252,7 @@ export default function OnboardingPage() {
               <p className="text-xs text-gray-400 text-center">
                 Vos choix nourrissent uniquement votre Personal Shopper. Vous
                 pouvez les modifier ou les retirer à tout moment depuis votre{" "}
-                <Link href="/account/data" className="text-teal underline">
+                <Link href="/account" className="text-teal underline">
                   espace données
                 </Link>
                 .

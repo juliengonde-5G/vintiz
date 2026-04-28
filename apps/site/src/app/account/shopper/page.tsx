@@ -2,8 +2,7 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import AccountShell from "@/components/account/AccountShell";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -135,18 +134,11 @@ export default function AccountShopperPage() {
   };
 
   return (
-    <main className="min-h-screen bg-cream">
-      <Navbar />
-      <section className="max-w-4xl mx-auto px-4 pt-12 pb-24">
-        <h1 className="text-3xl font-display font-bold text-black mb-2">
-          Mon Personal Shopper
-        </h1>
-        <p className="text-gray-600 mb-8 max-w-2xl">
-          Une sélection en temps réel des pièces disponibles à Vernon, choisies
-          en fonction de vos goûts. Réservé aux membres du programme fidélité
-          Vintiz, avec votre consentement explicite.
-        </p>
-
+    <AccountShell
+      title="Mon Personal Shopper"
+      intro="Une sélection en temps réel des pièces disponibles à Vernon, choisies en fonction de vos goûts. Réservé aux membres du programme fidélité Vintiz, avec votre consentement explicite."
+    >
+      <>
         {!emailLocked && (
           <form onSubmit={loadFeed} className="bg-white rounded-2xl shadow-sm p-6 mb-8 max-w-md">
             <label className="block text-sm font-medium text-black mb-1" htmlFor="account-email">
@@ -249,9 +241,8 @@ export default function AccountShopperPage() {
         {error && (
           <div className="mt-6 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
         )}
-      </section>
-      <Footer />
-    </main>
+      </>
+    </AccountShell>
   );
 }
 

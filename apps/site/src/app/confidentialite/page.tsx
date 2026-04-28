@@ -74,12 +74,29 @@ export default function ConfidentialitePage() {
             </li>
             <li>
               <strong>Personal Shopper IA et profilage</strong> — consentement
-              explicite (RGPD art. 6.1.a + art. 22). Vous pouvez le retirer à
-              tout moment depuis votre{" "}
-              <Link href="/account/data" className="text-teal underline">
+              explicite (RGPD art. 6.1.a + art. 22). Vos préférences de style,
+              tailles, couleurs et historique d&apos;achats alimentent un
+              modèle d&apos;embeddings (sous-traitant&nbsp;: Anthropic Ireland
+              pour Claude Haiku 4.5). Durée de conservation 36 mois maximum
+              après le dernier achat. Retrait via le toggle Personal Shopper
+              dans votre{" "}
+              <Link href="/account/rgpd" className="text-teal underline">
                 espace de gestion des données
               </Link>
               .
+            </li>
+            <li>
+              <strong>Alertes nouveautés tendance par email</strong> —
+              consentement explicite séparé du profilage. Un produit
+              fraîchement arrivé en boutique et compatible avec votre profil
+              déclenche au maximum un email tous les 7 jours. Retrait 1-clic
+              dans chaque email ou via la page espace client RGPD.
+            </li>
+            <li>
+              <strong>Souscription carte fidélité au POS</strong> — l&apos;équipe
+              boutique enregistre nom, prénom, code postal et email avec votre
+              consentement explicite (newsletter et profilage cochés
+              séparément). Le n° de carte (V######) est généré automatiquement.
             </li>
             <li>
               <strong>Comptabilité fiscale</strong> — obligation légale (CGI,
@@ -108,8 +125,8 @@ export default function ConfidentialitePage() {
             <li>
               <strong>Accès et portabilité</strong> (art. 15 + 20) — visualiser
               et télécharger l&apos;ensemble de vos données au format JSON depuis{" "}
-              <Link href="/account/data" className="text-teal underline">
-                /account/data
+              <Link href="/account/rgpd" className="text-teal underline">
+                /account/rgpd
               </Link>
               .
             </li>
@@ -120,8 +137,8 @@ export default function ConfidentialitePage() {
             <li>
               <strong>Effacement / droit à l&apos;oubli</strong> (art. 17) —
               demande en self-service depuis{" "}
-              <Link href="/account/data" className="text-teal underline">
-                /account/data
+              <Link href="/account/rgpd" className="text-teal underline">
+                /account/rgpd
               </Link>
               . La suppression effective intervient sous 30 jours pour permettre
               une éventuelle annulation. Les transactions soumises à
@@ -221,7 +238,7 @@ export default function ConfidentialitePage() {
             qu&apos;une employée valide systématiquement avant tout envoi
             personnalisé. Vous pouvez à tout moment retirer votre consentement
             au profilage depuis votre{" "}
-            <Link href="/account/data" className="text-teal underline">
+            <Link href="/account/rgpd" className="text-teal underline">
               espace de gestion des données
             </Link>
             .

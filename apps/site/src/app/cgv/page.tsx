@@ -95,14 +95,31 @@ export default function CGVPage() {
             Article 6 — Programme fidélité
           </h2>
           <p className="text-black/70 leading-relaxed">
-            Le programme de fidélité Vintiz est gratuit et accessible sur simple
-            demande à la caisse. Il permet de cumuler{" "}
-            <strong>1 point par euro dépensé</strong>. 1 point équivaut à 0,10 €
-            de remise (soit 50 points = 5 €), utilisable jusqu&apos;à 50 % du
-            panier. Trois niveaux structurent le programme&nbsp;: Bronze,
-            Argent, Or — avec avantages croissants. Les points sont valables 12
-            mois après la dernière transaction. Vintiz se réserve le droit de
-            modifier les conditions du programme avec préavis.
+            Le programme de fidélité Vintiz est <strong>100 % digital</strong>{" "}
+            (carte virtuelle Apple Wallet / Google Wallet, n° de carte au format
+            <code className="font-mono mx-1">V######</code>). Selon
+            l&apos;opération en cours, l&apos;adhésion peut être gratuite,
+            payante ou offerte au-delà d&apos;un montant d&apos;achat — les
+            conditions actives sont affichées en boutique au moment de la
+            souscription. Mécanique unique&nbsp;:{" "}
+            <strong>1 € dépensé = 1 point</strong>. Tous les{" "}
+            <strong>100 points</strong>, un bon d&apos;achat de 8 € est généré
+            automatiquement (valable 60 jours). Les points expirent au bout de{" "}
+            <strong>24 mois sans activité</strong>. Vintiz se réserve le droit
+            de modifier les conditions du programme avec préavis affiché en
+            boutique et envoyé par email aux membres opt-in.
+          </p>
+          <p className="text-black/70 leading-relaxed mt-3">
+            Le programme inclut un{" "}
+            <strong>Personal Shopper</strong> (sélection IA de pièces
+            disponibles en boutique en fonction de l&apos;historique d&apos;achat
+            et des goûts déclarés) et des{" "}
+            <strong>alertes de nouveautés tendance</strong> par email. Ces
+            services sont strictement réservés aux membres et nécessitent un
+            consentement explicite « profilage » et « alertes nouveautés », tous
+            deux désactivables à tout moment dans l&apos;espace client. Aucune
+            vente n&apos;est réalisée en ligne&nbsp;: ces outils ont vocation à
+            préparer une visite en boutique à Vernon.
           </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">
@@ -113,7 +130,7 @@ export default function CGVPage() {
             d&apos;un article éligible et choisissez ce mode (au lieu d&apos;un
             règlement immédiat). Le solde de votre avoir est consultable à tout
             moment depuis votre{" "}
-            <Link href="/account/data" className="text-teal underline">
+            <Link href="/account" className="text-teal underline">
               espace personnel
             </Link>
             . Il est utilisable lors de tout achat futur, en boutique
@@ -131,7 +148,7 @@ export default function CGVPage() {
             </Link>
             . Vous pouvez, à tout moment, télécharger vos données ou demander
             leur suppression depuis votre{" "}
-            <Link href="/account/data" className="text-teal underline">
+            <Link href="/account" className="text-teal underline">
               espace personnel
             </Link>
             .

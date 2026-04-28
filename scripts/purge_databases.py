@@ -15,8 +15,7 @@ Tables wiped (in dependency order):
     cash_drawer_sessions
   - Loyalty / avoir: avoir_transactions, loyalty_transactions, loyalty_accounts
   - Coupons: coupons
-  - Reservations: reservations (table dropped in a later migration; harmless if absent)
-  - Clients: consents, customer_taste_profiles, clients
+  - Clients: consents, customer_taste_profiles, clients, magic_link_tokens
   - Products: product_embeddings, product_photos, products, intake_batches
   - Inventory orders: order_items, orders
   - Audit / logs / events / ai_tasks: audit_logs, events_log, ai_tasks,
@@ -69,9 +68,8 @@ TABLES_TO_WIPE: list[str] = [
     "loyalty_accounts",
     # Coupons
     "coupons",
-    # Reservations (may already be dropped in a later migration)
-    "reservations",
     # Clients chain
+    "magic_link_tokens",
     "consents",
     "customer_taste_profiles",
     "clients",

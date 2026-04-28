@@ -28,8 +28,6 @@ TABLES_TO_WIPE: list[str] = [
     "loyalty_accounts",
     # Coupons
     "coupons",
-    # Reservations (already dropped post-Lot 1, but keep for older DBs)
-    "reservations",
     # Clients chain
     "consents",
     "customer_taste_profiles",

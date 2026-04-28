@@ -62,6 +62,17 @@ http_get_anon() {
     "$API_URL$path"
 }
 
+http_post_anon() {
+  local path="$1"
+  local body="${2:-{}}"
+  curl -s -o /tmp/smoke_body -w '%{http_code}' --max-time 10 \
+    -X POST \
+    -H 'accept: application/json' \
+    -H 'content-type: application/json' \
+    -d "$body" \
+    "$API_URL$path"
+}
+
 needs_token() {
   if [ -z "${VINTIZ_API_TOKEN:-}" ]; then
     warn "$1 (skip — VINTIZ_API_TOKEN absent)"
@@ -117,8 +128,11 @@ if [ "$code" = "200" ]; then
     "/api/admin/coupons"
     "/api/crm/segments"
     "/api/crm/account/wallet"
-    "/api/reservations"
-    "/api/reservations/lookup"
+    "/api/auth/magic-link/request"
+    "/api/auth/magic-link/verify"
+    "/api/pos/loyalty/subscribe"
+    "/api/admin/loyalty/config"
+    "/api/admin/trend-alerts/run"
     "/api/pos/coupons/validate"
   )
   for p in "${EXPECTED_PATHS[@]}"; do
@@ -129,7 +143,7 @@ if [ "$code" = "200" ]; then
     fi
   done
   # Sanity sur les routes paramétriques (présence du préfixe seulement)
-  for p in "/api/inventory/products/" "/api/pos/products/" "/api/reservations/"; do
+  for p in "/api/inventory/products/" "/api/pos/products/" "/api/crm/clients/"; do
     if grep -q "\"$p" /tmp/smoke_body; then
       ok "  préfixe paramétrique présent : ${p}…"
     else
@@ -158,11 +172,12 @@ else
   fail "/api/crm/clients/lookup → $code (attendu 404)"
 fi
 
-code=$(http_get_anon "/api/reservations/lookup?email=smoke-no-such@vintiz.fr")
-if [ "$code" = "404" ]; then
-  ok "/api/reservations/lookup (email inconnu) → 404"
+# PR1: magic-link issue est public et toujours 204 (anti-énumération).
+code=$(http_post_anon "/api/auth/magic-link/request" '{"email":"smoke-no-such@vintiz.fr"}')
+if [ "$code" = "204" ]; then
+  ok "/api/auth/magic-link/request (email inconnu) → 204"
 else
-  fail "/api/reservations/lookup → $code (attendu 404)"
+  fail "/api/auth/magic-link/request → $code (attendu 204)"
 fi
 
 code=$(http_get_anon "/api/crm/account/wallet?email=smoke-no-such@vintiz.fr")
@@ -223,11 +238,11 @@ if needs_token "checks manager"; then
     fail "/api/admin/coupons → $code"
   fi
 
-  code=$(http_get "/api/reservations?only_active=true")
+  code=$(http_get "/api/admin/loyalty/config")
   if [ "$code" = "200" ]; then
-    ok "/api/reservations → 200"
+    ok "/api/admin/loyalty/config → 200"
   else
-    fail "/api/reservations → $code"
+    fail "/api/admin/loyalty/config → $code"
   fi
 fi
 
@@ -241,29 +256,33 @@ cat <<EOF
   Les checks ci-dessous créent des données et ne sont PAS automatisés
   pour éviter de polluer la prod. À faire depuis l'interface :
 
-  ${YELLOW}a. Réservation → encaissement${NC}
-     1. /reservations → créer un hold sur un produit pour une cliente test
-     2. POS → sélectionner la même cliente, scanner le produit
-     3. Vérifier le bandeau vert "Réservation pour cette cliente"
-     4. Encaisser ; le hold doit passer en 'redeemed'
-        SELECT status, redeemed_transaction_id FROM reservations
-        ORDER BY created_at DESC LIMIT 1;
+  ${YELLOW}a. Souscription fidélité POS${NC}
+     1. POS → bouton "Souscription fidélité" → modal nom/prénom/CP/email
+     2. Vérifier création carte V###### + opt-ins consentés en DB
+        SELECT membership_number FROM loyalty_accounts ORDER BY created_at DESC LIMIT 1;
+     3. Re-tester avec même email → 409 + suggestion fusion
 
-  ${YELLOW}b. Coupon anniversaire${NC}
+  ${YELLOW}b. Magic-link client${NC}
+     1. /account/login → email d'une cliente existante → "Envoyer le code"
+     2. Lire le code dans les logs API (mode sim) ou la boîte mail (Brevo)
+     3. Saisir le code → JWT stocké, redirect /account/data
+
+  ${YELLOW}c. Coupon anniversaire${NC}
      1. POST /api/admin/anniversary/run (déclenche la cron à la demande)
      2. Vérifier qu'un coupon ANNIV-XXXXXX existe pour les clientes nées aujourd'hui
         SELECT code, valid_until FROM coupons WHERE source='anniversary'
         ORDER BY created_at DESC LIMIT 5;
      3. POS → appliquer le code → vérifier le pill et le total
 
-  ${YELLOW}c. Crons APScheduler${NC}
+  ${YELLOW}d. Crons APScheduler${NC}
      Au boot de l'API, les logs doivent lister :
        monthly_scoring, daily_rgpd_purge, daily_embedding_refresh,
-       nightly_markdown_engine, daily_return_to_sorting,
-       weekly_window_display, weekly_social_posts, daily_seo_snapshot,
-       monthly_rfm_segmentation, daily_anniversary_emails,
-       weekly_new_arrivals_emails, hourly_reservation_expiry
-     soit 12 jobs.
+       daily_return_to_sorting, weekly_window_display, weekly_social_posts,
+       daily_seo_snapshot, monthly_rfm_segmentation,
+       daily_anniversary_emails, weekly_new_arrivals_emails,
+       morning_restock, monday_position_reco, thursday_six_weeks_exit,
+       daily_loyalty_expiry, daily_trend_alerts
+     soit 15 jobs.
 
 EOF
 

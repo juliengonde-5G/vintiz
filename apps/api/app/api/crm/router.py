@@ -1242,6 +1242,183 @@ async def personal_shopper_live(
 
 
 # ---------------------------------------------------------------------------
+# Espace client — coupons / transactions / consents (PR3)
+# ---------------------------------------------------------------------------
+
+
+_CONSENT_LABELS = {
+    ConsentPurpose.email_marketing: "Newsletter Vintiz",
+    ConsentPurpose.sms_marketing: "SMS commerciaux",
+    ConsentPurpose.profiling: "Profilage Personal Shopper",
+    ConsentPurpose.trend_alerts: "Alertes nouveautés tendance",
+    ConsentPurpose.data_sharing: "Partage de données B2B",
+}
+
+
+class ConsentToggleRequest(BaseModel):
+    email: str
+    granted: bool
+
+
+@router.get("/account/coupons")
+async def public_account_coupons(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """List active coupons attached to the customer (PR3 espace client)."""
+    from app.models.coupon import Coupon
+
+    client = await _resolve_public_client(db, email)
+    rows = await db.execute(
+        select(Coupon)
+        .where(
+            Coupon.client_id == client.id,
+            Coupon.is_active.is_(True),
+            Coupon.redeemed_at.is_(None),
+        )
+        .order_by(Coupon.valid_until.asc())
+    )
+    coupons = rows.scalars().all()
+    now = datetime.now(timezone.utc)
+
+    def _is_expired(valid_until):
+        if valid_until is None:
+            return False
+        # SQLite drops tzinfo — treat naive datetimes as UTC.
+        if valid_until.tzinfo is None:
+            valid_until = valid_until.replace(tzinfo=timezone.utc)
+        return valid_until < now
+
+    return [
+        {
+            "code": c.code,
+            "discount_type": c.discount_type.value,
+            "discount_value": float(c.discount_value or 0),
+            "source": c.source.value if c.source else None,
+            "valid_from": c.valid_from.isoformat() if c.valid_from else None,
+            "valid_until": c.valid_until.isoformat() if c.valid_until else None,
+            "expired": _is_expired(c.valid_until),
+            "notes": c.notes,
+        }
+        for c in coupons
+    ]
+
+
+@router.get("/account/transactions")
+async def public_account_transactions(
+    email: str = Query(..., min_length=5, max_length=255),
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """Paginated history of the customer's purchases (PR3 espace client)."""
+    from app.models.pos import TransactionItem
+    from sqlalchemy.orm import selectinload
+
+    client = await _resolve_public_client(db, email)
+    rows = await db.execute(
+        select(Transaction)
+        .options(selectinload(Transaction.items).selectinload(TransactionItem.product))
+        .where(Transaction.client_id == client.id)
+        .order_by(Transaction.created_at.desc())
+        .limit(max(1, min(limit, 100)))
+    )
+    transactions = rows.scalars().all()
+    return [
+        {
+            "id": str(t.id),
+            "transaction_number": t.transaction_number,
+            "transaction_type": t.transaction_type.value,
+            "total_ttc": float(t.total_ttc or 0),
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "items": [
+                {
+                    "name": (it.product.name if it.product else "Article"),
+                    "quantity": int(it.quantity or 0),
+                    "line_total": float(it.line_total or 0),
+                }
+                for it in (t.items or [])[:10]
+            ],
+        }
+        for t in transactions
+    ]
+
+
+@router.get("/account/consents")
+async def public_account_consents(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Human-readable consent state across all RGPD purposes (PR3 espace client).
+
+    For each ``ConsentPurpose``, returns the latest decision (granted /
+    revoked) with the source + timestamp. Purposes never opted into
+    surface as ``granted: false`` so the UI can render an explicit
+    "désactivé" state rather than nothing.
+    """
+    client = await _resolve_public_client(db, email)
+    rows = await db.execute(
+        select(Consent)
+        .where(Consent.client_id == client.id)
+        .order_by(Consent.created_at.desc())
+    )
+    history = rows.scalars().all()
+
+    latest: dict[ConsentPurpose, Consent] = {}
+    for row in history:
+        latest.setdefault(row.purpose, row)
+
+    out = []
+    for purpose in ConsentPurpose:
+        row = latest.get(purpose)
+        out.append({
+            "purpose": purpose.value,
+            "label": _CONSENT_LABELS.get(purpose, purpose.value),
+            "granted": bool(row.granted) if row else False,
+            "source": row.source if row else None,
+            "policy_version": row.policy_version if row else None,
+            "recorded_at": row.created_at.isoformat() if row and row.created_at else None,
+        })
+    return out
+
+
+@router.post("/account/consents/{purpose}")
+async def public_account_consent_toggle(
+    purpose: str,
+    payload: ConsentToggleRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Append a consent ledger row for any purpose from the espace client.
+
+    Mirrors :func:`toggle_personal_shopper` and :func:`toggle_trend_alerts`
+    but for the generic /account/rgpd page.
+    """
+    from fastapi import Response
+
+    try:
+        consent_purpose = ConsentPurpose(purpose)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="unknown_purpose")
+
+    client = await _resolve_public_client(db, payload.email)
+    db.add(
+        Consent(
+            client_id=client.id,
+            purpose=consent_purpose,
+            granted=payload.granted,
+            policy_version="v2-2026-04",
+            source="account_self_service",
+        )
+    )
+    if consent_purpose in (ConsentPurpose.email_marketing, ConsentPurpose.sms_marketing):
+        # Mirror legacy boolean flag (kept for the cron jobs that still
+        # consult ``Client.email_optin`` / ``sms_optin``).
+        flag = "email_optin" if consent_purpose == ConsentPurpose.email_marketing else "sms_optin"
+        setattr(client, flag, payload.granted)
+    await db.commit()
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
 # Cold-start onboarding (P2-004)
 # ---------------------------------------------------------------------------
 

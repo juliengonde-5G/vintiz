@@ -14,9 +14,9 @@ export default function MentionsLegalesPage() {
       <Navbar />
       <section className="pt-28 pb-20 px-6 bg-vintiz-bg min-h-screen">
         <div className="max-w-3xl mx-auto prose prose-sm">
-          <h1 className="font-serif text-3xl text-vintiz-black mb-8">Mentions Legales</h1>
+          <h1 className="font-serif text-3xl text-vintiz-black mb-8">Mentions légales</h1>
 
-          <h2 className="font-serif text-xl text-vintiz-black mt-8 mb-3">Editeur du site</h2>
+          <h2 className="font-serif text-xl text-vintiz-black mt-8 mb-3">Éditeur du site</h2>
           <p className="text-vintiz-black/70 leading-relaxed">
             Vintiz<br />
             6 rue Saint-Jacques<br />
@@ -24,26 +24,70 @@ export default function MentionsLegalesPage() {
             France
           </p>
 
-          <h2 className="font-serif text-xl text-vintiz-black mt-8 mb-3">Hebergement</h2>
+          <h2 className="font-serif text-xl text-vintiz-black mt-8 mb-3">Hébergement</h2>
           <p className="text-vintiz-black/70 leading-relaxed">
             Scaleway SAS<br />
-            8 rue de la Ville l&apos;Eveque<br />
+            8 rue de la Ville l&apos;Évêque<br />
             75008 Paris, France
           </p>
 
-          <h2 className="font-serif text-xl text-vintiz-black mt-8 mb-3">Donnees personnelles</h2>
+          <h2 className="font-serif text-xl text-vintiz-black mt-8 mb-3">
+            Données personnelles &amp; DPO
+          </h2>
           <p className="text-vintiz-black/70 leading-relaxed">
-            Les informations recueillies sur ce site sont destinees a Vintiz pour la gestion de la relation client et l&apos;envoi de newsletters. Conformement au RGPD, vous disposez d&apos;un droit d&apos;acces, de rectification et de suppression de vos donnees. Pour exercer ces droits, contactez-nous en boutique ou par le formulaire de contact.
+            Le responsable de traitement des données collectées sur ce site est
+            Vintiz, immatriculé à Vernon. Vous pouvez exercer vos droits
+            d&apos;accès, rectification, suppression et portabilité directement
+            depuis votre espace client (rubrique <em>Confidentialité &amp;
+            RGPD</em>) ou par email auprès du Délégué à la Protection des
+            Données&nbsp;:
+            {" "}
+            <a
+              href="mailto:dpo@solidarite-textiles.fr"
+              className="text-teal underline"
+            >
+              dpo@solidarite-textiles.fr
+            </a>
+            .
           </p>
+          <p className="text-vintiz-black/70 leading-relaxed mt-3">
+            Sous-traitants principaux&nbsp;:
+          </p>
+          <ul className="list-disc pl-6 text-vintiz-black/70 leading-relaxed">
+            <li>
+              <strong>Anthropic Ireland Ltd.</strong> — service Claude
+              (Personal Shopper, alertes tendance, audit RGPD). Données
+              transmises&nbsp;: embeddings de texte, requêtes de recherche.
+            </li>
+            <li>
+              <strong>Brevo (Sendinblue)</strong> — envoi des emails
+              transactionnels et marketing.
+            </li>
+            <li>
+              <strong>SumUp</strong> — encaissement carte bancaire.
+            </li>
+            <li>
+              <strong>Scaleway SAS</strong> — hébergement applicatif et base
+              de données.
+            </li>
+          </ul>
 
           <h2 className="font-serif text-xl text-vintiz-black mt-8 mb-3">Cookies</h2>
           <p className="text-vintiz-black/70 leading-relaxed">
-            Ce site utilise uniquement des cookies techniques strictement necessaires a son fonctionnement. Aucun cookie publicitaire ou de suivi n&apos;est utilise.
+            Ce site utilise des cookies techniques strictement nécessaires à
+            son fonctionnement et, sous réserve de votre consentement explicite
+            (bandeau de consentement), des cookies de mesure d&apos;audience
+            anonyme (Google Analytics 4 avec IP anonymisée et Consent Mode v2).
+            Aucun cookie publicitaire n&apos;est déposé.
           </p>
 
-          <h2 className="font-serif text-xl text-vintiz-black mt-8 mb-3">Propriete intellectuelle</h2>
+          <h2 className="font-serif text-xl text-vintiz-black mt-8 mb-3">
+            Propriété intellectuelle
+          </h2>
           <p className="text-vintiz-black/70 leading-relaxed">
-            L&apos;ensemble du contenu de ce site (textes, images, logo) est la propriete exclusive de Vintiz. Toute reproduction est interdite sans autorisation prealable.
+            L&apos;ensemble du contenu de ce site (textes, images, logo) est la
+            propriété exclusive de Vintiz. Toute reproduction est interdite
+            sans autorisation préalable.
           </p>
         </div>
       </section>
