@@ -39,7 +39,28 @@ else
 fi
 
 echo "→ Génération design-package.zip"
-( cd "$ROOT" && zip -r -q design-package.zip design-package -x "*.DS_Store" )
+if command -v zip >/dev/null 2>&1; then
+  ( cd "$ROOT" && zip -r -q design-package.zip design-package -x "*.DS_Store" )
+elif command -v python3 >/dev/null 2>&1; then
+  python3 - <<PY
+import os
+import zipfile
+root = "$ROOT"
+out = os.path.join(root, "design-package.zip")
+src = os.path.join(root, "design-package")
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+    for dirpath, _dirs, files in os.walk(src):
+        for name in files:
+            if name == ".DS_Store":
+                continue
+            path = os.path.join(dirpath, name)
+            arc = os.path.relpath(path, root)
+            zf.write(path, arc)
+PY
+else
+  echo "  (skip — ni zip ni python3 disponible)"
+  exit 0
+fi
 SIZE=$(du -h "$ROOT/design-package.zip" | cut -f1)
 echo -e "  ${GREEN}✓${NC} design-package.zip ($SIZE)"
 
