@@ -1051,12 +1051,14 @@ async def personal_shopper_v2(
 ):
     """Build a Personal Shopper v2 recommendation set for a client.
 
-    Pipeline: embedding similarity → diversify by category → size filter →
-    Claude Haiku rewrite (fallback to deterministic template if the API
-    isn't reachable). Manager / staff only — the public flavour goes
-    through ``/api/crm/personal-shopper-v2``.
+    PR2 gating: 403 if the client is not loyalty-active or hasn't
+    granted profiling consent. Manager / staff only — the public
+    flavour goes through ``/api/crm/personal-shopper-v2``.
     """
-    from app.services.personal_shopper import PersonalShopperService
+    from app.services.personal_shopper import (
+        PersonalShopperGatedError,
+        PersonalShopperService,
+    )
 
     try:
         result = await PersonalShopperService(db).recommend(
@@ -1064,6 +1066,8 @@ async def personal_shopper_v2(
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except PersonalShopperGatedError as exc:
+        raise HTTPException(status_code=403, detail=exc.reason)
     await db.commit()
     return result
 
@@ -1077,21 +1081,162 @@ async def public_personal_shopper_v2(
 ):
     """Public flavour of Personal Shopper v2 — email-based lookup.
 
-    Same pipeline as the authenticated endpoint; the email is the only
-    identification, which mirrors the existing public lookup pattern.
-    Future iteration: magic-link verification before serving (consistent
-    with the RGPD endpoints).
+    PR2 gating: 403 if the customer isn't a member or hasn't opted-in
+    to profiling. Same pipeline as the authenticated endpoint.
     """
-    from app.services.personal_shopper import PersonalShopperService
+    from app.services.personal_shopper import (
+        PersonalShopperGatedError,
+        PersonalShopperService,
+    )
 
     cleaned = _normalize_email(email)
     result_row = await db.execute(select(Client).where(Client.email == cleaned))
     client = result_row.scalar_one_or_none()
     if client is None:
         raise HTTPException(status_code=404, detail="Aucun compte trouvé")
-    result = await PersonalShopperService(db).recommend(
-        client.id, top_n=max(1, min(top_n, 10)), weather_summary=weather,
+    try:
+        result = await PersonalShopperService(db).recommend(
+            client.id, top_n=max(1, min(top_n, 10)), weather_summary=weather,
+        )
+    except PersonalShopperGatedError as exc:
+        raise HTTPException(status_code=403, detail=exc.reason)
+    await db.commit()
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Personal Shopper public toggles + free-text search (PR2)
+# ---------------------------------------------------------------------------
+
+
+class PersonalShopperToggleRequest(BaseModel):
+    email: str
+    enabled: bool
+
+
+class PersonalShopperSearchRequest(BaseModel):
+    email: str
+    q: str
+
+
+async def _resolve_public_client(db: AsyncSession, email: str) -> Client:
+    cleaned = _normalize_email(email)
+    row = await db.execute(select(Client).where(Client.email == cleaned))
+    client = row.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    return client
+
+
+async def _record_consent_toggle(
+    db: AsyncSession, client: Client, purpose: ConsentPurpose, granted: bool
+) -> None:
+    db.add(
+        Consent(
+            client_id=client.id,
+            purpose=purpose,
+            granted=granted,
+            policy_version="v2-2026-04",
+            source="account_self_service",
+        )
     )
+    await db.flush()
+
+
+@router.post("/account/personal-shopper/toggle")
+async def toggle_personal_shopper(
+    payload: PersonalShopperToggleRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Append a ``profiling`` consent row from the client space.
+
+    Public endpoint (no JWT yet — magic-link cookie comes in PR3).
+    Returns 204 on success even if the toggle is a no-op (idempotent
+    UX); the underlying consent ledger keeps the full history.
+    """
+    from fastapi import Response
+
+    client = await _resolve_public_client(db, payload.email)
+    await _record_consent_toggle(
+        db, client, ConsentPurpose.profiling, payload.enabled
+    )
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/account/trend-alerts/toggle")
+async def toggle_trend_alerts(
+    payload: PersonalShopperToggleRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Subscribe / unsubscribe from the trend product alerts (PR2)."""
+    from fastapi import Response
+
+    client = await _resolve_public_client(db, payload.email)
+    await _record_consent_toggle(
+        db, client, ConsentPurpose.trend_alerts, payload.enabled
+    )
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/account/personal-shopper/search")
+async def personal_shopper_search(
+    payload: PersonalShopperSearchRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Free-text search of the live inventory (PR2 sémantique).
+
+    Gated like the rest of the Personal Shopper: the client must be
+    a loyalty member with profiling consent granted.
+    """
+    from app.services.loyalty import loyalty_active
+    from app.services.personal_shopper_search import search
+
+    client = await _resolve_public_client(db, payload.email)
+    if not loyalty_active(client):
+        raise HTTPException(status_code=403, detail="loyalty_required")
+
+    consent_row = await db.execute(
+        select(Consent)
+        .where(
+            Consent.client_id == client.id,
+            Consent.purpose == ConsentPurpose.profiling,
+        )
+        .order_by(Consent.created_at.desc())
+        .limit(1)
+    )
+    consent = consent_row.scalar_one_or_none()
+    if consent is None or not consent.granted:
+        raise HTTPException(status_code=403, detail="profiling_consent_required")
+
+    return await search(db, payload.q)
+
+
+@router.get("/account/personal-shopper/live")
+async def personal_shopper_live(
+    email: str = Query(..., min_length=5, max_length=255),
+    top_n: int = 8,
+    db: AsyncSession = Depends(get_db),
+):
+    """Live recommendation feed for the espace client (gated).
+
+    Mirrors :func:`public_personal_shopper_v2` but returns the bare
+    products payload the public site renders without the Claude
+    narrative — the narrative is a manager-side concern.
+    """
+    from app.services.personal_shopper import (
+        PersonalShopperGatedError,
+        PersonalShopperService,
+    )
+
+    client = await _resolve_public_client(db, email)
+    try:
+        result = await PersonalShopperService(db).recommend(
+            client.id, top_n=max(1, min(top_n, 10))
+        )
+    except PersonalShopperGatedError as exc:
+        raise HTTPException(status_code=403, detail=exc.reason)
     await db.commit()
     return result
 

@@ -1172,3 +1172,18 @@ async def update_loyalty_config(
     return cfg.to_dict()
 
 
+# ---------------------------------------------------------------------------
+# Trend alerts manual trigger (PR2)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/trend-alerts/run", dependencies=[Depends(manager_only)])
+async def trigger_trend_alerts(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Run the trend-alerts cron once on demand. Returns a per-step summary."""
+    from app.services.trend_alerts import run_trend_alerts
+
+    summary = await run_trend_alerts(db)
+    await db.commit()
+    return summary
+
+

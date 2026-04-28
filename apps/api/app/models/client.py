@@ -27,6 +27,7 @@ class ConsentPurpose(str, enum.Enum):
     email_marketing = "email_marketing"
     sms_marketing = "sms_marketing"
     profiling = "profiling"        # Personal Shopper / AI recommendations
+    trend_alerts = "trend_alerts"  # Email push when a trending product matches taste profile
     data_sharing = "data_sharing"  # Future B2B sharing — kept for forward compat
 
 
@@ -76,6 +77,12 @@ class Client(Base):
     )
     loyalty_subscription_mode: Mapped[str | None] = mapped_column(
         String(20), nullable=True
+    )
+
+    # Last time a trend-alert email was sent — used by the cron's
+    # frequency cap (1 alert / 7 days max). Nullable until the first send.
+    last_trend_alert_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     loyalty_account: Mapped["LoyaltyAccount | None"] = relationship(

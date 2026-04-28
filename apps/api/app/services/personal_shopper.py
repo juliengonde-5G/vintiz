@@ -51,6 +51,24 @@ DEFAULT_TOP_N = 4
 CANDIDATE_FANOUT = 6
 
 
+class PersonalShopperGatedError(PermissionError):
+    """Raised when a customer is not allowed to use the Personal Shopper.
+
+    ``reason`` is one of:
+
+    - ``loyalty_required`` — no active loyalty membership.
+    - ``profiling_consent_required`` — loyalty active but RGPD profiling
+      consent missing or revoked.
+
+    Routers translate this to HTTP 403 + a ``detail`` the public site
+    surfaces as either an adhesion CTA or a consent toggle.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 def _format_currency(value) -> str:
     return f"{float(value):.2f}".replace(".", ",") + " €"
 
@@ -165,8 +183,11 @@ class PersonalShopperService:
         }``
 
         Raises ``LookupError`` if the customer doesn't exist.
+        Raises ``PersonalShopperGatedError`` if the customer is not a
+        loyalty member or hasn't granted profiling consent (PR2 gating).
         """
         customer = await self._load_customer(customer_id)
+        await self._enforce_gating(customer)
 
         profile = await self._load_or_build_profile(customer_id)
 
@@ -293,6 +314,37 @@ class PersonalShopperService:
         if customer is None:
             raise LookupError(f"Client {customer_id} not found")
         return customer
+
+    async def _enforce_gating(self, customer: Client) -> None:
+        """PR2: Personal Shopper is members-only with explicit profiling consent.
+
+        Two checks, both raising :class:`PersonalShopperGatedError`:
+
+        1. ``loyalty_active`` — the customer must hold a non-expired
+           loyalty account (24-month rolling window). Non-members get
+           pushed to the adhesion CTA.
+        2. ``profiling`` consent — even members must opt-in to the
+           profilage RGPD purpose before their taste profile is used.
+           Toggleable from /account/shopper.
+        """
+        from app.models.client import Consent, ConsentPurpose
+        from app.services.loyalty import loyalty_active
+
+        if not loyalty_active(customer):
+            raise PersonalShopperGatedError("loyalty_required")
+
+        latest = await self.db.execute(
+            select(Consent)
+            .where(
+                Consent.client_id == customer.id,
+                Consent.purpose == ConsentPurpose.profiling,
+            )
+            .order_by(Consent.created_at.desc())
+            .limit(1)
+        )
+        consent = latest.scalar_one_or_none()
+        if consent is None or not consent.granted:
+            raise PersonalShopperGatedError("profiling_consent_required")
 
     async def _load_or_build_profile(
         self, customer_id: uuid.UUID

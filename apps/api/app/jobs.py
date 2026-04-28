@@ -333,6 +333,21 @@ async def run_daily_loyalty_expiry() -> None:
         logger.error("Loyalty expiry job failed: %s", exc)
 
 
+async def run_daily_trend_alerts() -> None:
+    """Send trend product alerts to opt-in clients (PR2). 11:00 Paris."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.trend_alerts import run_trend_alerts
+
+        async with AsyncSession(engine) as db:
+            summary = await run_trend_alerts(db)
+            await db.commit()
+            logger.info("Trend alerts cron: %s", summary)
+    except Exception as exc:
+        logger.error("Trend alerts cron failed: %s", exc)
+
+
 def register_all_jobs(scheduler) -> None:
     """Register all cron jobs with the given APScheduler instance."""
     from apscheduler.triggers.cron import CronTrigger
@@ -420,5 +435,11 @@ def register_all_jobs(scheduler) -> None:
         run_daily_loyalty_expiry,
         CronTrigger(hour=3, minute=30),
         id="daily_loyalty_expiry",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_daily_trend_alerts,
+        CronTrigger(hour=11, minute=0),
+        id="daily_trend_alerts",
         replace_existing=True,
     )
