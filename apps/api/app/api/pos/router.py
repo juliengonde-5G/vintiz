@@ -870,6 +870,44 @@ async def subscribe_loyalty(
     }
 
 
+@router.get("/clients/{client_id}/companion")
+async def pos_companion(
+    client_id: uuid.UUID,
+    cart_total_cents: int = 0,
+    items: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cart-aware up-sell payload for the POS companion panel (PR4).
+
+    ``items`` is a comma-separated list of product UUIDs already in the
+    cart. Empty cart is supported — the suggestions block is just empty.
+    """
+    cart_product_ids: list[uuid.UUID] = []
+    if items:
+        for raw in items.split(","):
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                cart_product_ids.append(uuid.UUID(raw))
+            except ValueError:
+                continue
+
+    from app.services.pos_companion import companion_payload
+
+    try:
+        payload = await companion_payload(
+            db,
+            client_id=client_id,
+            cart_total_cents=max(0, int(cart_total_cents)),
+            cart_product_ids=cart_product_ids,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return payload
+
+
 @router.get("/clients/identify")
 async def identify_client_pos(
     q: str,

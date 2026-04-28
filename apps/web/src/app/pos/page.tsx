@@ -9,6 +9,7 @@ import Modal from '@/components/ui/Modal';
 import Card from '@/components/ui/Card';
 import CashierPinModal from '@/components/cashier/CashierPinModal';
 import LoyaltyCustomerCard, { type CustomerBrief } from '@/components/pos/LoyaltyCustomerCard';
+import ClientCompanion from '@/components/pos/ClientCompanion';
 import { api } from '@/lib/api';
 import { useConnectivity } from '@/lib/connectivity';
 import {
@@ -1076,6 +1077,23 @@ export default function POSPage() {
                 brief={customerBrief}
                 onTapPick={addPickToCart}
                 onClose={() => setCustomerBrief(null)}
+              />
+            </div>
+          )}
+
+          {/* PR4 — Companion caisse: cart-aware up-sells (loyalty, suggestions, coupons, alerts) */}
+          {selectedClient && (
+            <div className="px-3 pt-2">
+              <ClientCompanion
+                clientId={selectedClient.id}
+                cartTotalCents={Math.round(cartTotal * 100)}
+                cartProductIds={cart
+                  .map((item) => item.product_id)
+                  .filter((id): id is string => Boolean(id))}
+                onAddSuggestion={addPickToCart}
+                onApplyCoupon={(code) => {
+                  setCouponCode(code);
+                }}
               />
             </div>
           )}

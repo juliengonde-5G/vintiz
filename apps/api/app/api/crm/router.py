@@ -285,6 +285,192 @@ async def list_clients(
     ]
 
 
+@router.get("/clients/{client_id}/full")
+async def get_client_full(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Aggregated client detail for the admin /clients/[id] page (PR4).
+
+    Returns 6 sections in a single round-trip:
+    - ``client``         — identity, contact, opt-ins, RFM, avoir.
+    - ``loyalty``        — membership_number, points, mode, expiry.
+    - ``transactions``   — last 50 sales/refunds with item names.
+    - ``taste_profile``  — top categories/brands/colors/sizes (90d window).
+    - ``consents``       — latest decision per RGPD purpose with metadata.
+    - ``audit``          — last 50 audit_log rows scoped to this client.
+    """
+    from sqlalchemy.orm import selectinload
+
+    from app.models.audit import AuditLog
+    from app.models.coupon import Coupon
+    from app.services.customer_brief import get_customer_brief
+
+    row = await db.execute(
+        select(Client)
+        .options(selectinload(Client.loyalty_account))
+        .where(Client.id == client_id)
+    )
+    client = row.scalar_one_or_none()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # Reuse the existing brief — it already aggregates favorite
+    # categories / brands / colors / sizes + last visit.
+    brief = await get_customer_brief(db, client_id)
+    taste = {
+        "favorite_categories": (brief or {}).get("favorite_categories", []),
+        "favorite_brands": (brief or {}).get("favorite_brands", []),
+        "favorite_colors": (brief or {}).get("favorite_colors", []),
+        "size_profile": (brief or {}).get("size_profile", {}),
+        "lifetime_value": (brief or {}).get("lifetime_value", 0),
+        "last_visit": (brief or {}).get("last_visit"),
+        "days_since_last_visit": (brief or {}).get("days_since_last_visit"),
+    }
+
+    # Last 50 transactions with item names + payment summary.
+    from app.models.pos import TransactionItem
+
+    tx_rows = await db.execute(
+        select(Transaction)
+        .options(
+            selectinload(Transaction.items).selectinload(TransactionItem.product),
+            selectinload(Transaction.payments),
+        )
+        .where(Transaction.client_id == client_id)
+        .order_by(Transaction.created_at.desc())
+        .limit(50)
+    )
+    transactions = []
+    for t in tx_rows.scalars().all():
+        transactions.append({
+            "id": str(t.id),
+            "transaction_number": t.transaction_number,
+            "transaction_type": t.transaction_type.value,
+            "total_ttc": float(t.total_ttc or 0),
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "item_count": len(t.items or []),
+            "payment_methods": sorted({p.method.value for p in (t.payments or [])}),
+        })
+
+    # Loyalty ledger — last 30 entries.
+    loyalty_block = None
+    if client.loyalty_account:
+        ledger_rows = await db.execute(
+            select(LoyaltyTransaction)
+            .where(LoyaltyTransaction.account_id == client.loyalty_account.id)
+            .order_by(LoyaltyTransaction.created_at.desc())
+            .limit(30)
+        )
+        loyalty_block = {
+            "membership_number": client.loyalty_account.membership_number,
+            "points": int(client.loyalty_account.points or 0),
+            "mode": client.loyalty_subscription_mode,
+            "subscribed_at": client.loyalty_subscribed_at.isoformat()
+            if client.loyalty_subscribed_at else None,
+            "expires_at": client.loyalty_expires_at.isoformat()
+            if client.loyalty_expires_at else None,
+            "ledger": [
+                {
+                    "id": str(lt.id),
+                    "type": lt.tx_type.value,
+                    "points": int(lt.points or 0),
+                    "description": lt.description,
+                    "created_at": lt.created_at.isoformat() if lt.created_at else None,
+                }
+                for lt in ledger_rows.scalars().all()
+            ],
+        }
+
+    # Consents — same shape as /account/consents (latest per purpose).
+    consent_rows = await db.execute(
+        select(Consent)
+        .where(Consent.client_id == client_id)
+        .order_by(Consent.created_at.desc())
+    )
+    latest_per_purpose: dict[ConsentPurpose, Consent] = {}
+    for c in consent_rows.scalars().all():
+        latest_per_purpose.setdefault(c.purpose, c)
+    consents = [
+        {
+            "purpose": purpose.value,
+            "granted": bool(latest_per_purpose[purpose].granted)
+            if purpose in latest_per_purpose else False,
+            "source": latest_per_purpose[purpose].source if purpose in latest_per_purpose else None,
+            "policy_version": latest_per_purpose[purpose].policy_version
+            if purpose in latest_per_purpose else None,
+            "recorded_at": latest_per_purpose[purpose].created_at.isoformat()
+            if purpose in latest_per_purpose and latest_per_purpose[purpose].created_at else None,
+        }
+        for purpose in ConsentPurpose
+    ]
+
+    # Audit log — entity_id == client.id is the simplest scoping; the
+    # audit service writes one row per Client mutation already.
+    audit_rows = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.entity_id == client_id)
+        .order_by(AuditLog.created_at.desc())
+        .limit(50)
+    )
+    audit = [
+        {
+            "id": str(a.id),
+            "action": a.action,
+            "entity": a.entity,
+            "data": a.data,
+            "user_id": str(a.user_id) if a.user_id else None,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        }
+        for a in audit_rows.scalars().all()
+    ]
+
+    # Active coupons attached.
+    coupon_rows = await db.execute(
+        select(Coupon)
+        .where(
+            Coupon.client_id == client_id,
+            Coupon.is_active.is_(True),
+            Coupon.redeemed_at.is_(None),
+        )
+        .order_by(Coupon.valid_until.asc())
+    )
+    coupons = [
+        {
+            "code": c.code,
+            "discount_type": c.discount_type.value,
+            "discount_value": float(c.discount_value or 0),
+            "source": c.source.value if c.source else None,
+            "valid_until": c.valid_until.isoformat() if c.valid_until else None,
+        }
+        for c in coupon_rows.scalars().all()
+    ]
+
+    return {
+        "client": {
+            "id": str(client.id),
+            "first_name": client.first_name,
+            "last_name": client.last_name,
+            "email": client.email,
+            "phone": client.phone,
+            "notes": client.notes,
+            "email_optin": client.email_optin,
+            "sms_optin": client.sms_optin,
+            "rfm_segment": client.rfm_segment,
+            "avoir_balance": float(client.avoir_credit or 0),
+            "deletion_pending": client.deletion_requested_at is not None,
+            "created_at": client.created_at.isoformat() if client.created_at else None,
+        },
+        "loyalty": loyalty_block,
+        "taste_profile": taste,
+        "transactions": transactions,
+        "consents": consents,
+        "coupons": coupons,
+        "audit": audit,
+    }
+
+
 @router.get("/clients/{client_id}")
 async def get_client(
     client_id: uuid.UUID,

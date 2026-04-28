@@ -1187,3 +1187,27 @@ async def trigger_trend_alerts(db: Annotated[AsyncSession, Depends(get_db)]):
     return summary
 
 
+# ---------------------------------------------------------------------------
+# Predictive targeting (PR4)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/predictive/audience", dependencies=[Depends(manager_only)])
+async def predictive_audience_debug(
+    period_days: int = 90,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+):
+    """Snapshot of dominant tastes among the loyalty-active cohort.
+
+    Used as a debug + diagnostic for the scoring engine: if this list
+    looks "off", the ``audience=loyal_active`` weighting will too.
+    """
+    from app.services.predictive_targeting import (
+        dominant_tastes_loyal_active,
+        serialize_dominant,
+    )
+
+    result = await dominant_tastes_loyal_active(db, period_days=max(7, min(period_days, 365)))
+    return serialize_dominant(result)
+
+

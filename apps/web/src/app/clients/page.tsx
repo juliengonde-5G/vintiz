@@ -296,13 +296,21 @@ export default function ClientsPage() {
             data={tableData}
             emptyMessage="Aucun client trouve"
             actions={(row) => (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => openDetail(row as unknown as Client)}
-              >
-                Voir
-              </Button>
+              <div className="flex gap-1">
+                <a
+                  href={`/clients/${(row as unknown as Client).id}`}
+                  className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-lg bg-teal text-white hover:bg-teal/90"
+                >
+                  Fiche
+                </a>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openDetail(row as unknown as Client)}
+                >
+                  Aperçu
+                </Button>
+              </div>
             )}
           />
         )}
