@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
@@ -65,6 +65,7 @@ type Tab = 'overview' | 'products' | 'ai' | 'settings';
 
 export default function ZoneDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const zoneId = params?.id as string;
 
   const [tab, setTab] = useState<Tab>('overview');
@@ -154,22 +155,26 @@ export default function ZoneDetailPage() {
   }
 
   if (!zone) {
+    // Redirect transparently to /zones — the ID was rebuilt by a previous
+    // migration and is no longer in the catalogue.
+    if (typeof window !== 'undefined') {
+      setTimeout(() => router.replace('/zones'), 1500);
+    }
     return (
       <div className="min-h-screen bg-cream">
         <Sidebar />
         <main className="md:ml-64 p-8">
-          <Link href="/zones" className="inline-flex items-center gap-2 text-sm text-teal hover:text-teal-700 mb-4">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Retour au plan
-          </Link>
           <Card>
             <h2 className="font-display text-lg mb-2">Zone introuvable</h2>
             <p className="text-sm text-gray-500">
-              L'identifiant <code className="text-xs bg-gray-100 px-1 rounded">{zoneId}</code> ne correspond
-              à aucun espace de la boutique. Le plan a peut-être été ré-initialisé depuis votre dernière visite.
+              Cette zone n&apos;existe plus dans la boutique. Redirection vers le plan…
             </p>
+            <Link href="/zones" className="inline-flex items-center gap-2 text-sm text-teal hover:text-teal-700 mt-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Retour au plan
+            </Link>
           </Card>
         </main>
       </div>
