@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vintiz — Mon espace (preview)</title>
+    <link rel="stylesheet" href="../fonts/google-fonts.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              teal: {
+                DEFAULT: "#008678",
+                50: "#E6F3F1",
+                100: "#B3DDD8",
+                500: "#008678",
+                600: "#006B61",
+              },
+              pink: {
+                DEFAULT: "#FFC5DF",
+                100: "#FFEAF3",
+                300: "#FFC5DF",
+              },
+              cream: "#FFF3ED",
+            },
+            fontFamily: {
+              display: ["Lexend Mega", "Poppins", "system-ui", "sans-serif"],
+              sans: ["Poppins", "system-ui", "sans-serif"],
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="bg-cream font-sans">
+    <main class="max-w-6xl mx-auto px-4 pt-12 pb-24 md:flex md:gap-8">
+      <!-- Side nav -->
+      <aside class="hidden md:block w-64 shrink-0">
+        <div class="space-y-6">
+          <div>
+            <p class="text-xs uppercase tracking-wider text-gray-500 mb-1">Connectée</p>
+            <p class="text-sm font-medium text-black">alice@email.fr</p>
+          </div>
+          <nav class="space-y-1">
+            <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium bg-teal text-white">
+              <span>👤</span><span>Mon espace</span>
+            </a>
+            <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-black hover:bg-pink/30">
+              <span>💳</span><span>Ma fidélité</span>
+            </a>
+            <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-black hover:bg-pink/30">
+              <span>✨</span><span>Personal Shopper</span>
+            </a>
+            <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-black hover:bg-pink/30">
+              <span>🛍️</span><span>Sélection du moment</span>
+            </a>
+            <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-black hover:bg-pink/30">
+              <span>🎁</span><span>Offres</span>
+            </a>
+            <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-black hover:bg-pink/30">
+              <span>📜</span><span>Historique</span>
+            </a>
+            <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-black hover:bg-pink/30">
+              <span>🔒</span><span>Confidentialité</span>
+            </a>
+          </nav>
+        </div>
+      </aside>
+
+      <!-- Content -->
+      <section class="flex-1 min-w-0">
+        <header class="mb-8">
+          <h1 class="text-3xl font-display font-bold text-black">Mon espace</h1>
+          <p class="text-gray-600 mt-1">Bonjour Alice 👋</p>
+        </header>
+
+        <div class="grid gap-6 md:grid-cols-2">
+          <article class="bg-white rounded-2xl shadow-sm p-5">
+            <p class="text-xs uppercase tracking-wider text-gray-500 mb-1">Carte fidélité</p>
+            <p class="text-2xl font-display font-semibold text-black">V482931</p>
+            <p class="text-sm text-gray-600 mt-1">120 points · expire dans 23 mois</p>
+            <a class="mt-3 inline-block text-sm text-teal underline font-medium">Voir ma carte →</a>
+          </article>
+          <article class="bg-white rounded-2xl shadow-sm p-5">
+            <p class="text-xs uppercase tracking-wider text-gray-500 mb-1">Avoir disponible</p>
+            <p class="text-2xl font-display font-semibold text-black">12,50 €</p>
+            <p class="text-sm text-gray-600 mt-1">Utilisable au prochain passage en caisse</p>
+          </article>
+          <article class="bg-white rounded-2xl shadow-sm p-5">
+            <p class="text-xs uppercase tracking-wider text-gray-500 mb-1">Personal Shopper</p>
+            <p class="text-2xl font-display font-semibold text-black">Sélection IA</p>
+            <p class="text-sm text-gray-600 mt-1">8 pièces choisies pour vous, en boutique</p>
+            <a class="mt-3 inline-block text-sm text-teal underline font-medium">Découvrir →</a>
+          </article>
+          <article class="bg-white rounded-2xl shadow-sm p-5">
+            <p class="text-xs uppercase tracking-wider text-gray-500 mb-1">Mes achats</p>
+            <p class="text-2xl font-display font-semibold text-black">Historique</p>
+            <p class="text-sm text-gray-600 mt-1">Tickets téléchargeables</p>
+            <a class="mt-3 inline-block text-sm text-teal underline font-medium">Consulter →</a>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

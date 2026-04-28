@@ -197,7 +197,6 @@ Base URL: `http://localhost:8000`
 | **Cahier** | `/api/cahier` | Cahier de travail journalier (objectifs, signatures) |
 | **Newsletter** | `/api/newsletter` | Subscribe RGPD, unsubscribe 1-clic, export CSV |
 | **SEO** | `/api/seo` | Smoke tests sitemap / robots / metas / OG / JSON-LD |
-| **Réservations** | `/api/reservations` | Hold 48h (manager + lookup public) |
 
 ### Endpoints clés
 
@@ -350,17 +349,36 @@ POST   /api/admin/anniversary/run                  Trigger manuel cron anniversa
 POST   /api/admin/new-arrivals/run                 Trigger manuel digest hebdo nouvelles arrivées
 GET    /api/admin/coupons?only_active=true         Liste coupons (manager only)
 
-# Phase 4 — Réservation 48h (P4-005)
-GET    /api/reservations?only_active=true          Liste réservations (manager)
-POST   /api/reservations                           Créer un hold (manager — body: client_id, product_id, hold_hours, notes)
-POST   /api/reservations/{id}/cancel               Annuler une réservation (manager)
-GET    /api/reservations/lookup?email=             Lookup public par email (carte cliente)
-
-# Phase 4 — POS AI badges (P4-010) + redemption coupon/réservation
+# Phase 4 — POS AI badges (P4-010) + redemption coupon
 GET    /api/inventory/products/{id}/insights       Badges contextuels pour la caisse
 POST   /api/pos/coupons/validate                   Preview coupon (body: code, cart_total, client_id?)
-GET    /api/pos/products/{id}/reservation-holder   Warning bandeau caisse (cliente qui tient l'article)
-POST   /api/pos/transactions                       (modifié) accepte coupon_code? + auto-redeem réservation
+POST   /api/pos/transactions                       Crée vente (accepte coupon_code? optionnel)
+
+# Refonte Relation Client — PR1: Magic-link + souscription + ticket fidélité
+POST   /api/auth/magic-link/request                Issue OTP 6 chiffres email (public, 204 toujours, anti-énumération)
+POST   /api/auth/magic-link/verify                 Échange OTP → JWT client 1h (public)
+POST   /api/pos/loyalty/subscribe                  Crée carte V###### au POS avec opt-ins RGPD (manager, 409 si email existant)
+GET    /api/pos/clients/identify?q=                Identifie client par V######, email, phone (manager)
+GET    /api/admin/loyalty/config                   Lit config souscription (mode + prix + seuil) (manager)
+PUT    /api/admin/loyalty/config                   Modifie config 3 modes free/paid/first_purchase (manager)
+
+# Refonte Relation Client — PR2: Personal Shopper + alertes tendance
+POST   /api/crm/account/personal-shopper/toggle    Pose/retire consent profilage (public, body: email, enabled)
+POST   /api/crm/account/trend-alerts/toggle        Pose/retire consent trend_alerts (public)
+POST   /api/crm/account/personal-shopper/search    Recherche sémantique texte libre (gated, body: email, q)
+GET    /api/crm/account/personal-shopper/live      Sélection PS live gated (membre + profilage)
+POST   /api/admin/trend-alerts/run                 Trigger manuel cron alertes tendance (manager)
+
+# Refonte Relation Client — PR3: espace client RGPD (6 zones)
+GET    /api/crm/account/coupons?email=             Liste coupons actifs cliente (public)
+GET    /api/crm/account/transactions?email=        Historique paginé avec items (public, limit ≤100)
+GET    /api/crm/account/consents?email=            Liste consents lisible (5 purposes, granted/source/recorded_at)
+POST   /api/crm/account/consents/{purpose}         Toggle consent générique (body: email, granted)
+
+# Refonte Relation Client — PR4: companion POS + fiche client + predictive
+GET    /api/pos/clients/{id}/companion?cart_total_cents=&items=  Cart-aware up-sells (manager)
+GET    /api/crm/clients/{id}/full                  Agrégat 6 sections fiche client admin (manager)
+GET    /api/admin/predictive/audience?period_days=90  Snapshot debug dominant tastes loyal_active (manager)
 ```
 
 ## Fonctionnalités principales
@@ -446,11 +464,33 @@ POST   /api/pos/transactions                       (modifié) accepte coupon_cod
 - Search Console : meta `google-site-verification`
 - Smoke tests post-deploy : `GET /api/seo/status` vérifie l'externe (sitemap, metas)
 
-### 10. Espace client (site public)
-- Login par email (sans mot de passe — magic-link prévu cf. AUDIT S8)
-- Carte fidélité (Bronze/Silver/Gold)
-- Historique achats
-- Personal Shopper IA : sélection personnalisée basée sur l'historique
+### 10. Espace client (site public, 6 zones)
+- **Auth magic-link** : OTP 6 chiffres email (10 min TTL, 5 tentatives, rate-limit
+  3/h/email + 30/h/IP), JWT cookie 1 h. Plus de `?email=` dans les URLs.
+- **Carte fidélité unique** : 1 € = 1 pt, n° `V######`, péremption 24 mois
+  sans activité (cron quotidien `daily_loyalty_expiry` 03:30). Carte
+  virtuelle Apple Wallet + Google Wallet. Adhésion 100 % digitale au POS,
+  3 modes admin configurables (gratuite / payante / offerte 1er achat).
+- **Personal Shopper gated** : réservé aux membres avec consent profilage.
+  Recherche sémantique texte libre (« t-shirt blanc taille M ») — Claude Haiku
+  extrait les filtres, cache Redis 24 h.
+- **Alertes tendance** : email auto quand un produit `trend_score>70` matche
+  le taste profile d'une cliente opt-in (frequency cap 7 j, cron 11:00).
+- **Espace client** : 6 zones isolées (`/account` index, `/fidelite`,
+  `/shopper`, `/selection`, `/offres`, `/historique`, `/rgpd`) avec side nav
+  responsive (drawer mobile + sidebar desktop), composants partagés
+  `AccountShell` + `AccountNav`.
+- **RGPD** : page `/account/rgpd` avec consents lisibles, export Article 20,
+  demande suppression 30 j (annulable), DPO `dpo@solidarite-textiles.fr`.
+
+### 11. POS Companion (panneau caisse)
+- À l'identification cliente, panneau latéral auto-rafraîchi (debounce 300 ms)
+  affiche : solde fidélité + gain panier + rachat max 50 %, 3 suggestions
+  complémentaires (mapping `CATEGORY_COMPLEMENTS` robe→accessoires/chaussures…),
+  coupons applicables (bouton "Appliquer"), alertes RFM (`at_risk`, `champion`,
+  `hibernating`) + birthday <7 j + milestone fidélité <14 pts.
+- Fiche client admin `/clients/[id]` : 6 onglets (Synthèse / Achats / Fidélité /
+  Goûts / RGPD / Audit) chargés en 1 requête `GET /crm/clients/{id}/full`.
 
 ## Design tokens (Tailwind)
 

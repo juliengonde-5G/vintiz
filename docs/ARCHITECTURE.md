@@ -174,10 +174,19 @@ ticket -> PR.
   rapport ESS Solidarite Textiles, segmentation RFM mensuelle,
   email gateway Brevo (Brevo > SMTP > simulation), Wallet pass payload
   (Apple .pkpass + Google LoyaltyObject), email anniversaire + coupon
-  -10% 7j, email hebdo nouvelles arrivees, reservation 48h (modele +
-  service + UI + cron + redemption auto au POS), badges IA POS
-  (velocite / stale / marque / score / hold), mobile dashboard sticky.
+  -10% 7j, email hebdo nouvelles arrivees, badges IA POS (velocite /
+  stale / marque / score), mobile dashboard sticky.
+- **Refonte Relation Client (avril 2026)** -- programme fidelite simplifie
+  (1 €=1 pt, V######, peremption 24mo, 3 modes adhesion configurables),
+  magic-link OTP email pour l'espace client (fin du `?email=`),
+  Personal Shopper gated (membre + consent profilage) avec recherche
+  semantique texte libre (Claude Haiku + cache Redis 24h), alertes
+  produit tendance (cron 11:00, frequency cap 7j), espace client en
+  6 zones isolees (`/account` + 5 sous-pages), POS Companion (panneau
+  cart-aware: loyalty + suggestions complementaires + coupons + alertes
+  RFM), fiche client admin `/clients/[id]` 6 onglets, predictive
+  engine `audience='loyal_active'` ×2 multiplier. Suppression complete
+  du systeme de reservation 48h.
 
-Suite : 362 tests pytest, 26 migrations Alembic (dont 0026 — remap des
-11 zones boutique sur `plan.jpg`), 12 crons APScheduler, ~110 endpoints
-REST, 13 pages admin web.
+Suite : 422 tests pytest, 32 migrations Alembic, 15 crons APScheduler,
+~140 endpoints REST, 14 pages admin web.

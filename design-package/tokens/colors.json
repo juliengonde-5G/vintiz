@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json.schemastore.org/design-tokens.json",
+  "_doc": "Vintiz brand palette v2 (2026-04). Single signature color (teal) + warm accent (pink) + neutral base (cream/black/white). Use teal for CTAs, pink for badges/loyalty/celebrations, cream as the background, black for structural text.",
+  "teal": {
+    "DEFAULT": "#008678",
+    "50": "#E6F3F1",
+    "100": "#B3DDD8",
+    "200": "#80C7BF",
+    "300": "#4DB0A6",
+    "400": "#269A8F",
+    "500": "#008678",
+    "600": "#006B61",
+    "700": "#005049"
+  },
+  "pink": {
+    "DEFAULT": "#FFC5DF",
+    "50": "#FFF5FA",
+    "100": "#FFEAF3",
+    "200": "#FFDCEB",
+    "300": "#FFC5DF",
+    "400": "#FFAED0",
+    "500": "#FF97C0",
+    "600": "#E66FA5",
+    "700": "#CC4889"
+  },
+  "cream": "#FFF3ED",
+  "black": "#000000",
+  "white": "#FFFFFF",
+  "_aliases": {
+    "_doc": "Legacy aliases retained for back-compat — new code should use the tokens above.",
+    "vintiz-teal": "#008678",
+    "vintiz-pink": "#FFC5DF",
+    "vintiz-black": "#000000",
+    "vintiz-white": "#FFFFFF",
+    "vintiz-bg": "#FFF3ED"
+  }
+}

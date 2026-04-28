@@ -1,5 +1,156 @@
 # Changelog Vintiz
 
+## [0.8.0] - 2026-04-28 — Refonte Relation Client (4 PRs)
+
+Refonte complète de la relation client autour de 3 piliers : programme
+fidélité simplifié, Personal Shopper réservé aux membres, espace client
+repensé en 6 zones. Backend prédictif enrichi, panneau « compagnon caisse »
+au POS, fiche client détaillée admin. 4 PRs distinctes mergées sur main
+sans interruption de service.
+
+### Added
+
+**PR1 — Fondations fidélité + auth + souscription POS**
+- Migration `0031`: drop `loyalty_accounts.tier`, ajoute `membership_number`
+  format `V######` (V + 6 chiffres) unique avec backfill, ajoute
+  `clients.{loyalty_subscribed_at, loyalty_expires_at, loyalty_subscription_mode}`,
+  table `magic_link_tokens`, seed `app_settings` pour 3 modes souscription.
+- Service `magic_link`: OTP 6 chiffres (10 min TTL, 5 tentatives max,
+  rate-limit 3/h/email + 30/h/IP), JWT client 1 h.
+- Service `membership_id`: génération `V######` retry-safe, lookup, regex.
+- Service `loyalty.subscribe()` avec anti-doublon (`LoyaltyDuplicateError`)
+  + helper `loyalty_active(client) -> bool` exposé pour PS gating.
+- Service `loyalty_expiry`: cron quotidien 03:30, zero les comptes
+  inactifs depuis 24 mois avec une transaction `adjust` négative.
+- Service `loyalty_config`: 3 modes (`free` / `paid` / `first_purchase`)
+  configurables depuis `/settings`.
+- Endpoints: `POST /api/auth/magic-link/{request,verify}`,
+  `POST /api/pos/loyalty/subscribe`, `GET /api/pos/clients/identify`,
+  `GET/PUT /api/admin/loyalty/config`, helper `get_current_client` JWT.
+- POS: bouton « Souscription fidélité » + modal RGPD (CGU/newsletter/profilage),
+  affichage `V######` post-création, gestion 409 doublon.
+- Receipt: footer fidélité (membre = nom + n° + solde + gain ; non-membre =
+  « auriez gagné X pts » + adhésion).
+- Frontend public: `/account/login` magic-link.
+
+**PR2 — Personal Shopper gated + recherche sémantique + alertes tendance**
+- Migration `0032`: ajout `ConsentPurpose.trend_alerts` (PG enum) +
+  `clients.last_trend_alert_at`.
+- `PersonalShopperGatedError` + `_enforce_gating(customer)`: refuse
+  non-membre (`loyalty_required`) ou consent profilage absent/révoqué
+  (`profiling_consent_required`). Branché sur les 2 endpoints v2.
+- Service `personal_shopper_search`:
+  - Normalisation requête (lowercase + tokens triés alpha) → cache key sha1.
+  - Cache Redis 24 h avec fallback in-memory.
+  - Extraction filtres via Claude Haiku 4.5 (JSON strict) + fallback regex
+    (taille / couleur / catégorie / prix max).
+  - Ranking `trend_score` + recency, top 8 produits `stock|display`.
+- Service `trend_alerts`:
+  - Cron quotidien 11:00.
+  - Sélection produits: `trend_score >= 70` arrivés <36 h.
+  - Audience: loyalty active + consent profilage + consent trend_alerts +
+    `last_trend_alert_at` NULL ou >7 j.
+  - Match cosine 0.6 visual + 0.4 text >= 0.65 vs taste profile.
+  - Email Brevo/SMTP/sim avec lien désinscription.
+- Endpoints: `POST /crm/account/personal-shopper/{toggle,search}`,
+  `GET /crm/account/personal-shopper/live`,
+  `POST /crm/account/trend-alerts/toggle`,
+  `POST /admin/trend-alerts/run`.
+- Frontend public `/account/shopper`: hydratation email magic-link,
+  écran bloquant non-membre, toggle 1-clic activation profilage, grille
+  4 colonnes responsive, barre recherche sémantique.
+
+**PR3 — Espace client UX (6 zones) + juridique**
+- Refonte espace client en 6 zones isolées + mobile-first:
+  `/account` (dashboard), `/fidelite`, `/shopper`, `/selection`, `/offres`,
+  `/historique`, `/rgpd`.
+- Composants partagés `AccountShell` + `AccountNav` (drawer mobile +
+  sidebar desktop, hydratation email, déconnexion).
+- 5 endpoints support: `GET /crm/account/{coupons,transactions,consents}`,
+  `POST /crm/account/consents/{purpose}` (toggle générique avec mirror
+  legacy `email_optin`/`sms_optin`).
+- Pages légales: CGV art. 6 réécrit (1 €=1 pt, péremption 24 mois,
+  3 modes adhésion, PS + alertes tendance, pas de vente en ligne) ;
+  mentions légales avec DPO + sous-traitants ; confidentialité avec
+  buckets profilage et trend_alerts détaillés (Anthropic Ireland,
+  durée 36 mois).
+- `/account/rgpd`: consentements lisibles + toggles + export Article 20 +
+  demande suppression 30 j (annulable).
+
+**PR4 — Backend renforcé**
+- Service `pos_companion.companion_payload()`:
+  - Loyalty (points + gain panier + rachat max 50 %).
+  - 3 suggestions complémentaires via mapping `CATEGORY_COMPLEMENTS`
+    (robe→accessoires/chaussures…), ranking `trend_score`.
+  - Coupons applicables (`validate_coupon`).
+  - Alertes RFM (`at_risk`, `champion`, `hibernating`) + birthday <7 j +
+    milestone fidélité <14 pts.
+- Service `predictive_targeting`:
+  - `weighted_sales_count(audience='loyal_active')`: ×2 multiplier sur
+    les ventes des clientes loyalty active, fallback flat si cohorte <30.
+  - `dominant_tastes_loyal_active(period_days=90)`: top catégories /
+    marques / couleurs / tailles.
+- Endpoints: `GET /pos/clients/{id}/companion`,
+  `GET /crm/clients/{id}/full` (6 sections agrégées),
+  `GET /admin/predictive/audience`.
+- Frontend admin `/clients/[id]`: 6 onglets (Synthèse / Achats / Fidélité /
+  Goûts / RGPD / Audit).
+- `/clients` table: bouton "Fiche → /clients/[id]" + bouton "Aperçu" modal.
+- Composant POS `ClientCompanion`: panneau latéral auto-rafraîchi
+  (debounce 300 ms) sur mutation panier.
+
+### Changed
+
+- `cahier_service`: `gold_pct` → `loyalty_pct`, `compute_crm_gold` →
+  `compute_crm_loyalty`, `abonnements_gold` → `adhesions_fidelite`.
+  La sémantique passe de "tier gold" à "tout membre fidélité".
+- `wallet`: drop tier (couleur unique teal `#008678`, label
+  « Carte fidélité Vintiz »), `_membership_number()` lit la valeur
+  persistée plutôt que SHA-derive.
+- `personal_shopper`: drop `tier` du prompt Claude et de `_render_message`.
+- `customer_brief`: drop `tier`, ajoute `membership_number` + `loyalty_active`.
+- `audit.py`: `_SENSITIVE_FIELDS[LoyaltyAccount]` passe de
+  `("tier", "points")` à `("membership_number", "points")`.
+- Frontend admin `/clients`: drop colonne tier, affiche `membership_number`.
+- Frontend admin `/pos`: drop fonctions `tierLabel/tierColor`, modal
+  souscription remplace activation directe.
+
+### Removed
+
+- Système de réservation 48 h: stubs frontend (`/account/data`,
+  `/dev/compte`), checks `smoke_prod.sh`, références dans `purge.py`
+  et `purge_databases.py` (la table avait déjà été drop par migration 0027).
+- Endpoint `/api/reservations/*`, `/api/pos/products/{id}/reservation-holder`
+  (déjà supprimés en backend, doc nettoyée).
+- Page `/account/data` (remplacée par `/account` + 6 sous-pages).
+
+### Breaking changes
+
+- ⚠️ `loyalty_accounts.tier` colonne supprimée. Code consommant cette
+  valeur doit lire `membership_number` (présent sur tous les comptes
+  après backfill 0031).
+- ⚠️ Wallet passes émis avec ancien format `VTZ-XXXXXXXXXX` deviennent
+  invalides — base proche de zéro pré-ouverture, à régénérer pour les
+  comptes existants depuis `/clients`.
+- ⚠️ Endpoints `?email=` sur `/api/crm/account/*` continuent de
+  fonctionner pour PR1-3 mais seront migrés sur JWT cookie dans une
+  itération ultérieure (la PR3 utilise toujours `?email=` côté frontend).
+
+### Tests
+
+- 60 nouveaux tests verts (membership_id, loyalty_subscribe, magic_link,
+  loyalty_expiry, receipt_loyalty_footer, ps_gating, ps_search,
+  trend_alerts, account_endpoints, pos_companion, predictive_targeting,
+  clients_full).
+
+### Hotfix au passage
+
+- `apps/site/src/app/account/login/page.tsx`: apostrophe non échappée
+  (`Modifier l'email…` → `&apos;`) qui faisait échouer le prod build
+  Next.js (commit `ffb5a76`).
+
+---
+
 ## [0.7.1] - 2026-04-27 — Remap boutique 11 zones (plan.jpg)
 
 ### Changed — Plan boutique aligné sur le Lot N°2 réel

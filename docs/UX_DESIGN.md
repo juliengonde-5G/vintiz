@@ -384,12 +384,20 @@ Exemples bons / mauvais :
   dashboard mobile (CA / tickets / panier) en plus du grid responsive
   existant. Reste à faire : bottom-nav iOS-style.
 - ✅ **Cards retail KPIs / ESS / RFM** sur `/reports` (P4-001 / 002 / 007).
-- ✅ **Page Réservations 48h** (`/reservations`) avec autocomplete cliente
-  + article (P4-005).
 - ✅ **Badges IA POS** sous chaque ligne du panier (P4-010) — vélocité,
-  stale, marque, score, hold.
-- ✅ **Wallet preview card** sur l'espace client public `/account/data`
+  stale, marque, score.
+- ✅ **Wallet preview card** sur l'espace client public `/account/fidelite`
   (P4-004) — preview seulement, signing Apple/Google reste à plugger.
+- ✅ **Espace client refondu en 6 zones** (avril 2026) — `/account`
+  (dashboard), `/fidelite`, `/shopper`, `/selection`, `/offres`,
+  `/historique`, `/rgpd`. Chrome partagé `AccountShell` + side nav
+  responsive (drawer mobile + sidebar desktop). Magic-link OTP email,
+  fin du `?email=` dans les URLs.
+- ✅ **POS Companion** — panneau latéral cart-aware (debounce 300 ms)
+  affichant loyalty + 3 suggestions complémentaires + coupons +
+  alertes RFM. Visible dès qu'un client est identifié au POS.
+- ✅ **Fiche client admin** `/clients/[id]` — 6 onglets (Synthèse /
+  Achats / Fidélité / Goûts / RGPD / Audit) chargés en 1 requête.
 
 ### Backlog encore à designer (post-Phase 4)
 

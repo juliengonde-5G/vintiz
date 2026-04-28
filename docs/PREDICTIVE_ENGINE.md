@@ -354,5 +354,100 @@ curl -X POST http://localhost:8000/api/admin/scoring/monthly-update \
 | `OPENWEATHER_API_KEY` | requis météo | Sans clé : widget indisponible |
 | `STALE_WEEKS` | 4 (défaut) | Seuil produits "stale" |
 | TVA | 20% | Calcul fiscal intégré |
-| Points fidélité | 1pt = 0,10€ | Valeur point fidélité |
-| Loyalty tier seuils | Bronze<100, Silver<200, Gold≥200 | Niveaux fidélité |
+| Points fidélité | 1 pt = 0,10 € | Valeur point fidélité |
+| Péremption fidélité | 24 mois sans activité | Cron `daily_loyalty_expiry` 03:30 |
+| Adhésion fidélité | `free` / `paid` / `first_purchase` | Configurable `/admin/loyalty/config` |
+
+---
+
+## 9. Ciblage `loyal_active` + alertes tendance (PR2 / PR4)
+
+### 9.1 Audience-aware scoring
+
+Le service `predictive_targeting` expose deux helpers consommés par le
+scoring engine et le dashboard admin :
+
+```python
+from app.services.predictive_targeting import (
+    weighted_sales_count,
+    dominant_tastes_loyal_active,
+)
+
+# Comptage des ventes par catégorie pondéré par audience cible.
+counts = await weighted_sales_count(db, audience="loyal_active")
+# → {category_id: weighted_count}
+# audience='all' (défaut) → 1 par item.
+# audience='loyal_active' → ×2 sur les ventes faites par une cliente
+#   loyalty active. Fallback flat si la cohorte loyal_active < 30
+#   pour éviter de pénaliser les zones servant aussi les visiteurs.
+
+# Top tastes de la cohorte loyal_active sur 90 jours par défaut.
+tastes = await dominant_tastes_loyal_active(db, period_days=90, top_n=10)
+# DominantTastes(top_categories, top_brands, top_colors, top_sizes,
+#                cohort_size, period_days)
+```
+
+Endpoint debug : `GET /api/admin/predictive/audience?period_days=90`.
+
+### 9.2 Alertes nouveautés tendance
+
+Cron quotidien `daily_trend_alerts` à 11:00 (`app/jobs.py`,
+`app/services/trend_alerts.py`) :
+
+1. Sélectionne les produits ajoutés depuis 36 h avec
+   `trend_score >= 70` et `status ∈ {stock, display}`.
+2. Filtre l'audience : loyalty active, consent `trend_alerts` granted,
+   consent `profiling` granted (taste profile requis), et
+   `last_trend_alert_at` NULL ou plus vieux que 7 jours.
+3. Pour chaque cliente eligible, calcule la similarité cosine avec son
+   `CustomerTasteProfile` (visual 0.6 + text 0.4) ; envoie un email
+   Brevo si la meilleure correspondance dépasse 0.65.
+4. Met à jour `Client.last_trend_alert_at` après envoi.
+
+Constantes ajustables : `TREND_SCORE_THRESHOLD=70`,
+`MATCH_THRESHOLD=0.65`, `ALERT_FREQUENCY_DAYS=7`,
+`MAX_PRODUCTS_PER_RUN=50`, `NEW_ARRIVAL_WINDOW_HOURS=36`.
+
+Trigger manuel : `POST /api/admin/trend-alerts/run` (manager only).
+
+### 9.3 Recherche sémantique Personal Shopper
+
+`app/services/personal_shopper_search.py` permet aux membres opt-in
+profilage de saisir une requête libre type *« je cherche un t-shirt
+blanc taille M »*. Pipeline :
+
+1. Normalisation requête (lowercase + tokens triés alphabétiquement)
+   → clé de cache SHA1.
+2. Cache Redis 24 h (`ps_search:<sha1>`) avec fallback in-memory pour
+   les environnements sans Redis. Stocke uniquement les ids — les
+   produits sont rechargés à chaque hit pour éliminer les articles
+   vendus depuis l'écriture du cache.
+3. Cache miss → Claude Haiku 4.5 extrait
+   `{category, color, size, max_price_eur}` en JSON strict. Fallback
+   regex sur 12 catégories, 12 couleurs et 6 tailles
+   (`XS/S/M/L/XL/XXL` ou numérique).
+4. Inventory query : produits `stock|display` filtrés sur les
+   attributs extraits, ranking `trend_score` puis `shelf_date` desc,
+   top 8.
+
+Endpoint : `POST /api/crm/account/personal-shopper/search`
+(body `{email, q}`), 403 si non-membre ou consent profilage absent.
+
+### 9.4 POS Companion (cart-aware up-sells)
+
+`app/services/pos_companion.companion_payload()` agrège en un appel les
+informations qui pilotent l'écran POS au moment de l'identification
+client (cf. `apps/web/src/components/pos/ClientCompanion.tsx`,
+auto-rafraîchi avec un debounce 300 ms à chaque mutation panier) :
+
+- `loyalty.points_current` + `would_earn` (1 € = 1 pt) +
+  `can_redeem_max_cents` (1 pt = 0,10 €, plafond 50 % du panier).
+- `suggestions` : 3 produits issus du mapping `CATEGORY_COMPLEMENTS`
+  (robe → accessoires/chaussures/sac/veste, jean → chemise/pull/
+  ceinture/chaussures, etc.), rankés par `trend_score`.
+- `coupons` : retours de `validate_coupon` pour chaque coupon actif,
+  filtrés à ceux qui passent (cart_total ≥ minimum, pas expiré, etc.).
+- `alerts` : segment RFM (`at_risk`, `champion`, `hibernating`),
+  birthday window 7 j, milestone fidélité < 14 pts du prochain palier.
+
+Endpoint : `GET /api/pos/clients/{id}/companion?cart_total_cents=…&items=uuid,uuid`.
