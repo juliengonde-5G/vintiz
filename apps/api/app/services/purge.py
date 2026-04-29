@@ -20,7 +20,7 @@ TABLES_TO_WIPE: list[str] = [
     "transaction_items",
     "receipts",
     "z_reports",
-    "cash_drawer_sessions",
+    "cash_drawers",
     "transactions",
     # Loyalty / avoir
     "avoir_transactions",

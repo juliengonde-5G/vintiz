@@ -1098,6 +1098,29 @@ export default function POSPage() {
             </div>
           )}
 
+          {/* "Proposer la carte" CTA for non-identified clients with a non-empty cart */}
+          {!selectedClient && cart.length > 0 && (
+            <div className="px-3 pt-2">
+              <div className="bg-vz-accent-soft border border-vz-accent/40 rounded-xl p-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs uppercase tracking-[0.18em] text-vz-accent font-semibold">
+                    Carte fidélité
+                  </p>
+                  <p className="text-sm text-vz-ink mt-0.5">
+                    Cette cliente <strong>gagnerait {Math.floor(cartTotal)} pts</strong> en adhérant.
+                    Adhésion en quelques secondes.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowSubscribeModal(true)}
+                  className="px-3 py-2 rounded-lg bg-vz-accent text-white text-sm font-medium hover:opacity-90 transition-opacity whitespace-nowrap"
+                >
+                  Proposer la carte
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Cart items - scrollable */}
           <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
             {cart.length === 0 ? (

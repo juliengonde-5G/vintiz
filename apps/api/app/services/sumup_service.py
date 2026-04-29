@@ -146,13 +146,28 @@ class SumUpService:
     """Thin wrapper around the SumUp Checkout API with a sandbox fallback."""
 
     def __init__(self) -> None:
-        self.api_key = os.getenv("SUMUP_API_KEY", "").strip()
-        self.merchant_code = os.getenv("SUMUP_MERCHANT_CODE", "").strip()
+        # Persisted config (data/app_config.json) takes precedence over env vars
+        # so the manager can configure SumUp credentials from the UI without
+        # touching the deployment.
+        try:
+            from app.services.app_config import get_section
+            persisted = get_section("sumup")
+        except Exception:
+            persisted = {}
+
+        def _pick(key: str, env_var: str, default: str = "") -> str:
+            value = (persisted.get(key) or "").strip() if isinstance(persisted.get(key), str) else ""
+            if not value:
+                value = os.getenv(env_var, default).strip()
+            return value
+
+        self.api_key = _pick("api_key", "SUMUP_API_KEY")
+        self.merchant_code = _pick("merchant_code", "SUMUP_MERCHANT_CODE")
         # Optional: target a specific SumUp Solo terminal via the Readers API.
         # When set, card checkouts are pushed to this reader so the TPE Solo
         # rings automatically without the cashier re-entering the amount.
-        self.reader_id = os.getenv("SUMUP_READER_ID", "").strip()
-        env = os.getenv("SUMUP_ENVIRONMENT", "").strip().lower()
+        self.reader_id = _pick("reader_id", "SUMUP_READER_ID")
+        env = _pick("environment", "SUMUP_ENVIRONMENT").lower()
         # Auto-detect: sandbox whenever no API key is set
         if env not in ("sandbox", "production"):
             env = "sandbox" if not self.api_key else "production"
@@ -160,10 +175,16 @@ class SumUpService:
         if env == "production" and not self.api_key:
             env = "sandbox"
         self.environment = env
+        delay_persisted = persisted.get("sandbox_auto_delay_sec")
         try:
-            self.sandbox_auto_delay = float(os.getenv("SUMUP_SANDBOX_AUTO_DELAY_SEC", "5"))
-        except ValueError:
+            if delay_persisted not in (None, ""):
+                self.sandbox_auto_delay = float(delay_persisted)
+            else:
+                self.sandbox_auto_delay = float(os.getenv("SUMUP_SANDBOX_AUTO_DELAY_SEC", "5"))
+        except (ValueError, TypeError):
             self.sandbox_auto_delay = 5.0
+        # Optional return URL after reader payment (production only)
+        self.return_url = _pick("return_url", "SUMUP_RETURN_URL")
         self.store = get_sandbox_store()
 
     # -- public config snapshot for UI ------------------------------------
@@ -171,12 +192,18 @@ class SumUpService:
         masked = ""
         if self.merchant_code:
             masked = self.merchant_code[:2] + "***" + self.merchant_code[-2:]
+        reader_masked = ""
+        if self.reader_id:
+            reader_masked = self.reader_id[:4] + "***" + self.reader_id[-2:] if len(self.reader_id) > 6 else "***"
         return {
             "environment": self.environment,
             "api_key_set": bool(self.api_key),
             "merchant_code_set": bool(self.merchant_code),
             "merchant_code_masked": masked,
             "reader_id_set": bool(self.reader_id),
+            "reader_id_masked": reader_masked,
+            "return_url_set": bool(self.return_url),
+            "return_url": self.return_url,
             "sandbox_auto_delay_sec": self.sandbox_auto_delay,
             "api_base": SUMUP_API_BASE if self.environment == "production" else "sandbox (in-memory)",
         }
@@ -298,7 +325,7 @@ class SumUpService:
                 "minor_unit": 2,
             },
             "description": description,
-            "return_url": os.getenv("SUMUP_RETURN_URL", "") or None,
+            "return_url": self.return_url or None,
         }
         payload = {k: v for k, v in payload.items() if v is not None}
         try:

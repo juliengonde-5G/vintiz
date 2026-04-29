@@ -120,11 +120,74 @@ Sans `BREVO_API_KEY`, les crons anniversaire (09:00 quotidien) et nouvelles
 arrivees (vendredi 10:00) tournent en mode simulation : les coupons sont
 crees en DB mais aucun email n'est envoye. Logs API : "[email simulated]".
 
-La signature reelle des passes Apple `.pkpass` (cert p12 + WWDR + ZIP
-manifest) et Google Wallet (Service Account JSON + JWT RS256) n'est PAS
-implementee. Le payload est expose via `GET /api/crm/account/wallet?email=`
-et l'espace client `/account/data` affiche une carte preview avec QR. Le
-"Add to Wallet" est laisse en TODO ops.
+#### Activation Brevo (recommandee en prod)
+
+Brevo (ex-Sendinblue) offre 300 emails transactionnels gratuits par jour,
+suffisant pour la majorite des boutiques. Procedure :
+
+1. Creer un compte gratuit sur https://app.brevo.com/account/register.
+2. Verifier le domaine d'envoi (DKIM/SPF) via Brevo > Settings > Senders &
+   IP. Obligatoire pour eviter le spam (sinon les codes magic-link tomberont
+   dans l'onglet "Promotions" voire en spam).
+3. Creer une cle API : Brevo > SMTP & API > API Keys > Generer une nouvelle
+   cle (cocher "Send transactional emails"). Format `xkeysib-…`.
+4. Coller la cle dans **/settings > Communication** (UI back-office) : la
+   valeur est persistee en DB et prend le pas sur les variables d'env. Saisir
+   "Adresse expediteur" + "Nom expediteur" puis cliquer "Enregistrer".
+5. Cliquer "Envoyer un email de test" pour valider la chaine end-to-end.
+6. Si l'email arrive : c'est OK. Si l'envoi est marque "SIMULE", c'est que la
+   cle n'a pas ete persistee — verifier les permissions du fichier
+   `data/app_config.json` (lecture/ecriture par l'utilisateur API).
+
+Alternativement, on peut poser `BREVO_API_KEY=xkeysib-…` dans `.env` du
+backend et redeployer. La valeur UI reste prioritaire, ce qui permet une
+rotation de cle sans redeploiement.
+
+#### Mode simulation explicite (dev / staging)
+
+Pour developper sans envoyer de vrais emails, mettre Provider = "Simulation"
+dans /settings > Communication. Tous les emails seront logues mais pas
+envoyes. Le code OTP magic-link apparaitra dans les logs API au format
+`[email simulated] to=… subject=Code de connexion Vintiz : 123456`.
+
+#### Signature des passes Wallet
+
+La signature `.pkpass` Apple est desormais implementee si toutes les variables
+suivantes sont posees :
+
+```env
+WALLET_TEAM_IDENTIFIER=ABCDE12345          # Apple Developer Team ID
+WALLET_PASS_TYPE_IDENTIFIER=pass.fr.vintiz.loyalty
+WALLET_APPLE_P12_PATH=/secrets/vintiz_pass.p12   # cert + cle privee
+WALLET_APPLE_P12_PASSWORD=...
+WALLET_APPLE_WWDR_PATH=/secrets/AppleWWDRCAG4.pem # cert intermediaire WWDR (G4)
+WALLET_PASS_ASSETS_DIR=/opt/vintiz/wallet-assets/ # icon.png, icon@2x.png, logo.png
+```
+
+Procedure :
+1. Compte Apple Developer (99$/an) -> Certificates, Identifiers & Profiles ->
+   creer un Pass Type ID `pass.fr.vintiz.loyalty`.
+2. Generer un certificat de signature (.cer) puis l'exporter en .p12 avec sa
+   cle privee depuis Keychain.
+3. Telecharger AppleWWDRCAG4.cer (Apple Worldwide Developer Relations - G4)
+   et le convertir en PEM (`openssl x509 -inform DER -in AppleWWDRCAG4.cer
+   -out AppleWWDRCAG4.pem`).
+4. Deposer le .p12 + le .pem dans `/secrets/` et poser les vars d'env.
+5. Optionnel : deposer 3 icones PNG (29x29, 58x58, 87x87) dans
+   WALLET_PASS_ASSETS_DIR -> meilleur rendu sur l'iPhone.
+6. Tester : `curl -i "https://api.vintiz.fr/api/crm/account/wallet/apple?email=cliente@x.fr"`
+   -> doit retourner `Content-Type: application/vnd.apple.pkpass` + binaire.
+
+Pour Google Wallet :
+```env
+WALLET_GOOGLE_ISSUER_ID=3388000000022000000   # 19 chiffres, donne par Google Pay & Wallet Console
+WALLET_GOOGLE_CLASS_SUFFIX=vintiz_loyalty
+WALLET_GOOGLE_SERVICE_ACCOUNT_JSON=/secrets/google-wallet-sa.json
+```
+
+Sans ces certs/credentials, le bouton "Ajouter a Apple/Google Wallet" renvoie
+une 503 explicite et le bouton "Telecharger le QR" reste fonctionnel (PNG
+scanne au POS pour identifier la cliente).
 
 ### 2. Seeder les 15 produits de test
 

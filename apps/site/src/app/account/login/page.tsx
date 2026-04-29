@@ -8,10 +8,12 @@ import Footer from "@/components/Footer";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 type Step = "email" | "code";
+type Channel = "email" | "sms";
 
 export default function AccountLoginPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("email");
+  const [channel, setChannel] = useState<Channel>("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,15 +26,21 @@ export default function AccountLoginPage() {
     setInfo("");
     setBusy(true);
     try {
-      // The endpoint always returns 204; we don't disclose whether the email exists.
+      // Backend accepts an email OR phone in the same `email` field.
+      const identifier = channel === "email"
+        ? email.trim().toLowerCase()
+        : email.trim().replace(/[\s.\-]/g, "");
+      // The endpoint always returns 204; we don't disclose whether the account exists.
       await fetch(`${API_URL}/api/auth/magic-link/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+        body: JSON.stringify({ email: identifier }),
       });
       setStep("code");
       setInfo(
-        "Si un compte existe avec cet email, un code à 6 chiffres vient d'être envoyé. Pensez à vérifier vos spams.",
+        channel === "sms"
+          ? "Si un compte existe avec ce numéro, un code à 6 chiffres vient d'être envoyé par SMS."
+          : "Si un compte existe avec cet email, un code à 6 chiffres vient d'être envoyé. Pensez à vérifier vos spams.",
       );
     } catch {
       setError("Erreur réseau. Réessayez.");
@@ -45,10 +53,13 @@ export default function AccountLoginPage() {
     setError("");
     setBusy(true);
     try {
+      const identifier = channel === "email"
+        ? email.trim().toLowerCase()
+        : email.trim().replace(/[\s.\-]/g, "");
       const res = await fetch(`${API_URL}/api/auth/magic-link/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), code: code.trim() }),
+        body: JSON.stringify({ email: identifier, code: code.trim() }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -83,26 +94,52 @@ export default function AccountLoginPage() {
 
         {step === "email" && (
           <form onSubmit={requestCode} className="space-y-4">
+            <div className="inline-flex border border-vz-line rounded-full p-0.5 text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => { setChannel("email"); setEmail(""); }}
+                className={`px-4 py-1.5 rounded-full transition-colors ${
+                  channel === "email" ? "bg-vz-teal text-white" : "text-vz-ink-mute hover:text-vz-ink"
+                }`}
+              >
+                Par email
+              </button>
+              <button
+                type="button"
+                onClick={() => { setChannel("sms"); setEmail(""); }}
+                className={`px-4 py-1.5 rounded-full transition-colors ${
+                  channel === "sms" ? "bg-vz-teal text-white" : "text-vz-ink-mute hover:text-vz-ink"
+                }`}
+              >
+                Par SMS
+              </button>
+            </div>
             <div>
               <label className="block text-sm text-gray-700 mb-1" htmlFor="email-input">
-                Email
+                {channel === "email" ? "Email" : "Téléphone"}
               </label>
               <input
                 id="email-input"
-                type="email"
+                type={channel === "email" ? "email" : "tel"}
+                inputMode={channel === "email" ? "email" : "tel"}
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="vous@email.fr"
+                placeholder={channel === "email" ? "vous@email.fr" : "+33 6 12 34 56 78"}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
               />
+              <p className="text-xs text-vz-ink-mute mt-1">
+                {channel === "email"
+                  ? "Le code arrive en 30 s. Vérifiez vos spams si besoin."
+                  : "Le SMS arrive en quelques secondes. Tarif opérateur standard."}
+              </p>
             </div>
             <button
               type="submit"
               disabled={busy || !email}
               className="w-full bg-vz-teal text-white py-3 rounded-lg font-medium hover:bg-vz-teal/90 disabled:opacity-50"
             >
-              {busy ? "Envoi…" : "Recevoir mon code"}
+              {busy ? "Envoi…" : channel === "email" ? "Recevoir mon code par email" : "Recevoir mon code par SMS"}
             </button>
           </form>
         )}

@@ -83,7 +83,7 @@ interface SandboxSnapshot {
 }
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'store' | 'payment' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
+  const [tab, setTab] = useState<'store' | 'payment' | 'communication' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
   const [hardware, setHardware] = useState<HardwareConfig | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityItem[]>([]);
   const [hwSaving, setHwSaving] = useState(false);
@@ -126,8 +126,60 @@ export default function SettingsPage() {
   const [loyaltyPriceEuros, setLoyaltyPriceEuros] = useState('5');
   const [loyaltyThresholdEuros, setLoyaltyThresholdEuros] = useState('30');
   const [loyaltySaving, setLoyaltySaving] = useState(false);
+  const [loyaltyWindowEnabled, setLoyaltyWindowEnabled] = useState(false);
+  const [loyaltyWindowStart, setLoyaltyWindowStart] = useState('');
+  const [loyaltyWindowEnd, setLoyaltyWindowEnd] = useState('');
+
+  // Shop info (editable boutique metadata)
+  const [shopInfo, setShopInfo] = useState<{
+    name: string; tagline: string;
+    address_line1: string; address_line2: string; postal_code: string; city: string; country: string;
+    phone: string; email: string; website: string;
+    hours: string; surface_m2: number; vat_rate_percent: number;
+    siret: string; rcs: string; ape: string;
+  } | null>(null);
+  const [shopSaving, setShopSaving] = useState(false);
+
+  // SumUp persisted config (overrides env vars)
+  const [sumupForm, setSumupForm] = useState<{
+    environment: string; api_key: string; merchant_code: string;
+    reader_id: string; sandbox_auto_delay_sec: string; return_url: string;
+  }>({ environment: '', api_key: '', merchant_code: '', reader_id: '', sandbox_auto_delay_sec: '5', return_url: '' });
+  const [sumupPersisted, setSumupPersisted] = useState<{
+    environment: string; api_key_masked: string; merchant_code_masked: string;
+    reader_id_masked: string; sandbox_auto_delay_sec: number | string; return_url: string;
+  } | null>(null);
+  const [sumupSaving, setSumupSaving] = useState(false);
+
+  // Hardware compatibility test status (per category)
+  type HwTestStatus = 'idle' | 'running' | 'success' | 'error';
+  const [hwTests, setHwTests] = useState<Record<string, { status: HwTestStatus; message?: string }>>({});
+
+  // Email gateway config (Communication tab)
+  const [emailForm, setEmailForm] = useState<{
+    provider: string; brevo_api_key: string;
+    smtp_host: string; smtp_port: string; smtp_user: string; smtp_password: string; smtp_from: string;
+    from_address: string; from_name: string;
+  }>({
+    provider: '', brevo_api_key: '',
+    smtp_host: '', smtp_port: '587', smtp_user: '', smtp_password: '', smtp_from: '',
+    from_address: 'noreply@vintiz.fr', from_name: 'Vintiz Vernon',
+  });
+  const [emailPersisted, setEmailPersisted] = useState<{
+    provider: string; brevo_api_key_masked: string;
+    smtp_host: string; smtp_port: string; smtp_user: string; smtp_password_masked: string;
+    smtp_from: string; from_address: string; from_name: string;
+  } | null>(null);
+  const [emailLive, setEmailLive] = useState<{ provider: string; configured: boolean; host?: string; port?: string } | null>(null);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailTestTo, setEmailTestTo] = useState('');
+  const [emailTestResult, setEmailTestResult] = useState<{ ok: boolean; status: string; backend: string; detail?: string } | null>(null);
+  const [emailTesting, setEmailTesting] = useState(false);
 
   useEffect(() => {
+    if (tab === 'store') loadShopInfo();
+    if (tab === 'payment') loadSumupConfig();
+    if (tab === 'communication') loadEmailConfig();
     if (tab === 'categories') loadCategories();
     if (tab === 'zones') loadZones();
     if (tab === 'hardware') loadHardware();
@@ -181,6 +233,192 @@ export default function SettingsPage() {
     catch { setError('Erreur reset'); }
   };
 
+  const loadShopInfo = async () => {
+    try {
+      const res = await api.get('/api/admin/shop-info');
+      if (res.ok) setShopInfo(await res.json());
+    } catch {
+      setError('Erreur de chargement de la boutique');
+    }
+  };
+
+  const saveShopInfo = async () => {
+    if (!shopInfo) return;
+    setShopSaving(true);
+    setError('');
+    try {
+      const res = await api.put('/api/admin/shop-info', shopInfo);
+      if (res.ok) {
+        setShopInfo(await res.json());
+        setMessage('Informations boutique enregistrées');
+        setTimeout(() => setMessage(''), 3000);
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setError(e.detail || 'Erreur enregistrement boutique');
+      }
+    } catch { setError('Erreur de connexion'); }
+    setShopSaving(false);
+  };
+
+  const loadSumupConfig = async () => {
+    try {
+      const res = await api.get('/api/admin/sumup-config');
+      if (res.ok) {
+        const data = await res.json();
+        setSumupPersisted(data.persisted);
+        setSumupForm({
+          environment: data.persisted.environment || '',
+          // Never echo back the secret — leave empty so user explicitly retypes to change
+          api_key: '',
+          merchant_code: '',
+          reader_id: '',
+          sandbox_auto_delay_sec: String(data.persisted.sandbox_auto_delay_sec ?? 5),
+          return_url: data.persisted.return_url || '',
+        });
+      }
+    } catch {
+      setError('Erreur de chargement SumUp');
+    }
+  };
+
+  const saveSumupConfig = async () => {
+    setSumupSaving(true);
+    setError('');
+    try {
+      // Only send fields the operator explicitly typed — empty = no change.
+      // Exception: environment is always sent, even when empty (= clear override).
+      const body: Record<string, unknown> = {
+        environment: sumupForm.environment,
+        sandbox_auto_delay_sec: parseFloat(sumupForm.sandbox_auto_delay_sec || '5'),
+        return_url: sumupForm.return_url,
+      };
+      if (sumupForm.api_key.trim()) body.api_key = sumupForm.api_key.trim();
+      if (sumupForm.merchant_code.trim()) body.merchant_code = sumupForm.merchant_code.trim();
+      if (sumupForm.reader_id.trim()) body.reader_id = sumupForm.reader_id.trim();
+      const res = await api.put('/api/admin/sumup-config', body);
+      if (res.ok) {
+        const data = await res.json();
+        setSumupPersisted(data.persisted);
+        setSumupForm((f) => ({ ...f, api_key: '', merchant_code: '', reader_id: '' }));
+        setMessage('Configuration SumUp enregistrée');
+        setTimeout(() => setMessage(''), 3000);
+        // Refresh sandbox snapshot to reflect env change
+        const snap = await api.get('/api/pos/payments/cb/sandbox/state?limit=40');
+        if (snap.ok) setSandbox(await snap.json());
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setError(e.detail || 'Erreur enregistrement SumUp');
+      }
+    } catch { setError('Erreur de connexion'); }
+    setSumupSaving(false);
+  };
+
+  // ── Email gateway config ─────────────────────────────────────────────────
+  const loadEmailConfig = async () => {
+    try {
+      const res = await api.get('/api/admin/email-config');
+      if (res.ok) {
+        const data = await res.json();
+        setEmailLive(data.live);
+        setEmailPersisted(data.persisted);
+        setEmailForm({
+          provider: data.persisted.provider || '',
+          // Never echo back the secret — leave empty so user explicitly retypes to change
+          brevo_api_key: '',
+          smtp_host: data.persisted.smtp_host || '',
+          smtp_port: data.persisted.smtp_port || '587',
+          smtp_user: data.persisted.smtp_user || '',
+          smtp_password: '',
+          smtp_from: data.persisted.smtp_from || '',
+          from_address: data.persisted.from_address || 'noreply@vintiz.fr',
+          from_name: data.persisted.from_name || 'Vintiz Vernon',
+        });
+      }
+    } catch {
+      setError('Erreur de chargement de la passerelle email');
+    }
+  };
+
+  const saveEmailConfig = async () => {
+    setEmailSaving(true);
+    setError('');
+    try {
+      const body: Record<string, unknown> = {
+        provider: emailForm.provider,
+        smtp_host: emailForm.smtp_host,
+        smtp_port: emailForm.smtp_port,
+        smtp_user: emailForm.smtp_user,
+        smtp_from: emailForm.smtp_from,
+        from_address: emailForm.from_address,
+        from_name: emailForm.from_name,
+      };
+      if (emailForm.brevo_api_key.trim()) body.brevo_api_key = emailForm.brevo_api_key.trim();
+      if (emailForm.smtp_password.trim()) body.smtp_password = emailForm.smtp_password.trim();
+      const res = await api.put('/api/admin/email-config', body);
+      if (res.ok) {
+        const data = await res.json();
+        setEmailLive(data.live);
+        setEmailPersisted(data.persisted);
+        setEmailForm((f) => ({ ...f, brevo_api_key: '', smtp_password: '' }));
+        setMessage('Configuration email enregistrée');
+        setTimeout(() => setMessage(''), 3000);
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setError(e.detail || 'Erreur enregistrement email');
+      }
+    } catch { setError('Erreur de connexion'); }
+    setEmailSaving(false);
+  };
+
+  const sendEmailTest = async () => {
+    setEmailTesting(true);
+    setEmailTestResult(null);
+    try {
+      const res = await api.post('/api/admin/email-config/test', {
+        to: emailTestTo.trim() || undefined,
+      });
+      const data = await res.json();
+      setEmailTestResult({
+        ok: !!data.ok,
+        status: data.status || 'unknown',
+        backend: data.backend || 'unknown',
+        detail: data.detail,
+      });
+    } catch (e: any) {
+      setEmailTestResult({ ok: false, status: 'failed', backend: 'error', detail: e?.message || 'Erreur réseau' });
+    }
+    setEmailTesting(false);
+  };
+
+  // ── Hardware compatibility tests (inline per row) ─────────────────────────
+  const runHwTest = async (category: string) => {
+    setHwTests((s) => ({ ...s, [category]: { status: 'running' } }));
+    try {
+      let endpoint = '';
+      if (category === 'receipt_printer') endpoint = '/api/hardware/receipt/test';
+      else if (category === 'cash_drawer') endpoint = '/api/hardware/drawer/kick';
+      else if (category === 'label_printer') endpoint = '/api/hardware/label/test';
+      else if (category === 'payment_terminal') endpoint = '/api/pos/payments/cb/sandbox/test';
+      else if (category === 'barcode_scanner') {
+        // No backend test — focus the search field at /pos
+        setHwTests((s) => ({ ...s, [category]: { status: 'success', message: 'Allez sur /pos et scannez un produit pour valider la douchette' } }));
+        return;
+      }
+      const body = category === 'payment_terminal'
+        ? { amount: 1, description: 'Test SumUp depuis Materiel' }
+        : {};
+      const res = await api.post(endpoint, body);
+      if (res.ok) {
+        setHwTests((s) => ({ ...s, [category]: { status: 'success', message: 'Test envoyé ✓' } }));
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setHwTests((s) => ({ ...s, [category]: { status: 'error', message: e.detail || `HTTP ${res.status}` } }));
+      }
+    } catch (e: any) {
+      setHwTests((s) => ({ ...s, [category]: { status: 'error', message: e?.message || 'Erreur réseau' } }));
+    }
+  };
+
   const loadLoyaltyConfig = async () => {
     try {
       const res = await api.get('/api/admin/loyalty/config');
@@ -189,6 +427,9 @@ export default function SettingsPage() {
         setLoyaltyMode((data.mode as typeof loyaltyMode) || 'free');
         setLoyaltyPriceEuros(((data.price_cents || 0) / 100).toFixed(2));
         setLoyaltyThresholdEuros(((data.first_purchase_threshold_cents || 0) / 100).toFixed(0));
+        setLoyaltyWindowEnabled(Boolean(data.window_start) && Boolean(data.window_end));
+        setLoyaltyWindowStart(data.window_start || '');
+        setLoyaltyWindowEnd(data.window_end || '');
       }
     } catch {
       setError('Erreur de chargement de la configuration fidelite');
@@ -199,10 +440,12 @@ export default function SettingsPage() {
     setLoyaltySaving(true);
     setError('');
     try {
-      const body = {
+      const body: Record<string, unknown> = {
         mode: loyaltyMode,
         price_cents: Math.round(parseFloat(loyaltyPriceEuros || '0') * 100),
         first_purchase_threshold_cents: Math.round(parseFloat(loyaltyThresholdEuros || '0') * 100),
+        window_start: loyaltyWindowEnabled ? loyaltyWindowStart || null : null,
+        window_end: loyaltyWindowEnabled ? loyaltyWindowEnd || null : null,
       };
       const res = await api.put('/api/admin/loyalty/config', body);
       if (res.ok) {
@@ -428,6 +671,7 @@ export default function SettingsPage() {
   const tabs = [
     { key: 'store' as const, label: 'Boutique' },
     { key: 'payment' as const, label: 'Paiement' },
+    { key: 'communication' as const, label: 'Communication' },
     { key: 'cahier' as const, label: 'Cahier de travail' },
     { key: 'fidelite' as const, label: 'Fidelite' },
     { key: 'categories' as const, label: 'Categories' },
@@ -447,10 +691,10 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8">
+      <main className="md:ml-64 px-3 pt-16 pb-6 sm:px-4 md:px-6 md:pt-6 lg:p-8 max-w-5xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-black">Parametres</h1>
-          <p className="text-gray-500 mt-1">Configuration de la boutique</p>
+          <h1 className="text-2xl font-display font-semibold text-black">Paramètres</h1>
+          <p className="text-vz-ink-mute mt-1">Configuration de la boutique</p>
         </div>
 
         {message && (
@@ -466,53 +710,133 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Tabs */}
-        <div className="flex gap-2 mb-6 overflow-x-auto">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-4 py-2 rounded-lg min-h-[44px] whitespace-nowrap transition-colors ${
-                tab === t.key
-                  ? 'bg-vz-teal text-white font-medium'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        {/* Tabs — scrollable, sticky on tablet+ for navigation persistence */}
+        <div className="sticky top-0 z-10 -mx-3 sm:-mx-4 md:-mx-6 lg:-mx-8 bg-vz-bg/95 backdrop-blur-sm border-b border-vz-line mb-5">
+          <div
+            className="flex gap-2 px-3 sm:px-4 md:px-6 lg:px-8 py-2 overflow-x-auto"
+            style={{ scrollbarWidth: 'thin' }}
+          >
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`px-3 sm:px-4 py-2 rounded-lg min-h-[40px] whitespace-nowrap text-sm transition-colors ${
+                  tab === t.key
+                    ? 'bg-vz-teal text-white font-medium'
+                    : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* STORE TAB */}
         {tab === 'store' && (
           <div className="space-y-6">
             <Card title="Informations boutique">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Nom</p>
-                  <p className="font-medium text-black">Vintiz</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Type</p>
-                  <p className="font-medium text-black">Boutique seconde main premium</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Adresse</p>
-                  <p className="font-medium text-black">6 rue Saint-Jacques, 27200 Vernon</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Surface</p>
-                  <p className="font-medium text-black">98 m&sup2;</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Horaires</p>
-                  <p className="font-medium text-black">Mar-Sam : 10h-19h</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">TVA</p>
-                  <p className="font-medium text-black">20% (regime standard)</p>
-                </div>
-              </div>
+              {!shopInfo ? (
+                <p className="text-sm text-gray-400">Chargement…</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input
+                      label="Nom"
+                      value={shopInfo.name}
+                      onChange={(e) => setShopInfo({ ...shopInfo, name: e.target.value })}
+                    />
+                    <Input
+                      label="Slogan / type"
+                      value={shopInfo.tagline}
+                      onChange={(e) => setShopInfo({ ...shopInfo, tagline: e.target.value })}
+                    />
+                    <Input
+                      label="Adresse"
+                      value={shopInfo.address_line1}
+                      onChange={(e) => setShopInfo({ ...shopInfo, address_line1: e.target.value })}
+                    />
+                    <Input
+                      label="Complément (optionnel)"
+                      value={shopInfo.address_line2}
+                      onChange={(e) => setShopInfo({ ...shopInfo, address_line2: e.target.value })}
+                    />
+                    <Input
+                      label="Code postal"
+                      value={shopInfo.postal_code}
+                      onChange={(e) => setShopInfo({ ...shopInfo, postal_code: e.target.value })}
+                    />
+                    <Input
+                      label="Ville"
+                      value={shopInfo.city}
+                      onChange={(e) => setShopInfo({ ...shopInfo, city: e.target.value })}
+                    />
+                    <Input
+                      label="Téléphone"
+                      value={shopInfo.phone}
+                      onChange={(e) => setShopInfo({ ...shopInfo, phone: e.target.value })}
+                      placeholder="+33 …"
+                    />
+                    <Input
+                      label="Email contact"
+                      type="email"
+                      value={shopInfo.email}
+                      onChange={(e) => setShopInfo({ ...shopInfo, email: e.target.value })}
+                    />
+                    <Input
+                      label="Site web"
+                      value={shopInfo.website}
+                      onChange={(e) => setShopInfo({ ...shopInfo, website: e.target.value })}
+                      placeholder="vintiz.fr"
+                    />
+                    <Input
+                      label="Horaires"
+                      value={shopInfo.hours}
+                      onChange={(e) => setShopInfo({ ...shopInfo, hours: e.target.value })}
+                      placeholder="Mar-Sam : 10h-19h"
+                    />
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Surface (m²)</label>
+                      <input
+                        type="number"
+                        value={shopInfo.surface_m2}
+                        onChange={(e) => setShopInfo({ ...shopInfo, surface_m2: parseFloat(e.target.value) || 0 })}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">TVA (%)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={shopInfo.vat_rate_percent}
+                        onChange={(e) => setShopInfo({ ...shopInfo, vat_rate_percent: parseFloat(e.target.value) || 0 })}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                      />
+                    </div>
+                    <Input
+                      label="SIRET"
+                      value={shopInfo.siret}
+                      onChange={(e) => setShopInfo({ ...shopInfo, siret: e.target.value })}
+                    />
+                    <Input
+                      label="RCS"
+                      value={shopInfo.rcs}
+                      onChange={(e) => setShopInfo({ ...shopInfo, rcs: e.target.value })}
+                    />
+                    <Input
+                      label="Code APE"
+                      value={shopInfo.ape}
+                      onChange={(e) => setShopInfo({ ...shopInfo, ape: e.target.value })}
+                    />
+                  </div>
+                  <div className="flex justify-end mt-5">
+                    <Button onClick={saveShopInfo} disabled={shopSaving}>
+                      {shopSaving ? 'Enregistrement…' : 'Enregistrer la boutique'}
+                    </Button>
+                  </div>
+                </>
+              )}
             </Card>
 
             <Card title="Terminal de paiement">
@@ -555,53 +879,125 @@ export default function SettingsPage() {
         {/* PAYMENT TAB */}
         {tab === 'payment' && (
           <div className="space-y-6">
-            <Card title="Configuration SumUp">
+            <Card title="Configuration SumUp (TPE Solo)">
               {!sandbox ? (
                 <p className="text-sm text-gray-500">Chargement...</p>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-sm">
-                  <div>
-                    <p className="text-gray-500 mb-1">Environnement</p>
-                    <p className="font-medium text-black">
-                      <span
-                        className={`inline-block px-2 py-1 rounded ${
-                          sandbox.config.environment === 'production'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-5 p-3 rounded-lg bg-vz-bg/60 border border-vz-line">
+                    <div>
+                      <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Environnement actif</p>
+                      <p className="font-medium text-black mt-1">
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs ${sandbox.config.environment === 'production' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+                          {sandbox.config.environment.toUpperCase()}
+                        </span>
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Clé API</p>
+                      <p className="font-medium text-black mt-1">
+                        {sandbox.config.api_key_set ? '✓ Définie' : '— Non définie (simulation)'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Merchant code</p>
+                      <p className="font-mono text-black mt-1 text-xs">
+                        {sandbox.config.merchant_code_set ? sandbox.config.merchant_code_masked : '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Environnement</label>
+                      <select
+                        value={sumupForm.environment}
+                        onChange={(e) => setSumupForm({ ...sumupForm, environment: e.target.value })}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black"
                       >
-                        {sandbox.config.environment.toUpperCase()}
-                      </span>
+                        <option value="">Auto-détection (selon clé)</option>
+                        <option value="sandbox">Sandbox (test)</option>
+                        <option value="production">Production (réel)</option>
+                      </select>
+                      <p className="text-xs text-gray-400 mt-1">Si vide : sandbox sans clé, prod avec clé.</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">
+                        Délai auto PAID (sandbox, secondes)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={120}
+                        value={sumupForm.sandbox_auto_delay_sec}
+                        onChange={(e) => setSumupForm({ ...sumupForm, sandbox_auto_delay_sec: e.target.value })}
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">0 = approbation manuelle uniquement.</p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-black mb-1.5">
+                        Clé API SumUp
+                        {sumupPersisted?.api_key_masked && <span className="ml-2 text-xs text-vz-ink-mute font-mono">actuelle : {sumupPersisted.api_key_masked}</span>}
+                      </label>
+                      <input
+                        type="password"
+                        value={sumupForm.api_key}
+                        onChange={(e) => setSumupForm({ ...sumupForm, api_key: e.target.value })}
+                        placeholder={sumupPersisted?.api_key_masked ? 'Laisser vide pour conserver' : 'sup_sk_…'}
+                        autoComplete="off"
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">
+                        Merchant code
+                        {sumupPersisted?.merchant_code_masked && <span className="ml-2 text-xs text-vz-ink-mute font-mono">{sumupPersisted.merchant_code_masked}</span>}
+                      </label>
+                      <input
+                        type="text"
+                        value={sumupForm.merchant_code}
+                        onChange={(e) => setSumupForm({ ...sumupForm, merchant_code: e.target.value })}
+                        placeholder={sumupPersisted?.merchant_code_masked ? 'Laisser vide pour conserver' : 'M…'}
+                        autoComplete="off"
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">
+                        Reader ID (TPE Solo, optionnel)
+                        {sumupPersisted?.reader_id_masked && <span className="ml-2 text-xs text-vz-ink-mute font-mono">{sumupPersisted.reader_id_masked}</span>}
+                      </label>
+                      <input
+                        type="text"
+                        value={sumupForm.reader_id}
+                        onChange={(e) => setSumupForm({ ...sumupForm, reader_id: e.target.value })}
+                        placeholder={sumupPersisted?.reader_id_masked ? 'Laisser vide pour conserver' : 'reader_…'}
+                        autoComplete="off"
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Si défini : push direct sur le TPE (le client tape, le caissier ne saisit pas).</p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Input
+                        label="Return URL (optionnel)"
+                        value={sumupForm.return_url}
+                        onChange={(e) => setSumupForm({ ...sumupForm, return_url: e.target.value })}
+                        placeholder="https://app.vintiz.fr/pos/sumup-return"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center mt-5 flex-wrap gap-3">
+                    <p className="text-xs text-gray-500">
+                      Les valeurs persistées priment sur les variables d&apos;environnement.
+                      Champ vide = conserver la valeur actuelle (sauf l&apos;environnement).
                     </p>
+                    <Button onClick={saveSumupConfig} disabled={sumupSaving}>
+                      {sumupSaving ? 'Enregistrement…' : 'Enregistrer SumUp'}
+                    </Button>
                   </div>
-                  <div>
-                    <p className="text-gray-500 mb-1">Base API</p>
-                    <p className="font-mono text-black text-xs">{sandbox.config.api_base}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 mb-1">Cle API</p>
-                    <p className="font-medium text-black">
-                      {sandbox.config.api_key_set ? 'Definie' : 'Non definie (mode simulation)'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 mb-1">Merchant code</p>
-                    <p className="font-mono text-black">
-                      {sandbox.config.merchant_code_set ? sandbox.config.merchant_code_masked : '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 mb-1">Delai auto PAID (sandbox)</p>
-                    <p className="font-medium text-black">{sandbox.config.sandbox_auto_delay_sec} s</p>
-                  </div>
-                </div>
+                </>
               )}
-              <p className="text-xs text-gray-500 mt-4">
-                Variables d&apos;environnement : <code className="font-mono">SUMUP_ENVIRONMENT</code>,{' '}
-                <code className="font-mono">SUMUP_API_KEY</code>,{' '}
-                <code className="font-mono">SUMUP_MERCHANT_CODE</code>,{' '}
-                <code className="font-mono">SUMUP_SANDBOX_AUTO_DELAY_SEC</code>.
-              </p>
             </Card>
 
             <Card title="Simulation de paiement">
@@ -715,6 +1111,178 @@ export default function SettingsPage() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
+        {/* COMMUNICATION TAB — Email gateway (Brevo / SMTP / simulation) */}
+        {tab === 'communication' && (
+          <div className="space-y-6">
+            <Card title="Passerelle email — magic-link OTP, anniversaires, nouvelles arrivées">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-5 p-3 rounded-lg bg-vz-bg/60 border border-vz-line">
+                <div>
+                  <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Backend actif</p>
+                  <p className="font-medium text-black mt-1">
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs ${
+                      emailLive?.provider === 'brevo' ? 'bg-green-100 text-green-800' :
+                      emailLive?.provider === 'smtp' ? 'bg-blue-100 text-blue-800' :
+                      'bg-amber-100 text-amber-800'
+                    }`}>
+                      {emailLive ? emailLive.provider.toUpperCase() : '—'}
+                    </span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Clé Brevo</p>
+                  <p className="font-medium text-black mt-1">
+                    {emailPersisted?.brevo_api_key_masked ? '✓ ' + emailPersisted.brevo_api_key_masked : '— Non définie'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-vz-ink-mute text-xs uppercase tracking-wider">SMTP</p>
+                  <p className="font-medium text-black mt-1">
+                    {emailPersisted?.smtp_host ? `${emailPersisted.smtp_host}:${emailPersisted.smtp_port}` : '— Non défini'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-black mb-1.5">Provider forcé</label>
+                  <select
+                    value={emailForm.provider}
+                    onChange={(e) => setEmailForm({ ...emailForm, provider: e.target.value })}
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black"
+                  >
+                    <option value="">Auto-détection (Brevo si clé, sinon SMTP, sinon simulation)</option>
+                    <option value="brevo">Brevo (production)</option>
+                    <option value="smtp">SMTP standard</option>
+                    <option value="simulation">Simulation (dev/test)</option>
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">Sans clé Brevo ni SMTP, les emails sont simulés (logués mais pas envoyés).</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-black mb-1.5">
+                    Clé API Brevo
+                    {emailPersisted?.brevo_api_key_masked && (
+                      <span className="ml-2 text-xs text-vz-ink-mute font-mono">actuelle : {emailPersisted.brevo_api_key_masked}</span>
+                    )}
+                  </label>
+                  <input
+                    type="password"
+                    value={emailForm.brevo_api_key}
+                    onChange={(e) => setEmailForm({ ...emailForm, brevo_api_key: e.target.value })}
+                    placeholder={emailPersisted?.brevo_api_key_masked ? 'Laisser vide pour conserver' : 'xkeysib-…'}
+                    autoComplete="off"
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 border-t border-vz-line pt-4 mt-2">
+                  <p className="text-xs uppercase tracking-[0.18em] text-vz-ink-mute font-medium mb-3">
+                    Fallback SMTP (utilisé si Brevo non configuré)
+                  </p>
+                </div>
+                <Input
+                  label="Hôte SMTP"
+                  value={emailForm.smtp_host}
+                  onChange={(e) => setEmailForm({ ...emailForm, smtp_host: e.target.value })}
+                  placeholder="smtp.gmail.com"
+                />
+                <Input
+                  label="Port SMTP"
+                  value={emailForm.smtp_port}
+                  onChange={(e) => setEmailForm({ ...emailForm, smtp_port: e.target.value })}
+                  placeholder="587"
+                />
+                <Input
+                  label="Utilisateur SMTP"
+                  value={emailForm.smtp_user}
+                  onChange={(e) => setEmailForm({ ...emailForm, smtp_user: e.target.value })}
+                  placeholder="contact@domaine.fr"
+                />
+                <div>
+                  <label className="block text-sm font-medium text-black mb-1.5">
+                    Mot de passe SMTP
+                    {emailPersisted?.smtp_password_masked && (
+                      <span className="ml-2 text-xs text-vz-ink-mute font-mono">actuel : {emailPersisted.smtp_password_masked}</span>
+                    )}
+                  </label>
+                  <input
+                    type="password"
+                    value={emailForm.smtp_password}
+                    onChange={(e) => setEmailForm({ ...emailForm, smtp_password: e.target.value })}
+                    placeholder={emailPersisted?.smtp_password_masked ? 'Laisser vide pour conserver' : '••••••••'}
+                    autoComplete="off"
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 border-t border-vz-line pt-4 mt-2">
+                  <p className="text-xs uppercase tracking-[0.18em] text-vz-ink-mute font-medium mb-3">
+                    Identité de l'expéditeur
+                  </p>
+                </div>
+                <Input
+                  label="Adresse expéditeur"
+                  value={emailForm.from_address}
+                  onChange={(e) => setEmailForm({ ...emailForm, from_address: e.target.value })}
+                  placeholder="noreply@vintiz.fr"
+                />
+                <Input
+                  label="Nom expéditeur"
+                  value={emailForm.from_name}
+                  onChange={(e) => setEmailForm({ ...emailForm, from_name: e.target.value })}
+                  placeholder="Vintiz Vernon"
+                />
+              </div>
+
+              <div className="flex justify-end items-center mt-5 flex-wrap gap-3">
+                <p className="text-xs text-gray-500 mr-auto">
+                  Champs vides = conserver la valeur actuelle. Les valeurs persistées priment sur les variables d&apos;environnement.
+                </p>
+                <Button onClick={saveEmailConfig} disabled={emailSaving}>
+                  {emailSaving ? 'Enregistrement…' : 'Enregistrer'}
+                </Button>
+              </div>
+            </Card>
+
+            <Card title="Test d'envoi end-to-end">
+              <p className="text-sm text-gray-500 mb-4">
+                Envoie un email réel pour vérifier que la passerelle est bien câblée.
+                Si vous laissez le champ vide, l&apos;email sera envoyé à l&apos;adresse de votre compte admin.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <Input
+                    type="email"
+                    value={emailTestTo}
+                    onChange={(e) => setEmailTestTo(e.target.value)}
+                    placeholder="adresse@destinataire.fr (optionnel)"
+                  />
+                </div>
+                <Button onClick={sendEmailTest} disabled={emailTesting}>
+                  {emailTesting ? 'Envoi…' : 'Envoyer un email de test'}
+                </Button>
+              </div>
+              {emailTestResult && (
+                <div className={`mt-4 p-3 rounded-lg text-sm border ${
+                  emailTestResult.ok && emailTestResult.status === 'sent'
+                    ? 'bg-green-50 text-green-800 border-green-200'
+                    : emailTestResult.status === 'simulated'
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : 'bg-red-50 text-red-700 border-red-200'
+                }`}>
+                  <p className="font-medium">
+                    {emailTestResult.status === 'sent' && '✓ Email envoyé via ' + emailTestResult.backend.toUpperCase()}
+                    {emailTestResult.status === 'simulated' && '⚠ Email SIMULÉ — backend non configuré, aucun envoi réel'}
+                    {emailTestResult.status === 'failed' && '✕ Échec d\'envoi'}
+                  </p>
+                  {emailTestResult.detail && (
+                    <p className="text-xs mt-1 font-mono">{emailTestResult.detail}</p>
+                  )}
                 </div>
               )}
             </Card>
@@ -883,29 +1451,44 @@ export default function SettingsPage() {
               {loading && compatibility.length === 0 ? (
                 <p className="text-gray-400 text-center py-4">Chargement...</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
+                <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+                  <table className="w-full text-left min-w-[640px]">
                     <thead>
                       <tr className="border-b border-gray-200">
                         <th className="pb-2 text-sm font-semibold text-gray-600">Peripherique</th>
                         <th className="pb-2 text-sm font-semibold text-gray-600">Modele</th>
-                        <th className="pb-2 text-sm font-semibold text-gray-600">Connexion</th>
-                        <th className="pb-2 text-sm font-semibold text-gray-600">Statut</th>
+                        <th className="pb-2 text-sm font-semibold text-gray-600 hidden sm:table-cell">Connexion</th>
+                        <th className="pb-2 text-sm font-semibold text-gray-600 text-right">Test</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {compatibility.map((it) => (
-                        <tr key={it.category} className="border-b border-gray-50">
-                          <td className="py-2 text-sm text-black font-medium">{it.label}</td>
-                          <td className="py-2 text-sm text-gray-700">{it.model}</td>
-                          <td className="py-2 text-xs text-gray-500">{it.connection}</td>
-                          <td className="py-2">
-                            <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                              Compatible
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {compatibility.map((it) => {
+                        const test = hwTests[it.category] || { status: 'idle' as const };
+                        return (
+                          <tr key={it.category} className="border-b border-gray-50">
+                            <td className="py-3 text-sm text-black font-medium">{it.label}</td>
+                            <td className="py-3 text-sm text-gray-700">{it.model}</td>
+                            <td className="py-3 text-xs text-gray-500 hidden sm:table-cell">{it.connection}</td>
+                            <td className="py-3 text-right">
+                              <div className="inline-flex items-center gap-2 flex-wrap justify-end">
+                                {test.status === 'success' && (
+                                  <span className="text-xs text-green-700">✓ {test.message || 'OK'}</span>
+                                )}
+                                {test.status === 'error' && (
+                                  <span className="text-xs text-red-600 max-w-[180px] truncate" title={test.message}>✕ {test.message}</span>
+                                )}
+                                <Button
+                                  variant="outline"
+                                  onClick={() => runHwTest(it.category)}
+                                  disabled={test.status === 'running'}
+                                >
+                                  {test.status === 'running' ? 'Test…' : 'Tester'}
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1084,9 +1667,21 @@ export default function SettingsPage() {
                 </Card>
 
                 <Card title="Terminal de paiement — SumUp">
-                  <p className="text-sm text-gray-500">
-                    Deja integre via l&apos;API SumUp. Configurez <code className="font-mono bg-gray-100 px-1 rounded">SUMUP_API_KEY</code> et <code className="font-mono bg-gray-100 px-1 rounded">SUMUP_MERCHANT_CODE</code> dans le fichier <code className="font-mono bg-gray-100 px-1 rounded">.env</code> du backend.
+                  <p className="text-sm text-gray-500 mb-3">
+                    La configuration complète (clé API, merchant code, reader ID, mode sandbox/production)
+                    se fait dans l&apos;onglet&nbsp;
+                    <button
+                      type="button"
+                      onClick={() => setTab('payment')}
+                      className="text-vz-teal underline font-medium"
+                    >
+                      Paiement
+                    </button>
+                    &nbsp;— les valeurs sont persistées et primer sur les variables d&apos;environnement.
                   </p>
+                  <Button variant="outline" onClick={() => setTab('payment')}>
+                    Ouvrir la configuration SumUp
+                  </Button>
                 </Card>
 
                 <div className="flex justify-end gap-3">
@@ -1313,7 +1908,46 @@ export default function SettingsPage() {
                   </div>
                 </label>
               </div>
-              <div className="mt-4 flex items-center gap-3">
+              {/* Time window — outside it, the configured mode reverts to "free" */}
+              <div className="mt-5 p-3 border border-vz-line rounded-lg bg-vz-bg/50">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={loyaltyWindowEnabled}
+                    onChange={(e) => setLoyaltyWindowEnabled(e.target.checked)}
+                    className="w-5 h-5 accent-vz-teal"
+                  />
+                  <div>
+                    <div className="font-medium text-black">Limiter cette configuration à une plage temporelle</div>
+                    <div className="text-xs text-gray-500">
+                      En dehors de la plage, on revient au mode &laquo;&nbsp;adhésion gratuite&nbsp;&raquo; (configuration par défaut).
+                    </div>
+                  </div>
+                </label>
+                {loyaltyWindowEnabled && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Du</label>
+                      <input
+                        type="date"
+                        value={loyaltyWindowStart}
+                        onChange={(e) => setLoyaltyWindowStart(e.target.value)}
+                        className="w-full min-h-[44px] px-3 py-2 rounded-lg border border-gray-300 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Au</label>
+                      <input
+                        type="date"
+                        value={loyaltyWindowEnd}
+                        onChange={(e) => setLoyaltyWindowEnd(e.target.value)}
+                        className="w-full min-h-[44px] px-3 py-2 rounded-lg border border-gray-300 bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="mt-4 flex items-center gap-3 flex-wrap">
                 <Button onClick={saveLoyaltyConfig} disabled={loyaltySaving}>
                   {loyaltySaving ? 'Enregistrement...' : 'Enregistrer'}
                 </Button>
@@ -1436,9 +2070,11 @@ function PurgeDataCard() {
         </div>
       )}
 
-      {showModal && (
-        <Modal isOpen onClose={() => { if (!busy) { setShowModal(false); setConfirmText(''); } }}
-          title="Confirmer la purge">
+      <Modal
+        open={showModal}
+        onClose={() => { if (!busy) { setShowModal(false); setConfirmText(''); } }}
+        title="Confirmer la purge"
+      >
           <div className="space-y-3 text-sm">
             <p className="text-gray-700">
               Cette opération va effacer <strong>toutes</strong> les ventes, clients et
@@ -1460,9 +2096,8 @@ function PurgeDataCard() {
                 {busy ? 'Purge en cours…' : 'Purger'}
               </Button>
             </div>
-          </div>
-        </Modal>
-      )}
+        </div>
+      </Modal>
     </Card>
   );
 }

@@ -870,6 +870,38 @@ async def subscribe_loyalty(
     }
 
 
+@router.get("/companion/non-member")
+async def pos_companion_non_member(
+    cart_total_cents: int = 0,
+    current_user: User = Depends(get_current_user),
+):
+    """Companion payload for a non-identified client (no client_id).
+
+    Used by the POS to surface a "Vous gagneriez X pts en adhérant" banner
+    while inviting the cashier to subscribe the customer to the loyalty
+    program. Returns the points the customer would earn IF they were members.
+    """
+    from app.services.pos_companion import _points_to_credit
+
+    cents = max(0, int(cart_total_cents))
+    return {
+        "client": None,
+        "loyalty": {
+            "active": False,
+            "would_earn": _points_to_credit(cents),
+            "points_per_euro": 1,
+        },
+        "cta": {
+            "label": "Proposer la carte de fidélité",
+            "incentive": (
+                f"Cette cliente gagnerait {_points_to_credit(cents)} pts en adhérant."
+                if cents > 0
+                else "Adhésion gratuite — 1 € dépensé = 1 pt."
+            ),
+        },
+    }
+
+
 @router.get("/clients/{client_id}/companion")
 async def pos_companion(
     client_id: uuid.UUID,
@@ -908,36 +940,7 @@ async def pos_companion(
     return payload
 
 
-@router.get("/clients/identify")
-async def identify_client_pos(
-    q: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Resolve a client from a free-form input (membership / email / phone)."""
-    from app.models.client import Client, LoyaltyAccount
-    from app.services.membership_id import (
-        is_membership_number,
-        lookup_by_membership_number,
-    )
-
-    q = (q or "").strip()
-    if not q:
-        raise HTTPException(status_code=400, detail="empty query")
-
-    client: Client | None = None
-    if is_membership_number(q):
-        client = await lookup_by_membership_number(db, q)
-    elif "@" in q:
-        row = await db.execute(select(Client).where(Client.email == q.lower()))
-        client = row.scalar_one_or_none()
-    else:
-        row = await db.execute(select(Client).where(Client.phone == q))
-        client = row.scalar_one_or_none()
-
-    if client is None:
-        raise HTTPException(status_code=404, detail="client_not_found")
-
+def _serialize_client_for_pos(client) -> dict:
     loyalty = client.loyalty_account
     return {
         "client_id": str(client.id),
@@ -945,6 +948,7 @@ async def identify_client_pos(
         "last_name": client.last_name,
         "email": client.email,
         "phone": client.phone,
+        "postal_code": getattr(client, "postal_code", None),
         "membership_number": loyalty.membership_number if loyalty else None,
         "loyalty": {
             "active": loyalty is not None,
@@ -954,3 +958,69 @@ async def identify_client_pos(
             else None,
         },
     }
+
+
+@router.get("/clients/identify")
+async def identify_client_pos(
+    q: str | None = None,
+    postal_code: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resolve a client from a free-form input (membership / email / phone)
+    OR from a postal_code + name combination when no other identifier is at
+    hand. Multiple matches are returned as ``{matches: [...]}`` so the
+    cashier can pick.
+    """
+    from app.models.client import Client, LoyaltyAccount  # noqa: F401
+    from app.services.membership_id import (
+        is_membership_number,
+        lookup_by_membership_number,
+    )
+    from sqlalchemy import or_, func as _func
+
+    q_clean = (q or "").strip()
+    postal_clean = (postal_code or "").strip()
+    if not q_clean and not postal_clean:
+        raise HTTPException(status_code=400, detail="empty query")
+
+    client = None
+
+    # Path 1 — direct identifier (membership / email / phone)
+    if q_clean and not postal_clean:
+        if is_membership_number(q_clean):
+            client = await lookup_by_membership_number(db, q_clean)
+        elif "@" in q_clean:
+            row = await db.execute(select(Client).where(Client.email == q_clean.lower()))
+            client = row.scalar_one_or_none()
+        elif q_clean.replace("+", "").replace(" ", "").isdigit():
+            row = await db.execute(select(Client).where(Client.phone == q_clean))
+            client = row.scalar_one_or_none()
+
+    # Path 2 — postal code + name. Returns a list when ambiguous.
+    if client is None and postal_clean:
+        like = f"%{q_clean.lower()}%" if q_clean else "%"
+        stmt = (
+            select(Client)
+            .where(Client.postal_code == postal_clean)
+            .where(
+                or_(
+                    _func.lower(_func.coalesce(Client.last_name, "")).like(like),
+                    _func.lower(_func.coalesce(Client.first_name, "")).like(like),
+                )
+            )
+            .order_by(Client.created_at.desc())
+            .limit(20)
+        )
+        rows = (await db.execute(stmt)).scalars().all()
+        if len(rows) == 0:
+            raise HTTPException(status_code=404, detail="client_not_found")
+        if len(rows) == 1:
+            client = rows[0]
+        else:
+            return {"matches": [_serialize_client_for_pos(c) for c in rows]}
+
+    if client is None:
+        raise HTTPException(status_code=404, detail="client_not_found")
+
+    return _serialize_client_for_pos(client)
