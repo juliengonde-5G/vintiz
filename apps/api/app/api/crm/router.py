@@ -1916,6 +1916,72 @@ async def download_google_pass(
     return RedirectResponse(url=save_url, status_code=302)
 
 
+@router.get("/curation/current")
+async def public_curation_current(db: AsyncSession = Depends(get_db)):
+    """Return the active manager-curated selection (resolved to live products).
+
+    Used by /account/selection. Drops any product that is no longer in stock
+    so we never advertise a sold piece.
+    """
+    from app.services.app_config import get_section
+    from app.models.product import Product, ProductStatus
+    import uuid as _uuid
+
+    section = get_section("curation_picks") or {}
+    raw_items: list[dict] = section.get("items") or []
+    if not raw_items:
+        return {"items": [], "curator_note": section.get("curator_note", ""), "updated_at": section.get("updated_at", "")}
+
+    # Resolve UUIDs (defensive)
+    ids: list = []
+    reasons: dict[str, str] = {}
+    for it in raw_items:
+        pid = it.get("product_id")
+        if not pid:
+            continue
+        try:
+            uid = _uuid.UUID(pid)
+            ids.append(uid)
+            reasons[str(uid)] = it.get("reason") or ""
+        except (ValueError, TypeError):
+            continue
+    if not ids:
+        return {"items": [], "curator_note": section.get("curator_note", ""), "updated_at": section.get("updated_at", "")}
+
+    rows = (
+        await db.execute(
+            select(Product)
+            .where(Product.id.in_(ids))
+            .where(Product.status.in_([ProductStatus.stock, ProductStatus.display]))
+        )
+    ).scalars().all()
+
+    by_id = {str(p.id): p for p in rows}
+    out: list[dict] = []
+    for it in raw_items:
+        p = by_id.get(it.get("product_id", ""))
+        if not p:
+            continue
+        out.append(
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "barcode": p.barcode,
+                "brand": p.brand,
+                "size": p.size,
+                "color": p.color,
+                "sale_price": float(p.sale_price or 0),
+                "photo_url": p.photo_url,
+                "reason": reasons.get(str(p.id), ""),
+            }
+        )
+    return {
+        "items": out,
+        "curator_note": section.get("curator_note", ""),
+        "updated_at": section.get("updated_at", ""),
+    }
+
+
 @router.get("/account/wallet/qr.png")
 async def download_wallet_qr(
     email: str = Query(..., min_length=5, max_length=255),

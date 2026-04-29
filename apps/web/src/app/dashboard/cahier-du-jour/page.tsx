@@ -237,10 +237,13 @@ export default function CahierDuJourPage() {
             <section>
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                  <h1 className="text-2xl font-display font-bold text-black capitalize">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-vz-teal">
+                    Pilotage du jour
+                  </p>
+                  <h1 className="font-display text-3xl md:text-4xl font-[450] text-vz-ink mt-1 capitalize tracking-[-0.01em]">
                     Cahier de travail
                   </h1>
-                  <p className="text-sm text-gray-500 capitalize">{formattedDate}</p>
+                  <p className="text-sm text-vz-ink-mute capitalize mt-1">{formattedDate}</p>
                 </div>
                 {data.header.weather && (
                   <div className="flex items-center gap-3 bg-vz-bg rounded-xl px-4 py-2">
@@ -500,12 +503,12 @@ export default function CahierDuJourPage() {
 }
 
 function StatBlock({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: 'teal' | 'pink' }) {
-  const color = accent === 'teal' ? 'text-vz-teal' : accent === 'pink' ? 'text-vz-accent' : 'text-black';
+  const color = accent === 'teal' ? 'text-vz-teal' : accent === 'pink' ? 'text-vz-accent' : 'text-vz-ink';
   return (
-    <div className="border border-gray-100 rounded-xl p-3 bg-white">
-      <div className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</div>
-      <div className={`text-lg font-display font-bold ${color} mt-1`}>{value}</div>
-      {hint && <div className="text-[10px] text-gray-400 mt-1">{hint}</div>}
+    <div className="border border-vz-line rounded-vz-lg p-3 bg-white">
+      <div className="font-mono text-[10px] text-vz-ink-mute uppercase tracking-[0.18em]">{label}</div>
+      <div className={`font-display text-2xl font-[450] tracking-[-0.01em] ${color} mt-1`}>{value}</div>
+      {hint && <div className="text-[10px] text-vz-ink-mute mt-1">{hint}</div>}
     </div>
   );
 }

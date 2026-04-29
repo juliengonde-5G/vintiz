@@ -231,6 +231,47 @@ async def update_sumup_config(payload: SumUpConfigUpdate):
 
 
 # ---------------------------------------------------------------------------
+# Curation picks — manager-curated selection surfaced on /account/selection
+# ---------------------------------------------------------------------------
+
+
+class CurationPickItem(BaseModel):
+    product_id: str
+    reason: str | None = None
+
+
+class CurationPicksUpdate(BaseModel):
+    items: list[CurationPickItem]
+    curator_note: str | None = None
+
+
+@router.get("/curation-picks", dependencies=[Depends(manager_only)])
+async def get_curation_picks():
+    """Return the persisted curator selection (max 12 product IDs + a note)."""
+    from app.services.app_config import get_section
+    return get_section("curation_picks")
+
+
+@router.put("/curation-picks", dependencies=[Depends(manager_only)])
+async def update_curation_picks(payload: CurationPicksUpdate):
+    """Persist the curator selection. Capped at 12 picks."""
+    from app.services.app_config import update_section
+    from datetime import datetime as _dt, timezone as _tz
+
+    if len(payload.items) > 12:
+        raise HTTPException(status_code=400, detail="Maximum 12 sélections")
+    items = [{"product_id": i.product_id, "reason": i.reason or ""} for i in payload.items]
+    return update_section(
+        "curation_picks",
+        {
+            "items": items,
+            "curator_note": payload.curator_note or "",
+            "updated_at": _dt.now(_tz.utc).isoformat(),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # Email gateway config — editable Brevo / SMTP / simulation overrides
 # Persisted values prevail over environment variables.
 # ---------------------------------------------------------------------------
