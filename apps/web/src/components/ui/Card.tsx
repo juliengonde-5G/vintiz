@@ -1,6 +1,6 @@
 import React from 'react';
 
-type Variant = 'default' | 'elevated' | 'bordered' | 'gradient' | 'teal' | 'pink';
+type Variant = 'default' | 'elevated' | 'bordered' | 'teal' | 'accent';
 
 interface CardProps {
   title?: string;
@@ -16,12 +16,11 @@ interface CardProps {
 }
 
 const variantClasses: Record<Variant, string> = {
-  default: 'bg-white shadow-card hover:shadow-soft',
-  elevated: 'bg-white shadow-soft hover:shadow-depth',
-  bordered: 'bg-white border border-teal-50 shadow-sm hover:border-teal-200',
-  gradient: 'bg-gradient-card border border-teal-50 shadow-soft',
-  teal: 'bg-gradient-teal text-white shadow-depth',
-  pink: 'bg-pink-50 border border-pink-100 shadow-sm',
+  default: 'bg-vz-surface border border-vz-line',
+  elevated: 'bg-vz-surface border border-vz-line shadow-vz-soft',
+  bordered: 'bg-vz-surface border border-vz-line',
+  teal: 'bg-vz-teal text-white',
+  accent: 'bg-vz-accent-soft border border-dashed border-vz-accent',
 };
 
 export default function Card({
@@ -36,28 +35,28 @@ export default function Card({
   as,
   href,
 }: CardProps) {
-  const base = `rounded-2xl p-6 transition-all duration-200 ${variantClasses[variant]} ${className}`;
+  const base = `rounded-vz-lg p-6 transition-all duration-200 ${variantClasses[variant]} ${className}`;
   const clickable = onClick || href ? 'cursor-pointer active:scale-[0.99]' : '';
 
   const header = (title || subtitle || action || icon) && (
     <div className="flex items-start justify-between gap-4 mb-4">
       <div className="flex items-start gap-3 min-w-0">
         {icon && (
-          <div className={`flex-shrink-0 h-10 w-10 rounded-xl flex items-center justify-center ${
-            variant === 'teal' ? 'bg-white/15 text-white' : 'bg-teal-50 text-teal'
+          <div className={`flex-shrink-0 h-10 w-10 rounded-vz flex items-center justify-center ${
+            variant === 'teal' ? 'bg-white/15 text-white' : 'bg-vz-teal-soft text-vz-teal-deep'
           }`}>
             {icon}
           </div>
         )}
         <div className="min-w-0">
           {title && (
-            <h3 className={`text-base font-semibold leading-tight font-display ${
-              variant === 'teal' ? 'text-white' : 'text-black'
+            <h3 className={`text-base font-medium leading-tight font-display ${
+              variant === 'teal' ? 'text-white' : 'text-vz-ink'
             }`}>{title}</h3>
           )}
           {subtitle && (
             <p className={`text-sm mt-0.5 ${
-              variant === 'teal' ? 'text-white/80' : 'text-gray-500'
+              variant === 'teal' ? 'text-white/80' : 'text-vz-ink-mute'
             }`}>{subtitle}</p>
           )}
         </div>

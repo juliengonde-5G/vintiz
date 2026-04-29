@@ -494,25 +494,38 @@ GET    /api/admin/predictive/audience?period_days=90  Snapshot debug dominant ta
 
 ## Design tokens (Tailwind)
 
-Charte v2 (2026-04) — voir `docs/DESIGN_SYSTEM.md` pour le détail complet.
+Charte v3 « Sauge Néo » (2026-04) — voir `docs/DESIGN_SYSTEM.md` pour le détail complet.
+Preset Tailwind : `design-package/tailwind.preset.ts`.
 
 ```css
-teal:  #008678  (couleur signature — CTA, liens, actions primaires)
-pink:  #FFC5DF  (accent — fidélité, badges, tags)
-black: #000000  (texte structurel)
-cream: #FFF3ED  (fond chaud — sert de background)
-white: #FFFFFF  (cartes, surfaces)
+vz-bg:          #F6F5F1  (fond principal off-white)
+vz-bg-alt:      #ECEAE3  (sidebar backend, sections alternées)
+vz-surface:     #FFFFFF  (cards, modales, inputs)
+vz-ink:         #0E0E0C  (texte principal — quasi-noir)
+vz-ink-soft:    #4A4A47  (texte secondaire)
+vz-ink-mute:    #8B8B86  (méta, labels, hints)
+vz-line:        #D5D3CC  (bordures, séparateurs)
+vz-teal:        #0B7A6A  (couleur primaire — CTA, liens, fidélité)
+vz-teal-deep:   #054238  (hover/pressed teal)
+vz-teal-soft:   #CDE5DF  (background chips/badges teal)
+vz-accent:      #E84E8B  (magenta éditorial — célébration uniquement)
+vz-accent-soft: #FFD5E5  (background offre encartée)
+vz-gold:        #8E7B57  (tier fidélité haut de gamme)
 ```
 
-Typographie : **Lexend Mega** (titres, `font-display`) + **Poppins** (texte,
-`font-sans`), chargées via `next/font/google` dans les layouts.
+Typographie : **Fraunces** (display, `font-display`) + **Manrope** (body,
+`font-body`/`font-sans`) + **JetBrains Mono** (codes/numéros, `font-mono`).
+Chargées via `@import url('https://fonts.googleapis.com/css2?...')` en tête
+de `apps/{web,site}/src/app/globals.css`.
+
+Mode sombre backend uniquement, activé via `[data-theme="dark"]` ou `.dark`.
 
 Logos (copiés dans `apps/{web,site}/public/`) :
 
 | Fichier | Usage |
 |---|---|
-| `/logo-teal.png` | Monogramme VL teal — logo par défaut (navbar, sidebar, login) |
-| `/logo-rose.png` | Monogramme rose — fonds sombres (footer noir) |
+| `/logo-teal.png` | Monogramme VZ teal `#0B7A6A` — logo par défaut (navbar, sidebar, login) |
+| `/logo-rose.png` | Monogramme magenta `#E84E8B` — fonds sombres (footer noir) — **à régénérer en v3 (était `#FFC5DF` en v2)** |
 | `/lettrage-noir.png` | Mot « VINTIZ » noir — factures, emails |
 | `/receipt-logo.png` | Version ticket de caisse (forcée noir via CSS filter) |
 

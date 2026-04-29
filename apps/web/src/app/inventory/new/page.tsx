@@ -214,7 +214,7 @@ export default function NewProductPage() {
             <Card title="Photo + Analyse IA">
               <div
                 className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
-                  dragOver ? 'border-teal bg-teal-50' : 'border-gray-300 hover:border-pink'
+                  dragOver ? 'border-vz-teal bg-vz-teal-soft' : 'border-gray-300 hover:border-vz-accent-soft'
                 }`}
                 onClick={() => fileInputRef.current?.click()}
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -254,7 +254,7 @@ export default function NewProductPage() {
 
               {analyzing && (
                 <div className="text-center py-4">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-teal"></div>
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-vz-teal"></div>
                   <p className="text-sm text-gray-500 mt-2">Analyse IA en cours...</p>
                 </div>
               )}
@@ -309,7 +309,7 @@ export default function NewProductPage() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between py-1">
                       <span className="text-gray-500">Prix suggere</span>
-                      <span className="font-bold text-teal text-lg">{priceSuggestion.suggested_price.toFixed(2)}&nbsp;&euro;</span>
+                      <span className="font-bold text-vz-teal text-lg">{priceSuggestion.suggested_price.toFixed(2)}&nbsp;&euro;</span>
                     </div>
                     <div className="flex justify-between py-1 text-xs">
                       <span className="text-gray-400">Fourchette</span>
@@ -355,7 +355,7 @@ export default function NewProductPage() {
                   <select
                     value={form.category_id}
                     onChange={(e) => handleChange('category_id', e.target.value)}
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal"
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
                     required
                   >
                     <option value="">Choisir une categorie</option>
@@ -377,7 +377,7 @@ export default function NewProductPage() {
                   <div className="flex flex-wrap gap-2 mb-2">
                     {['XS','S','M','L','XL','XXL','XXXL','TU','34','36','38','40','42','44','46'].map(s => (
                       <button key={s} type="button" onClick={() => handleChange('size', form.size === s ? '' : s)}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${form.size === s ? 'bg-teal text-white' : 'bg-gray-100 hover:bg-gray-200 text-black'}`}>
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${form.size === s ? 'bg-vz-teal text-white' : 'bg-gray-100 hover:bg-gray-200 text-black'}`}>
                         {s}
                       </button>
                     ))}
@@ -398,7 +398,7 @@ export default function NewProductPage() {
                     ].map(({l,c}) => (
                       <button key={l} type="button" onClick={() => handleChange('color', form.color === l ? '' : l)}
                         title={l}
-                        className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-all ${form.color === l ? 'ring-2 ring-teal ring-offset-1 bg-teal-50' : 'hover:bg-gray-50'}`}>
+                        className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-all ${form.color === l ? 'ring-2 ring-vz-teal ring-offset-1 bg-vz-teal-soft' : 'hover:bg-gray-50'}`}>
                         <div className="w-6 h-6 rounded-full border border-gray-200" style={{background:c}} />
                         <span className="text-xs text-gray-600 whitespace-nowrap">{l}</span>
                       </button>
@@ -419,7 +419,7 @@ export default function NewProductPage() {
                   <select
                     value={form.status}
                     onChange={(e) => handleChange('status', e.target.value)}
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal"
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
                   >
                     <option value="stock">En stock</option>
                     <option value="display">En vitrine</option>
@@ -469,13 +469,13 @@ export default function NewProductPage() {
                   )}
                 </div>
                 {showLabel && form.name && form.sellingPrice && (
-                  <div className="border-2 border-dashed border-pink rounded-lg p-4 w-full sm:w-64">
-                    <p className="font-serif text-lg font-bold text-pink text-center">Vintiz</p>
-                    <hr className="my-2 border-pink-200" />
+                  <div className="border-2 border-dashed border-vz-accent-soft rounded-lg p-4 w-full sm:w-64">
+                    <p className="font-serif text-lg font-bold text-vz-accent-soft text-center">Vintiz</p>
+                    <hr className="my-2 border-vz-accent-soft" />
                     <p className="text-sm font-medium text-center">{form.name}</p>
                     {form.size && <p className="text-xs text-gray-500 text-center">Taille: {form.size}</p>}
                     {form.brand && <p className="text-xs text-gray-400 text-center">{form.brand}</p>}
-                    <p className="text-lg font-bold text-teal text-center mt-2">{form.sellingPrice}&nbsp;&euro;</p>
+                    <p className="text-lg font-bold text-vz-teal text-center mt-2">{form.sellingPrice}&nbsp;&euro;</p>
                     <p className="text-xs text-gray-400 text-center">SEM:{form.week_number}</p>
                   </div>
                 )}

@@ -102,7 +102,7 @@ export default function RecosDuJourTab() {
             key={t.key}
             onClick={() => setSub(t.key as SubTab)}
             className={`text-sm px-4 py-2 rounded-lg min-h-0 ${
-              sub === t.key ? 'bg-teal text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              sub === t.key ? 'bg-vz-teal text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
             }`}
           >
             {t.label}

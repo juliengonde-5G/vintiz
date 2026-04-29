@@ -1,59 +1,73 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,450;9..144,500&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Charte graphique Vintiz v2 (2026-04) */
+/* Vintiz — Charte v3 « Sauge Néo » (2026-04) */
 :root {
-  --background: #FFF3ED; /* cream */
-  --foreground: #000000; /* black */
-  --teal: #008678;
-  --pink: #FFC5DF;
+  --vz-bg: #F6F5F1;
+  --vz-bg-alt: #ECEAE3;
+  --vz-surface: #FFFFFF;
+  --vz-ink: #0E0E0C;
+  --vz-ink-soft: #4A4A47;
+  --vz-ink-mute: #8B8B86;
+  --vz-line: #D5D3CC;
+  --vz-teal: #0B7A6A;
+  --vz-teal-deep: #054238;
+  --vz-teal-soft: #CDE5DF;
+  --vz-accent: #E84E8B;
+  --vz-accent-soft: #FFD5E5;
+  --vz-gold: #8E7B57;
+
+  --vz-font-display: "Fraunces", "Söhne Breit", "Cormorant Garamond", serif;
+  --vz-font-body: "Manrope", "Söhne", system-ui, sans-serif;
+  --vz-font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --vz-radius: 8px;
+  --vz-radius-lg: 16px;
+  --vz-radius-pill: 999px;
+
+  --vz-shadow-soft: 0 1px 0 rgba(14,14,12,0.04), 0 16px 40px -20px rgba(14,14,12,0.16);
+
+  --background: var(--vz-bg);
+  --foreground: var(--vz-ink);
+  --card: var(--vz-surface);
+  --card-foreground: var(--vz-ink);
+  --popover: var(--vz-surface);
+  --popover-foreground: var(--vz-ink);
+  --primary: var(--vz-teal);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--vz-bg-alt);
+  --secondary-foreground: var(--vz-ink);
+  --muted: var(--vz-bg-alt);
+  --muted-foreground: var(--vz-ink-mute);
+  --accent: var(--vz-accent);
+  --accent-foreground: #FFFFFF;
+  --border: var(--vz-line);
+  --input: var(--vz-line);
+  --ring: var(--vz-teal);
+  --radius: var(--vz-radius);
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
+  font-family: var(--vz-font-body);
+  -webkit-font-smoothing: antialiased;
 }
 
 @keyframes fade-in-up {
-  0% {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
-.animate-fade-in-up {
-  animation: fade-in-up 0.8s ease-out forwards;
-}
-
-.animation-delay-200 {
-  animation-delay: 0.2s;
-  opacity: 0;
-}
-
-.animation-delay-400 {
-  animation-delay: 0.4s;
-  opacity: 0;
-}
-
-.animation-delay-600 {
-  animation-delay: 0.6s;
-  opacity: 0;
-}
-
-.animation-delay-800 {
-  animation-delay: 0.8s;
-  opacity: 0;
-}
-
-.animation-delay-1000 {
-  animation-delay: 1.0s;
-  opacity: 0;
-}
+.animate-fade-in-up { animation: fade-in-up 0.8s ease-out forwards; }
+.animation-delay-200 { animation-delay: 0.2s; opacity: 0; }
+.animation-delay-400 { animation-delay: 0.4s; opacity: 0; }
+.animation-delay-600 { animation-delay: 0.6s; opacity: 0; }
+.animation-delay-800 { animation-delay: 0.8s; opacity: 0; }
+.animation-delay-1000 { animation-delay: 1.0s; opacity: 0; }
 
 /* Marquee (dev mockup preview) */
 @keyframes marquee {

@@ -20,8 +20,11 @@ elle connaît ses clients, ses pièces, son stock, et l'app doit la rendre
 plus rapide, pas la contraindre.
 
 **Ton** : chaleureux, élégant, sans jargon technique. La couleur dominante
-est le **teal `#008678`** (couleur signature) sur un fond `cream #FFF3ED`,
-avec des accents `pink #FFC5DF` pour la fidélité.
+est le **teal `#0B7A6A`** (couleur signature, charte v3 « Sauge Néo ») sur
+un fond `vz-bg #F6F5F1` (off-white frais). Le rose de la v2 est remplacé
+par un **magenta éditorial `#E84E8B`** réservé aux moments de célébration
+(anniversaire fidélité, offre exclusive, encart) — il n'est plus utilisé en
+décor de remplissage.
 
 **Référence retail** : Aesop, Muji, Sézane (clarté, espace blanc, photos
 soignées). À l'opposé : Cdiscount, Amazon, GoogleAdSense (encombrement,
@@ -307,7 +310,7 @@ Pour chaque nouveau composant ou écran, prévoir :
 
 ## 9. Accessibilité
 
-- Contraste : teal `#008678` sur cream `#FFF3ED` → **6.4:1** ✅ AAA
+- Contraste : teal `#0B7A6A` sur bg `#F6F5F1` → **5.5:1+** ✅ AAA (charte v3)
   pour le texte large, AA pour le texte normal
 - Toujours `aria-label` sur les boutons à icône seule
 - Modal : focus trap + Esc + restitution focus à la fermeture
@@ -341,7 +344,7 @@ page longues. Vintiz n'est pas une app fitness, c'est un outil de travail.
 
 ## 11. Photographie produit (charte vente)
 
-- Fond uni `cream` ou blanc cassé
+- Fond uni `vz-bg` (off-white frais) ou blanc surface
 - Article suspendu ou posé bien à plat (jamais froissé)
 - Lumière naturelle ou LED 5000K
 - Cadrage : article centré, marge 10 % autour

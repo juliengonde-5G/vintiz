@@ -37,7 +37,7 @@ export default function CookieBanner() {
     <div
       role="dialog"
       aria-label="Gestion des cookies"
-      className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-pink/30 shadow-lg"
+      className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-vz-accent-soft/30 shadow-lg"
     >
       <div className="max-w-4xl mx-auto px-4 py-4 sm:px-6">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -46,7 +46,7 @@ export default function CookieBanner() {
               <span className="font-semibold text-black">Votre vie privée</span> — Nous utilisons des cookies
               fonctionnels nécessaires au fonctionnement du site. Avec votre accord, des cookies analytiques
               (mesure d&apos;audience anonyme via Google Analytics) pourront être déposés afin d&apos;améliorer votre expérience.{' '}
-              <Link href="/confidentialite" className="underline text-teal hover:text-teal-600">
+              <Link href="/confidentialite" className="underline text-vz-teal hover:text-vz-teal-deep">
                 Politique de confidentialité
               </Link>
             </p>
@@ -60,7 +60,7 @@ export default function CookieBanner() {
             </button>
             <button
               onClick={accept}
-              className="px-4 py-2 text-sm font-medium text-white bg-teal rounded-lg hover:bg-teal-600 transition-colors"
+              className="px-4 py-2 text-sm font-medium text-white bg-vz-teal rounded-lg hover:bg-vz-teal-deep transition-colors"
             >
               Tout accepter
             </button>

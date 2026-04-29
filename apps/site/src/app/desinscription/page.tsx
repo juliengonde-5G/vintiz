@@ -50,14 +50,14 @@ export default async function UnsubscribePage({
   return (
     <>
       <Navbar />
-      <section className="pt-28 pb-20 px-6 bg-cream min-h-screen">
-        <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-sm border border-pink/30 px-6 py-8 text-center">
+      <section className="pt-28 pb-20 px-6 bg-vz-bg min-h-screen">
+        <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-sm border border-vz-accent-soft/30 px-6 py-8 text-center">
           <h1 className="font-display text-2xl text-black mb-4">
             Désinscription newsletter
           </h1>
           {result.ok ? (
             <>
-              <div className="bg-teal/10 border border-teal/30 rounded-lg p-4 text-teal mb-4">
+              <div className="bg-vz-teal/10 border border-vz-teal/30 rounded-lg p-4 text-vz-teal mb-4">
                 {result.message}
               </div>
               {result.email && (
@@ -67,7 +67,7 @@ export default async function UnsubscribePage({
               )}
               <p className="text-sm text-black/60">
                 Vous pouvez vous réinscrire à tout moment depuis{" "}
-                <Link href="/" className="underline text-teal">
+                <Link href="/" className="underline text-vz-teal">
                   la page d&apos;accueil
                 </Link>
                 .
@@ -80,7 +80,7 @@ export default async function UnsubscribePage({
               </div>
               <p className="text-sm text-black/60">
                 Si le problème persiste, contactez{" "}
-                <a href="mailto:dpo@solidarite-textiles.fr" className="underline text-teal">
+                <a href="mailto:dpo@solidarite-textiles.fr" className="underline text-vz-teal">
                   dpo@solidarite-textiles.fr
                 </a>
                 .

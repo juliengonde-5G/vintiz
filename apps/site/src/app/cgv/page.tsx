@@ -14,7 +14,7 @@ export default function CGVPage() {
   return (
     <>
       <Navbar />
-      <section className="pt-28 pb-20 px-6 bg-cream min-h-screen">
+      <section className="pt-28 pb-20 px-6 bg-vz-bg min-h-screen">
         <div className="max-w-3xl mx-auto">
           <h1 className="font-display text-3xl text-black mb-8">
             Conditions Générales de Vente
@@ -130,7 +130,7 @@ export default function CGVPage() {
             d&apos;un article éligible et choisissez ce mode (au lieu d&apos;un
             règlement immédiat). Le solde de votre avoir est consultable à tout
             moment depuis votre{" "}
-            <Link href="/account" className="text-teal underline">
+            <Link href="/account" className="text-vz-teal underline">
               espace personnel
             </Link>
             . Il est utilisable lors de tout achat futur, en boutique
@@ -143,12 +143,12 @@ export default function CGVPage() {
           </h2>
           <p className="text-black/70 leading-relaxed">
             Le traitement de vos données personnelles est encadré par notre{" "}
-            <Link href="/confidentialite" className="text-teal underline">
+            <Link href="/confidentialite" className="text-vz-teal underline">
               politique de confidentialité
             </Link>
             . Vous pouvez, à tout moment, télécharger vos données ou demander
             leur suppression depuis votre{" "}
-            <Link href="/account" className="text-teal underline">
+            <Link href="/account" className="text-vz-teal underline">
               espace personnel
             </Link>
             .

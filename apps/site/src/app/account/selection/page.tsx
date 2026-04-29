@@ -49,7 +49,7 @@ export default function AccountSelectionPage() {
               <div className="p-3">
                 <h3 className="text-sm font-medium text-black">{it.product_name}</h3>
                 {it.reason && <p className="text-xs text-gray-500 mt-1">{it.reason}</p>}
-                <p className="text-base font-semibold text-teal mt-2">{it.sale_price.toFixed(2)} €</p>
+                <p className="text-base font-semibold text-vz-teal mt-2">{it.sale_price.toFixed(2)} €</p>
               </div>
             </article>
           ))}

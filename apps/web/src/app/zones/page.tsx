@@ -38,9 +38,9 @@ type DragState =
 function occupancyInfo(count: number, capacity: number) {
   if (!capacity) return { pct: 0, tone: 'bg-gray-200', text: 'text-gray-600' };
   const pct = Math.min(100, Math.round((count / capacity) * 100));
-  if (pct >= 95) return { pct, tone: 'bg-pink-500', text: 'text-pink-700' };
-  if (pct >= 70) return { pct, tone: 'bg-teal-400', text: 'text-teal' };
-  if (pct >= 40) return { pct, tone: 'bg-teal-300', text: 'text-teal' };
+  if (pct >= 95) return { pct, tone: 'bg-vz-accent', text: 'text-vz-accent' };
+  if (pct >= 70) return { pct, tone: 'bg-vz-teal', text: 'text-vz-teal' };
+  if (pct >= 40) return { pct, tone: 'bg-vz-teal', text: 'text-vz-teal' };
   return { pct, tone: 'bg-yellow-300', text: 'text-yellow-700' };
 }
 
@@ -240,12 +240,12 @@ export default function ZonesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-cream">
+    <div className="min-h-screen bg-vz-bg">
       <Sidebar />
       <main className="md:ml-64 p-4 md:p-8 max-w-7xl">
         <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <p className="text-[11px] tracking-[0.22em] uppercase text-teal font-medium">
+            <p className="text-[11px] tracking-[0.22em] uppercase text-vz-teal font-medium">
               Espaces de vente
             </p>
             <h1 className="text-3xl font-display font-semibold text-black mt-1">
@@ -274,7 +274,7 @@ export default function ZonesPage() {
         </div>
 
         {error && (
-          <div className="mb-4 rounded-xl border border-pink-300 bg-pink-50 text-pink-700 px-4 py-3 text-sm">
+          <div className="mb-4 rounded-xl border border-vz-accent-soft bg-vz-accent-soft text-vz-accent px-4 py-3 text-sm">
             {error}
           </div>
         )}
@@ -326,7 +326,7 @@ export default function ZonesPage() {
                 ))}
               </select>
               {editMode && (
-                <span className="text-xs px-3 py-1 rounded-full bg-teal-50 text-teal font-medium">
+                <span className="text-xs px-3 py-1 rounded-full bg-vz-teal-soft text-vz-teal font-medium">
                   Edition active
                 </span>
               )}
@@ -345,7 +345,7 @@ export default function ZonesPage() {
             onPointerUp={onPointerEnd}
             onPointerLeave={onPointerEnd}
             className={`relative w-full rounded-2xl overflow-hidden select-none ${
-              editMode ? 'bg-[radial-gradient(#00867820_1px,transparent_1px)] bg-[length:18px_18px] ring-1 ring-teal-100' : 'bg-gradient-warm ring-1 ring-teal-50'
+              editMode ? 'bg-[radial-gradient(#0B7A6A20_1px,transparent_1px)] bg-[length:18px_18px] ring-1 ring-vz-teal-soft' : 'bg-vz-bg ring-1 ring-vz-teal-soft'
             }`}
             style={{ aspectRatio: '16 / 10' }}
           >
@@ -366,7 +366,7 @@ export default function ZonesPage() {
                 const isDragging = drag?.zoneId === z.id;
                 const isHovered = hoverId === z.id;
                 const radius = z.shape === 'circle' ? '50%' : z.shape === 'rounded' ? '18px' : '6px';
-                const bg = z.color_code || '#008678';
+                const bg = z.color_code || '#0B7A6A';
                 return (
                   <div
                     key={z.id}
@@ -378,7 +378,7 @@ export default function ZonesPage() {
                     }}
                     className={`absolute group transition-shadow ${
                       editMode ? 'cursor-move' : 'cursor-pointer'
-                    } ${isDragging ? 'shadow-depth z-30' : isHovered ? 'shadow-depth z-20' : 'shadow-soft z-10'}`}
+                    } ${isDragging ? 'shadow-vz-soft z-30' : isHovered ? 'shadow-vz-soft z-20' : 'shadow-vz-soft z-10'}`}
                     style={{
                       left: `${z.pos_x}%`,
                       top: `${z.pos_y}%`,
@@ -415,7 +415,7 @@ export default function ZonesPage() {
                         className="absolute bottom-0 right-0 h-4 w-4 bg-white rounded-tl-md rounded-br-md cursor-nwse-resize shadow-md flex items-center justify-center"
                         aria-label="Redimensionner"
                       >
-                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#008678" strokeWidth="1.5" strokeLinecap="round">
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#0B7A6A" strokeWidth="1.5" strokeLinecap="round">
                           <line x1="2" y1="8" x2="8" y2="2" />
                           <line x1="5" y1="8" x2="8" y2="5" />
                         </svg>
@@ -428,13 +428,13 @@ export default function ZonesPage() {
           </div>
           <div className="mt-3 flex items-center gap-3 text-xs text-gray-500 flex-wrap">
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-teal" /> Normal
+              <span className="h-2 w-2 rounded-full bg-vz-teal" /> Normal
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-yellow-300" /> Sous-remplie
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-pink-500" /> Saturee
+              <span className="h-2 w-2 rounded-full bg-vz-accent" /> Saturee
             </span>
           </div>
           </>
@@ -463,11 +463,11 @@ export default function ZonesPage() {
               const occ = occupancyInfo(z.product_count || 0, z.capacity);
               return (
                 <Link key={z.id} href={`/zones/${z.id}`} className="group">
-                  <div className="rounded-2xl bg-white p-5 shadow-card hover:shadow-soft transition-all group-active:scale-[0.99] animate-slide-up">
+                  <div className="rounded-2xl bg-white p-5 shadow-vz-soft hover:shadow-vz-soft transition-all group-active:scale-[0.99] animate-slide-up">
                     <div className="flex items-center gap-3 mb-4">
                       <div
                         className="h-11 w-11 rounded-xl flex items-center justify-center text-white shadow-sm"
-                        style={{ background: `linear-gradient(135deg, ${z.color_code || '#008678'}, ${z.color_code || '#008678'}CC)` }}
+                        style={{ background: `linear-gradient(135deg, ${z.color_code || '#0B7A6A'}, ${z.color_code || '#0B7A6A'}CC)` }}
                       >
                         <ZoneIcon name={z.icon} />
                       </div>

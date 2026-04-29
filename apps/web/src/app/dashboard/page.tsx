@@ -19,7 +19,7 @@ function BriefingWidget() {
   }, []);
   if (!b) return null;
   return (
-    <div className="rounded-2xl bg-gradient-teal text-white p-5 md:p-6 shadow-depth mb-8 relative overflow-hidden">
+    <div className="rounded-2xl bg-vz-teal text-white p-5 md:p-6 shadow-vz-soft mb-8 relative overflow-hidden">
       <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-3 gap-3">
@@ -208,8 +208,8 @@ function TicketModal({
         <div className="px-6 py-4 space-y-4">
           {/* Client */}
           {ticket.client && (
-            <div className="flex items-center gap-3 p-3 bg-teal-50 rounded-xl">
-              <div className="w-9 h-9 rounded-full bg-teal flex items-center justify-center text-white text-sm font-bold shrink-0">
+            <div className="flex items-center gap-3 p-3 bg-vz-teal-soft rounded-xl">
+              <div className="w-9 h-9 rounded-full bg-vz-teal flex items-center justify-center text-white text-sm font-bold shrink-0">
                 {ticket.client.first_name[0]}{ticket.client.last_name[0]}
               </div>
               <div>
@@ -253,7 +253,7 @@ function TicketModal({
             </div>
             <div className="flex justify-between text-base font-bold text-black">
               <span>Total TTC</span>
-              <span className="text-teal">{formatCurrency(ticket.total_ttc)}</span>
+              <span className="text-vz-teal">{formatCurrency(ticket.total_ttc)}</span>
             </div>
           </div>
 
@@ -408,10 +408,10 @@ function CahierStrip() {
   return (
     <div className="mb-6 space-y-3">
       {/* Message du jour */}
-      <div className="rounded-2xl border border-teal-100 bg-white p-4">
+      <div className="rounded-2xl border border-vz-teal-soft bg-white p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-teal flex-shrink-0">
+            <span className="text-xs font-semibold uppercase tracking-wider text-vz-teal flex-shrink-0">
               Message du jour
             </span>
             {editing ? (
@@ -440,11 +440,11 @@ function CahierStrip() {
                 </Button>
               </>
             ) : (
-              <button onClick={() => setEditing(true)} className="text-xs text-teal underline">
+              <button onClick={() => setEditing(true)} className="text-xs text-vz-teal underline">
                 Modifier
               </button>
             )}
-            <Link href="/dashboard/cahier-du-jour" className="text-xs text-teal underline">
+            <Link href="/dashboard/cahier-du-jour" className="text-xs text-vz-teal underline">
               Voir le cahier
             </Link>
           </div>
@@ -452,7 +452,7 @@ function CahierStrip() {
       </div>
 
       {/* Strip Objectif */}
-      <div className="rounded-2xl bg-gradient-teal text-white p-5 shadow-depth">
+      <div className="rounded-2xl bg-vz-teal text-white p-5 shadow-vz-soft">
         <div className="flex flex-wrap items-center gap-6">
           <div>
             <p className="text-xs uppercase tracking-wider opacity-80">CA du jour</p>
@@ -615,7 +615,7 @@ export default function DashboardPage() {
           <div className="md:hidden sticky top-0 z-30 -mx-4 mb-4 px-4 py-2 bg-white/90 backdrop-blur border-b border-gray-200 flex justify-between items-center text-sm">
             <span>
               <span className="text-gray-500 mr-1">CA</span>
-              <strong className="text-teal">{formatCurrency(data.today.revenue)}</strong>
+              <strong className="text-vz-teal">{formatCurrency(data.today.revenue)}</strong>
             </span>
             <span>
               <span className="text-gray-500 mr-1">Tickets</span>
@@ -657,7 +657,7 @@ export default function DashboardPage() {
               ))
             : kpis.map((kpi) => (
                 <Card key={kpi.label} className="flex items-start gap-4">
-                  <div className="p-3 bg-teal-50 rounded-lg shrink-0">{kpi.icon}</div>
+                  <div className="p-3 bg-vz-teal-soft rounded-lg shrink-0">{kpi.icon}</div>
                   <div>
                     <p className="text-sm text-gray-500">{kpi.label}</p>
                     <p className="text-2xl font-bold text-black mt-1">{kpi.value}</p>
@@ -685,17 +685,17 @@ export default function DashboardPage() {
                     <button
                       key={tx.id}
                       onClick={() => openTicket(tx.id)}
-                      className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer text-left group"
+                      className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-vz-teal-soft rounded-lg transition-colors cursor-pointer text-left group"
                     >
                       <div>
-                        <p className="text-sm font-medium text-black group-hover:text-teal transition-colors">
+                        <p className="text-sm font-medium text-black group-hover:text-vz-teal transition-colors">
                           Ticket #{tx.transaction_number}
                         </p>
                         <p className="text-xs text-gray-500">{tx.created_at ? formatDate(tx.created_at) : ''}</p>
                       </div>
                       <div className="flex items-center gap-3">
-                        <p className="font-bold text-teal">{formatCurrency(tx.total_ttc)}</p>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 group-hover:text-teal transition-colors">
+                        <p className="font-bold text-vz-teal">{formatCurrency(tx.total_ttc)}</p>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 group-hover:text-vz-teal transition-colors">
                           <polyline points="9 18 15 12 9 6" />
                         </svg>
                       </div>

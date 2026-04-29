@@ -76,7 +76,7 @@ export default function AccountOffresPage() {
   if (!email) {
     return (
       <AccountShell title="Mes offres">
-        <Link href="/account/login" className="text-teal underline">Se connecter</Link>
+        <Link href="/account/login" className="text-vz-teal underline">Se connecter</Link>
       </AccountShell>
     );
   }
@@ -108,7 +108,7 @@ export default function AccountOffresPage() {
                 <p className="text-xs uppercase tracking-wider text-gray-500">
                   {SOURCE_LABELS[c.source ?? ""] ?? "Coupon"}
                 </p>
-                <p className="text-2xl font-display font-semibold text-teal mt-1">
+                <p className="text-2xl font-display font-semibold text-vz-teal mt-1">
                   {formatDiscount(c)}
                 </p>
                 <p className="text-sm text-gray-600">
@@ -116,7 +116,7 @@ export default function AccountOffresPage() {
                 </p>
                 {c.notes && <p className="text-xs text-gray-500 mt-1">{c.notes}</p>}
               </div>
-              <span className="text-xs px-2 py-1 rounded-full bg-pink/30 text-black self-start">
+              <span className="text-xs px-2 py-1 rounded-full bg-vz-accent-soft/30 text-black self-start">
                 {c.expired ? "Expiré" : "À utiliser en boutique"}
               </span>
             </li>

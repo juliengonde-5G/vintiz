@@ -474,7 +474,7 @@ export default function SettingsPage() {
               onClick={() => setTab(t.key)}
               className={`px-4 py-2 rounded-lg min-h-[44px] whitespace-nowrap transition-colors ${
                 tab === t.key
-                  ? 'bg-teal text-white font-medium'
+                  ? 'bg-vz-teal text-white font-medium'
                   : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
               }`}
             >
@@ -537,15 +537,15 @@ export default function SettingsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                 <div>
                   <p className="text-sm text-gray-500 mb-1">Site vitrine</p>
-                  <p className="font-medium text-teal">vintiz.fr</p>
+                  <p className="font-medium text-vz-teal">vintiz.fr</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 mb-1">Back-office</p>
-                  <p className="font-medium text-teal">app.vintiz.fr</p>
+                  <p className="font-medium text-vz-teal">app.vintiz.fr</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 mb-1">API</p>
-                  <p className="font-medium text-teal">api.vintiz.fr</p>
+                  <p className="font-medium text-vz-teal">api.vintiz.fr</p>
                 </div>
               </div>
             </Card>
@@ -767,7 +767,7 @@ export default function SettingsPage() {
                           <td className="py-2 text-sm text-black">{c.name}</td>
                           <td className="py-2">
                             <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                              c.gender === 'femme' ? 'bg-pink-100 text-pink-700' :
+                              c.gender === 'femme' ? 'bg-vz-accent-soft text-vz-accent' :
                               c.gender === 'homme' ? 'bg-blue-100 text-blue-700' :
                               c.gender === 'enfant' ? 'bg-purple-100 text-purple-700' :
                               'bg-gray-100 text-gray-700'
@@ -809,12 +809,12 @@ export default function SettingsPage() {
                         <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: z.color_code || '#1A7A6A' }} />
                         <h3 className="font-semibold text-black">{z.zone_name}</h3>
                       </div>
-                      <button onClick={() => openZoneModal(z)} className="text-xs text-teal hover:underline min-h-[32px] px-2">Modifier</button>
+                      <button onClick={() => openZoneModal(z)} className="text-xs text-vz-teal hover:underline min-h-[32px] px-2">Modifier</button>
                     </div>
                     <p className="text-xs text-gray-400 mb-3">{z.description}</p>
                     {z.product_types && z.product_types.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-3">
-                        {z.product_types.map(t => <span key={t} className="text-xs px-2 py-0.5 bg-teal-50 text-teal-700 rounded-full">{t}</span>)}
+                        {z.product_types.map(t => <span key={t} className="text-xs px-2 py-0.5 bg-vz-teal-soft text-vz-teal-deep rounded-full">{t}</span>)}
                       </div>
                     )}
                     <div className="space-y-2 text-sm">
@@ -844,14 +844,14 @@ export default function SettingsPage() {
                     <div>
                       <label className="block text-sm font-medium text-black mb-1.5">Capacité max (articles)</label>
                       <input type="number" min={1} max={500} value={zoneForm.capacity} onChange={e => setZoneForm(f => ({...f, capacity: parseInt(e.target.value) || 20}))}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal" />
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-black mb-2">Types de produits acceptés</label>
                       <div className="flex flex-wrap gap-2">
                         {ALL_PRODUCT_TYPES.map(t => (
                           <button key={t} type="button" onClick={() => toggleProductType(t)}
-                            className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${zoneForm.product_types.includes(t) ? 'bg-teal text-white border-teal' : 'bg-white text-gray-600 border-gray-300 hover:border-teal'}`}>
+                            className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${zoneForm.product_types.includes(t) ? 'bg-vz-teal text-white border-vz-teal' : 'bg-white text-gray-600 border-gray-300 hover:border-vz-teal'}`}>
                             {t}
                           </button>
                         ))}
@@ -922,7 +922,7 @@ export default function SettingsPage() {
                         id="rp-enabled"
                         checked={hardware.receipt_printer.enabled}
                         onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, enabled: e.target.checked } })}
-                        className="w-5 h-5 accent-teal"
+                        className="w-5 h-5 accent-vz-teal"
                       />
                       <label htmlFor="rp-enabled" className="text-sm font-medium text-black">Activer l&apos;imprimante de recus</label>
                     </div>
@@ -938,7 +938,7 @@ export default function SettingsPage() {
                         type="number"
                         value={hardware.receipt_printer.port}
                         onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, port: parseInt(e.target.value) || 9100 } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal"
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                     <div>
@@ -947,7 +947,7 @@ export default function SettingsPage() {
                         type="number"
                         value={hardware.receipt_printer.width_chars}
                         onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, width_chars: parseInt(e.target.value) || 42 } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal"
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                       <p className="text-xs text-gray-400 mt-1">42 pour du 80 mm (Font A)</p>
                     </div>
@@ -957,7 +957,7 @@ export default function SettingsPage() {
                         id="rp-cut"
                         checked={hardware.receipt_printer.cut_paper}
                         onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, cut_paper: e.target.checked } })}
-                        className="w-5 h-5 accent-teal"
+                        className="w-5 h-5 accent-vz-teal"
                       />
                       <label htmlFor="rp-cut" className="text-sm text-black">Coupe automatique du papier</label>
                     </div>
@@ -976,7 +976,7 @@ export default function SettingsPage() {
                         id="cd-enabled"
                         checked={hardware.cash_drawer.enabled}
                         onChange={(e) => setHardware({ ...hardware, cash_drawer: { ...hardware.cash_drawer, enabled: e.target.checked } })}
-                        className="w-5 h-5 accent-teal"
+                        className="w-5 h-5 accent-vz-teal"
                       />
                       <label htmlFor="cd-enabled" className="text-sm font-medium text-black">Activer le tiroir-caisse</label>
                     </div>
@@ -986,7 +986,7 @@ export default function SettingsPage() {
                         id="cd-auto"
                         checked={hardware.cash_drawer.kick_on_cash}
                         onChange={(e) => setHardware({ ...hardware, cash_drawer: { ...hardware.cash_drawer, kick_on_cash: e.target.checked } })}
-                        className="w-5 h-5 accent-teal"
+                        className="w-5 h-5 accent-vz-teal"
                       />
                       <label htmlFor="cd-auto" className="text-sm text-black">Ouverture automatique a l&apos;encaissement especes</label>
                     </div>
@@ -1015,7 +1015,7 @@ export default function SettingsPage() {
                         id="lp-enabled"
                         checked={hardware.label_printer.enabled}
                         onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, enabled: e.target.checked } })}
-                        className="w-5 h-5 accent-teal"
+                        className="w-5 h-5 accent-vz-teal"
                       />
                       <label htmlFor="lp-enabled" className="text-sm font-medium text-black">Activer l&apos;imprimante SATO</label>
                     </div>
@@ -1031,7 +1031,7 @@ export default function SettingsPage() {
                         type="number"
                         value={hardware.label_printer.port}
                         onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, port: parseInt(e.target.value) || 9100 } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal"
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                     <div>
@@ -1040,7 +1040,7 @@ export default function SettingsPage() {
                         type="number"
                         value={hardware.label_printer.label_width_mm}
                         onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_width_mm: parseInt(e.target.value) || 50 } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal"
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                     <div>
@@ -1049,7 +1049,7 @@ export default function SettingsPage() {
                         type="number"
                         value={hardware.label_printer.label_height_mm}
                         onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_height_mm: parseInt(e.target.value) || 30 } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal"
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                   </div>
@@ -1067,7 +1067,7 @@ export default function SettingsPage() {
                         id="bs-enabled"
                         checked={hardware.barcode_scanner.enabled}
                         onChange={(e) => setHardware({ ...hardware, barcode_scanner: { ...hardware.barcode_scanner, enabled: e.target.checked } })}
-                        className="w-5 h-5 accent-teal"
+                        className="w-5 h-5 accent-vz-teal"
                       />
                       <label htmlFor="bs-enabled" className="text-sm font-medium text-black">Activer le champ de scan automatique au POS</label>
                     </div>
@@ -1077,7 +1077,7 @@ export default function SettingsPage() {
                         type="number"
                         value={hardware.barcode_scanner.min_length}
                         onChange={(e) => setHardware({ ...hardware, barcode_scanner: { ...hardware.barcode_scanner, min_length: parseInt(e.target.value) || 4 } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal"
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                   </div>
@@ -1173,7 +1173,7 @@ export default function SettingsPage() {
                       <div key={i} className="flex-1 flex flex-col items-center">
                         <div className="flex-1 w-full flex items-end">
                           <div
-                            className="w-full bg-teal rounded-t"
+                            className="w-full bg-vz-teal rounded-t"
                             style={{ height: `${Math.max(4, w * 300)}%` }}
                             title={`${(w * 100).toFixed(1)}%`}
                           />
@@ -1190,7 +1190,7 @@ export default function SettingsPage() {
                   <div className="flex justify-between items-center text-xs text-gray-500">
                     <span>
                       Source :{' '}
-                      <span className={cahierWeights.source === 'historical' ? 'text-teal font-medium' : 'text-amber-600 font-medium'}>
+                      <span className={cahierWeights.source === 'historical' ? 'text-vz-teal font-medium' : 'text-amber-600 font-medium'}>
                         {cahierWeights.source === 'historical'
                           ? `${cahierWeights.sample_size_weeks} semaines historiques`
                           : 'Profil par defaut (pas assez de donnees)'}
@@ -1229,7 +1229,7 @@ export default function SettingsPage() {
                       return (
                         <div key={i} className="text-center">
                           <div className="text-gray-500 capitalize">{label.slice(0, 3)}</div>
-                          <div className="text-teal font-bold font-mono">{dailyTarget.toFixed(0)} €</div>
+                          <div className="text-vz-teal font-bold font-mono">{dailyTarget.toFixed(0)} €</div>
                         </div>
                       );
                     })}

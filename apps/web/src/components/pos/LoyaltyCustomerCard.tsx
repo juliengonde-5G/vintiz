@@ -48,7 +48,7 @@ export default function LoyaltyCustomerCard({ brief, onTapPick, onClose }: Props
   ].filter(Boolean).join(' · ');
 
   return (
-    <div className="bg-gradient-warm rounded-xl border border-pink/30 p-3 mb-3 shadow-sm">
+    <div className="bg-vz-bg rounded-xl border border-vz-accent-soft/30 p-3 mb-3 shadow-sm">
       {/* Header */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0">
@@ -57,7 +57,7 @@ export default function LoyaltyCustomerCard({ brief, onTapPick, onClose }: Props
             <div className="font-medium text-black truncate">
               {brief.first_name} {brief.last_name}
             </div>
-            <div className="inline-block text-[11px] px-2 py-0.5 rounded-full border bg-teal-50 text-teal-700 border-teal-200">
+            <div className="inline-block text-[11px] px-2 py-0.5 rounded-full border bg-vz-teal-soft text-vz-teal-deep border-vz-teal-soft">
               {brief.membership_number ?? 'Non membre'} · {brief.loyalty_points} pts
               {brief.avoir_credit > 0 && ` · avoir ${brief.avoir_credit.toFixed(2)}€`}
             </div>
@@ -78,7 +78,7 @@ export default function LoyaltyCustomerCard({ brief, onTapPick, onClose }: Props
       <div className="text-xs text-gray-600 mb-2 flex flex-wrap gap-x-3 gap-y-0.5">
         <span>🕒 {formatVisit(brief.days_since_last_visit)}</span>
         <span>💰 CA total {brief.lifetime_value.toFixed(0)} €</span>
-        {brief.rfm_segment && <span className="text-teal">· {brief.rfm_segment}</span>}
+        {brief.rfm_segment && <span className="text-vz-teal">· {brief.rfm_segment}</span>}
       </div>
 
       {/* Profile chips */}
@@ -115,7 +115,7 @@ export default function LoyaltyCustomerCard({ brief, onTapPick, onClose }: Props
 
       {/* Anniversary coupon */}
       {brief.anniversary_coupon && (
-        <div className="text-xs bg-pink/30 rounded-lg p-2 mb-2">
+        <div className="text-xs bg-vz-accent-soft/30 rounded-lg p-2 mb-2">
           🎁 Coupon {brief.anniversary_coupon.code} · -{brief.anniversary_coupon.discount_value}€
           {brief.anniversary_coupon.valid_until && (
             <> · jusqu'au {brief.anniversary_coupon.valid_until.slice(0, 10)}</>
@@ -135,7 +135,7 @@ export default function LoyaltyCustomerCard({ brief, onTapPick, onClose }: Props
                 key={pick.id}
                 onClick={() => onTapPick?.(pick.id)}
                 disabled={!onTapPick}
-                className="bg-white rounded-lg overflow-hidden border border-gray-200 text-left min-h-0 min-w-0 p-0 hover:border-teal hover:shadow-sm transition-all"
+                className="bg-white rounded-lg overflow-hidden border border-gray-200 text-left min-h-0 min-w-0 p-0 hover:border-vz-teal hover:shadow-sm transition-all"
               >
                 <div className="aspect-square bg-gray-100 overflow-hidden">
                   {pick.thumb ? (
@@ -148,7 +148,7 @@ export default function LoyaltyCustomerCard({ brief, onTapPick, onClose }: Props
                 <div className="p-1.5">
                   <div className="text-[10px] text-black truncate">{pick.name}</div>
                   {typeof pick.score === 'number' && (
-                    <div className="text-[10px] text-teal">{pick.score.toFixed(0)}/100</div>
+                    <div className="text-[10px] text-vz-teal">{pick.score.toFixed(0)}/100</div>
                   )}
                 </div>
               </button>

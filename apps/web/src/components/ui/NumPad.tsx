@@ -48,7 +48,7 @@ export default function NumPad({ value, onChange, presets }: NumPadProps) {
               key={i}
               type="button"
               onClick={() => { const v = p.toFixed(2); setRaw(v); onChange(p); }}
-              className="flex-1 min-w-[56px] py-2.5 bg-teal-50 hover:bg-teal-100 active:bg-teal-200 text-teal rounded-xl text-sm font-bold transition-colors"
+              className="flex-1 min-w-[56px] py-2.5 bg-vz-teal-soft hover:bg-vz-teal-soft active:bg-vz-teal-soft text-vz-teal rounded-xl text-sm font-bold transition-colors"
             >
               {Number.isInteger(p) ? `${p} €` : `${p.toFixed(2)} €`}
             </button>
@@ -66,7 +66,7 @@ export default function NumPad({ value, onChange, presets }: NumPadProps) {
             className={`py-4 rounded-xl text-2xl font-bold select-none transition-all active:scale-95 ${
               k === '⌫'
                 ? 'bg-red-50 text-red-500 hover:bg-red-100 active:bg-red-200'
-                : 'bg-white border border-gray-200 text-black hover:bg-pink-50 hover:border-pink-200 shadow-sm'
+                : 'bg-white border border-gray-200 text-black hover:bg-vz-accent-soft hover:border-vz-accent-soft shadow-sm'
             }`}
           >
             {k}

@@ -20,7 +20,7 @@ export default function AccountShell({
   children: ReactNode;
 }) {
   return (
-    <main className="min-h-screen bg-cream">
+    <main className="min-h-screen bg-vz-bg">
       <Navbar />
       <div className="max-w-6xl mx-auto px-4 pt-12 pb-24 md:flex md:gap-8">
         <AccountNav />

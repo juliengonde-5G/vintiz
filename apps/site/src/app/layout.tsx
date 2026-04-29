@@ -26,7 +26,7 @@ const GA_ID = process.env.NEXT_PUBLIC_GA_ID || "";
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#FFF3ED",
+  themeColor: "#F6F5F1",
 };
 
 export const metadata: Metadata = {
@@ -177,7 +177,7 @@ export default function RootLayout({
           />
         )}
       </head>
-      <body className="font-sans antialiased bg-cream text-black">
+      <body className="font-sans antialiased bg-vz-bg text-black">
         {children}
         <CookieBanner />
         <Analytics gaId={GA_ID} />

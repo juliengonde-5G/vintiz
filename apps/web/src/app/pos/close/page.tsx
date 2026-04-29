@@ -166,13 +166,13 @@ export default function CashClosePage() {
               <Card title="Rapport Z - Cloture effectuee">
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="p-3 bg-teal-50 rounded-lg">
+                    <div className="p-3 bg-vz-teal-soft rounded-lg">
                       <p className="text-xs text-gray-500">Total ventes</p>
-                      <p className="text-lg font-bold text-teal">{formatCurrency(zReport.total_sales)}</p>
+                      <p className="text-lg font-bold text-vz-teal">{formatCurrency(zReport.total_sales)}</p>
                     </div>
-                    <div className="p-3 bg-teal-50 rounded-lg">
+                    <div className="p-3 bg-vz-teal-soft rounded-lg">
                       <p className="text-xs text-gray-500">Nb transactions</p>
-                      <p className="text-lg font-bold text-teal">{zReport.total_transactions}</p>
+                      <p className="text-lg font-bold text-vz-teal">{zReport.total_transactions}</p>
                     </div>
                     <div className="p-3 bg-gray-50 rounded-lg">
                       <p className="text-xs text-gray-500">Total especes</p>

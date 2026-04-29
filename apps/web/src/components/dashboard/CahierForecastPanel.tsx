@@ -114,7 +114,7 @@ export default function CahierForecastPanel({ date }: Props) {
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className={`p-3 rounded-lg ${accent ? 'bg-teal-50 text-teal' : 'bg-gray-50 text-black'}`}>
+    <div className={`p-3 rounded-lg ${accent ? 'bg-vz-teal-soft text-vz-teal' : 'bg-gray-50 text-black'}`}>
       <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">{label}</div>
       <div className="text-base font-semibold tabular-nums">{value}</div>
     </div>

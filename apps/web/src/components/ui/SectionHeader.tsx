@@ -21,13 +21,13 @@ export default function SectionHeader({
     <div className={`flex items-end justify-between gap-4 mb-5 ${className}`}>
       <div className="flex items-start gap-3 min-w-0">
         {icon && (
-          <div className="flex-shrink-0 h-11 w-11 rounded-xl bg-teal-50 text-teal flex items-center justify-center">
+          <div className="flex-shrink-0 h-11 w-11 rounded-xl bg-vz-teal-soft text-vz-teal flex items-center justify-center">
             {icon}
           </div>
         )}
         <div className="min-w-0">
           {eyebrow && (
-            <p className="text-[11px] tracking-[0.22em] uppercase text-teal font-medium mb-1">
+            <p className="text-[11px] tracking-[0.22em] uppercase text-vz-teal font-medium mb-1">
               {eyebrow}
             </p>
           )}

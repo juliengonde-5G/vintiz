@@ -14,8 +14,8 @@ export default function NewsletterCard() {
   return (
     <div className="relative mx-auto max-w-md">
       {/* Pink tag shape with punched hole */}
-      <div className="relative bg-pink rounded-[28px] px-8 pt-14 pb-10 shadow-sm">
-        <span className="absolute top-4 left-1/2 -translate-x-1/2 h-5 w-5 rounded-full bg-cream" />
+      <div className="relative bg-vz-accent-soft rounded-[28px] px-8 pt-14 pb-10 shadow-sm">
+        <span className="absolute top-4 left-1/2 -translate-x-1/2 h-5 w-5 rounded-full bg-vz-bg" />
         <h3 className="text-center font-display text-[1.6rem] leading-tight text-black">
           Et si on restait en
         </h3>
@@ -28,7 +28,7 @@ export default function NewsletterCard() {
           la créativité venir à vous !
         </p>
         {done ? (
-          <p className="rounded-full bg-white px-4 py-3 text-center text-sm text-teal">
+          <p className="rounded-full bg-white px-4 py-3 text-center text-sm text-vz-teal">
             Merci ! Nous vous recontactons très vite.
           </p>
         ) : (
@@ -39,7 +39,7 @@ export default function NewsletterCard() {
               placeholder="contact@vintiz.fr"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-full bg-white px-5 py-3 text-sm text-black placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-teal"
+              className="w-full rounded-full bg-white px-5 py-3 text-sm text-black placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-vz-teal"
             />
             <button
               type="submit"

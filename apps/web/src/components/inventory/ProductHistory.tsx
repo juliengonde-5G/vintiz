@@ -145,7 +145,7 @@ export default function ProductHistory({ productId, refreshKey }: ProductHistory
                         {formatValue(change?.before)}
                       </span>
                       <span className="text-gray-400">→</span>
-                      <span className="text-teal font-medium">
+                      <span className="text-vz-teal font-medium">
                         {formatValue(change?.after)}
                       </span>
                     </li>
@@ -157,7 +157,7 @@ export default function ProductHistory({ productId, refreshKey }: ProductHistory
             {snapshot.length > 0 && (
               <p className="mt-1 text-xs text-gray-500">
                 Création — prix initial{' '}
-                <strong className="text-teal">
+                <strong className="text-vz-teal">
                   {formatValue(
                     (entry.data as Record<string, unknown> | null)?.sale_price,
                   )}{' '}

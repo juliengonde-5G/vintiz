@@ -190,7 +190,7 @@ export default function ReportsPage() {
               onClick={() => setTab(t.key)}
               className={`px-4 py-2 rounded-lg text-sm font-medium min-h-[44px] transition-colors ${
                 tab === t.key
-                  ? 'bg-white text-teal shadow-sm'
+                  ? 'bg-white text-vz-teal shadow-sm'
                   : 'text-gray-500 hover:text-black'
               }`}
             >
@@ -280,7 +280,7 @@ export default function ReportsPage() {
               </Card>
               <Card>
                 <p className="text-xs text-gray-500 mb-1">CA net</p>
-                <p className="text-xl font-bold text-teal">{formatCurrency(report.net_revenue)}</p>
+                <p className="text-xl font-bold text-vz-teal">{formatCurrency(report.net_revenue)}</p>
               </Card>
               <Card>
                 <p className="text-xs text-gray-500 mb-1">Transactions</p>
@@ -311,7 +311,7 @@ export default function ReportsPage() {
                           <td className="py-2 text-sm text-gray-400">{i + 1}</td>
                           <td className="py-2 text-sm text-black">{p.name}</td>
                           <td className="py-2 text-sm text-gray-600 text-right">{p.quantity}</td>
-                          <td className="py-2 text-sm font-medium text-teal text-right">
+                          <td className="py-2 text-sm font-medium text-vz-teal text-right">
                             {formatCurrency(p.revenue)}
                           </td>
                         </tr>
@@ -347,7 +347,7 @@ export default function ReportsPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Valeur totale</p>
-                <p className="text-xl font-bold text-teal">{formatCurrency(stockValue.total_sale_value)}</p>
+                <p className="text-xl font-bold text-vz-teal">{formatCurrency(stockValue.total_sale_value)}</p>
               </div>
             </div>
           ) : (
@@ -516,8 +516,8 @@ function DailyRecapSection() {
       {data && !loading && (
         <div className="grid md:grid-cols-2 gap-4">
           {/* Ventes */}
-          <div className="bg-cream/40 rounded-xl p-3">
-            <h3 className="text-xs uppercase tracking-wider text-teal mb-2">Ventes</h3>
+          <div className="bg-vz-bg/40 rounded-xl p-3">
+            <h3 className="text-xs uppercase tracking-wider text-vz-teal mb-2">Ventes</h3>
             <p className="text-sm">
               <strong>{data.sales.revenue.toFixed(2)} €</strong> · {data.sales.transaction_count} ticket(s)
               · panier moyen {data.sales.avg_basket.toFixed(2)} €
@@ -542,10 +542,10 @@ function DailyRecapSection() {
           </div>
 
           {/* Stock + tasks */}
-          <div className="bg-cream/40 rounded-xl p-3">
-            <h3 className="text-xs uppercase tracking-wider text-teal mb-2">Mouvements stock</h3>
+          <div className="bg-vz-bg/40 rounded-xl p-3">
+            <h3 className="text-xs uppercase tracking-wider text-vz-teal mb-2">Mouvements stock</h3>
             <p className="text-sm">{data.stock.sold} produit(s) vendu(s)</p>
-            <h3 className="text-xs uppercase tracking-wider text-teal mt-3 mb-2">Tâches du jour</h3>
+            <h3 className="text-xs uppercase tracking-wider text-vz-teal mt-3 mb-2">Tâches du jour</h3>
             {data.tasks.length === 0 ? (
               <p className="text-xs text-gray-500">Aucune tâche</p>
             ) : (
@@ -553,7 +553,7 @@ function DailyRecapSection() {
                 {data.tasks.map((t) => (
                   <li key={t.id} className="flex justify-between">
                     <span>{t.kind.replace(/_/g, ' ')}</span>
-                    <span className={t.status === 'done' ? 'text-teal' : t.status === 'skipped' ? 'text-gray-400' : 'text-orange-500'}>
+                    <span className={t.status === 'done' ? 'text-vz-teal' : t.status === 'skipped' ? 'text-gray-400' : 'text-orange-500'}>
                       {t.status}
                     </span>
                   </li>
@@ -563,8 +563,8 @@ function DailyRecapSection() {
           </div>
 
           {/* Météo */}
-          <div className="bg-cream/40 rounded-xl p-3">
-            <h3 className="text-xs uppercase tracking-wider text-teal mb-2">Météo</h3>
+          <div className="bg-vz-bg/40 rounded-xl p-3">
+            <h3 className="text-xs uppercase tracking-wider text-vz-teal mb-2">Météo</h3>
             {data.weather ? (
               <p className="text-sm">
                 {data.weather.description} · {Math.round(data.weather.temp)}°C
@@ -578,8 +578,8 @@ function DailyRecapSection() {
           </div>
 
           {/* Cahier */}
-          <div className="bg-cream/40 rounded-xl p-3">
-            <h3 className="text-xs uppercase tracking-wider text-teal mb-2">Cahier du jour</h3>
+          <div className="bg-vz-bg/40 rounded-xl p-3">
+            <h3 className="text-xs uppercase tracking-wider text-vz-teal mb-2">Cahier du jour</h3>
             {data.cahier.message_du_jour && (
               <p className="text-sm mb-2"><strong>Message :</strong> {data.cahier.message_du_jour}</p>
             )}

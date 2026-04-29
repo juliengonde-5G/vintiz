@@ -66,7 +66,7 @@ export default function AccountHomePage() {
       <AccountShell title="Mon espace" intro="Connectez-vous pour accéder à votre espace personnel.">
         <Link
           href="/account/login"
-          className="inline-block bg-teal text-white px-5 py-3 rounded-lg font-medium"
+          className="inline-block bg-vz-teal text-white px-5 py-3 rounded-lg font-medium"
         >
           Se connecter par code email
         </Link>
@@ -116,7 +116,7 @@ function Tile({
       {href && cta && (
         <Link
           href={href}
-          className="mt-3 inline-block text-sm text-teal underline font-medium"
+          className="mt-3 inline-block text-sm text-vz-teal underline font-medium"
         >
           {cta} →
         </Link>

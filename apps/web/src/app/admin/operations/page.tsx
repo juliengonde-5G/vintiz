@@ -243,9 +243,9 @@ export default function OperationsPage() {
               <button
                 key={t.type + i}
                 onClick={() => openTemplate(i)}
-                className="text-left p-3 rounded-lg border border-pink/30 hover:bg-cream/40 transition-colors"
+                className="text-left p-3 rounded-lg border border-vz-accent-soft/30 hover:bg-vz-bg/40 transition-colors"
               >
-                <div className="text-xs uppercase tracking-wider text-teal mb-1">{t.type.replace(/_/g, ' ')}</div>
+                <div className="text-xs uppercase tracking-wider text-vz-teal mb-1">{t.type.replace(/_/g, ' ')}</div>
                 <div className="text-sm font-medium">{t.label}</div>
               </button>
             ))}
@@ -278,12 +278,12 @@ export default function OperationsPage() {
                     <td className="text-center font-mono">{o.priority}</td>
                     <td className="text-center">
                       <button onClick={() => toggleActive(o)}
-                        className={`text-xs px-2 py-0.5 rounded ${o.active ? 'bg-teal/10 text-teal' : 'bg-gray-100 text-gray-500'}`}>
+                        className={`text-xs px-2 py-0.5 rounded ${o.active ? 'bg-vz-teal/10 text-vz-teal' : 'bg-gray-100 text-gray-500'}`}>
                         {o.active ? 'Actif' : 'Inactif'}
                       </button>
                     </td>
                     <td className="text-right space-x-2">
-                      <button className="text-xs text-teal hover:underline" onClick={() => openExisting(o)}>Éditer</button>
+                      <button className="text-xs text-vz-teal hover:underline" onClick={() => openExisting(o)}>Éditer</button>
                       <button className="text-xs text-red-600 hover:underline" onClick={() => remove(o.id)}>Désactiver</button>
                     </td>
                   </tr>

@@ -23,25 +23,25 @@ export default function Input({
       {label && (
         <label
           htmlFor={inputId}
-          className="block text-sm font-medium text-black mb-1.5"
+          className="block text-[11px] uppercase tracking-[0.12em] font-medium text-vz-ink-mute mb-1.5"
         >
           {label}
         </label>
       )}
       <div className="relative">
         {icon && (
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-vz-ink-mute">
             {icon}
           </div>
         )}
         <input
           id={inputId}
-          className={`w-full min-h-[44px] px-4 py-2.5 rounded-lg border bg-white text-black placeholder-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal ${
+          className={`w-full min-h-[44px] px-4 py-2.5 rounded-vz border bg-vz-surface text-vz-ink placeholder-vz-ink-mute transition-colors focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal ${
             icon ? 'pl-10' : ''
           } ${
             error
               ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
-              : 'border-gray-300'
+              : 'border-vz-line'
           } ${className}`}
           {...props}
         />

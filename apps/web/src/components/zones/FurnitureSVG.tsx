@@ -24,7 +24,7 @@ const COLORS = {
   teal: '#1A7A6A',
   pink: '#E8B4D0',
   black: '#1A1A1A',
-  cream: '#FFF3ED',
+  cream: '#F6F5F1',
 };
 
 export default function FurnitureSVG({ type, variant, size = 60 }: Props) {

@@ -4,8 +4,8 @@
   "description": "Vintiz Boutique Back-Office",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FFF3ED",
-  "theme_color": "#008678",
+  "background_color": "#F6F5F1",
+  "theme_color": "#0B7A6A",
   "orientation": "any",
   "icons": [
     {

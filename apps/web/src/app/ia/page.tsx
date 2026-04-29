@@ -487,13 +487,13 @@ export default function IAPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-cream">
+    <div className="min-h-screen bg-vz-bg">
       <Sidebar />
       <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8 max-w-7xl">
         <CompanionHero />
 
         {error && (
-          <div className="mb-4 p-3 bg-pink-50 text-pink-700 rounded-lg text-sm">
+          <div className="mb-4 p-3 bg-vz-accent-soft text-vz-accent rounded-lg text-sm">
             {error}
             <button onClick={() => setError('')} className="ml-2 font-bold">&times;</button>
           </div>
@@ -501,7 +501,7 @@ export default function IAPage() {
 
         {/* Skills */}
         <div className="mb-4">
-          <p className="text-[11px] tracking-[0.22em] uppercase text-teal font-medium">
+          <p className="text-[11px] tracking-[0.22em] uppercase text-vz-teal font-medium">
             Tes outils IA
           </p>
           <h2 className="font-display font-semibold text-lg text-black mt-0.5">
@@ -515,8 +515,8 @@ export default function IAPage() {
               onClick={() => setTab(t.key)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl min-h-[44px] whitespace-nowrap transition-colors ${
                 tab === t.key
-                  ? 'bg-teal text-white font-medium shadow-soft'
-                  : 'bg-white text-gray-600 hover:bg-teal-50 hover:text-teal border border-gray-100'
+                  ? 'bg-vz-teal text-white font-medium shadow-vz-soft'
+                  : 'bg-white text-gray-600 hover:bg-vz-teal-soft hover:text-vz-teal border border-gray-100'
               }`}
             >
               <span>{t.icon}</span>
@@ -525,7 +525,7 @@ export default function IAPage() {
           ))}
           <Link
             href="/ia/marketing"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl min-h-[44px] whitespace-nowrap bg-gradient-signature text-white font-medium shadow-soft hover:shadow-depth transition-all"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl min-h-[44px] whitespace-nowrap bg-vz-teal text-white font-medium shadow-vz-soft hover:shadow-vz-soft transition-all"
           >
             <span>📣</span>
             <span>Rapport marketing</span>
@@ -568,10 +568,10 @@ export default function IAPage() {
                     </thead>
                     <tbody>
                       {trends.map((t, i) => (
-                        <tr key={t.product_id} className="border-b border-gray-50 hover:bg-pink-50 transition-colors cursor-pointer"
+                        <tr key={t.product_id} className="border-b border-gray-50 hover:bg-vz-accent-soft transition-colors cursor-pointer"
                           onClick={() => window.location.href = `/inventory/${t.product_id}`}>
                           <td className="py-3 text-sm text-gray-400">{i + 1}</td>
-                          <td className="py-3 text-sm text-black font-medium hover:text-teal">{t.product_name}</td>
+                          <td className="py-3 text-sm text-black font-medium hover:text-vz-teal">{t.product_name}</td>
                           <td className="py-3 text-sm text-gray-500 font-mono">{t.barcode}</td>
                           <td className={`py-3 text-sm text-right font-bold ${scoreColor(t.score)}`}>
                             {t.score}/{t.max_score}
@@ -600,7 +600,7 @@ export default function IAPage() {
               <div className="flex items-center gap-2">
                 {isMonday && (
                   <button onClick={() => loadChecklist(true)} disabled={checklistLoading}
-                    className="min-h-[44px] px-4 py-2 rounded-lg bg-teal text-white hover:bg-teal-700 text-sm font-medium transition-colors">
+                    className="min-h-[44px] px-4 py-2 rounded-lg bg-vz-teal text-white hover:bg-vz-teal-deep text-sm font-medium transition-colors">
                     {checklistLoading ? 'Génération...' : '🔄 Actualiser (lundi)'}
                   </button>
                 )}
@@ -611,7 +611,7 @@ export default function IAPage() {
               </div>
             </div>
             {checklistLoading ? (
-              <Card><div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal" /></div></Card>
+              <Card><div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-vz-teal" /></div></Card>
             ) : !checklist ? (
               <Card><p className="text-gray-400 text-center py-8">Cliquez &quot;Charger&quot; pour afficher la checklist de la semaine.</p></Card>
             ) : (
@@ -620,7 +620,7 @@ export default function IAPage() {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                   <div className="flex-1">
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-teal h-2 rounded-full transition-all"
+                      <div className="bg-vz-teal h-2 rounded-full transition-all"
                         style={{ width: `${checklist.checklist.length > 0 ? Math.round(checklist.checklist.filter((_, i) => checkedItems[`${checklist.week}-${checklist.year}-${i}`]).length / checklist.checklist.length * 100) : 0}%` }} />
                     </div>
                   </div>
@@ -645,7 +645,7 @@ export default function IAPage() {
                       <div className="flex items-start gap-3">
                         <button
                           onClick={() => toggleChecklistItem(itemKey)}
-                          className={`mt-0.5 flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${isDone ? 'bg-teal border-teal text-white' : 'border-gray-300 hover:border-teal'}`}
+                          className={`mt-0.5 flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${isDone ? 'bg-vz-teal border-vz-teal text-white' : 'border-gray-300 hover:border-vz-teal'}`}
                         >
                           {isDone && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                         </button>
@@ -687,7 +687,7 @@ export default function IAPage() {
               <div className="flex items-center gap-2">
                 {isMonday && (
                   <button onClick={() => loadTrendsMode(true)} disabled={trendsModeLoading}
-                    className="min-h-[44px] px-4 py-2 rounded-lg bg-teal text-white hover:bg-teal-700 text-sm font-medium transition-colors">
+                    className="min-h-[44px] px-4 py-2 rounded-lg bg-vz-teal text-white hover:bg-vz-teal-deep text-sm font-medium transition-colors">
                     {trendsModeLoading ? 'Actualisation IA...' : '🔄 Actualiser (lundi)'}
                   </button>
                 )}
@@ -698,7 +698,7 @@ export default function IAPage() {
               </div>
             </div>
             {trendsModeLoading ? (
-              <Card><div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal" /></div></Card>
+              <Card><div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-vz-teal" /></div></Card>
             ) : !trendsMode ? (
               <Card><p className="text-gray-400 text-center py-8">Cliquez &quot;Actualiser&quot; pour charger les tendances mode actuelles.</p></Card>
             ) : (
@@ -706,7 +706,7 @@ export default function IAPage() {
                 <div className="flex gap-2 border-b border-gray-200 pb-0">
                   {(['reseaux_sociaux', 'vinted', 'retail'] as const).map(ch => (
                     <button key={ch} onClick={() => setTrendsModeTab(ch)}
-                      className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${trendsModeTab === ch ? 'border-teal text-teal' : 'border-transparent text-gray-500 hover:text-black'}`}>
+                      className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${trendsModeTab === ch ? 'border-vz-teal text-vz-teal' : 'border-transparent text-gray-500 hover:text-black'}`}>
                       {ch === 'reseaux_sociaux' ? '📱 Réseaux sociaux' : ch === 'vinted' ? '♻️ Vinted' : '🏪 Retail'}
                     </button>
                   ))}
@@ -717,7 +717,7 @@ export default function IAPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <h4 className="font-semibold text-black mb-2">Tendances clés</h4>
-                        <ul className="space-y-1">{trendsMode.channels.reseaux_sociaux.top_items.map((item, i) => <li key={i} className="flex items-center gap-2 text-sm text-gray-700"><span className="text-pink-500">✦</span>{item}</li>)}</ul>
+                        <ul className="space-y-1">{trendsMode.channels.reseaux_sociaux.top_items.map((item, i) => <li key={i} className="flex items-center gap-2 text-sm text-gray-700"><span className="text-vz-accent">✦</span>{item}</li>)}</ul>
                       </div>
                       <div>
                         <h4 className="font-semibold text-black mb-2">Couleurs en vogue</h4>
@@ -745,7 +745,7 @@ export default function IAPage() {
                   <Card>
                     <p className="text-gray-700 mb-4 leading-relaxed">{trendsMode.channels.retail.summary}</p>
                     <h4 className="font-semibold text-black mb-2">Tendances retail</h4>
-                    <ul className="space-y-2">{trendsMode.channels.retail.key_trends.map((t, i) => <li key={i} className="flex items-start gap-2 text-sm text-gray-700 p-2 bg-gray-50 rounded-lg"><span className="text-teal font-bold">{i+1}.</span>{t}</li>)}</ul>
+                    <ul className="space-y-2">{trendsMode.channels.retail.key_trends.map((t, i) => <li key={i} className="flex items-start gap-2 text-sm text-gray-700 p-2 bg-gray-50 rounded-lg"><span className="text-vz-teal font-bold">{i+1}.</span>{t}</li>)}</ul>
                   </Card>
                 )}
               </>
@@ -824,7 +824,7 @@ function WeeklyTasksTimeline() {
       )}
       <div className="space-y-3">
         {days.map((day) => (
-          <div key={day} className="border-l-2 border-teal/30 pl-3">
+          <div key={day} className="border-l-2 border-vz-teal/30 pl-3">
             <p className="text-xs uppercase tracking-wider text-gray-500 mb-1">
               {new Date(day + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
             </p>
@@ -833,7 +833,7 @@ function WeeklyTasksTimeline() {
                 <li key={t.id} className="flex items-center justify-between gap-2 text-sm py-1">
                   <span className="flex-1">
                     <span className={`font-medium ${
-                      t.status === 'done' ? 'text-teal' :
+                      t.status === 'done' ? 'text-vz-teal' :
                       t.status === 'skipped' ? 'text-gray-400 line-through' : 'text-black'
                     }`}>
                       {KIND_LABEL[t.kind] || t.kind}
@@ -854,7 +854,7 @@ function WeeklyTasksTimeline() {
                       <button
                         onClick={() => markComplete(t.id, 'complete')}
                         disabled={busy === t.id}
-                        className="text-xs px-2 py-0.5 rounded bg-teal/10 text-teal hover:bg-teal/20"
+                        className="text-xs px-2 py-0.5 rounded bg-vz-teal/10 text-vz-teal hover:bg-vz-teal/20"
                       >
                         Validé
                       </button>

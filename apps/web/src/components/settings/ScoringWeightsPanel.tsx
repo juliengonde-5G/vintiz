@@ -222,7 +222,7 @@ export default function ScoringWeightsPanel() {
         </div>
 
         <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-          <span className={`text-sm font-medium ${weightsValid ? 'text-teal' : 'text-red-600'}`}>
+          <span className={`text-sm font-medium ${weightsValid ? 'text-vz-teal' : 'text-red-600'}`}>
             Total : {totalPct}% {weightsValid ? '✓' : '— doit valoir 100% ±1'}
           </span>
           <div className="flex gap-2">
@@ -236,7 +236,7 @@ export default function ScoringWeightsPanel() {
           </div>
         </div>
 
-        {message && <p className="mt-3 text-sm text-teal">{message}</p>}
+        {message && <p className="mt-3 text-sm text-vz-teal">{message}</p>}
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </Card>
 
@@ -297,7 +297,7 @@ export default function ScoringWeightsPanel() {
                       key={idx}
                       onClick={() => toggleSeasonMonth(category, month)}
                       className={`w-7 h-7 text-xs font-medium rounded ${
-                        active ? 'bg-teal text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        active ? 'bg-vz-teal text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                       }`}
                     >
                       {m}
@@ -425,7 +425,7 @@ export default function ScoringWeightsPanel() {
                   <td className="py-1">{p.name}</td>
                   <td className="text-right font-mono">{p.score_before.toFixed(0)}</td>
                   <td className="text-right font-mono">{p.score_after.toFixed(0)}</td>
-                  <td className={`text-right font-mono ${p.delta >= 0 ? 'text-teal' : 'text-red-600'}`}>
+                  <td className={`text-right font-mono ${p.delta >= 0 ? 'text-vz-teal' : 'text-red-600'}`}>
                     {p.delta >= 0 ? '+' : ''}{p.delta.toFixed(1)}
                   </td>
                   <td className="text-xs">{p.action_after}</td>
@@ -457,17 +457,17 @@ function DetailCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white rounded-2xl border border-pink/20 overflow-hidden">
+    <div className="bg-white rounded-2xl border border-vz-accent-soft/20 overflow-hidden">
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-5 py-3 hover:bg-cream/40"
+        className="w-full flex items-center justify-between px-5 py-3 hover:bg-vz-bg/40"
       >
         <div className="text-left">
           <h3 className="font-display text-base text-black">{title}</h3>
           <p className="text-xs text-gray-400 mt-0.5">{intro}</p>
         </div>
-        <span className={`text-teal transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+        <span className={`text-vz-teal transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
       </button>
       {open && <div className="px-5 pb-5">{children}</div>}
     </div>

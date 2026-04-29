@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'danger';
+type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -12,10 +12,10 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: 'bg-teal text-white hover:bg-teal-600 active:bg-teal-700',
-  secondary: 'bg-pink text-black hover:bg-pink-400 active:bg-pink-500',
-  outline:
-    'bg-transparent border-2 border-teal text-teal hover:bg-teal-50 active:bg-teal-100',
+  primary: 'bg-vz-teal text-white hover:bg-vz-teal-deep active:bg-vz-teal-deep',
+  secondary: 'bg-vz-surface text-vz-ink border border-vz-ink hover:bg-vz-bg-alt',
+  outline: 'bg-transparent border border-vz-line text-vz-ink hover:bg-vz-bg-alt',
+  ghost: 'bg-transparent text-vz-ink-soft hover:bg-vz-bg-alt',
   danger: 'bg-red-600 text-white hover:bg-red-700 active:bg-red-800',
 };
 
@@ -34,7 +34,7 @@ export default function Button({
 }: ButtonProps) {
   return (
     <button
-      className={`inline-flex items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-teal focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      className={`inline-flex items-center justify-center rounded-vz font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-vz-teal focus:ring-offset-2 focus:ring-offset-vz-bg disabled:opacity-50 disabled:cursor-not-allowed ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
       {...props}
     >
       {children}

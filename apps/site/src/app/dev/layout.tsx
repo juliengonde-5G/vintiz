@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 
 export default function DevLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`${dmSerif.variable} bg-cream min-h-screen flex flex-col`}>
+    <div className={`${dmSerif.variable} bg-vz-bg min-h-screen flex flex-col`}>
       <DevHeader />
       <div className="flex-1">{children}</div>
       <DevFooter />

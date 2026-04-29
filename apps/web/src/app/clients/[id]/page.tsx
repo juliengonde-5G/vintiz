@@ -143,7 +143,7 @@ export default function ClientDetailPage() {
         <Sidebar />
         <main className="md:ml-64 p-8">
           <p className="text-red-700 mb-4">{error || 'Indisponible.'}</p>
-          <Link href="/clients" className="text-teal underline">← Retour</Link>
+          <Link href="/clients" className="text-vz-teal underline">← Retour</Link>
         </main>
       </div>
     );
@@ -198,7 +198,7 @@ export default function ClientDetailPage() {
               className={
                 'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ' +
                 (tab === key
-                  ? 'border-teal text-teal'
+                  ? 'border-vz-teal text-vz-teal'
                   : 'border-transparent text-gray-500 hover:text-black')
               }
             >
@@ -237,7 +237,7 @@ export default function ClientDetailPage() {
                   {data.coupons.map((cp) => (
                     <li key={cp.code} className="flex items-center justify-between gap-3">
                       <span className="font-mono">{cp.code}</span>
-                      <span className="text-teal font-medium">
+                      <span className="text-vz-teal font-medium">
                         {cp.discount_type === 'amount'
                           ? `-${cp.discount_value} €`
                           : `-${cp.discount_value} %`}
@@ -312,7 +312,7 @@ export default function ClientDetailPage() {
                             {tx.type}
                           </span>
                           <span className="flex-1 px-3 truncate">{tx.description || '—'}</span>
-                          <span className={'font-medium ' + (tx.points >= 0 ? 'text-teal' : 'text-red-600')}>
+                          <span className={'font-medium ' + (tx.points >= 0 ? 'text-vz-teal' : 'text-red-600')}>
                             {tx.points >= 0 ? '+' : ''}{tx.points} pts
                           </span>
                           <span className="text-xs text-gray-500 ml-3 shrink-0">

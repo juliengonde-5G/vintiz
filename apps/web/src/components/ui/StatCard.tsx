@@ -12,9 +12,9 @@ interface StatCardProps {
 }
 
 const accentBg: Record<NonNullable<StatCardProps['accent']>, string> = {
-  teal: 'bg-teal-50 text-teal',
-  pink: 'bg-pink-50 text-pink-700',
-  warm: 'bg-cream text-black',
+  teal: 'bg-vz-teal-soft text-vz-teal',
+  pink: 'bg-vz-accent-soft text-vz-accent',
+  warm: 'bg-vz-bg text-black',
   neutral: 'bg-gray-50 text-gray-600',
 };
 
@@ -30,7 +30,7 @@ export default function StatCard({
 }: StatCardProps) {
   const positive = typeof delta === 'number' && delta >= 0;
   return (
-    <div className={`rounded-2xl bg-white p-5 shadow-card hover:shadow-soft transition-shadow ${className}`}>
+    <div className={`rounded-2xl bg-white p-5 shadow-vz-soft hover:shadow-vz-soft transition-shadow ${className}`}>
       <div className="flex items-start justify-between gap-3 mb-3">
         <p className="text-xs font-medium tracking-wide uppercase text-gray-500">{label}</p>
         {icon && (
@@ -46,7 +46,7 @@ export default function StatCard({
         {typeof delta === 'number' && (
           <span
             className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-              positive ? 'bg-teal-50 text-teal' : 'bg-pink-50 text-pink-700'
+              positive ? 'bg-vz-teal-soft text-vz-teal' : 'bg-vz-accent-soft text-vz-accent'
             }`}
           >
             <span>{positive ? '▲' : '▼'}</span>

@@ -104,7 +104,7 @@ export default function CashierPinModal({
               key={i}
               className={`w-4 h-4 rounded-full border-2 transition-colors ${
                 i < pin.length
-                  ? 'bg-teal border-teal'
+                  ? 'bg-vz-teal border-vz-teal'
                   : 'bg-white border-gray-300'
               }`}
             />
@@ -129,7 +129,7 @@ export default function CashierPinModal({
               type="button"
               onClick={() => press(d)}
               disabled={submitting}
-              className="py-5 rounded-xl text-2xl font-bold bg-white border border-gray-200 text-black hover:bg-pink-50 hover:border-pink-200 active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="py-5 rounded-xl text-2xl font-bold bg-white border border-gray-200 text-black hover:bg-vz-accent-soft hover:border-vz-accent-soft active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {d}
             </button>
@@ -140,7 +140,7 @@ export default function CashierPinModal({
             type="button"
             onClick={() => press('0')}
             disabled={submitting}
-            className="py-5 rounded-xl text-2xl font-bold bg-white border border-gray-200 text-black hover:bg-pink-50 hover:border-pink-200 active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="py-5 rounded-xl text-2xl font-bold bg-white border border-gray-200 text-black hover:bg-vz-accent-soft hover:border-vz-accent-soft active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             0
           </button>

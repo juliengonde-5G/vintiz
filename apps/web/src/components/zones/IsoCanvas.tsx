@@ -135,7 +135,7 @@ export default function IsoCanvas({ zones, editMode, filterTag }: Props) {
         {editMode && (
           <button
             onClick={() => setShowPalette((s) => !s)}
-            className="text-sm px-3 py-1.5 bg-teal text-white rounded-lg min-h-0 min-w-0"
+            className="text-sm px-3 py-1.5 bg-vz-teal text-white rounded-lg min-h-0 min-w-0"
           >
             {showPalette ? 'Fermer la palette' : '+ Ajouter du mobilier'}
           </button>
@@ -152,7 +152,7 @@ export default function IsoCanvas({ zones, editMode, filterTag }: Props) {
                 key={ft.type}
                 onClick={() => addFurniture(ft.type, ft.variants?.[0])}
                 title={ft.label}
-                className="bg-gray-50 hover:bg-teal-50 rounded-lg p-2 text-center min-h-0 min-w-0 border border-gray-100"
+                className="bg-gray-50 hover:bg-vz-teal-soft rounded-lg p-2 text-center min-h-0 min-w-0 border border-gray-100"
               >
                 <FurnitureSVG type={ft.type} variant={ft.variants?.[0]} size={40} />
                 <div className="text-[9px] text-gray-600 mt-1 truncate">{ft.label}</div>
@@ -163,7 +163,7 @@ export default function IsoCanvas({ zones, editMode, filterTag }: Props) {
       )}
 
       {/* Iso canvas */}
-      <div className="relative bg-gradient-to-br from-cream to-yellow-50 rounded-2xl overflow-hidden p-6 shadow-card">
+      <div className="relative bg-gradient-to-br from-vz-bg to-yellow-50 rounded-2xl overflow-hidden p-6 shadow-vz-soft">
         <div
           ref={canvasRef}
           className="relative aspect-[16/10] mx-auto"
@@ -225,7 +225,7 @@ export default function IsoCanvas({ zones, editMode, filterTag }: Props) {
               <div
                 key={f.id}
                 className={`absolute cursor-move transition-transform ${
-                  selectedFurnId === f.id ? 'ring-2 ring-teal rounded' : ''
+                  selectedFurnId === f.id ? 'ring-2 ring-vz-teal rounded' : ''
                 }`}
                 style={{
                   left: `${f.pos_x}%`,

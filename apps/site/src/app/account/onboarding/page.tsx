@@ -96,7 +96,7 @@ export default function OnboardingPage() {
   return (
     <>
       <Navbar />
-      <main className="min-h-screen bg-cream py-12 px-4">
+      <main className="min-h-screen bg-vz-bg py-12 px-4">
         <div className="max-w-3xl mx-auto">
           <h1 className="text-3xl font-bold text-black font-display mb-2">
             Personnalisez votre Personal Shopper
@@ -119,7 +119,7 @@ export default function OnboardingPage() {
               </p>
               <Link
                 href="/account"
-                className="inline-block px-4 py-2 bg-teal text-white rounded-lg hover:bg-teal-700"
+                className="inline-block px-4 py-2 bg-vz-teal text-white rounded-lg hover:bg-vz-teal-deep"
               >
                 Voir mon espace
               </Link>
@@ -142,7 +142,7 @@ export default function OnboardingPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={emailLocked || submitting}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal disabled:bg-gray-50"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-vz-teal disabled:bg-gray-50"
                   placeholder="prenom.nom@exemple.fr"
                 />
               </section>
@@ -166,8 +166,8 @@ export default function OnboardingPage() {
                         onClick={() => toggle(styles, setStyles, s.key)}
                         className={`flex flex-col items-center gap-1 p-4 rounded-xl border-2 transition-all ${
                           active
-                            ? "border-teal bg-teal-50/50"
-                            : "border-gray-200 bg-white hover:border-pink-200"
+                            ? "border-vz-teal bg-vz-teal-soft/50"
+                            : "border-gray-200 bg-white hover:border-vz-accent-soft"
                         }`}
                       >
                         <span className="text-2xl">{s.emoji || "✦"}</span>
@@ -196,8 +196,8 @@ export default function OnboardingPage() {
                         onClick={() => toggle(occasions, setOccasions, o.key)}
                         className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
                           active
-                            ? "bg-teal text-white border-teal"
-                            : "bg-white text-gray-600 border-gray-200 hover:border-teal"
+                            ? "bg-vz-teal text-white border-vz-teal"
+                            : "bg-white text-gray-600 border-gray-200 hover:border-vz-teal"
                         }`}
                       >
                         {o.label}
@@ -225,8 +225,8 @@ export default function OnboardingPage() {
                         onClick={() => toggle(priceBuckets, setPriceBuckets, p.key)}
                         className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
                           active
-                            ? "bg-pink-100 text-pink-700 border-pink-300"
-                            : "bg-white text-gray-600 border-gray-200 hover:border-pink-300"
+                            ? "bg-vz-accent-soft text-vz-accent border-vz-accent-soft"
+                            : "bg-white text-gray-600 border-gray-200 hover:border-vz-accent-soft"
                         }`}
                       >
                         {p.label}
@@ -245,14 +245,14 @@ export default function OnboardingPage() {
               <button
                 type="submit"
                 disabled={submitting || !email.trim()}
-                className="w-full py-3 bg-teal text-white font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                className="w-full py-3 bg-vz-teal text-white font-medium rounded-lg hover:bg-vz-teal-deep disabled:opacity-50"
               >
                 {submitting ? "Enregistrement…" : "Calibrer mon Personal Shopper"}
               </button>
               <p className="text-xs text-gray-400 text-center">
                 Vos choix nourrissent uniquement votre Personal Shopper. Vous
                 pouvez les modifier ou les retirer à tout moment depuis votre{" "}
-                <Link href="/account" className="text-teal underline">
+                <Link href="/account" className="text-vz-teal underline">
                   espace données
                 </Link>
                 .

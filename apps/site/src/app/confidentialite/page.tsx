@@ -14,7 +14,7 @@ export default function ConfidentialitePage() {
   return (
     <>
       <Navbar />
-      <section className="pt-28 pb-20 px-6 bg-cream min-h-screen">
+      <section className="pt-28 pb-20 px-6 bg-vz-bg min-h-screen">
         <div className="max-w-3xl mx-auto">
           <h1 className="font-display text-3xl text-black mb-8">
             Politique de confidentialité
@@ -80,7 +80,7 @@ export default function ConfidentialitePage() {
               pour Claude Haiku 4.5). Durée de conservation 36 mois maximum
               après le dernier achat. Retrait via le toggle Personal Shopper
               dans votre{" "}
-              <Link href="/account/rgpd" className="text-teal underline">
+              <Link href="/account/rgpd" className="text-vz-teal underline">
                 espace de gestion des données
               </Link>
               .
@@ -125,7 +125,7 @@ export default function ConfidentialitePage() {
             <li>
               <strong>Accès et portabilité</strong> (art. 15 + 20) — visualiser
               et télécharger l&apos;ensemble de vos données au format JSON depuis{" "}
-              <Link href="/account/rgpd" className="text-teal underline">
+              <Link href="/account/rgpd" className="text-vz-teal underline">
                 /account/rgpd
               </Link>
               .
@@ -137,7 +137,7 @@ export default function ConfidentialitePage() {
             <li>
               <strong>Effacement / droit à l&apos;oubli</strong> (art. 17) —
               demande en self-service depuis{" "}
-              <Link href="/account/rgpd" className="text-teal underline">
+              <Link href="/account/rgpd" className="text-vz-teal underline">
                 /account/rgpd
               </Link>
               . La suppression effective intervient sous 30 jours pour permettre
@@ -238,7 +238,7 @@ export default function ConfidentialitePage() {
             qu&apos;une employée valide systématiquement avant tout envoi
             personnalisé. Vous pouvez à tout moment retirer votre consentement
             au profilage depuis votre{" "}
-            <Link href="/account/rgpd" className="text-teal underline">
+            <Link href="/account/rgpd" className="text-vz-teal underline">
               espace de gestion des données
             </Link>
             .

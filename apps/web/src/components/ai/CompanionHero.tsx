@@ -40,8 +40,8 @@ function formatCurrency(v: number) {
 }
 
 function priorityBadge(p: number) {
-  if (p >= 4) return { bg: 'bg-pink-500 text-white', label: 'URGENT' };
-  if (p >= 3) return { bg: 'bg-teal text-white', label: 'PRIORITAIRE' };
+  if (p >= 4) return { bg: 'bg-vz-accent text-white', label: 'URGENT' };
+  if (p >= 3) return { bg: 'bg-vz-teal text-white', label: 'PRIORITAIRE' };
   return { bg: 'bg-gray-200 text-gray-700', label: 'IDEE' };
 }
 
@@ -89,9 +89,9 @@ export default function CompanionHero() {
   return (
     <div className="mb-8 space-y-6">
       {/* Hero card */}
-      <div className="relative rounded-3xl bg-gradient-teal text-white p-6 md:p-8 shadow-depth overflow-hidden">
+      <div className="relative rounded-3xl bg-vz-teal text-white p-6 md:p-8 shadow-vz-soft overflow-hidden">
         <div className="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-        <div className="absolute right-20 bottom-0 h-32 w-32 rounded-full bg-pink/30 blur-3xl" />
+        <div className="absolute right-20 bottom-0 h-32 w-32 rounded-full bg-vz-accent-soft/30 blur-3xl" />
         <div className="relative z-10 flex items-start justify-between gap-6 flex-wrap">
           <div className="flex items-start gap-4 min-w-0 flex-1">
             {/* AI avatar */}
@@ -147,14 +147,14 @@ export default function CompanionHero() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="text-[11px] tracking-[0.22em] uppercase text-teal font-medium">
+              <p className="text-[11px] tracking-[0.22em] uppercase text-vz-teal font-medium">
                 Briefing du jour
               </p>
               <h2 className="font-display font-semibold text-lg text-black mt-0.5">
                 Tes 3 priorites
               </h2>
             </div>
-            <button onClick={load} className="text-xs text-teal hover:text-teal-700">
+            <button onClick={load} className="text-xs text-vz-teal hover:text-vz-teal-deep">
               Rafraichir
             </button>
           </div>
@@ -165,7 +165,7 @@ export default function CompanionHero() {
                 <Link
                   key={i}
                   href={p.action_url}
-                  className="group rounded-2xl bg-white p-5 shadow-card hover:shadow-soft transition-all animate-slide-up block"
+                  className="group rounded-2xl bg-white p-5 shadow-vz-soft hover:shadow-vz-soft transition-all animate-slide-up block"
                   style={{ animationDelay: `${i * 60}ms` }}
                 >
                   <span className={`inline-block text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full ${badge.bg} mb-3`}>
@@ -173,7 +173,7 @@ export default function CompanionHero() {
                   </span>
                   <h3 className="font-display font-semibold text-black leading-snug">{p.title}</h3>
                   <p className="text-sm text-gray-600 mt-1">{p.body}</p>
-                  <span className="inline-flex items-center gap-1 mt-3 text-sm text-teal font-medium group-hover:gap-2 transition-all">
+                  <span className="inline-flex items-center gap-1 mt-3 text-sm text-vz-teal font-medium group-hover:gap-2 transition-all">
                     Agir
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <polyline points="9 6 15 12 9 18" />
@@ -191,7 +191,7 @@ export default function CompanionHero() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="text-[11px] tracking-[0.22em] uppercase text-teal font-medium">
+              <p className="text-[11px] tracking-[0.22em] uppercase text-vz-teal font-medium">
                 Cartes-taches IA
               </p>
               <h2 className="font-display font-semibold text-lg text-black mt-0.5">
@@ -203,7 +203,7 @@ export default function CompanionHero() {
             {tasks.map((t) => {
               const badge = priorityBadge(t.priority);
               return (
-                <div key={t.id} className="rounded-2xl bg-white p-4 shadow-card animate-slide-up flex items-start gap-3">
+                <div key={t.id} className="rounded-2xl bg-white p-4 shadow-vz-soft animate-slide-up flex items-start gap-3">
                   <span className={`flex-shrink-0 text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full ${badge.bg} mt-0.5`}>
                     {badge.label}
                   </span>
@@ -234,7 +234,7 @@ export default function CompanionHero() {
                     <button
                       onClick={() => runAction(t.id, 'dismiss')}
                       disabled={busy === t.id}
-                      className="text-xs text-gray-400 hover:text-pink-700 px-2"
+                      className="text-xs text-gray-400 hover:text-vz-accent px-2"
                       aria-label="Refuser"
                     >
                       ✕

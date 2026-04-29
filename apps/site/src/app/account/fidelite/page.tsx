@@ -60,7 +60,7 @@ export default function AccountFidelitePage() {
   if (!email) {
     return (
       <AccountShell title="Ma fidélité" intro="Connectez-vous pour afficher votre carte.">
-        <Link href="/account/login" className="text-teal underline">
+        <Link href="/account/login" className="text-vz-teal underline">
           Se connecter
         </Link>
       </AccountShell>
@@ -70,7 +70,7 @@ export default function AccountFidelitePage() {
   if (data && !data.loyalty) {
     return (
       <AccountShell title="Ma fidélité" intro="Adhésion en boutique pour démarrer.">
-        <div className="bg-pink/30 border border-pink rounded-2xl p-6 max-w-2xl">
+        <div className="bg-vz-accent-soft/30 border border-vz-accent-soft rounded-2xl p-6 max-w-2xl">
           <p className="text-gray-700 mb-3">
             Vous n&apos;avez pas encore de carte fidélité Vintiz. L&apos;adhésion est
             digitale, sans formulaire papier — passez en boutique à Vernon, on
@@ -95,15 +95,15 @@ export default function AccountFidelitePage() {
             </h2>
             <ul className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <li className="bg-white rounded-2xl p-4 shadow-sm">
-                <p className="text-3xl font-display text-teal">1 €</p>
+                <p className="text-3xl font-display text-vz-teal">1 €</p>
                 <p className="text-sm text-gray-600">= 1 point cumulé</p>
               </li>
               <li className="bg-white rounded-2xl p-4 shadow-sm">
-                <p className="text-3xl font-display text-teal">100 pts</p>
+                <p className="text-3xl font-display text-vz-teal">100 pts</p>
                 <p className="text-sm text-gray-600">= bon d&apos;achat 8 €</p>
               </li>
               <li className="bg-white rounded-2xl p-4 shadow-sm">
-                <p className="text-3xl font-display text-teal">24 mois</p>
+                <p className="text-3xl font-display text-vz-teal">24 mois</p>
                 <p className="text-sm text-gray-600">de validité sans activité</p>
               </li>
             </ul>

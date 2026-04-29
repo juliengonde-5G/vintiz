@@ -47,7 +47,7 @@ export default function InventoryImportPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-cream">
+    <div className="flex h-screen overflow-hidden bg-vz-bg">
       <Sidebar />
       <main className="flex-1 overflow-y-auto md:ml-64 p-4 md:p-8">
         <header className="mb-6">
@@ -75,7 +75,7 @@ export default function InventoryImportPage() {
                   setSummary(null);
                   setError('');
                 }}
-                className="block w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-teal file:text-white hover:file:bg-teal-700"
+                className="block w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-vz-teal file:text-white hover:file:bg-vz-teal-deep"
               />
               {file && (
                 <p className="text-xs text-gray-500 mt-1">
@@ -162,7 +162,7 @@ Robe noire,49.00,Robes,,Sandro,noir,38,bon,5,18,received`}
               )}
 
               {summary.dry_run && summary.errors.length === 0 && summary.imported > 0 && (
-                <div className="p-3 bg-teal-50 text-teal-800 rounded text-sm">
+                <div className="p-3 bg-vz-teal-soft text-vz-teal-deep rounded text-sm">
                   Tout est OK. Décochez « Dry-run » et relancez pour importer
                   réellement.
                 </div>

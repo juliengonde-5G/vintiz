@@ -139,7 +139,7 @@ export default function ReviewsCard() {
       </div>
 
       {showForm && (
-        <div className="mb-4 p-3 bg-cream rounded-lg space-y-2">
+        <div className="mb-4 p-3 bg-vz-bg rounded-lg space-y-2">
           <input
             type="text"
             placeholder="Auteur (optionnel)"

@@ -63,7 +63,7 @@ export default function WalletCard({ email }: { email: string }) {
   return (
     <div
       className="rounded-2xl p-5 text-white shadow-md"
-      style={{ background: `linear-gradient(135deg, #008678 0%, ${data.primary_color} 100%)` }}
+      style={{ background: `linear-gradient(135deg, #0B7A6A 0%, ${data.primary_color} 100%)` }}
     >
       <div className="flex justify-between items-start gap-4">
         <div>

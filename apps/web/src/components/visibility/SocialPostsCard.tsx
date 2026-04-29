@@ -106,11 +106,11 @@ export default function SocialPostsCard() {
             <li
               key={post.id}
               className={`p-3 border rounded-lg ${
-                post.accepted_at ? 'border-teal/50 bg-teal/5' : 'border-gray-200 bg-white'
+                post.accepted_at ? 'border-vz-teal/50 bg-vz-teal/5' : 'border-gray-200 bg-white'
               }`}
             >
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-pink-100 text-pink-800">
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-vz-accent-soft text-vz-accent">
                   {CATEGORY_LABELS[post.category]}
                 </span>
                 <span className="text-xs text-gray-500">
@@ -119,7 +119,7 @@ export default function SocialPostsCard() {
               </div>
               <p className="text-sm whitespace-pre-line">{post.caption}</p>
               {post.hashtags.length > 0 && (
-                <p className="text-xs text-teal mt-1">
+                <p className="text-xs text-vz-teal mt-1">
                   {post.hashtags.join(' ')}
                 </p>
               )}
