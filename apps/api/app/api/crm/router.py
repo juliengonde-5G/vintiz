@@ -1841,3 +1841,105 @@ async def client_wallet_pass(
     if pass_payload is None:
         raise HTTPException(status_code=404, detail="Client not found")
     return payload_to_dict(pass_payload)
+
+
+# ---------------------------------------------------------------------------
+# Wallet downloads — Apple .pkpass / Google save URL / QR fallback
+# ---------------------------------------------------------------------------
+
+
+@router.get("/account/wallet/apple")
+async def download_apple_pass(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a signed ``.pkpass`` archive (Apple Wallet).
+
+    Returns 200 with the binary when the dev certs are configured, or 503
+    with a JSON explaining how to activate it. The fallback QR endpoint
+    remains available either way.
+    """
+    from fastapi.responses import Response
+    from app.services.wallet import build_pass_by_email, build_apple_pkpass
+
+    email_clean = email.strip().lower()
+    if "@" not in email_clean:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+    pass_payload = await build_pass_by_email(db, email_clean)
+    if pass_payload is None:
+        raise HTTPException(status_code=404, detail="Compte introuvable")
+    pkpass = build_apple_pkpass(pass_payload)
+    if pkpass is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Apple Wallet pass non configuré : posez WALLET_APPLE_P12_PATH, "
+                "WALLET_APPLE_P12_PASSWORD, WALLET_APPLE_WWDR_PATH et WALLET_TEAM_IDENTIFIER. "
+                "En attendant, utilisez l'export QR via /api/crm/account/wallet/qr.png."
+            ),
+        )
+    filename = f"vintiz-{pass_payload.membership_number}.pkpass"
+    return Response(
+        content=pkpass,
+        media_type="application/vnd.apple.pkpass",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/account/wallet/google")
+async def download_google_pass(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Redirect the browser to the Google Wallet save URL.
+
+    Returns 503 when the Service Account JSON is not configured.
+    """
+    from fastapi.responses import RedirectResponse
+    from app.services.wallet import build_pass_by_email, build_google_save_url
+
+    email_clean = email.strip().lower()
+    if "@" not in email_clean:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+    pass_payload = await build_pass_by_email(db, email_clean)
+    if pass_payload is None:
+        raise HTTPException(status_code=404, detail="Compte introuvable")
+    save_url = build_google_save_url(pass_payload)
+    if not save_url:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Google Wallet non configuré : posez WALLET_GOOGLE_SERVICE_ACCOUNT_JSON "
+                "et WALLET_GOOGLE_ISSUER_ID."
+            ),
+        )
+    return RedirectResponse(url=save_url, status_code=302)
+
+
+@router.get("/account/wallet/qr.png")
+async def download_wallet_qr(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Always-on PNG fallback : QR code encoding the membership URL."""
+    from fastapi.responses import Response
+    from app.services.wallet import build_pass_by_email, build_qr_png
+
+    email_clean = email.strip().lower()
+    if "@" not in email_clean:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+    pass_payload = await build_pass_by_email(db, email_clean)
+    if pass_payload is None:
+        raise HTTPException(status_code=404, detail="Compte introuvable")
+    png = build_qr_png(pass_payload)
+    if png is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Génération QR indisponible (paquet 'qrcode' manquant)",
+        )
+    filename = f"vintiz-{pass_payload.membership_number}-qr.png"
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )

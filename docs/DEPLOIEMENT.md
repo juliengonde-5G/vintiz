@@ -152,9 +152,42 @@ envoyes. Le code OTP magic-link apparaitra dans les logs API au format
 
 #### Signature des passes Wallet
 
-Voir le bloc "Wallet pass" plus bas — la signature `.pkpass` Apple est desormais
-implementee si `WALLET_APPLE_P12_PATH` + `WALLET_APPLE_P12_PASSWORD` +
-`WALLET_APPLE_WWDR_PATH` sont poses. Sinon, fallback QR PNG telechargeable.
+La signature `.pkpass` Apple est desormais implementee si toutes les variables
+suivantes sont posees :
+
+```env
+WALLET_TEAM_IDENTIFIER=ABCDE12345          # Apple Developer Team ID
+WALLET_PASS_TYPE_IDENTIFIER=pass.fr.vintiz.loyalty
+WALLET_APPLE_P12_PATH=/secrets/vintiz_pass.p12   # cert + cle privee
+WALLET_APPLE_P12_PASSWORD=...
+WALLET_APPLE_WWDR_PATH=/secrets/AppleWWDRCAG4.pem # cert intermediaire WWDR (G4)
+WALLET_PASS_ASSETS_DIR=/opt/vintiz/wallet-assets/ # icon.png, icon@2x.png, logo.png
+```
+
+Procedure :
+1. Compte Apple Developer (99$/an) -> Certificates, Identifiers & Profiles ->
+   creer un Pass Type ID `pass.fr.vintiz.loyalty`.
+2. Generer un certificat de signature (.cer) puis l'exporter en .p12 avec sa
+   cle privee depuis Keychain.
+3. Telecharger AppleWWDRCAG4.cer (Apple Worldwide Developer Relations - G4)
+   et le convertir en PEM (`openssl x509 -inform DER -in AppleWWDRCAG4.cer
+   -out AppleWWDRCAG4.pem`).
+4. Deposer le .p12 + le .pem dans `/secrets/` et poser les vars d'env.
+5. Optionnel : deposer 3 icones PNG (29x29, 58x58, 87x87) dans
+   WALLET_PASS_ASSETS_DIR -> meilleur rendu sur l'iPhone.
+6. Tester : `curl -i "https://api.vintiz.fr/api/crm/account/wallet/apple?email=cliente@x.fr"`
+   -> doit retourner `Content-Type: application/vnd.apple.pkpass` + binaire.
+
+Pour Google Wallet :
+```env
+WALLET_GOOGLE_ISSUER_ID=3388000000022000000   # 19 chiffres, donne par Google Pay & Wallet Console
+WALLET_GOOGLE_CLASS_SUFFIX=vintiz_loyalty
+WALLET_GOOGLE_SERVICE_ACCOUNT_JSON=/secrets/google-wallet-sa.json
+```
+
+Sans ces certs/credentials, le bouton "Ajouter a Apple/Google Wallet" renvoie
+une 503 explicite et le bouton "Telecharger le QR" reste fonctionnel (PNG
+scanne au POS pour identifier la cliente).
 
 ### 2. Seeder les 15 produits de test
 

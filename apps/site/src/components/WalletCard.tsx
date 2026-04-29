@@ -99,12 +99,31 @@ export default function WalletCard({ email }: { email: string }) {
       <p className="mt-4 text-xs opacity-90">{data.benefit_text}</p>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <span className="text-[11px] bg-black/20 rounded-full px-3 py-1">
-          Apple Wallet : à venir
-        </span>
-        <span className="text-[11px] bg-black/20 rounded-full px-3 py-1">
-          Google Wallet : à venir
-        </span>
+        <a
+          href={`${API_URL}/api/crm/account/wallet/apple?email=${encodeURIComponent(email)}`}
+          download
+          className="text-[11px] bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 font-medium transition-colors"
+          title="Télécharger un .pkpass signé pour Apple Wallet"
+        >
+          Ajouter à Apple Wallet
+        </a>
+        <a
+          href={`${API_URL}/api/crm/account/wallet/google?email=${encodeURIComponent(email)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[11px] bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 font-medium transition-colors"
+          title="Ajouter à Google Wallet"
+        >
+          Ajouter à Google Wallet
+        </a>
+        <a
+          href={`${API_URL}/api/crm/account/wallet/qr.png?email=${encodeURIComponent(email)}`}
+          download={`vintiz-${data.membership_number}-qr.png`}
+          className="text-[11px] bg-white/15 hover:bg-white/25 rounded-full px-3 py-1.5 font-medium transition-colors"
+          title="Télécharger le QR code de votre carte"
+        >
+          Télécharger le QR
+        </a>
       </div>
     </div>
   );
