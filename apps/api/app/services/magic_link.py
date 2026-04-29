@@ -43,6 +43,24 @@ RATE_LIMIT_EMAIL_PER_HOUR = 3
 RATE_LIMIT_IP_PER_HOUR = 30
 JWT_TTL_MINUTES = 60
 
+# Phone-number heuristic for SMS routing. The frontend can pass either an
+# email or a phone in the same `email` field; we detect digits-only with an
+# optional leading `+` and at least 8 digits (loose by design — full E.164
+# validation belongs to Twilio).
+_PHONE_RE = __import__("re").compile(r"^\+?\d[\d\s.-]{7,}$")
+
+
+def _is_phone(value: str) -> bool:
+    cleaned = value.strip()
+    if "@" in cleaned:
+        return False
+    return bool(_PHONE_RE.match(cleaned))
+
+
+def _normalize_phone(value: str) -> str:
+    cleaned = value.strip().replace(" ", "").replace(".", "").replace("-", "")
+    return cleaned
+
 
 class MagicLinkError(RuntimeError):
     """Domain error for verify(); routers map to 401/429."""
@@ -109,15 +127,27 @@ async def issue(
 ) -> dict:
     """Mint a 6-digit code, store + send it. Always succeeds (no enumeration).
 
+    Accepts either an email OR a phone number in the ``email`` argument: when
+    the value matches a phone pattern we route through the SMS gateway
+    (Twilio when configured, simulation otherwise). The DB row keeps the
+    normalized identifier in the ``email`` column so verify() works the same
+    way regardless of channel.
+
     Returns a small status dict ``{"delivery_mode": "sent"|"simulated"|"failed"|"skipped"}``
     so the admin probe can surface the real backend state without leaking to
     the public endpoint (which still answers 204).
     """
-    norm_email = _normalize_email(email)
-    if not norm_email or "@" not in norm_email:
-        # Silent no-op: never tell the caller why we didn't send.
-        logger.info("magic_link: rejecting malformed email")
-        return {"delivery_mode": "skipped", "reason": "malformed_email"}
+    is_phone = _is_phone(email or "")
+    if is_phone:
+        norm_email = _normalize_phone(email)
+        if not norm_email:
+            return {"delivery_mode": "skipped", "reason": "malformed_phone"}
+    else:
+        norm_email = _normalize_email(email)
+        if not norm_email or "@" not in norm_email:
+            # Silent no-op: never tell the caller why we didn't send.
+            logger.info("magic_link: rejecting malformed email")
+            return {"delivery_mode": "skipped", "reason": "malformed_email"}
 
     by_email = await _count_recent(db, email=norm_email)
     by_ip = await _count_recent(db, ip=ip) if ip else 0
@@ -160,38 +190,63 @@ async def issue(
     delivery_mode = "failed"
     backend = "unknown"
     try:
-        result = send_email(
-            EmailMessage(
-                to=norm_email,
-                subject=subject,
-                html=html,
-                text=text,
+        if is_phone:
+            from app.services.sms_gateway import (
+                SMSDeliveryError,
+                SMSMessage,
+                send_sms,
             )
-        )
-        backend = result.backend
-        if result.status == "sent":
-            delivery_mode = "sent"
-        elif result.status == "simulated":
-            delivery_mode = "simulated"
-            # In production, simulation = misconfigured email gateway. Surface a
-            # WARNING so ops notices in the logs.
-            if os.getenv("ENVIRONMENT", "").lower() == "production":
-                logger.warning(
-                    "magic_link: PRODUCTION using simulation backend — Brevo/SMTP not configured"
-                )
+
+            sms_body = (
+                f"Vintiz : votre code de connexion est {code}. "
+                f"Valable {CODE_TTL_MINUTES} min."
+            )
+            try:
+                sms_result = send_sms(SMSMessage(to=norm_email, body=sms_body))
+                backend = sms_result.backend
+                if sms_result.status == "sent":
+                    delivery_mode = "sent"
+                elif sms_result.status == "simulated":
+                    delivery_mode = "simulated"
+                    if os.getenv("ENVIRONMENT", "").lower() == "production":
+                        logger.warning(
+                            "magic_link: PRODUCTION using SMS simulation — Twilio not configured"
+                        )
+                else:
+                    delivery_mode = "failed"
+            except SMSDeliveryError as exc:
+                logger.warning("magic_link: sms delivery failed: %s", exc)
+                delivery_mode = "failed"
         else:
-            delivery_mode = "failed"
+            result = send_email(
+                EmailMessage(
+                    to=norm_email,
+                    subject=subject,
+                    html=html,
+                    text=text,
+                )
+            )
+            backend = result.backend
+            if result.status == "sent":
+                delivery_mode = "sent"
+            elif result.status == "simulated":
+                delivery_mode = "simulated"
+                # In production, simulation = misconfigured email gateway.
+                if os.getenv("ENVIRONMENT", "").lower() == "production":
+                    logger.warning(
+                        "magic_link: PRODUCTION using simulation backend — Brevo/SMTP not configured"
+                    )
+            else:
+                delivery_mode = "failed"
         logger.info(
-            "magic_link: code issued for email=%s backend=%s delivery=%s",
-            norm_email, backend, delivery_mode,
+            "magic_link: code issued for id=%s channel=%s backend=%s delivery=%s",
+            norm_email, "sms" if is_phone else "email", backend, delivery_mode,
         )
     except EmailDeliveryError as exc:
-        # Email backend up but call failed; we still keep the row so a
-        # retry from the user can succeed if backend recovers.
         logger.warning("magic_link: email delivery failed: %s", exc)
         delivery_mode = "failed"
 
-    return {"delivery_mode": delivery_mode, "backend": backend}
+    return {"delivery_mode": delivery_mode, "backend": backend, "channel": "sms" if is_phone else "email"}
 
 
 async def verify(
