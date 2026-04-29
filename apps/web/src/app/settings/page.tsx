@@ -83,7 +83,7 @@ interface SandboxSnapshot {
 }
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'store' | 'payment' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
+  const [tab, setTab] = useState<'store' | 'payment' | 'communication' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
   const [hardware, setHardware] = useState<HardwareConfig | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityItem[]>([]);
   const [hwSaving, setHwSaving] = useState(false);
@@ -155,9 +155,31 @@ export default function SettingsPage() {
   type HwTestStatus = 'idle' | 'running' | 'success' | 'error';
   const [hwTests, setHwTests] = useState<Record<string, { status: HwTestStatus; message?: string }>>({});
 
+  // Email gateway config (Communication tab)
+  const [emailForm, setEmailForm] = useState<{
+    provider: string; brevo_api_key: string;
+    smtp_host: string; smtp_port: string; smtp_user: string; smtp_password: string; smtp_from: string;
+    from_address: string; from_name: string;
+  }>({
+    provider: '', brevo_api_key: '',
+    smtp_host: '', smtp_port: '587', smtp_user: '', smtp_password: '', smtp_from: '',
+    from_address: 'noreply@vintiz.fr', from_name: 'Vintiz Vernon',
+  });
+  const [emailPersisted, setEmailPersisted] = useState<{
+    provider: string; brevo_api_key_masked: string;
+    smtp_host: string; smtp_port: string; smtp_user: string; smtp_password_masked: string;
+    smtp_from: string; from_address: string; from_name: string;
+  } | null>(null);
+  const [emailLive, setEmailLive] = useState<{ provider: string; configured: boolean; host?: string; port?: string } | null>(null);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailTestTo, setEmailTestTo] = useState('');
+  const [emailTestResult, setEmailTestResult] = useState<{ ok: boolean; status: string; backend: string; detail?: string } | null>(null);
+  const [emailTesting, setEmailTesting] = useState(false);
+
   useEffect(() => {
     if (tab === 'store') loadShopInfo();
     if (tab === 'payment') loadSumupConfig();
+    if (tab === 'communication') loadEmailConfig();
     if (tab === 'categories') loadCategories();
     if (tab === 'zones') loadZones();
     if (tab === 'hardware') loadHardware();
@@ -289,6 +311,83 @@ export default function SettingsPage() {
       }
     } catch { setError('Erreur de connexion'); }
     setSumupSaving(false);
+  };
+
+  // ── Email gateway config ─────────────────────────────────────────────────
+  const loadEmailConfig = async () => {
+    try {
+      const res = await api.get('/api/admin/email-config');
+      if (res.ok) {
+        const data = await res.json();
+        setEmailLive(data.live);
+        setEmailPersisted(data.persisted);
+        setEmailForm({
+          provider: data.persisted.provider || '',
+          // Never echo back the secret — leave empty so user explicitly retypes to change
+          brevo_api_key: '',
+          smtp_host: data.persisted.smtp_host || '',
+          smtp_port: data.persisted.smtp_port || '587',
+          smtp_user: data.persisted.smtp_user || '',
+          smtp_password: '',
+          smtp_from: data.persisted.smtp_from || '',
+          from_address: data.persisted.from_address || 'noreply@vintiz.fr',
+          from_name: data.persisted.from_name || 'Vintiz Vernon',
+        });
+      }
+    } catch {
+      setError('Erreur de chargement de la passerelle email');
+    }
+  };
+
+  const saveEmailConfig = async () => {
+    setEmailSaving(true);
+    setError('');
+    try {
+      const body: Record<string, unknown> = {
+        provider: emailForm.provider,
+        smtp_host: emailForm.smtp_host,
+        smtp_port: emailForm.smtp_port,
+        smtp_user: emailForm.smtp_user,
+        smtp_from: emailForm.smtp_from,
+        from_address: emailForm.from_address,
+        from_name: emailForm.from_name,
+      };
+      if (emailForm.brevo_api_key.trim()) body.brevo_api_key = emailForm.brevo_api_key.trim();
+      if (emailForm.smtp_password.trim()) body.smtp_password = emailForm.smtp_password.trim();
+      const res = await api.put('/api/admin/email-config', body);
+      if (res.ok) {
+        const data = await res.json();
+        setEmailLive(data.live);
+        setEmailPersisted(data.persisted);
+        setEmailForm((f) => ({ ...f, brevo_api_key: '', smtp_password: '' }));
+        setMessage('Configuration email enregistrée');
+        setTimeout(() => setMessage(''), 3000);
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setError(e.detail || 'Erreur enregistrement email');
+      }
+    } catch { setError('Erreur de connexion'); }
+    setEmailSaving(false);
+  };
+
+  const sendEmailTest = async () => {
+    setEmailTesting(true);
+    setEmailTestResult(null);
+    try {
+      const res = await api.post('/api/admin/email-config/test', {
+        to: emailTestTo.trim() || undefined,
+      });
+      const data = await res.json();
+      setEmailTestResult({
+        ok: !!data.ok,
+        status: data.status || 'unknown',
+        backend: data.backend || 'unknown',
+        detail: data.detail,
+      });
+    } catch (e: any) {
+      setEmailTestResult({ ok: false, status: 'failed', backend: 'error', detail: e?.message || 'Erreur réseau' });
+    }
+    setEmailTesting(false);
   };
 
   // ── Hardware compatibility tests (inline per row) ─────────────────────────
@@ -572,6 +671,7 @@ export default function SettingsPage() {
   const tabs = [
     { key: 'store' as const, label: 'Boutique' },
     { key: 'payment' as const, label: 'Paiement' },
+    { key: 'communication' as const, label: 'Communication' },
     { key: 'cahier' as const, label: 'Cahier de travail' },
     { key: 'fidelite' as const, label: 'Fidelite' },
     { key: 'categories' as const, label: 'Categories' },
@@ -1011,6 +1111,178 @@ export default function SettingsPage() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
+        {/* COMMUNICATION TAB — Email gateway (Brevo / SMTP / simulation) */}
+        {tab === 'communication' && (
+          <div className="space-y-6">
+            <Card title="Passerelle email — magic-link OTP, anniversaires, nouvelles arrivées">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-5 p-3 rounded-lg bg-vz-bg/60 border border-vz-line">
+                <div>
+                  <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Backend actif</p>
+                  <p className="font-medium text-black mt-1">
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs ${
+                      emailLive?.provider === 'brevo' ? 'bg-green-100 text-green-800' :
+                      emailLive?.provider === 'smtp' ? 'bg-blue-100 text-blue-800' :
+                      'bg-amber-100 text-amber-800'
+                    }`}>
+                      {emailLive ? emailLive.provider.toUpperCase() : '—'}
+                    </span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Clé Brevo</p>
+                  <p className="font-medium text-black mt-1">
+                    {emailPersisted?.brevo_api_key_masked ? '✓ ' + emailPersisted.brevo_api_key_masked : '— Non définie'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-vz-ink-mute text-xs uppercase tracking-wider">SMTP</p>
+                  <p className="font-medium text-black mt-1">
+                    {emailPersisted?.smtp_host ? `${emailPersisted.smtp_host}:${emailPersisted.smtp_port}` : '— Non défini'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-black mb-1.5">Provider forcé</label>
+                  <select
+                    value={emailForm.provider}
+                    onChange={(e) => setEmailForm({ ...emailForm, provider: e.target.value })}
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black"
+                  >
+                    <option value="">Auto-détection (Brevo si clé, sinon SMTP, sinon simulation)</option>
+                    <option value="brevo">Brevo (production)</option>
+                    <option value="smtp">SMTP standard</option>
+                    <option value="simulation">Simulation (dev/test)</option>
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">Sans clé Brevo ni SMTP, les emails sont simulés (logués mais pas envoyés).</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-black mb-1.5">
+                    Clé API Brevo
+                    {emailPersisted?.brevo_api_key_masked && (
+                      <span className="ml-2 text-xs text-vz-ink-mute font-mono">actuelle : {emailPersisted.brevo_api_key_masked}</span>
+                    )}
+                  </label>
+                  <input
+                    type="password"
+                    value={emailForm.brevo_api_key}
+                    onChange={(e) => setEmailForm({ ...emailForm, brevo_api_key: e.target.value })}
+                    placeholder={emailPersisted?.brevo_api_key_masked ? 'Laisser vide pour conserver' : 'xkeysib-…'}
+                    autoComplete="off"
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 border-t border-vz-line pt-4 mt-2">
+                  <p className="text-xs uppercase tracking-[0.18em] text-vz-ink-mute font-medium mb-3">
+                    Fallback SMTP (utilisé si Brevo non configuré)
+                  </p>
+                </div>
+                <Input
+                  label="Hôte SMTP"
+                  value={emailForm.smtp_host}
+                  onChange={(e) => setEmailForm({ ...emailForm, smtp_host: e.target.value })}
+                  placeholder="smtp.gmail.com"
+                />
+                <Input
+                  label="Port SMTP"
+                  value={emailForm.smtp_port}
+                  onChange={(e) => setEmailForm({ ...emailForm, smtp_port: e.target.value })}
+                  placeholder="587"
+                />
+                <Input
+                  label="Utilisateur SMTP"
+                  value={emailForm.smtp_user}
+                  onChange={(e) => setEmailForm({ ...emailForm, smtp_user: e.target.value })}
+                  placeholder="contact@domaine.fr"
+                />
+                <div>
+                  <label className="block text-sm font-medium text-black mb-1.5">
+                    Mot de passe SMTP
+                    {emailPersisted?.smtp_password_masked && (
+                      <span className="ml-2 text-xs text-vz-ink-mute font-mono">actuel : {emailPersisted.smtp_password_masked}</span>
+                    )}
+                  </label>
+                  <input
+                    type="password"
+                    value={emailForm.smtp_password}
+                    onChange={(e) => setEmailForm({ ...emailForm, smtp_password: e.target.value })}
+                    placeholder={emailPersisted?.smtp_password_masked ? 'Laisser vide pour conserver' : '••••••••'}
+                    autoComplete="off"
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 border-t border-vz-line pt-4 mt-2">
+                  <p className="text-xs uppercase tracking-[0.18em] text-vz-ink-mute font-medium mb-3">
+                    Identité de l'expéditeur
+                  </p>
+                </div>
+                <Input
+                  label="Adresse expéditeur"
+                  value={emailForm.from_address}
+                  onChange={(e) => setEmailForm({ ...emailForm, from_address: e.target.value })}
+                  placeholder="noreply@vintiz.fr"
+                />
+                <Input
+                  label="Nom expéditeur"
+                  value={emailForm.from_name}
+                  onChange={(e) => setEmailForm({ ...emailForm, from_name: e.target.value })}
+                  placeholder="Vintiz Vernon"
+                />
+              </div>
+
+              <div className="flex justify-end items-center mt-5 flex-wrap gap-3">
+                <p className="text-xs text-gray-500 mr-auto">
+                  Champs vides = conserver la valeur actuelle. Les valeurs persistées priment sur les variables d&apos;environnement.
+                </p>
+                <Button onClick={saveEmailConfig} disabled={emailSaving}>
+                  {emailSaving ? 'Enregistrement…' : 'Enregistrer'}
+                </Button>
+              </div>
+            </Card>
+
+            <Card title="Test d'envoi end-to-end">
+              <p className="text-sm text-gray-500 mb-4">
+                Envoie un email réel pour vérifier que la passerelle est bien câblée.
+                Si vous laissez le champ vide, l&apos;email sera envoyé à l&apos;adresse de votre compte admin.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <Input
+                    type="email"
+                    value={emailTestTo}
+                    onChange={(e) => setEmailTestTo(e.target.value)}
+                    placeholder="adresse@destinataire.fr (optionnel)"
+                  />
+                </div>
+                <Button onClick={sendEmailTest} disabled={emailTesting}>
+                  {emailTesting ? 'Envoi…' : 'Envoyer un email de test'}
+                </Button>
+              </div>
+              {emailTestResult && (
+                <div className={`mt-4 p-3 rounded-lg text-sm border ${
+                  emailTestResult.ok && emailTestResult.status === 'sent'
+                    ? 'bg-green-50 text-green-800 border-green-200'
+                    : emailTestResult.status === 'simulated'
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : 'bg-red-50 text-red-700 border-red-200'
+                }`}>
+                  <p className="font-medium">
+                    {emailTestResult.status === 'sent' && '✓ Email envoyé via ' + emailTestResult.backend.toUpperCase()}
+                    {emailTestResult.status === 'simulated' && '⚠ Email SIMULÉ — backend non configuré, aucun envoi réel'}
+                    {emailTestResult.status === 'failed' && '✕ Échec d\'envoi'}
+                  </p>
+                  {emailTestResult.detail && (
+                    <p className="text-xs mt-1 font-mono">{emailTestResult.detail}</p>
+                  )}
                 </div>
               )}
             </Card>

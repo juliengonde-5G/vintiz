@@ -53,6 +53,31 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "sandbox_auto_delay_sec": 5,
         "return_url": "",
     },
+    # Email gateway — editable via /settings > Communication (overrides env vars)
+    "email": {
+        "provider": "",  # auto | brevo | smtp | simulation (empty = auto)
+        "brevo_api_key": "",
+        "smtp_host": "",
+        "smtp_port": "587",
+        "smtp_user": "",
+        "smtp_password": "",
+        "smtp_from": "",
+        "from_address": "noreply@vintiz.fr",
+        "from_name": "Vintiz Vernon",
+    },
+    # SMS gateway — Twilio fallback for OTP magic-link
+    "sms": {
+        "twilio_account_sid": "",
+        "twilio_auth_token": "",
+        "twilio_from": "",
+    },
+    # Manager-curated selection of products surfaced on /account/selection
+    # (Lot 5 — list of {product_id, reason})
+    "curation_picks": {
+        "items": [],
+        "curator_note": "",
+        "updated_at": "",
+    },
 }
 
 

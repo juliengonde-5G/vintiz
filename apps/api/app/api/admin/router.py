@@ -231,6 +231,132 @@ async def update_sumup_config(payload: SumUpConfigUpdate):
 
 
 # ---------------------------------------------------------------------------
+# Email gateway config — editable Brevo / SMTP / simulation overrides
+# Persisted values prevail over environment variables.
+# ---------------------------------------------------------------------------
+
+
+class EmailConfigUpdate(BaseModel):
+    provider: str | None = None  # "" | auto | brevo | smtp | simulation
+    brevo_api_key: str | None = None
+    smtp_host: str | None = None
+    smtp_port: str | None = None
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
+    from_address: str | None = None
+    from_name: str | None = None
+
+
+@router.get("/email-config", dependencies=[Depends(manager_only)])
+async def get_email_config():
+    """Return masked email config + the live provider currently in use."""
+    from app.services.app_config import get_section, mask_secret
+    from app.services.email_gateway import describe_active_provider
+
+    persisted = get_section("email")
+    return {
+        "live": describe_active_provider(),
+        "persisted": {
+            "provider": persisted.get("provider", ""),
+            "brevo_api_key_masked": mask_secret(persisted.get("brevo_api_key", "")),
+            "smtp_host": persisted.get("smtp_host", ""),
+            "smtp_port": persisted.get("smtp_port", "587"),
+            "smtp_user": persisted.get("smtp_user", ""),
+            "smtp_password_masked": mask_secret(persisted.get("smtp_password", "")),
+            "smtp_from": persisted.get("smtp_from", ""),
+            "from_address": persisted.get("from_address", "noreply@vintiz.fr"),
+            "from_name": persisted.get("from_name", "Vintiz Vernon"),
+        },
+    }
+
+
+@router.put("/email-config", dependencies=[Depends(manager_only)])
+async def update_email_config(payload: EmailConfigUpdate):
+    """Persist Brevo/SMTP credentials. Empty strings preserve the current value
+    (except `provider`, which is always written).
+    """
+    from app.services.app_config import update_section, get_section, mask_secret
+    from app.services.email_gateway import describe_active_provider
+
+    raw = payload.model_dump(exclude_none=True)
+    # Drop empty strings except for "provider" (which can be reset)
+    values = {
+        k: v for k, v in raw.items() if k == "provider" or v not in (None, "")
+    }
+    update_section("email", values)
+    persisted = get_section("email")
+    return {
+        "live": describe_active_provider(),
+        "persisted": {
+            "provider": persisted.get("provider", ""),
+            "brevo_api_key_masked": mask_secret(persisted.get("brevo_api_key", "")),
+            "smtp_host": persisted.get("smtp_host", ""),
+            "smtp_port": persisted.get("smtp_port", "587"),
+            "smtp_user": persisted.get("smtp_user", ""),
+            "smtp_password_masked": mask_secret(persisted.get("smtp_password", "")),
+            "smtp_from": persisted.get("smtp_from", ""),
+            "from_address": persisted.get("from_address", "noreply@vintiz.fr"),
+            "from_name": persisted.get("from_name", "Vintiz Vernon"),
+        },
+    }
+
+
+class EmailTestRequest(BaseModel):
+    to: str | None = None  # default = current admin email
+
+
+@router.post("/email-config/test", dependencies=[Depends(manager_only)])
+async def send_email_test(
+    payload: EmailTestRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Send a real test email to verify the active provider end-to-end.
+
+    Returns the EmailResult so the UI can display backend, status and detail.
+    """
+    from app.services.email_gateway import EmailMessage, send_email, EmailDeliveryError
+
+    target = (payload.to or current_user.email or "").strip()
+    if not target:
+        raise HTTPException(
+            status_code=400,
+            detail="Adresse email cible manquante (et utilisateur sans email)",
+        )
+
+    msg = EmailMessage(
+        to=target,
+        subject="Test Vintiz — passerelle email",
+        html=(
+            "<p>Bonjour,</p>"
+            "<p>Cet email confirme que la configuration de la passerelle email "
+            "Vintiz fonctionne correctement.</p>"
+            "<p>Si vous le recevez : Brevo / SMTP est bien câblé.</p>"
+            "<p>— Vintiz Vernon</p>"
+        ),
+        text="Test Vintiz : la passerelle email fonctionne.",
+    )
+    try:
+        result = send_email(msg)
+        return {
+            "ok": True,
+            "status": result.status,
+            "backend": result.backend,
+            "message_id": result.message_id,
+            "sent_at": result.sent_at,
+            "to": target,
+        }
+    except EmailDeliveryError as exc:
+        return {
+            "ok": False,
+            "status": "failed",
+            "backend": "error",
+            "detail": str(exc),
+            "to": target,
+        }
+
+
+# ---------------------------------------------------------------------------
 # Weather endpoint
 # ---------------------------------------------------------------------------
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -105,13 +106,18 @@ async def issue(
     db: AsyncSession,
     email: str,
     ip: str | None = None,
-) -> None:
-    """Mint a 6-digit code, store + send it. Always succeeds (no enumeration)."""
+) -> dict:
+    """Mint a 6-digit code, store + send it. Always succeeds (no enumeration).
+
+    Returns a small status dict ``{"delivery_mode": "sent"|"simulated"|"failed"|"skipped"}``
+    so the admin probe can surface the real backend state without leaking to
+    the public endpoint (which still answers 204).
+    """
     norm_email = _normalize_email(email)
     if not norm_email or "@" not in norm_email:
         # Silent no-op: never tell the caller why we didn't send.
         logger.info("magic_link: rejecting malformed email")
-        return
+        return {"delivery_mode": "skipped", "reason": "malformed_email"}
 
     by_email = await _count_recent(db, email=norm_email)
     by_ip = await _count_recent(db, ip=ip) if ip else 0
@@ -120,7 +126,7 @@ async def issue(
             "magic_link: rate-limited email=%s ip=%s by_email=%d by_ip=%d",
             norm_email, ip, by_email, by_ip,
         )
-        return
+        return {"delivery_mode": "skipped", "reason": "rate_limited"}
 
     code = f"{secrets.randbelow(1_000_000):06d}"
     code_hash = _hash_code(code)
@@ -151,8 +157,10 @@ async def issue(
         f"Valable {CODE_TTL_MINUTES} minutes.\n"
         "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.\n"
     )
+    delivery_mode = "failed"
+    backend = "unknown"
     try:
-        send_email(
+        result = send_email(
             EmailMessage(
                 to=norm_email,
                 subject=subject,
@@ -160,13 +168,30 @@ async def issue(
                 text=text,
             )
         )
-        # Sim mode also logs the code at INFO level via _simulate; that's
-        # how tests pull it back. Re-log here for clarity.
-        logger.info("magic_link: code issued for email=%s (sim=safe to log)", norm_email)
+        backend = result.backend
+        if result.status == "sent":
+            delivery_mode = "sent"
+        elif result.status == "simulated":
+            delivery_mode = "simulated"
+            # In production, simulation = misconfigured email gateway. Surface a
+            # WARNING so ops notices in the logs.
+            if os.getenv("ENVIRONMENT", "").lower() == "production":
+                logger.warning(
+                    "magic_link: PRODUCTION using simulation backend — Brevo/SMTP not configured"
+                )
+        else:
+            delivery_mode = "failed"
+        logger.info(
+            "magic_link: code issued for email=%s backend=%s delivery=%s",
+            norm_email, backend, delivery_mode,
+        )
     except EmailDeliveryError as exc:
         # Email backend up but call failed; we still keep the row so a
         # retry from the user can succeed if backend recovers.
         logger.warning("magic_link: email delivery failed: %s", exc)
+        delivery_mode = "failed"
+
+    return {"delivery_mode": delivery_mode, "backend": backend}
 
 
 async def verify(

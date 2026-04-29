@@ -120,11 +120,41 @@ Sans `BREVO_API_KEY`, les crons anniversaire (09:00 quotidien) et nouvelles
 arrivees (vendredi 10:00) tournent en mode simulation : les coupons sont
 crees en DB mais aucun email n'est envoye. Logs API : "[email simulated]".
 
-La signature reelle des passes Apple `.pkpass` (cert p12 + WWDR + ZIP
-manifest) et Google Wallet (Service Account JSON + JWT RS256) n'est PAS
-implementee. Le payload est expose via `GET /api/crm/account/wallet?email=`
-et l'espace client `/account/data` affiche une carte preview avec QR. Le
-"Add to Wallet" est laisse en TODO ops.
+#### Activation Brevo (recommandee en prod)
+
+Brevo (ex-Sendinblue) offre 300 emails transactionnels gratuits par jour,
+suffisant pour la majorite des boutiques. Procedure :
+
+1. Creer un compte gratuit sur https://app.brevo.com/account/register.
+2. Verifier le domaine d'envoi (DKIM/SPF) via Brevo > Settings > Senders &
+   IP. Obligatoire pour eviter le spam (sinon les codes magic-link tomberont
+   dans l'onglet "Promotions" voire en spam).
+3. Creer une cle API : Brevo > SMTP & API > API Keys > Generer une nouvelle
+   cle (cocher "Send transactional emails"). Format `xkeysib-…`.
+4. Coller la cle dans **/settings > Communication** (UI back-office) : la
+   valeur est persistee en DB et prend le pas sur les variables d'env. Saisir
+   "Adresse expediteur" + "Nom expediteur" puis cliquer "Enregistrer".
+5. Cliquer "Envoyer un email de test" pour valider la chaine end-to-end.
+6. Si l'email arrive : c'est OK. Si l'envoi est marque "SIMULE", c'est que la
+   cle n'a pas ete persistee — verifier les permissions du fichier
+   `data/app_config.json` (lecture/ecriture par l'utilisateur API).
+
+Alternativement, on peut poser `BREVO_API_KEY=xkeysib-…` dans `.env` du
+backend et redeployer. La valeur UI reste prioritaire, ce qui permet une
+rotation de cle sans redeploiement.
+
+#### Mode simulation explicite (dev / staging)
+
+Pour developper sans envoyer de vrais emails, mettre Provider = "Simulation"
+dans /settings > Communication. Tous les emails seront logues mais pas
+envoyes. Le code OTP magic-link apparaitra dans les logs API au format
+`[email simulated] to=… subject=Code de connexion Vintiz : 123456`.
+
+#### Signature des passes Wallet
+
+Voir le bloc "Wallet pass" plus bas — la signature `.pkpass` Apple est desormais
+implementee si `WALLET_APPLE_P12_PATH` + `WALLET_APPLE_P12_PASSWORD` +
+`WALLET_APPLE_WWDR_PATH` sont poses. Sinon, fallback QR PNG telechargeable.
 
 ### 2. Seeder les 15 produits de test
 

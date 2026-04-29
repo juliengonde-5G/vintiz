@@ -76,8 +76,52 @@ def _strip_html(html: str) -> str:
 
 
 def _from_env(key: str, default: str = "") -> str:
+    """Read a config value: persisted ``app_config.json`` first, env var second.
+
+    The persisted store mirrors the SumUp pattern — operators can edit Brevo /
+    SMTP credentials from /settings > Communication without touching the
+    deployment. Env vars stay as a safety net.
+    """
+    persisted = ""
+    try:
+        from app.services.app_config import get_section
+        section = get_section("email")
+        # Map env var → persisted key
+        mapping = {
+            "BREVO_API_KEY": "brevo_api_key",
+            "SMTP_HOST": "smtp_host",
+            "SMTP_PORT": "smtp_port",
+            "SMTP_USER": "smtp_user",
+            "SMTP_PASSWORD": "smtp_password",
+            "SMTP_FROM": "smtp_from",
+            "EMAIL_FROM_ADDRESS": "from_address",
+            "EMAIL_FROM_NAME": "from_name",
+        }
+        pkey = mapping.get(key)
+        if pkey:
+            value = section.get(pkey)
+            if value not in (None, ""):
+                persisted = str(value)
+    except Exception:
+        persisted = ""
+    if persisted:
+        return persisted
     value = os.getenv(key)
     return value if value is not None else default
+
+
+def describe_active_provider() -> dict:
+    """Snapshot of which backend would be used right now (no actual send)."""
+    if _from_env("BREVO_API_KEY"):
+        return {"provider": "brevo", "configured": True}
+    if _from_env("SMTP_HOST") and _from_env("SMTP_USER") and _from_env("SMTP_PASSWORD"):
+        return {
+            "provider": "smtp",
+            "configured": True,
+            "host": _from_env("SMTP_HOST"),
+            "port": _from_env("SMTP_PORT", "587"),
+        }
+    return {"provider": "simulation", "configured": False}
 
 
 def _send_via_brevo(message: EmailMessage) -> EmailResult:
