@@ -169,7 +169,7 @@ export default function CahierDuJourPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="md:ml-64 p-4 md:p-8 cahier-main">
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8 cahier-main">
         <style jsx global>{`
           @media print {
             aside, .no-print, .cahier-main > .cahier-toolbar { display: none !important; }

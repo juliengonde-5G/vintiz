@@ -242,7 +242,7 @@ export default function ZonesPage() {
   return (
     <div className="min-h-screen bg-vz-bg">
       <Sidebar />
-      <main className="md:ml-64 p-4 md:p-8 max-w-7xl">
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8 max-w-7xl">
         <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
           <div>
             <p className="text-[11px] tracking-[0.22em] uppercase text-vz-teal font-medium">

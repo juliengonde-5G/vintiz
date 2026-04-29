@@ -64,6 +64,173 @@ async def purge_operational_data_endpoint(
 
 
 # ---------------------------------------------------------------------------
+# Cash drawer sessions — admin overview (/admin > Sessions caisses)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/cash-drawers", dependencies=[Depends(manager_only)])
+async def list_cash_drawer_sessions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = Query(50, ge=1, le=500),
+):
+    """List recent cash-drawer sessions (open + closed), most recent first.
+
+    Each row exposes the data needed by the admin dashboard:
+    opening / closing amounts, expected total, difference (= closing - expected)
+    and an ``is_open`` flag.
+    """
+    from app.models.pos import CashDrawer
+
+    stmt = (
+        select(CashDrawer)
+        .order_by(CashDrawer.opened_at.desc())
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    out: list[dict] = []
+    for d in rows:
+        opening = float(d.opening_amount or 0)
+        closing = float(d.closing_amount) if d.closing_amount is not None else None
+        expected = float(d.expected_amount) if d.expected_amount is not None else None
+        difference = (closing - expected) if (closing is not None and expected is not None) else None
+        out.append(
+            {
+                "id": str(d.id),
+                "opened_at": d.opened_at.isoformat() if d.opened_at else None,
+                "closed_at": d.closed_at.isoformat() if d.closed_at else None,
+                "opening_amount": opening,
+                "closing_amount": closing,
+                "expected_amount": expected,
+                "difference": round(difference, 2) if difference is not None else None,
+                "is_open": bool(d.is_open),
+            }
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Shop info — editable boutique metadata persisted in data/app_config.json
+# ---------------------------------------------------------------------------
+
+
+class ShopInfoUpdate(BaseModel):
+    name: str | None = None
+    tagline: str | None = None
+    address_line1: str | None = None
+    address_line2: str | None = None
+    postal_code: str | None = None
+    city: str | None = None
+    country: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    website: str | None = None
+    hours: str | None = None
+    surface_m2: int | float | None = None
+    vat_rate_percent: int | float | None = None
+    siret: str | None = None
+    rcs: str | None = None
+    ape: str | None = None
+
+
+@router.get("/shop-info")
+async def get_shop_info(current_user: Annotated[User, Depends(get_current_user)]):
+    """Return the editable boutique info (name, address, hours…)."""
+    from app.services.app_config import get_section
+
+    return get_section("shop_info")
+
+
+@router.put("/shop-info", dependencies=[Depends(manager_only)])
+async def update_shop_info(payload: ShopInfoUpdate):
+    """Persist boutique info changes (manager only)."""
+    from app.services.app_config import update_section
+
+    values = payload.model_dump(exclude_none=True)
+    return update_section("shop_info", values)
+
+
+# ---------------------------------------------------------------------------
+# SumUp config — editable credentials persisted in data/app_config.json
+# Persisted values take precedence over env vars in SumUpService.
+# ---------------------------------------------------------------------------
+
+
+class SumUpConfigUpdate(BaseModel):
+    environment: str | None = None  # "" | "sandbox" | "production"
+    api_key: str | None = None
+    merchant_code: str | None = None
+    reader_id: str | None = None
+    sandbox_auto_delay_sec: float | None = None
+    return_url: str | None = None
+
+
+@router.get("/sumup-config", dependencies=[Depends(manager_only)])
+async def get_sumup_config():
+    """Return SumUp credentials state (masked) + the live SumUpService snapshot."""
+    from app.services.app_config import get_section, mask_secret
+    from app.services.sumup_service import SumUpService
+
+    persisted = get_section("sumup")
+    live = SumUpService().describe()
+    return {
+        "live": live,
+        "persisted": {
+            "environment": persisted.get("environment", ""),
+            "api_key_masked": mask_secret(persisted.get("api_key", "")),
+            "merchant_code_masked": mask_secret(persisted.get("merchant_code", "")),
+            "reader_id_masked": mask_secret(persisted.get("reader_id", "")),
+            "sandbox_auto_delay_sec": persisted.get("sandbox_auto_delay_sec", 5),
+            "return_url": persisted.get("return_url", ""),
+        },
+    }
+
+
+@router.put("/sumup-config", dependencies=[Depends(manager_only)])
+async def update_sumup_config(payload: SumUpConfigUpdate):
+    """Persist SumUp credentials. Empty strings clear the override (env var fallback).
+
+    Validation:
+    - ``environment`` must be one of ``""``, ``sandbox``, ``production``.
+    - When environment is ``production``, an ``api_key`` and ``merchant_code``
+      must be set (either now or already persisted) — otherwise the service
+      auto-falls back to sandbox.
+    """
+    from app.services.app_config import update_section, get_section
+    from app.services.sumup_service import SumUpService
+
+    values = payload.model_dump(exclude_none=True)
+    env = values.get("environment")
+    if env is not None and env not in ("", "sandbox", "production"):
+        raise HTTPException(
+            status_code=400,
+            detail="environment doit être '', 'sandbox' ou 'production'",
+        )
+    delay = values.get("sandbox_auto_delay_sec")
+    if delay is not None and (delay < 0 or delay > 120):
+        raise HTTPException(
+            status_code=400,
+            detail="sandbox_auto_delay_sec doit être entre 0 et 120 secondes",
+        )
+
+    update_section("sumup", values)
+    # Re-evaluate the service to reflect the change immediately in the UI.
+    live = SumUpService().describe()
+    persisted = get_section("sumup")
+    from app.services.app_config import mask_secret
+    return {
+        "live": live,
+        "persisted": {
+            "environment": persisted.get("environment", ""),
+            "api_key_masked": mask_secret(persisted.get("api_key", "")),
+            "merchant_code_masked": mask_secret(persisted.get("merchant_code", "")),
+            "reader_id_masked": mask_secret(persisted.get("reader_id", "")),
+            "sandbox_auto_delay_sec": persisted.get("sandbox_auto_delay_sec", 5),
+            "return_url": persisted.get("return_url", ""),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # Weather endpoint
 # ---------------------------------------------------------------------------
 
@@ -1140,6 +1307,8 @@ class LoyaltyConfigRequest(BaseModel):
     mode: str
     price_cents: int = 0
     first_purchase_threshold_cents: int = 0
+    window_start: str | None = None  # ISO YYYY-MM-DD inclusive
+    window_end: str | None = None    # ISO YYYY-MM-DD inclusive
 
 
 @router.get("/loyalty/config", dependencies=[Depends(manager_only)])
@@ -1165,6 +1334,8 @@ async def update_loyalty_config(
             mode=request.mode,
             price_cents=request.price_cents,
             first_purchase_threshold_cents=request.first_purchase_threshold_cents,
+            window_start=request.window_start,
+            window_end=request.window_end,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

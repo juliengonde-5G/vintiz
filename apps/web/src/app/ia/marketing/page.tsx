@@ -38,7 +38,7 @@ export default function MarketingReportPage() {
   return (
     <div className="min-h-screen bg-vz-bg">
       <Sidebar />
-      <main className="md:ml-64 p-4 md:p-8 max-w-5xl">
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8 max-w-5xl">
         <Link href="/ia" className="inline-flex items-center gap-2 text-sm text-vz-teal hover:text-vz-teal-deep mb-4">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <polyline points="15 18 9 12 15 6" />

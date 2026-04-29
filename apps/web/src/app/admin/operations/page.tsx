@@ -294,7 +294,7 @@ export default function OperationsPage() {
         </Card>
 
         {draft && (
-          <Modal isOpen onClose={closeDraft}
+          <Modal open onClose={closeDraft}
             title={draft.id ? `Éditer · ${draft.name}` : 'Nouvelle offre'}>
             <div className="space-y-3 text-sm">
               <div>
