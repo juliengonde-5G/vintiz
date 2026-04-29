@@ -284,15 +284,50 @@ interface WeeklyChecklist {
   checklist: ChecklistItem[];
 }
 
+interface TrendArticle {
+  id: string;
+  title: string;
+  key_words?: string[];
+  source: string;
+  article: string;
+  visual_prompt?: string;
+  categories?: string[];
+  colors?: string[];
+  match_keywords?: string[];
+}
+
+interface TrendBrand {
+  name: string;
+  tier?: string;
+  why?: string;
+  logo_query?: string;
+}
+
+interface InventoryMatch {
+  id: string;
+  name: string;
+  barcode: string;
+  price_eur: number;
+  brand?: string | null;
+  size?: string | null;
+  color?: string | null;
+  photo_url?: string | null;
+}
+
 interface TrendsMode {
   week: number;
   year: number;
+  season?: string;
   generated_at: string;
+  editorial_intro?: string;
   channels: {
     reseaux_sociaux: { summary: string; top_items: string[]; colors: string[] };
     vinted: { summary: string; top_categories: string[]; price_trends: string };
     retail: { summary: string; key_trends: string[] };
   };
+  trends?: TrendArticle[];
+  brands?: TrendBrand[];
+  inventory_matches?: Record<string, InventoryMatch[]>;
 }
 
 
@@ -319,7 +354,8 @@ export default function IAPage() {
   // Tendances mode states
   const [trendsMode, setTrendsMode] = useState<TrendsMode | null>(null);
   const [trendsModeLoading, setTrendsModeLoading] = useState(false);
-  const [trendsModeTab, setTrendsModeTab] = useState<'reseaux_sociaux' | 'vinted' | 'retail'>('reseaux_sociaux');
+  // Legacy channel tab state retained for /api/ai/trends fallback shape — unused with the editorial rewrite below.
+  // (intentionally removed — using <details> for raw channels)
 
   // Load checklist checkbox states from localStorage
   useEffect(() => {
@@ -675,78 +711,196 @@ export default function IAPage() {
         </div>
         )}
 
-        {/* FASHION BOOK TAB (renommé Lot 6, intent éditorial) */}
+        {/* FASHION BOOK TAB — refonte éditoriale (persona "Camille Berthier") */}
         {tab === 'fashion_book' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-black">Tendances Mode</h2>
-                {trendsMode && <p className="text-sm text-gray-500">Semaine {trendsMode.week} — {trendsMode.year} · Actualisées le {new Date(trendsMode.generated_at).toLocaleDateString('fr-FR')}</p>}
-                {!isMonday && <p className="text-xs text-gray-400 mt-1">Les tendances sont actualisées chaque lundi par l&apos;IA</p>}
-              </div>
-              <div className="flex items-center gap-2">
-                {isMonday && (
-                  <button onClick={() => loadTrendsMode(true)} disabled={trendsModeLoading}
-                    className="min-h-[44px] px-4 py-2 rounded-lg bg-vz-teal text-white hover:bg-vz-teal-deep text-sm font-medium transition-colors">
-                    {trendsModeLoading ? 'Actualisation IA...' : '🔄 Actualiser (lundi)'}
+          <div className="space-y-8">
+            {/* Editorial header */}
+            <header className="border-b border-vz-line pb-5">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <p className="text-[11px] tracking-[0.22em] uppercase text-vz-teal font-medium">
+                    Fashion Book · {trendsMode?.season || 'Saison en cours'}
+                  </p>
+                  <h2 className="text-3xl font-display font-semibold text-black mt-2">
+                    Le Book de la semaine
+                  </h2>
+                  {trendsMode && (
+                    <p className="text-sm text-vz-ink-mute mt-1">
+                      Semaine {trendsMode.week} — {trendsMode.year} · Édité par <em>Camille Berthier</em> ·
+                      Actualisé le {new Date(trendsMode.generated_at).toLocaleDateString('fr-FR')}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {isMonday && (
+                    <button onClick={() => loadTrendsMode(true)} disabled={trendsModeLoading}
+                      className="min-h-[44px] px-4 py-2 rounded-lg bg-vz-teal text-white hover:bg-vz-teal-deep text-sm font-medium transition-colors">
+                      {trendsModeLoading ? 'Actualisation IA…' : 'Actualiser (lundi)'}
+                    </button>
+                  )}
+                  <button onClick={() => loadTrendsMode(false)} disabled={trendsModeLoading}
+                    className="min-h-[44px] px-4 py-2 rounded-lg border border-vz-line text-vz-ink hover:bg-white text-sm font-medium transition-colors">
+                    {trendsModeLoading ? '…' : 'Charger'}
                   </button>
-                )}
-                <button onClick={() => loadTrendsMode(false)} disabled={trendsModeLoading}
-                  className="min-h-[44px] px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium transition-colors">
-                  {trendsModeLoading ? '...' : 'Charger'}
-                </button>
+                </div>
               </div>
-            </div>
+              {trendsMode?.editorial_intro && (
+                <p className="text-base text-vz-ink-soft mt-5 leading-relaxed font-display italic max-w-3xl">
+                  &laquo;&nbsp;{trendsMode.editorial_intro}&nbsp;&raquo;
+                </p>
+              )}
+            </header>
+
             {trendsModeLoading ? (
               <Card><div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-vz-teal" /></div></Card>
             ) : !trendsMode ? (
-              <Card><p className="text-gray-400 text-center py-8">Cliquez &quot;Actualiser&quot; pour charger les tendances mode actuelles.</p></Card>
+              <Card><p className="text-gray-400 text-center py-8">Cliquez &quot;Charger&quot; pour ouvrir le Fashion Book de la semaine.</p></Card>
             ) : (
               <>
-                <div className="flex gap-2 border-b border-gray-200 pb-0">
-                  {(['reseaux_sociaux', 'vinted', 'retail'] as const).map(ch => (
-                    <button key={ch} onClick={() => setTrendsModeTab(ch)}
-                      className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${trendsModeTab === ch ? 'border-vz-teal text-vz-teal' : 'border-transparent text-gray-500 hover:text-black'}`}>
-                      {ch === 'reseaux_sociaux' ? '📱 Réseaux sociaux' : ch === 'vinted' ? '♻️ Vinted' : '🏪 Retail'}
-                    </button>
-                  ))}
-                </div>
-                {trendsModeTab === 'reseaux_sociaux' && (
-                  <Card>
-                    <p className="text-gray-700 mb-4 leading-relaxed">{trendsMode.channels.reseaux_sociaux.summary}</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <h4 className="font-semibold text-black mb-2">Tendances clés</h4>
-                        <ul className="space-y-1">{trendsMode.channels.reseaux_sociaux.top_items.map((item, i) => <li key={i} className="flex items-center gap-2 text-sm text-gray-700"><span className="text-vz-accent">✦</span>{item}</li>)}</ul>
+                {/* The 5 trend articles */}
+                {trendsMode.trends && trendsMode.trends.length > 0 && (
+                  <section className="space-y-8">
+                    <div className="flex items-baseline justify-between">
+                      <h3 className="text-xs tracking-[0.22em] uppercase text-vz-teal font-medium">
+                        Tendances clés
+                      </h3>
+                      <span className="text-xs text-vz-ink-mute">
+                        {trendsMode.trends.length} {trendsMode.trends.length > 1 ? 'articles' : 'article'}
+                      </span>
+                    </div>
+                    {trendsMode.trends.map((t, i) => {
+                      const matches = trendsMode.inventory_matches?.[t.id] || [];
+                      return (
+                        <article key={t.id || i} className="grid grid-cols-1 md:grid-cols-3 gap-6 border-b border-vz-line pb-8 last:border-0">
+                          {/* Visual / hero */}
+                          <div className="md:col-span-1">
+                            <div className="aspect-[4/5] rounded-vz-lg overflow-hidden bg-gradient-to-br from-vz-bg-alt to-vz-teal-soft flex items-center justify-center text-[10px] uppercase tracking-[0.22em] text-vz-ink-mute p-4 text-center">
+                              {t.visual_prompt ? (
+                                <span className="font-mono whitespace-pre-line">{t.visual_prompt}</span>
+                              ) : (
+                                <span>Visuel à générer</span>
+                              )}
+                            </div>
+                            {t.colors && t.colors.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-3">
+                                {t.colors.map((c, j) => (
+                                  <span key={j} className="text-[11px] px-2 py-0.5 rounded-full bg-vz-teal-soft text-vz-teal-deep">
+                                    {c}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {/* Article body */}
+                          <div className="md:col-span-2">
+                            <div className="flex items-center gap-2 text-[10px] tracking-[0.18em] uppercase text-vz-ink-mute mb-2">
+                              <span className="font-mono text-vz-teal">N° {String(i + 1).padStart(2, '0')}</span>
+                              <span>·</span>
+                              <span>Source : {t.source}</span>
+                            </div>
+                            <h4 className="text-2xl font-display font-semibold text-black leading-tight">
+                              {t.title}
+                            </h4>
+                            {t.key_words && t.key_words.length > 0 && (
+                              <p className="text-xs text-vz-ink-mute mt-1">
+                                {t.key_words.join(' · ')}
+                              </p>
+                            )}
+                            <p className="text-base text-vz-ink-soft mt-3 leading-relaxed">{t.article}</p>
+
+                            {matches.length > 0 && (
+                              <div className="mt-4 p-4 rounded-lg bg-vz-bg border border-vz-line">
+                                <div className="flex items-center justify-between mb-3">
+                                  <span className="text-[10px] uppercase tracking-[0.18em] text-vz-teal font-medium">
+                                    En boutique · {matches.length} pièce{matches.length > 1 ? 's' : ''} matche{matches.length > 1 ? 'nt' : ''} cette tendance
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                  {matches.slice(0, 6).map((p) => (
+                                    <Link key={p.id} href={`/inventory/${p.id}`} className="group">
+                                      <div className="aspect-square rounded-lg overflow-hidden bg-vz-bg-alt flex items-center justify-center">
+                                        {p.photo_url ? (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img src={p.photo_url} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                        ) : (
+                                          <span className="text-[10px] text-vz-ink-mute">Sans visuel</span>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-black mt-1.5 truncate font-medium">{p.brand || p.name}</p>
+                                      <p className="text-[11px] text-vz-ink-mute truncate">
+                                        {p.size && `T. ${p.size} · `}{p.price_eur.toFixed(0)} €
+                                      </p>
+                                    </Link>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </section>
+                )}
+
+                {/* Trending brands */}
+                {trendsMode.brands && trendsMode.brands.length > 0 && (
+                  <section className="border-t border-vz-line pt-8">
+                    <div className="flex items-baseline justify-between mb-5">
+                      <h3 className="text-xs tracking-[0.22em] uppercase text-vz-teal font-medium">
+                        Marques tendance
+                      </h3>
+                      <span className="text-xs text-vz-ink-mute">{trendsMode.brands.length} marques</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {trendsMode.brands.map((b, i) => (
+                        <div key={i} className="bg-white border border-vz-line rounded-vz-lg p-4 hover:shadow-vz-soft transition-shadow">
+                          <div className="h-12 mb-2 flex items-center">
+                            {/* Logo placeholder via Google logo search query — opens in a new tab */}
+                            <a
+                              href={`https://www.google.com/search?q=${encodeURIComponent(b.logo_query || `${b.name} logo`)}&tbm=isch`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-display text-2xl font-semibold text-vz-ink hover:text-vz-teal transition-colors"
+                            >
+                              {b.name}
+                            </a>
+                          </div>
+                          {b.tier && (
+                            <p className="text-[10px] uppercase tracking-[0.18em] text-vz-teal font-medium">
+                              {b.tier}
+                            </p>
+                          )}
+                          {b.why && (
+                            <p className="text-xs text-vz-ink-soft mt-1.5 leading-relaxed">{b.why}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* Legacy channels — collapsed below trends for context */}
+                {trendsMode.channels && (
+                  <details className="border-t border-vz-line pt-6">
+                    <summary className="text-xs tracking-[0.22em] uppercase text-vz-ink-mute font-medium cursor-pointer hover:text-vz-teal">
+                      Données brutes · Canaux ↓
+                    </summary>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                      <div className="p-4 rounded-lg bg-vz-bg-alt">
+                        <p className="text-[10px] uppercase tracking-[0.18em] text-vz-ink-mute font-medium mb-2">Réseaux sociaux</p>
+                        <p className="text-sm text-vz-ink-soft">{trendsMode.channels.reseaux_sociaux.summary}</p>
                       </div>
-                      <div>
-                        <h4 className="font-semibold text-black mb-2">Couleurs en vogue</h4>
-                        <div className="flex flex-wrap gap-2">{trendsMode.channels.reseaux_sociaux.colors.map((c, i) => <span key={i} className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-sm">{c}</span>)}</div>
+                      <div className="p-4 rounded-lg bg-vz-bg-alt">
+                        <p className="text-[10px] uppercase tracking-[0.18em] text-vz-ink-mute font-medium mb-2">Vinted</p>
+                        <p className="text-sm text-vz-ink-soft">{trendsMode.channels.vinted.summary}</p>
+                        <p className="text-xs text-vz-ink-mute mt-1.5">{trendsMode.channels.vinted.price_trends}</p>
+                      </div>
+                      <div className="p-4 rounded-lg bg-vz-bg-alt">
+                        <p className="text-[10px] uppercase tracking-[0.18em] text-vz-ink-mute font-medium mb-2">Retail</p>
+                        <p className="text-sm text-vz-ink-soft">{trendsMode.channels.retail.summary}</p>
                       </div>
                     </div>
-                  </Card>
-                )}
-                {trendsModeTab === 'vinted' && (
-                  <Card>
-                    <p className="text-gray-700 mb-4 leading-relaxed">{trendsMode.channels.vinted.summary}</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <h4 className="font-semibold text-black mb-2">Catégories populaires</h4>
-                        <ul className="space-y-1">{trendsMode.channels.vinted.top_categories.map((c, i) => <li key={i} className="flex items-center gap-2 text-sm text-gray-700"><span className="text-green-500">●</span>{c}</li>)}</ul>
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-black mb-2">Tendance des prix</h4>
-                        <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">{trendsMode.channels.vinted.price_trends}</p>
-                      </div>
-                    </div>
-                  </Card>
-                )}
-                {trendsModeTab === 'retail' && (
-                  <Card>
-                    <p className="text-gray-700 mb-4 leading-relaxed">{trendsMode.channels.retail.summary}</p>
-                    <h4 className="font-semibold text-black mb-2">Tendances retail</h4>
-                    <ul className="space-y-2">{trendsMode.channels.retail.key_trends.map((t, i) => <li key={i} className="flex items-start gap-2 text-sm text-gray-700 p-2 bg-gray-50 rounded-lg"><span className="text-vz-teal font-bold">{i+1}.</span>{t}</li>)}</ul>
-                  </Card>
+                  </details>
                 )}
               </>
             )}

@@ -402,67 +402,255 @@ async def get_fashion_trends(
                 pass
 
     anthropic_key = settings.ANTHROPIC_API_KEY or ""
+    # Determine the current fashion season (FR retail calendar).
+    month = now.month
+    if month in (3, 4, 5):
+        season = "Printemps 2026"
+    elif month in (6, 7, 8):
+        season = "Été 2026"
+    elif month in (9, 10, 11):
+        season = "Automne 2026"
+    else:
+        season = "Hiver 2026"
 
     channels = None
+    trends = None
+    brands = None
     if anthropic_key:
         try:
             import anthropic as _anthropic
             client_ai = _anthropic.AsyncAnthropic(api_key=anthropic_key)
-            prompt = """Tu es un expert en tendances mode pour une boutique de seconde main premium (Vintiz, Vernon, Normandie).
-Nous sommes au printemps/été 2026.
+            prompt = f"""Tu es Camille Berthier, rédactrice en chef d'un magazine mode indépendant et
+ancienne acheteuse pour Galeries Lafayette. Tu écris pour Vintiz — boutique de seconde
+main premium à Vernon (Normandie) — le Fashion Book de la semaine.
 
-Génère un rapport de tendances mode structuré en JSON avec exactement ce format:
-{
-  "reseaux_sociaux": {
-    "summary": "résumé 1 phrase",
-    "top_items": ["item1", "item2", "item3", "item4", "item5"],
-    "colors": ["couleur1", "couleur2", "couleur3"]
-  },
-  "vinted": {
-    "summary": "résumé 1 phrase",
-    "top_categories": ["cat1", "cat2", "cat3"],
-    "price_trends": "tendance prix en 1 phrase"
-  },
-  "retail": {
-    "summary": "résumé 1 phrase",
-    "key_trends": ["trend1", "trend2", "trend3"]
-  }
-}
-Réponds UNIQUEMENT avec le JSON, sans markdown ni commentaire."""
+Saison en cours : {season}.
+
+Produis un rapport ÉDITORIAL au format JSON, avec exactement cette structure :
+{{
+  "season": "{season}",
+  "editorial_intro": "Édito personnel 2-3 phrases qui pose le ton de la saison",
+  "trends": [
+    {{
+      "id": "slug-court",
+      "title": "Titre de tendance ≤6 mots",
+      "key_words": ["mot-clé1", "mot-clé2", "mot-clé3"],
+      "source": "Vogue / Vinted / Pinterest / Insta @nom / Le Bon Marché …",
+      "article": "3-4 phrases qui décrivent la tendance, son origine, les pièces signature, qui la porte. Ton magazine — incarné, pas marketing.",
+      "visual_prompt": "Prompt photographique en 1 phrase pour générer un visuel hero (utilisable Midjourney/Imagen/DALL-E)",
+      "categories": ["robe", "pantalon", "veste"],
+      "colors": ["camel", "écru"],
+      "match_keywords": ["lin", "midi", "taille haute"]
+    }}
+    // 4 à 5 entrées au total — 5 max
+  ],
+  "brands": [
+    {{
+      "name": "Sandro",
+      "tier": "premium",
+      "why": "Pourquoi cette marque est tendance maintenant en 1 phrase",
+      "logo_query": "sandro paris logo svg"
+    }}
+    // 5 à 8 marques tendances de la saison, mix premium / luxe / contemporain
+  ]
+}}
+
+Contraintes :
+- Maximum 5 tendances. Préfère 4 fortes plutôt que 5 médiocres.
+- Cite une vraie source identifiable par tendance (pas "tendances générales").
+- Les `match_keywords` servent à matcher l'inventaire boutique (mots simples, FR).
+- Réponds UNIQUEMENT avec le JSON, sans markdown ni commentaire."""
             msg = await client_ai.messages.create(
                 model="claude-haiku-4-5",
-                max_tokens=600,
+                max_tokens=2000,
                 messages=[{"role": "user", "content": prompt}],
             )
             raw = msg.content[0].text if msg.content else "{}"
-            channels = json.loads(raw)
+            data = json.loads(raw)
+            trends = data.get("trends") or None
+            brands = data.get("brands") or None
+            editorial_intro = data.get("editorial_intro")
+
+            # Backwards-compat: also produce the old "channels" shape from trends
+            if trends:
+                top_items = []
+                colors_set: list[str] = []
+                for t in trends[:5]:
+                    if t.get("title"):
+                        top_items.append(t["title"])
+                    for c in t.get("colors") or []:
+                        if c not in colors_set:
+                            colors_set.append(c)
+                channels = {
+                    "reseaux_sociaux": {
+                        "summary": editorial_intro or "Tendances mode actuelles",
+                        "top_items": top_items[:5],
+                        "colors": colors_set[:5],
+                    },
+                    "vinted": {
+                        "summary": "Dynamique seconde-main fortement liée aux tendances de la saison.",
+                        "top_categories": list({c for t in trends for c in (t.get("categories") or [])})[:3],
+                        "price_trends": "Hausse soutenue sur les marques premium françaises",
+                    },
+                    "retail": {
+                        "summary": editorial_intro or "Saison retail en cours",
+                        "key_trends": [t.get("title", "") for t in trends[:3] if t.get("title")],
+                    },
+                }
         except Exception:
             channels = None
+            trends = None
+            brands = None
 
-    if channels is None:
-        # Static fallback for spring 2026
-        channels = {
-            "reseaux_sociaux": {
-                "summary": "Le printemps 2026 est dominé par le 'quiet luxury' et les pièces structurées épurées.",
-                "top_items": ["Blazer oversize", "Robe midi lin", "Pantalon large taille haute", "Veste en jean délavée", "Sac tote en cuir"],
-                "colors": ["Camel", "Blanc cassé", "Vert sauge", "Abricot", "Bleu marine"],
+    if trends is None:
+        # Editorial fallback — used when no Anthropic key OR JSON parsing failed.
+        # Hand-curated for the current French retail calendar.
+        editorial_intro = (
+            "Le quiet luxury continue d'irriguer la garde-robe, mais cette saison "
+            "il s'allège : silhouettes fluides, broderies discrètes, lin écru. "
+            "À Vernon, la seconde main premium suit la même partition."
+        )
+        trends = [
+            {
+                "id": "quiet-luxury-light",
+                "title": "Quiet luxury allégé",
+                "key_words": ["camel", "écru", "blazer"],
+                "source": "Vogue Paris (édito mars) / Le Bon Marché vitrines",
+                "article": "Le quiet luxury survit à 2026, mais perd ses épaules carrées au profit de blazers déstructurés et de pantalons larges en lin. La pièce qui signe : blazer oversize couleur camel sans rembourrage, porté ouvert.",
+                "visual_prompt": "Editorial fashion photography, woman in unstructured camel blazer over white linen, soft daylight, neutral wall, 35mm film aesthetic",
+                "categories": ["veste", "blazer", "pantalon"],
+                "colors": ["camel", "écru", "blanc cassé"],
+                "match_keywords": ["blazer", "lin", "camel"],
             },
-            "vinted": {
-                "summary": "Les marques françaises premium (Sandro, Maje, Ba&sh) sont très recherchées avec des prix en hausse de 12%.",
-                "top_categories": ["Robes", "Blazers", "Sacs à main"],
-                "price_trends": "Hausse de 8-15% sur les pièces de marques françaises haut de gamme",
+            {
+                "id": "linen-renaissance",
+                "title": "Renaissance du lin",
+                "key_words": ["lin", "broderie", "midi"],
+                "source": "Pinterest trend report Q2 / Sézane SS26",
+                "article": "Le lin n'est plus l'apanage de l'été : robes midi, chemises oversize, ensembles deux-pièces. Il devient une signature de lifestyle premium, qui s'adapte à toutes les saisons grâce aux superpositions.",
+                "visual_prompt": "Linen midi dress, soft beige tone, woman walking through olive grove, golden hour, editorial style, natural texture close-up",
+                "categories": ["robe", "chemise", "ensemble"],
+                "colors": ["écru", "beige", "blanc"],
+                "match_keywords": ["lin", "robe midi", "chemise"],
             },
-            "retail": {
-                "summary": "Les grandes enseignes misent sur le linen, la broderie et les imprimés botaniques pour l'été 2026.",
-                "key_trends": ["Lin naturel et textures artisanales", "Imprimés floraux discrets", "Silhouettes fluides et structurées"],
+            {
+                "id": "vert-sauge-statement",
+                "title": "Vert sauge qui s'impose",
+                "key_words": ["vert sauge", "monochrome", "denim"],
+                "source": "Instagram @hodakhone / Vinted top searches mars",
+                "article": "Le vert sauge passe de couleur d'accent à teinte primaire, surtout sur les pièces denim et les manteaux mi-saison. Il rivalise avec le bordeaux comme statement-color de la saison.",
+                "visual_prompt": "Sage green oversized denim jacket on minimalist beige background, model from waist up, studio light, magazine cover composition",
+                "categories": ["veste", "manteau", "denim"],
+                "colors": ["vert sauge", "kaki"],
+                "match_keywords": ["vert", "sauge", "denim"],
             },
-        }
+            {
+                "id": "sacoche-utilitaire",
+                "title": "La sacoche utilitaire premium",
+                "key_words": ["sac", "bandoulière", "cuir"],
+                "source": "TikTok #premiumsecondhand / The Row SS26",
+                "article": "Après le tote bag, la sacoche bandoulière en cuir grainé. Compacte, fonctionnelle, intemporelle : c'est l'investissement seconde-main de la saison, surtout en marques françaises premium (A.P.C., Polène, Sézane).",
+                "visual_prompt": "Premium leather crossbody bag in caramel brown, hanging on chair back, soft Parisian café ambiance, depth of field shallow",
+                "categories": ["sac", "accessoire"],
+                "colors": ["caramel", "noir", "bordeaux"],
+                "match_keywords": ["sac", "bandoulière", "cuir"],
+            },
+            {
+                "id": "broderie-artisanale",
+                "title": "Broderie artisanale discrète",
+                "key_words": ["broderie", "artisanal", "détail"],
+                "source": "Le Monde du Lin / Sandro édito avril",
+                "article": "La broderie revient en finition discrète sur les blouses, robes courtes et vestes en jean. On valorise la main, l'artisanat, le détail repérable de près. Idéal sur les pièces vintage à upcycler.",
+                "visual_prompt": "Hand embroidery floral detail on white cotton blouse, macro photography, natural soft light, hand stitching visible",
+                "categories": ["blouse", "robe", "veste"],
+                "colors": ["blanc", "écru", "bleu pâle"],
+                "match_keywords": ["brodé", "broderie", "vintage"],
+            },
+        ]
+        brands = [
+            {"name": "Sandro", "tier": "premium", "why": "Demande seconde-main +18% sur 30j (Vinted FR)", "logo_query": "sandro paris logo"},
+            {"name": "Maje", "tier": "premium", "why": "Bestseller sur les robes midi printemps", "logo_query": "maje paris logo"},
+            {"name": "Sézane", "tier": "premium", "why": "Lin et broderies, alignement parfait avec la saison", "logo_query": "sezane logo"},
+            {"name": "Ba&sh", "tier": "premium", "why": "Reprise forte des modèles drapés", "logo_query": "bash logo paris"},
+            {"name": "Polène", "tier": "luxury-affordable", "why": "Sac bandoulière numéro un sur les recherches TikTok", "logo_query": "polene paris logo"},
+            {"name": "A.P.C.", "tier": "premium", "why": "Pieces denim minimalistes très recherchées", "logo_query": "apc logo"},
+            {"name": "The Frankie Shop", "tier": "contemporary", "why": "Blazer oversize et silhouette utilitaire", "logo_query": "frankie shop logo"},
+        ]
+        if not channels:
+            channels = {
+                "reseaux_sociaux": {
+                    "summary": editorial_intro,
+                    "top_items": [t["title"] for t in trends[:5]],
+                    "colors": ["Camel", "Écru", "Vert sauge", "Caramel", "Bleu pâle"],
+                },
+                "vinted": {
+                    "summary": "Dynamique seconde-main fortement liée aux tendances de la saison.",
+                    "top_categories": ["Robes", "Blazers", "Sacs"],
+                    "price_trends": "Hausse soutenue sur les marques françaises premium",
+                },
+                "retail": {
+                    "summary": editorial_intro,
+                    "key_trends": [t["title"] for t in trends[:3]],
+                },
+            }
+    else:
+        editorial_intro = (data or {}).get("editorial_intro") if 'data' in locals() else None
+        if not editorial_intro:
+            editorial_intro = "Tendances mode actuelles"
+
+    # Inventory match — find products whose name/category/material/color contains
+    # any match_keyword for each trend. Lightweight — best-effort, capped to 6.
+    inventory_matches: dict[str, list[dict]] = {}
+    try:
+        from app.models.product import Product
+
+        for t in trends:
+            kws = [k.lower() for k in (t.get("match_keywords") or []) if k]
+            if not kws:
+                inventory_matches[t.get("id", "")] = []
+                continue
+            from sqlalchemy import or_, func as _func
+            conditions = []
+            for kw in kws[:5]:
+                like = f"%{kw}%"
+                conditions.append(_func.lower(Product.name).like(like))
+                conditions.append(_func.lower(_func.coalesce(Product.color, "")).like(like))
+                conditions.append(_func.lower(_func.coalesce(Product.brand, "")).like(like))
+                conditions.append(_func.lower(_func.coalesce(Product.description, "")).like(like))
+            stmt = (
+                select(Product)
+                .where(Product.status.in_([ProductStatus.stock, ProductStatus.display]))
+                .where(or_(*conditions))
+                .order_by(Product.created_at.desc())
+                .limit(6)
+            )
+            rows = (await db.execute(stmt)).scalars().all()
+            inventory_matches[t.get("id", "")] = [
+                {
+                    "id": str(p.id),
+                    "name": p.name,
+                    "barcode": p.barcode,
+                    "price_eur": float(p.sale_price or 0),
+                    "brand": p.brand,
+                    "size": p.size,
+                    "color": p.color,
+                    "photo_url": p.photo_url,
+                }
+                for p in rows
+            ]
+    except Exception:
+        inventory_matches = {}
 
     result = {
         "week": week,
         "year": year,
+        "season": season,
         "generated_at": now.isoformat(),
-        "channels": channels,
+        "editorial_intro": editorial_intro,
+        "channels": channels,  # legacy shape for the old UI
+        "trends": trends,
+        "brands": brands,
+        "inventory_matches": inventory_matches,
     }
     await _set_setting(db, "ai_trends_mode_cache", json.dumps(result, ensure_ascii=False))
     await db.commit()
@@ -522,77 +710,192 @@ async def generate_marketing_persona(
         "articles_vendus_total": sold_count,
     }
 
+    # Pull a "hero product" candidate for the Insta post (highest trend_score in stock)
+    hero_product = None
+    try:
+        hero_stmt = (
+            select(Product)
+            .where(Product.status.in_([ProductStatus.stock, ProductStatus.display]))
+            .order_by(Product.trend_score.desc().nullslast())
+            .limit(1)
+        )
+        hero_row = (await db.execute(hero_stmt)).scalar_one_or_none()
+        if hero_row:
+            hero_product = {
+                "id": str(hero_row.id),
+                "name": hero_row.name,
+                "barcode": hero_row.barcode,
+                "brand": hero_row.brand,
+                "size": hero_row.size,
+                "color": hero_row.color,
+                "price_eur": float(hero_row.sale_price or 0),
+                "photo_url": hero_row.photo_url,
+                "trend_score": float(hero_row.trend_score or 0),
+            }
+    except Exception:
+        hero_product = None
+
+    # Determine the next 3 months for the retail director note
+    from datetime import timedelta
+    months_fr = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
+    next_three_months = []
+    for k in range(3):
+        m = (now.month - 1 + k) % 12
+        next_three_months.append(months_fr[m])
+
     anthropic_key = settings.ANTHROPIC_API_KEY or ""
+    digital_marketing = None
+    retail_director = None
     if anthropic_key:
         try:
             import anthropic
             client_ai = anthropic.AsyncAnthropic(api_key=anthropic_key)
-            prompt = f"""Tu es un(e) directeur/directrice marketing externe mandaté(e) pour analyser la boutique Vintiz (Vernon, Normandie — seconde main premium).
-Voici les données actuelles de la boutique :
-- Articles en vente : {context['articles_en_vente']}
-- Score tendance moyen du stock : {context['score_tendance_moyen']}/100
-- Nombre de clients inscrits : {context['total_clients']}
-- CA des 30 derniers jours : {context['ca_30_derniers_jours']} €
-- Articles vendus au total : {context['articles_vendus_total']}
+            prompt = f"""Tu produis un rapport bicéphale pour la boutique Vintiz (Vernon, Normandie — seconde main premium).
 
-Génère un rapport marketing structuré en JSON avec exactement ce format :
+Données actuelles :
+- Articles en vente : {context['articles_en_vente']}
+- Score tendance moyen : {context['score_tendance_moyen']}/100
+- Clients inscrits : {context['total_clients']}
+- CA 30 derniers jours : {context['ca_30_derniers_jours']} €
+- Articles vendus total : {context['articles_vendus_total']}
+- Pièce hero candidate : {hero_product['name'] if hero_product else 'aucune'}{(' — ' + (hero_product or {}).get('brand', '')) if hero_product and hero_product.get('brand') else ''}{(' (' + (hero_product or {}).get('color', '') + ')') if hero_product and hero_product.get('color') else ''}{(' à ' + str((hero_product or {}).get('price_eur', 0)) + ' €') if hero_product else ''}
+
+Mois courant : {months_fr[now.month - 1]}.
+Trois prochains mois : {' / '.join(next_three_months)}.
+
+Tu prends DEUX personas successifs et tu réponds en JSON :
+
 {{
-  "situation": "analyse en 2-3 phrases de la situation actuelle",
-  "points_forts": ["force 1", "force 2", "force 3"],
-  "points_faibles": ["faiblesse 1", "faiblesse 2", "faiblesse 3"],
-  "recommandations": [
-    {{"priorite": "haute", "action": "action concrète", "impact": "résultat attendu"}},
-    {{"priorite": "haute", "action": "action concrète", "impact": "résultat attendu"}},
-    {{"priorite": "moyenne", "action": "action concrète", "impact": "résultat attendu"}},
-    {{"priorite": "faible", "action": "action concrète", "impact": "résultat attendu"}}
-  ],
-  "kpi_cibles": {{"ca_mensuel_cible": 0, "nouveaux_clients_mois": 0, "taux_conversion_vitrine": "X%"}}
+  "digital_marketing": {{
+    "persona": "Léa Martin, Responsable Marketing Digital indépendante (ex Sézane)",
+    "post_de_la_semaine": {{
+      "produit_id": "{hero_product['id'] if hero_product else ''}",
+      "produit_nom": "{(hero_product or {}).get('name', '')}",
+      "angle_editorial": "L'angle (1 phrase) — ce que cette pièce raconte",
+      "caption_instagram": "Caption Instagram complète (3 paragraphes courts, emoji modéré, CTA, hashtags pertinents en fin)",
+      "hashtags": ["#vintiz", "..."],
+      "best_time_post": "ex : mardi 18h30",
+      "story_idea": "Une idée de story (avant-après, behind-the-scenes…)",
+      "visual_brief": "Prompt photo en 1 phrase pour générer le visuel hero (style, cadrage, lumière, ambiance)",
+      "carousel_slides": [
+        "Slide 1 : titre + détail produit",
+        "Slide 2 : zoom sur la matière ou la coupe",
+        "Slide 3 : look stylisé porté",
+        "Slide 4 : CTA + lien profil"
+      ]
+    }},
+    "actions_de_la_semaine": [
+      "Action concrète 1 (story, reel, partenariat…)",
+      "Action concrète 2",
+      "Action concrète 3"
+    ]
+  }},
+  "retail_director": {{
+    "persona": "Jean-Marc Bellanger, Directeur Régional Retail Normandie (ex Galeries Lafayette, ex Sézane)",
+    "conjoncture_mois_dernier": "État du marché retail mode au mois dernier en France (1 paragraphe synthétique, chiffres si possible : trafic, panier moyen, climat, inflation, tendance seconde-main)",
+    "tendance_3_mois": [
+      {{"mois": "{next_three_months[0]}", "tendance": "Description tendance (1-2 phrases)"}},
+      {{"mois": "{next_three_months[1]}", "tendance": "Description tendance"}},
+      {{"mois": "{next_three_months[2]}", "tendance": "Description tendance"}}
+    ],
+    "evenements_majeurs": [
+      {{"date": "JJ/MM", "evenement": "Nom (ex : Black Friday, fête des mères, vacances scolaires zone B…)", "impact": "Impact retail attendu"}},
+      {{"date": "JJ/MM", "evenement": "...", "impact": "..."}}
+    ],
+    "recommandations_boutique": [
+      {{"priorite": "haute", "action": "...", "impact": "..."}},
+      {{"priorite": "haute", "action": "...", "impact": "..."}},
+      {{"priorite": "moyenne", "action": "...", "impact": "..."}}
+    ],
+    "kpi_cibles": {{"ca_mensuel_cible": 0, "nouveaux_clients_mois": 0, "taux_conversion_vitrine": "X%"}}
+  }}
 }}
+
 Réponds UNIQUEMENT avec le JSON, sans markdown."""
             msg = await client_ai.messages.create(
                 model="claude-haiku-4-5",
-                max_tokens=800,
+                max_tokens=2200,
                 messages=[{"role": "user", "content": prompt}],
             )
-            import json
             raw = msg.content[0].text if msg.content else "{}"
-            report = json.loads(raw)
-            return {
-                "generated_at": now.isoformat(),
-                "context": context,
-                "report": report,
-            }
+            data = json.loads(raw)
+            digital_marketing = data.get("digital_marketing")
+            retail_director = data.get("retail_director")
         except Exception:
-            pass
+            digital_marketing = None
+            retail_director = None
 
-    # Static fallback
+    # Fallbacks (used when no Anthropic key OR JSON parsing failed)
+    if not digital_marketing:
+        digital_marketing = {
+            "persona": "Léa Martin, Responsable Marketing Digital indépendante",
+            "post_de_la_semaine": {
+                "produit_id": hero_product["id"] if hero_product else "",
+                "produit_nom": (hero_product or {}).get("name", "(à choisir)"),
+                "angle_editorial": "Une pièce qui raconte la patine du temps, sublimée par le geste de la seconde main.",
+                "caption_instagram": (
+                    f"✨ La trouvaille de la semaine.\n"
+                    f"{(hero_product or {}).get('brand', 'Une marque')} {(hero_product or {}).get('color', '')} — {((hero_product or {}).get('size') or '')}.\n\n"
+                    f"À retrouver en boutique à Vernon. Une pièce, une histoire.\n\n"
+                    f"#vintiz #vernon #secondemainpremium #slowfashion"
+                ),
+                "hashtags": ["#vintiz", "#vernon", "#secondemainpremium", "#slowfashion", "#prelovedfashion"],
+                "best_time_post": "Mardi 18h30",
+                "story_idea": "Story avant/après : la pièce reçue brute → la pièce mise en scène en boutique.",
+                "visual_brief": "Photo éditoriale, plan rapproché de la pièce sur cintre en bois, fond mur écru, lumière naturelle douce de fin d'après-midi.",
+                "carousel_slides": [
+                    "Slide 1 : titre + nom produit + prix",
+                    "Slide 2 : zoom matière (coupe, finitions)",
+                    "Slide 3 : look complet stylisé",
+                    "Slide 4 : CTA boutique + lien bio",
+                ],
+            },
+            "actions_de_la_semaine": [
+                "Préparer une story Reel sur l'arrivée des nouvelles pièces",
+                "Relancer la newsletter avec une sélection de 5 pièces tendance",
+                "Identifier 3 micro-influenceuses Vernon/Évreux pour un partenariat",
+            ],
+        }
+
+    if not retail_director:
+        retail_director = {
+            "persona": "Jean-Marc Bellanger, Directeur Régional Retail Normandie",
+            "conjoncture_mois_dernier": (
+                "Le mois dernier a vu le retail textile français reculer de 2 à 3 % en valeur sous "
+                "l'effet d'une météo capricieuse et d'un pouvoir d'achat sous pression. La seconde "
+                "main premium tire son épingle du jeu avec une croissance autour de +12 % "
+                "(Vinted, dépôts-vente premium), portée par les 25-45 ans qui arbitrent en faveur "
+                "de pièces de marques reconnues à prix doux."
+            ),
+            "tendance_3_mois": [
+                {"mois": next_three_months[0], "tendance": "Saison commerciale clé : les clientes anticipent leurs vacances et cherchent des pièces fluides, lin, robes midi. Pic d'affluence le samedi après-midi."},
+                {"mois": next_three_months[1], "tendance": "Mois de transition : faible affluence début de mois (vacances scolaires zone B), reprise forte à partir du 3e weekend. Privilégier les nouveautés petites quantités, fort renouvellement."},
+                {"mois": next_three_months[2], "tendance": "Rentrée commerciale : retour des actifs, la demande se déplace vers les blazers, les pantalons larges, les sacs structurés. Vitrine à refaire le 1er mardi."},
+            ],
+            "evenements_majeurs": [
+                {"date": "26/05", "evenement": "Fête des mères", "impact": "Pic acquisition cadeau, panier moyen +25 %, prévoir packaging cadeau."},
+                {"date": "06-08/06", "evenement": "Vacances de la Pentecôte", "impact": "Affluence touristique sur Vernon (Giverny), trafic boutique +30 % le weekend."},
+                {"date": "26/06", "evenement": "Soldes d'été", "impact": "Lancement cadre — démarques sur le stock 6+ semaines, vitrine soldes obligatoire."},
+                {"date": "14/07", "evenement": "Fête nationale", "impact": "Boutique fermée. Programme retro le 13/07, soir."},
+            ],
+            "recommandations_boutique": [
+                {"priorite": "haute", "action": "Lancer une mini-capsule lin pour mai", "impact": "+15 % de panier moyen sur la cible cadre 35-50"},
+                {"priorite": "haute", "action": "Activer une opération fidélité ciblée champion+at_risk", "impact": "Réactivation 25 % des at_risk sous 30j"},
+                {"priorite": "moyenne", "action": "Travailler la vitrine fête des mères mi-mai", "impact": "+30 % d'attractivité de passage"},
+            ],
+            "kpi_cibles": {
+                "ca_mensuel_cible": int(ca_30d * 1.2) or 3500,
+                "nouveaux_clients_mois": 12,
+                "taux_conversion_vitrine": "14%",
+            },
+        }
+
     return {
         "generated_at": now.isoformat(),
         "context": context,
-        "report": {
-            "situation": f"La boutique Vintiz dispose d'un stock de {total_products} articles en vente avec un score tendance moyen de {round(avg_score, 1)}/100. La base clients compte {total_clients} personnes avec un CA récent de {round(ca_30d, 2)} €.",
-            "points_forts": [
-                "Positionnement premium distinctif sur le marché de la seconde main",
-                "Score tendance utilisé pour l'optimisation du stock",
-                "Système de fidélité en place pour la rétention client",
-            ],
-            "points_faibles": [
-                "Visibilité digitale à renforcer pour attirer de nouveaux clients",
-                "Programme CRM à développer (email, SMS, espace client)",
-                "Conversion vitrine à optimiser via le merchandising",
-            ],
-            "recommandations": [
-                {"priorite": "haute", "action": "Lancer une campagne Instagram ciblée femmes 25-45 ans Vernon/Évreux", "impact": "+20% de nouveaux clients"},
-                {"priorite": "haute", "action": "Créer une newsletter mensuelle avec les nouvelles arrivées", "impact": "+15% de taux de retour"},
-                {"priorite": "moyenne", "action": "Développer des partenariats avec influenceurs mode locaux", "impact": "+10% CA mensuel"},
-                {"priorite": "faible", "action": "Mettre en place un programme de parrainage clients", "impact": "Acquisition clients à moindre coût"},
-            ],
-            "kpi_cibles": {
-                "ca_mensuel_cible": int(ca_30d * 1.2) or 3000,
-                "nouveaux_clients_mois": 8,
-                "taux_conversion_vitrine": "12%",
-            },
-        },
+        "hero_product": hero_product,
+        "digital_marketing": digital_marketing,
+        "retail_director": retail_director,
     }
 
 
