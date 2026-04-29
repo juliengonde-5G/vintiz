@@ -132,6 +132,37 @@ const DEFAULT_DRAFT: Offer = {
   notes: null,
 };
 
+interface AuditEvent {
+  id: string;
+  offer_id?: string;
+  action: string;
+  user_id: string | null;
+  created_at: string | null;
+  data: Record<string, unknown>;
+}
+
+const ACTION_LABEL: Record<string, { label: string; cls: string }> = {
+  create:     { label: 'Créée',       cls: 'bg-vz-teal-soft text-vz-teal-deep' },
+  update:     { label: 'Modifiée',    cls: 'bg-vz-bg-alt text-vz-ink' },
+  activate:   { label: 'Activée',     cls: 'bg-green-100 text-green-800' },
+  deactivate: { label: 'Désactivée',  cls: 'bg-red-100 text-red-700' },
+};
+
+function periodLabel(o: Offer): string {
+  const fmt = (s: string | null) =>
+    s ? new Date(s).toLocaleDateString('fr-FR') : '—';
+  if (!o.valid_from && !o.valid_until) return 'Permanente';
+  return `${fmt(o.valid_from)} → ${fmt(o.valid_until)}`;
+}
+
+function isCurrentlyValid(o: Offer): boolean {
+  if (!o.active) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  if (o.valid_from && today < o.valid_from.slice(0, 10)) return false;
+  if (o.valid_until && today > o.valid_until.slice(0, 10)) return false;
+  return true;
+}
+
 export default function OperationsPage() {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(false);
@@ -139,6 +170,8 @@ export default function OperationsPage() {
   const [message, setMessage] = useState('');
   const [draft, setDraft] = useState<Offer | null>(null);
   const [configText, setConfigText] = useState('{}');
+  const [history, setHistory] = useState<AuditEvent[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -153,7 +186,19 @@ export default function OperationsPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await api.get('/api/admin/offers/history?limit=80');
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(data.events || []);
+      }
+    } catch { /* silent */ }
+    setHistoryLoading(false);
+  };
+
+  useEffect(() => { load(); loadHistory(); }, []);
 
   const openTemplate = (idx: number) => {
     const tmpl = TEMPLATES[idx].build();
@@ -191,6 +236,7 @@ export default function OperationsPage() {
       setTimeout(() => setMessage(''), 3000);
       closeDraft();
       load();
+      loadHistory();
     } catch (e: any) {
       setError(e?.message || 'Erreur de sauvegarde');
     }
@@ -202,6 +248,7 @@ export default function OperationsPage() {
       const res = await api.delete(`/api/admin/offers/${id}`);
       if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
       load();
+      loadHistory();
     } catch (e: any) {
       setError(e?.message);
     }
@@ -215,6 +262,7 @@ export default function OperationsPage() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       load();
+      loadHistory();
     } catch (e: any) {
       setError(e?.message);
     }
@@ -258,38 +306,105 @@ export default function OperationsPage() {
             <p className="text-sm text-gray-500">Aucune offre — sélectionnez un modèle ci-dessus.</p>
           )}
           {offers.length > 0 && (
-            <table className="w-full text-sm">
-              <thead className="text-xs text-gray-400 uppercase">
-                <tr>
-                  <th className="text-left py-2">Nom</th>
-                  <th className="text-left">Type</th>
-                  <th className="text-center">Fidélité</th>
-                  <th className="text-center">Priorité</th>
-                  <th className="text-center">Actif</th>
-                  <th className="text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {offers.map((o) => (
-                  <tr key={o.id} className="border-t border-gray-100">
-                    <td className="py-2">{o.name}</td>
-                    <td className="text-xs text-gray-500">{TYPE_LABEL[o.type]}</td>
-                    <td className="text-center">{o.requires_loyalty ? '✓' : '—'}</td>
-                    <td className="text-center font-mono">{o.priority}</td>
-                    <td className="text-center">
-                      <button onClick={() => toggleActive(o)}
-                        className={`text-xs px-2 py-0.5 rounded ${o.active ? 'bg-vz-teal/10 text-vz-teal' : 'bg-gray-100 text-gray-500'}`}>
-                        {o.active ? 'Actif' : 'Inactif'}
-                      </button>
-                    </td>
-                    <td className="text-right space-x-2">
-                      <button className="text-xs text-vz-teal hover:underline" onClick={() => openExisting(o)}>Éditer</button>
-                      <button className="text-xs text-red-600 hover:underline" onClick={() => remove(o.id)}>Désactiver</button>
-                    </td>
+            <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+              <table className="w-full text-sm min-w-[760px]">
+                <thead className="text-xs text-gray-400 uppercase">
+                  <tr>
+                    <th className="text-left py-2">Nom</th>
+                    <th className="text-left">Type</th>
+                    <th className="text-left">Période</th>
+                    <th className="text-center">Fidélité</th>
+                    <th className="text-center">Priorité</th>
+                    <th className="text-center">État</th>
+                    <th className="text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {offers.map((o) => {
+                    const valid = isCurrentlyValid(o);
+                    return (
+                      <tr key={o.id} className="border-t border-gray-100">
+                        <td className="py-2 font-medium text-black">{o.name}</td>
+                        <td className="text-xs text-gray-500">{TYPE_LABEL[o.type]}</td>
+                        <td className="text-xs text-gray-600 whitespace-nowrap">{periodLabel(o)}</td>
+                        <td className="text-center">{o.requires_loyalty ? '✓' : '—'}</td>
+                        <td className="text-center font-mono text-xs">{o.priority}</td>
+                        <td className="text-center">
+                          <button
+                            onClick={() => toggleActive(o)}
+                            className={`text-xs px-2 py-1 rounded font-medium ${
+                              valid
+                                ? 'bg-vz-teal text-white'
+                                : o.active
+                                  ? 'bg-vz-teal/10 text-vz-teal'
+                                  : 'bg-gray-100 text-gray-500'
+                            }`}
+                            title={
+                              valid
+                                ? 'Active et dans sa période — désactiver'
+                                : o.active
+                                  ? 'Active mais hors période — désactiver'
+                                  : 'Inactive — activer'
+                            }
+                          >
+                            {valid ? 'Active' : o.active ? 'Hors période' : 'Inactive'}
+                          </button>
+                        </td>
+                        <td className="text-right space-x-2 whitespace-nowrap">
+                          <button className="text-xs text-vz-teal hover:underline" onClick={() => openExisting(o)}>
+                            Éditer
+                          </button>
+                          <button className="text-xs text-red-600 hover:underline" onClick={() => remove(o.id)}>
+                            Désactiver
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        <Card title="Historique des actions">
+          <p className="text-xs text-gray-400 mb-3">
+            {history.length} {history.length > 1 ? 'événements enregistrés' : 'événement enregistré'} sur les opérations commerciales (création, modification, activation, désactivation).
+          </p>
+          {historyLoading && <p className="text-sm text-gray-500">Chargement…</p>}
+          {!historyLoading && history.length === 0 && (
+            <p className="text-sm text-gray-500">
+              Aucune action enregistrée pour le moment. Créez ou modifiez une offre pour démarrer l’historique.
+            </p>
+          )}
+          {history.length > 0 && (
+            <ol className="space-y-2">
+              {history.map((e) => {
+                const cfg = ACTION_LABEL[e.action] || { label: e.action, cls: 'bg-gray-100 text-gray-600' };
+                const offerName = (e.data?.name as string) || '(offre supprimée)';
+                const dateStr = e.created_at
+                  ? new Date(e.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                  : '—';
+                const period = e.data?.valid_from || e.data?.valid_until
+                  ? `${(e.data?.valid_from as string)?.slice(0, 10) || '—'} → ${(e.data?.valid_until as string)?.slice(0, 10) || '—'}`
+                  : 'permanente';
+                return (
+                  <li key={e.id} className="flex items-start gap-3 border-b border-gray-100 pb-2 last:border-0">
+                    <span className={`text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded uppercase whitespace-nowrap ${cfg.cls}`}>
+                      {cfg.label}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-black">{offerName}</p>
+                      <p className="text-[11px] text-gray-500">
+                        {dateStr} · période {period}
+                        {typeof e.data?.priority === 'number' && ` · prio ${e.data.priority}`}
+                        {e.data?.requires_loyalty ? ' · fidélité' : ''}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
           )}
         </Card>
 
