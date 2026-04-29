@@ -19,7 +19,7 @@ const REVIEWS = [
 
 export default function NotreBoutique() {
   return (
-    <main className="bg-cream">
+    <main className="bg-vz-bg">
       {/* HERO STOREFRONT */}
       <section className="relative h-[460px] md:h-[560px] w-full overflow-hidden">
         <Image
@@ -37,7 +37,7 @@ export default function NotreBoutique() {
           </h1>
           <Link
             href="https://www.google.com/maps/place/6+Rue+St+Jacques,+27200+Vernon"
-            className="mt-8 inline-flex items-center rounded-full bg-cream/95 px-8 py-3.5 text-sm tracking-widest text-black hover:bg-white transition-colors"
+            className="mt-8 inline-flex items-center rounded-full bg-vz-bg/95 px-8 py-3.5 text-sm tracking-widest text-black hover:bg-white transition-colors"
           >
             6 RUE ST JACQUES, 27200 VERNON
           </Link>
@@ -46,7 +46,7 @@ export default function NotreBoutique() {
 
       {/* NOTRE CONCEPT */}
       <section className="max-w-7xl mx-auto px-6 py-20 grid lg:grid-cols-2 gap-12 items-start">
-        <h2 className="font-mockSerif text-5xl md:text-6xl text-teal">Notre concept</h2>
+        <h2 className="font-mockSerif text-5xl md:text-6xl text-vz-teal">Notre concept</h2>
         <div className="space-y-5 text-black/85 leading-relaxed font-mockSerif text-xl italic">
           <p>
             Vintiz est née d&apos;une idée simple : proposer une seconde main chic
@@ -64,7 +64,7 @@ export default function NotreBoutique() {
           <div className="pt-2 not-italic">
             <Link
               href="https://www.google.com/maps/place/6+Rue+St+Jacques,+27200+Vernon"
-              className="inline-flex items-center rounded-full bg-pink px-8 py-3 text-sm tracking-widest font-sans text-black hover:bg-pink-400 transition-colors"
+              className="inline-flex items-center rounded-full bg-vz-accent-soft px-8 py-3 text-sm tracking-widest font-sans text-black hover:bg-vz-accent transition-colors"
             >
               ME RENDRE À LA BOUTIQUE
             </Link>
@@ -73,7 +73,7 @@ export default function NotreBoutique() {
       </section>
 
       {/* UNE MODE QUI A DU SENS — 1 */}
-      <section className="bg-cream">
+      <section className="bg-vz-bg">
         <div className="grid lg:grid-cols-2">
           <div className="relative aspect-[4/5] bg-stone-200">
             <Image
@@ -85,7 +85,7 @@ export default function NotreBoutique() {
             />
           </div>
           <div className="flex flex-col justify-center px-8 md:px-16 py-16 text-center lg:text-left">
-            <h2 className="font-mockSerif text-5xl text-teal leading-tight">
+            <h2 className="font-mockSerif text-5xl text-vz-teal leading-tight">
               Une mode qui
               <br />a du sens
             </h2>
@@ -104,10 +104,10 @@ export default function NotreBoutique() {
       </section>
 
       {/* UNE MODE QUI A DU SENS — 2 / SOLIDARITÉ TEXTILES */}
-      <section className="bg-cream">
+      <section className="bg-vz-bg">
         <div className="grid lg:grid-cols-2">
           <div className="flex flex-col justify-center px-8 md:px-16 py-16 lg:order-1 text-center lg:text-left">
-            <h2 className="font-mockSerif text-5xl text-teal leading-tight">
+            <h2 className="font-mockSerif text-5xl text-vz-teal leading-tight">
               Une mode qui
               <br />a du sens
             </h2>
@@ -123,7 +123,7 @@ export default function NotreBoutique() {
             </p>
             <Link
               href="https://solidaritetextiles.com"
-              className="mt-8 inline-flex self-center lg:self-start items-center rounded-full bg-pink px-8 py-3 text-sm tracking-widest text-black hover:bg-pink-400 transition-colors"
+              className="mt-8 inline-flex self-center lg:self-start items-center rounded-full bg-vz-accent-soft px-8 py-3 text-sm tracking-widest text-black hover:bg-vz-accent transition-colors"
             >
               DÉCOUVRIR SOLIDARITÉ TEXTILES
             </Link>
@@ -141,12 +141,12 @@ export default function NotreBoutique() {
       </section>
 
       {/* REVIEWS */}
-      <section className="bg-cream py-20">
+      <section className="bg-vz-bg py-20">
         <div className="max-w-6xl mx-auto px-6 text-center">
           <p className="text-[11px] tracking-[0.3em] uppercase text-black/60">
             NOTÉ 4,7/5 <span aria-hidden>★</span> SUR GOOGLE
           </p>
-          <h2 className="mt-3 font-mockSerif text-3xl md:text-4xl text-teal flex items-center justify-center gap-2">
+          <h2 className="mt-3 font-mockSerif text-3xl md:text-4xl text-vz-teal flex items-center justify-center gap-2">
             Ce que pensent nos clientes <span aria-hidden>💖</span>
           </h2>
           <p className="mt-2 text-sm text-black/70">
@@ -172,10 +172,10 @@ export default function NotreBoutique() {
       </section>
 
       {/* FOOTER ADDRESS */}
-      <section className="bg-cream border-t border-black/5">
+      <section className="bg-vz-bg border-t border-black/5">
         <div className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-3 gap-10 items-start">
           <div>
-            <p className="font-mockSerif text-4xl text-teal tracking-[0.35em]">V I N T I Z</p>
+            <p className="font-mockSerif text-4xl text-vz-teal tracking-[0.35em]">V I N T I Z</p>
             <div className="mt-6">
               <AddressBlock />
             </div>

@@ -103,7 +103,7 @@ function TransactionTable({
                   )}
                 </td>
                 <td className="py-3 px-4 text-gray-600">{tx.created_at ? formatDate(tx.created_at) : '-'}</td>
-                <td className="py-3 px-4 text-right font-bold text-teal">{formatCurrency(tx.total_ttc)}</td>
+                <td className="py-3 px-4 text-right font-bold text-vz-teal">{formatCurrency(tx.total_ttc)}</td>
                 <td className="py-3 px-4">
                   <div className="flex gap-1 flex-wrap">
                     {(tx.payment_methods || []).map((m, i) => <PaymentBadge key={i} method={m} />)}
@@ -265,7 +265,7 @@ export default function AdminPage() {
               onClick={() => setTab(t.key)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-lg min-h-[44px] whitespace-nowrap transition-colors text-sm font-medium ${
                 tab === t.key
-                  ? 'bg-teal text-white'
+                  ? 'bg-vz-teal text-white'
                   : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
               }`}
             >

@@ -145,7 +145,7 @@ export default function ZoneDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-cream">
+      <div className="min-h-screen bg-vz-bg">
         <Sidebar />
         <main className="md:ml-64 p-8">
           <p className="text-sm text-gray-500">Chargement…</p>
@@ -161,7 +161,7 @@ export default function ZoneDetailPage() {
       setTimeout(() => router.replace('/zones'), 1500);
     }
     return (
-      <div className="min-h-screen bg-cream">
+      <div className="min-h-screen bg-vz-bg">
         <Sidebar />
         <main className="md:ml-64 p-8">
           <Card>
@@ -169,7 +169,7 @@ export default function ZoneDetailPage() {
             <p className="text-sm text-gray-500">
               Cette zone n&apos;existe plus dans la boutique. Redirection vers le plan…
             </p>
-            <Link href="/zones" className="inline-flex items-center gap-2 text-sm text-teal hover:text-teal-700 mt-3">
+            <Link href="/zones" className="inline-flex items-center gap-2 text-sm text-vz-teal hover:text-vz-teal-deep mt-3">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <polyline points="15 18 9 12 15 6" />
               </svg>
@@ -182,11 +182,11 @@ export default function ZoneDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream">
+    <div className="min-h-screen bg-vz-bg">
       <Sidebar />
       <main className="md:ml-64 p-4 md:p-8 max-w-7xl">
         {/* Back link */}
-        <Link href="/zones" className="inline-flex items-center gap-2 text-sm text-teal hover:text-teal-700 mb-4">
+        <Link href="/zones" className="inline-flex items-center gap-2 text-sm text-vz-teal hover:text-vz-teal-deep mb-4">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
@@ -195,8 +195,8 @@ export default function ZoneDetailPage() {
 
         {/* Header */}
         <div
-          className="rounded-3xl p-6 md:p-8 mb-6 shadow-depth text-white relative overflow-hidden"
-          style={{ background: `linear-gradient(135deg, ${zone.color_code || '#008678'}, ${zone.color_code || '#008678'}AA 70%, #000)` }}
+          className="rounded-3xl p-6 md:p-8 mb-6 shadow-vz-soft text-white relative overflow-hidden"
+          style={{ background: `linear-gradient(135deg, ${zone.color_code || '#0B7A6A'}, ${zone.color_code || '#0B7A6A'}AA 70%, #000)` }}
         >
           <div className="relative z-10 flex items-start justify-between gap-4 flex-wrap">
             <div>
@@ -239,8 +239,8 @@ export default function ZoneDetailPage() {
               onClick={() => setTab(key as Tab)}
               className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${
                 tab === key
-                  ? 'bg-teal text-white shadow-soft'
-                  : 'bg-white text-gray-600 hover:bg-teal-50 hover:text-teal'
+                  ? 'bg-vz-teal text-white shadow-vz-soft'
+                  : 'bg-white text-gray-600 hover:bg-vz-teal-soft hover:text-vz-teal'
               }`}
             >
               {label}
@@ -311,7 +311,7 @@ export default function ZoneDetailPage() {
                       <li
                         key={i}
                         className={`flex items-start gap-2 rounded-xl p-3 text-sm ${
-                          a.level === 'warning' ? 'bg-pink-50 text-pink-800' : 'bg-teal-50 text-teal'
+                          a.level === 'warning' ? 'bg-vz-accent-soft text-vz-accent' : 'bg-vz-teal-soft text-vz-teal'
                         }`}
                       >
                         <span className="mt-0.5">●</span>
@@ -339,9 +339,9 @@ export default function ZoneDetailPage() {
                     </thead>
                     <tbody>
                       {analytics.top_products.map((p) => (
-                        <tr key={p.id} className="border-b border-gray-50 hover:bg-teal-50/40">
+                        <tr key={p.id} className="border-b border-gray-50 hover:bg-vz-teal-soft/40">
                           <td className="py-2 pr-4 font-medium text-black">
-                            <Link href={`/inventory/${p.id}`} className="hover:text-teal">{p.name}</Link>
+                            <Link href={`/inventory/${p.id}`} className="hover:text-vz-teal">{p.name}</Link>
                           </td>
                           <td className="py-2 pr-4 text-gray-600">{p.brand || '—'}</td>
                           <td className="py-2 pr-4 text-right">{p.units}</td>
@@ -367,19 +367,19 @@ export default function ZoneDetailPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {products.map((p) => (
                   <Link key={p.id} href={`/inventory/${p.id}`}>
-                    <div className="rounded-2xl bg-white p-4 shadow-card hover:shadow-soft transition-all flex gap-3">
+                    <div className="rounded-2xl bg-white p-4 shadow-vz-soft hover:shadow-vz-soft transition-all flex gap-3">
                       {p.photo_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={p.photo_url} alt={p.name} className="h-16 w-16 rounded-xl object-cover flex-shrink-0" />
                       ) : (
-                        <div className="h-16 w-16 rounded-xl bg-cream flex-shrink-0" />
+                        <div className="h-16 w-16 rounded-xl bg-vz-bg flex-shrink-0" />
                       )}
                       <div className="min-w-0">
                         <p className="font-medium text-sm text-black truncate">{p.name}</p>
                         <p className="text-xs text-gray-500 truncate">{p.brand || '—'}</p>
                         <div className="mt-1 flex items-center gap-2">
                           {p.sale_price != null && (
-                            <span className="text-sm font-semibold text-teal">{formatCurrency(p.sale_price)}</span>
+                            <span className="text-sm font-semibold text-vz-teal">{formatCurrency(p.sale_price)}</span>
                           )}
                           <span className="text-[10px] uppercase tracking-wide text-gray-400">{p.status}</span>
                         </div>
@@ -404,7 +404,7 @@ export default function ZoneDetailPage() {
                 </Button>
               }
             >
-              {aiError && <p className="text-sm text-pink-700">{aiError}</p>}
+              {aiError && <p className="text-sm text-vz-accent">{aiError}</p>}
               {!aiResponse && !aiError && (
                 <p className="text-sm text-gray-600">
                   Clique sur « Demander a l&apos;IA » pour obtenir des idees de rearrangement,
@@ -427,7 +427,7 @@ export default function ZoneDetailPage() {
                 <label className="block">
                   <span className="text-xs font-medium text-gray-600">Nom</span>
                   <input
-                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-teal focus:border-teal"
+                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
                     value={form.name || ''}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                   />
@@ -436,7 +436,7 @@ export default function ZoneDetailPage() {
                   <span className="text-xs font-medium text-gray-600">Capacite</span>
                   <input
                     type="number"
-                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-teal focus:border-teal"
+                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
                     value={form.capacity ?? 0}
                     onChange={(e) => setForm({ ...form, capacity: Number(e.target.value) })}
                   />
@@ -444,7 +444,7 @@ export default function ZoneDetailPage() {
                 <label className="block md:col-span-2">
                   <span className="text-xs font-medium text-gray-600">Description</span>
                   <textarea
-                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-teal focus:border-teal"
+                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
                     rows={2}
                     value={form.description || ''}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -455,7 +455,7 @@ export default function ZoneDetailPage() {
                   <input
                     type="color"
                     className="mt-1 w-full h-10 rounded-xl border border-gray-200"
-                    value={form.color_code || '#008678'}
+                    value={form.color_code || '#0B7A6A'}
                     onChange={(e) => setForm({ ...form, color_code: e.target.value })}
                   />
                 </label>

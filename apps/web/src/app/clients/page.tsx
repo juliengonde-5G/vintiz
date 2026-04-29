@@ -299,7 +299,7 @@ export default function ClientsPage() {
               <div className="flex gap-1">
                 <a
                   href={`/clients/${(row as unknown as Client).id}`}
-                  className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-lg bg-teal text-white hover:bg-teal/90"
+                  className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-lg bg-vz-teal text-white hover:bg-vz-teal/90"
                 >
                   Fiche
                 </a>
@@ -369,7 +369,7 @@ export default function ClientsPage() {
                 type="checkbox"
                 checked={newForm.email_optin}
                 onChange={(e) => setNewForm((f) => ({ ...f, email_optin: e.target.checked }))}
-                className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
+                className="w-4 h-4 rounded border-gray-300 text-vz-teal focus:ring-vz-teal"
               />
               <span className="text-sm text-gray-700">Accepte de recevoir des emails marketing</span>
             </label>
@@ -378,7 +378,7 @@ export default function ClientsPage() {
                 type="checkbox"
                 checked={newForm.sms_optin}
                 onChange={(e) => setNewForm((f) => ({ ...f, sms_optin: e.target.checked }))}
-                className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
+                className="w-4 h-4 rounded border-gray-300 text-vz-teal focus:ring-vz-teal"
               />
               <span className="text-sm text-gray-700">Accepte de recevoir des SMS</span>
             </label>
@@ -457,7 +457,7 @@ export default function ClientsPage() {
                       type="checkbox"
                       checked={editForm.email_optin}
                       onChange={(e) => setEditForm((f) => ({ ...f, email_optin: e.target.checked }))}
-                      className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
+                      className="w-4 h-4 rounded border-gray-300 text-vz-teal focus:ring-vz-teal"
                     />
                     <span className="text-sm text-gray-700">Accepte de recevoir des emails marketing</span>
                   </label>
@@ -466,7 +466,7 @@ export default function ClientsPage() {
                       type="checkbox"
                       checked={editForm.sms_optin}
                       onChange={(e) => setEditForm((f) => ({ ...f, sms_optin: e.target.checked }))}
-                      className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
+                      className="w-4 h-4 rounded border-gray-300 text-vz-teal focus:ring-vz-teal"
                     />
                     <span className="text-sm text-gray-700">Accepte de recevoir des SMS</span>
                   </label>
@@ -488,13 +488,13 @@ export default function ClientsPage() {
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-sm text-gray-500">Emails marketing</span>
-                  <span className={`text-sm font-medium ${selectedClient.email_optin ? 'text-teal' : 'text-gray-400'}`}>
+                  <span className={`text-sm font-medium ${selectedClient.email_optin ? 'text-vz-teal' : 'text-gray-400'}`}>
                     {selectedClient.email_optin ? 'Accepte' : 'Refuse'}
                   </span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-sm text-gray-500">SMS marketing</span>
-                  <span className={`text-sm font-medium ${selectedClient.sms_optin ? 'text-teal' : 'text-gray-400'}`}>
+                  <span className={`text-sm font-medium ${selectedClient.sms_optin ? 'text-vz-teal' : 'text-gray-400'}`}>
                     {selectedClient.sms_optin ? 'Accepte' : 'Refuse'}
                   </span>
                 </div>
@@ -505,14 +505,14 @@ export default function ClientsPage() {
             <div>
               <h4 className="text-sm font-semibold text-black mb-3">Fidelite</h4>
               {selectedClient.loyalty_active ? (
-                <div className="p-4 bg-teal-50 rounded-lg space-y-2">
+                <div className="p-4 bg-vz-teal-soft rounded-lg space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">Statut</span>
                     <Badge variant="sold">Active</Badge>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">Points</span>
-                    <span className="font-bold text-teal">
+                    <span className="font-bold text-vz-teal">
                       {selectedClient.loyalty_points ?? 0}
                     </span>
                   </div>
@@ -555,7 +555,7 @@ export default function ClientsPage() {
                         </p>
                         <p className="text-xs text-gray-500">{formatDate(tx.date)}</p>
                       </div>
-                      <p className="font-bold text-teal">{formatCurrency(tx.total)}</p>
+                      <p className="font-bold text-vz-teal">{formatCurrency(tx.total)}</p>
                     </div>
                   ))}
                 </div>

@@ -72,7 +72,7 @@ export default function AccountHistoriquePage() {
   if (!email) {
     return (
       <AccountShell title="Mon historique">
-        <Link href="/account/login" className="text-teal underline">Se connecter</Link>
+        <Link href="/account/login" className="text-vz-teal underline">Se connecter</Link>
       </AccountShell>
     );
   }
@@ -97,7 +97,7 @@ export default function AccountHistoriquePage() {
                 </p>
                 <p className="text-sm text-gray-600">{formatDate(tx.created_at)}</p>
               </div>
-              <p className="text-xl font-display font-semibold text-teal">
+              <p className="text-xl font-display font-semibold text-vz-teal">
                 {tx.total_ttc.toFixed(2)} €
               </p>
             </div>

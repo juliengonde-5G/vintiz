@@ -66,7 +66,7 @@ export default function RecoCard({ reco, onAccept, onPostpone, onReject }: Props
           <ul className="text-sm text-gray-700 space-y-1 mb-3">
             {reco.reasons.map((r, i) => (
               <li key={i} className="flex gap-1.5">
-                <span className="text-teal">•</span>
+                <span className="text-vz-teal">•</span>
                 <span>{r}</span>
               </li>
             ))}
@@ -95,7 +95,7 @@ export default function RecoCard({ reco, onAccept, onPostpone, onReject }: Props
           <button
             onClick={() => onAccept?.(reco.product_id)}
             disabled={!onAccept}
-            className="flex-1 text-xs px-3 py-2 bg-teal text-white rounded-lg hover:bg-teal/90 min-h-0"
+            className="flex-1 text-xs px-3 py-2 bg-vz-teal text-white rounded-lg hover:bg-vz-teal/90 min-h-0"
           >
             Accepter
           </button>

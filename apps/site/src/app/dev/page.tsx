@@ -19,12 +19,12 @@ const MOSAIC = [
 
 export default function DevHome() {
   return (
-    <main className="bg-cream">
+    <main className="bg-vz-bg">
       {/* HERO */}
       <section className="max-w-7xl mx-auto px-6 pt-10 pb-16 lg:pt-16 lg:pb-24">
         <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
           <div>
-            <h1 className="font-mockSerif text-5xl md:text-6xl lg:text-7xl text-teal leading-[1.05]">
+            <h1 className="font-mockSerif text-5xl md:text-6xl lg:text-7xl text-vz-teal leading-[1.05]">
               Vintiz,
               <br />
               <span className="italic">une mode qui fait sens.</span>
@@ -39,7 +39,7 @@ export default function DevHome() {
             </p>
             <Link
               href="/dev/notre-boutique"
-              className="mt-8 inline-flex items-center justify-center rounded-full bg-pink px-8 py-3.5 text-sm font-medium text-black hover:bg-pink-400 transition-colors"
+              className="mt-8 inline-flex items-center justify-center rounded-full bg-vz-accent-soft px-8 py-3.5 text-sm font-medium text-black hover:bg-vz-accent transition-colors"
             >
               Découvrir la boutique
             </Link>
@@ -71,7 +71,7 @@ export default function DevHome() {
       {/* COUPS DE COEUR */}
       <section className="max-w-7xl mx-auto px-6 py-16 lg:py-20">
         <div className="mb-6">
-          <h2 className="font-mockSerif text-3xl md:text-4xl text-teal flex items-center gap-3">
+          <h2 className="font-mockSerif text-3xl md:text-4xl text-vz-teal flex items-center gap-3">
             <span aria-hidden>❤️</span> Nos coups de cœur en boutique
           </h2>
         </div>
@@ -96,8 +96,8 @@ export default function DevHome() {
       </section>
 
       {/* CITATION */}
-      <section className="bg-cream py-14">
-        <p className="max-w-4xl mx-auto px-6 text-center font-mockSerif text-2xl md:text-3xl lg:text-4xl text-teal leading-snug">
+      <section className="bg-vz-bg py-14">
+        <p className="max-w-4xl mx-auto px-6 text-center font-mockSerif text-2xl md:text-3xl lg:text-4xl text-vz-teal leading-snug">
           Vintiz incarne une vision moderne de la mode :<br />
           durable, qualitative et accessible pour se faire plaisir<br />
           tout en minimisant son impact environnemental.
@@ -105,7 +105,7 @@ export default function DevHome() {
       </section>
 
       {/* MARQUEE TEAL */}
-      <section className="bg-teal overflow-hidden">
+      <section className="bg-vz-teal overflow-hidden">
         <div className="flex whitespace-nowrap animate-[marquee_22s_linear_infinite] py-5 text-white text-sm tracking-[0.25em]">
           {Array.from({ length: 6 }).map((_, i) => (
             <span key={i} className="mx-6 flex items-center gap-6">
@@ -120,7 +120,7 @@ export default function DevHome() {
       <section className="max-w-7xl mx-auto px-6 py-16 lg:py-24">
         <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-start">
           <div>
-            <h2 className="font-mockSerif text-4xl md:text-5xl text-teal mb-6">Notre concept</h2>
+            <h2 className="font-mockSerif text-4xl md:text-5xl text-vz-teal mb-6">Notre concept</h2>
             <div className="relative aspect-[4/3] rounded-md overflow-hidden bg-stone-200">
               <Image src="/dev/shop-local.jpg" alt="Intérieur boutique Vintiz" fill sizes="(max-width: 1024px) 100vw, 50vw" className="object-cover" />
             </div>
@@ -137,7 +137,7 @@ export default function DevHome() {
             </p>
             <Link
               href="/dev/notre-boutique"
-              className="mt-8 inline-flex items-center justify-center rounded-full bg-teal px-8 py-3.5 text-sm font-medium text-white hover:bg-teal-600 transition-colors"
+              className="mt-8 inline-flex items-center justify-center rounded-full bg-vz-teal px-8 py-3.5 text-sm font-medium text-white hover:bg-vz-teal-deep transition-colors"
             >
               Découvrir notre concept
             </Link>
@@ -151,10 +151,10 @@ export default function DevHome() {
       </section>
 
       {/* ZONE ADRESSE */}
-      <section className="bg-cream border-t border-black/5">
+      <section className="bg-vz-bg border-t border-black/5">
         <div className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-3 gap-10 items-center">
           <div>
-            <p className="font-mockSerif text-4xl text-teal tracking-[0.35em]">V I N T I Z</p>
+            <p className="font-mockSerif text-4xl text-vz-teal tracking-[0.35em]">V I N T I Z</p>
             <div className="mt-6">
               <AddressBlock />
             </div>

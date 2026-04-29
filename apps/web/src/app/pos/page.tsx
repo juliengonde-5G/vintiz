@@ -938,11 +938,11 @@ export default function POSPage() {
             </div>
           )}
           {offlineMsg && (
-            <div className="px-3 py-1.5 text-xs bg-teal-50 text-teal-800 border-b border-teal-100 flex items-center justify-between">
+            <div className="px-3 py-1.5 text-xs bg-vz-teal-soft text-vz-teal-deep border-b border-vz-teal-soft flex items-center justify-between">
               <span>{offlineMsg}</span>
               <button
                 onClick={() => setOfflineMsg('')}
-                className="text-xs font-bold hover:text-teal-900"
+                className="text-xs font-bold hover:text-vz-teal-deep"
               >
                 ×
               </button>
@@ -950,8 +950,8 @@ export default function POSPage() {
           )}
 
           {/* Cashier identification strip */}
-          <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs bg-teal-50 border-b border-teal-100">
-            <span className="font-medium text-teal-800">
+          <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs bg-vz-teal-soft border-b border-vz-teal-soft">
+            <span className="font-medium text-vz-teal-deep">
               {cashier
                 ? <>Cashier : <strong>{cashier.username}</strong></>
                 : 'Aucun cashier identifié'}
@@ -961,7 +961,7 @@ export default function POSPage() {
                 <>
                   <button
                     onClick={switchCashier}
-                    className="text-xs px-2 py-1 rounded bg-white border border-teal-200 text-teal hover:bg-teal-100 transition-colors"
+                    className="text-xs px-2 py-1 rounded bg-white border border-vz-teal-soft text-vz-teal hover:bg-vz-teal-soft transition-colors"
                     title="Changer de cashier (relève)"
                   >
                     Changer
@@ -978,7 +978,7 @@ export default function POSPage() {
               {!cashier && (
                 <button
                   onClick={() => { setCashierModalDismissible(false); setShowCashierModal(true); }}
-                  className="text-xs px-2 py-1 rounded bg-teal text-white hover:bg-teal-700 transition-colors"
+                  className="text-xs px-2 py-1 rounded bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors"
                 >
                   S&apos;identifier
                 </button>
@@ -998,7 +998,7 @@ export default function POSPage() {
                 <div className="flex items-center gap-1.5">
                   <button onClick={kickDrawer}
                     title="Ouvrir le tiroir-caisse manuellement"
-                    className="text-xs px-2 py-1 rounded bg-teal text-white hover:bg-teal-700 transition-colors flex items-center gap-1">
+                    className="text-xs px-2 py-1 rounded bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors flex items-center gap-1">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="10" width="18" height="10" rx="1"/><path d="M3 10V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"/><line x1="10" y1="15" x2="14" y2="15"/></svg>
                     Ouvrir tiroir
                   </button>
@@ -1009,7 +1009,7 @@ export default function POSPage() {
                 </div>
               ) : (
                 <button onClick={() => { setDrawerAmount(0); setShowDrawerOpen(true); }}
-                  className="text-xs px-2 py-1 rounded bg-teal text-white hover:bg-teal-700 transition-colors">
+                  className="text-xs px-2 py-1 rounded bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors">
                   Initialiser
                 </button>
               )}
@@ -1033,7 +1033,7 @@ export default function POSPage() {
                 </div>
                 <div className="flex gap-1">
                   <button onClick={() => setShowClientPopup(true)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-teal-50 text-teal hover:bg-teal-100 text-xs">
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-vz-teal-soft text-vz-teal hover:bg-vz-teal-soft text-xs">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                   </button>
                   <button onClick={() => { setSelectedClient(null); setCustomerBrief(null); setClientSearch(''); }}
@@ -1043,7 +1043,7 @@ export default function POSPage() {
             ) : (
               <div className="relative">
                 <input
-                  className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg w-44 focus:outline-none focus:ring-1 focus:ring-teal"
+                  className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg w-44 focus:outline-none focus:ring-1 focus:ring-vz-teal"
                   placeholder="Chercher client..."
                   value={clientSearch}
                   onChange={(e) => setClientSearch(e.target.value)}
@@ -1052,7 +1052,7 @@ export default function POSPage() {
                   <div className="absolute right-0 top-8 z-20 w-64 bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
                     {clientResults.map(c => (
                       <button key={c.id} onClick={() => selectClient(c)}
-                        className="w-full text-left px-3 py-2 hover:bg-pink-50 transition-colors border-b border-gray-50 last:border-0">
+                        className="w-full text-left px-3 py-2 hover:bg-vz-accent-soft transition-colors border-b border-gray-50 last:border-0">
                         <p className="text-sm font-medium text-black">{c.first_name} {c.last_name}</p>
                         {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
                       </button>
@@ -1133,7 +1133,7 @@ export default function POSPage() {
                           >
                             {item.discount > 0 ? `-${item.discount}%` : '-%'}
                           </button>
-                          <span className="text-xs font-bold text-teal ml-auto">{formatCurrency(afterDiscount)}</span>
+                          <span className="text-xs font-bold text-vz-teal ml-auto">{formatCurrency(afterDiscount)}</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -1173,7 +1173,7 @@ export default function POSPage() {
                             key={i}
                             className={`text-[10px] px-2 py-0.5 rounded-full ${
                               b.severity === 'good'
-                                ? 'bg-teal/10 text-teal'
+                                ? 'bg-vz-teal/10 text-vz-teal'
                                 : b.severity === 'warn'
                                   ? 'bg-orange-50 text-orange-700'
                                   : 'bg-gray-100 text-gray-600'
@@ -1207,7 +1207,7 @@ export default function POSPage() {
 
             {/* P4-008 — Coupon code (anniversaire, win-back, etc.) */}
             {couponApplied ? (
-              <div className="flex items-center justify-between p-2 bg-pink-50 border border-pink rounded-lg">
+              <div className="flex items-center justify-between p-2 bg-vz-accent-soft border border-vz-accent-soft rounded-lg">
                 <p className="text-xs font-medium text-black">
                   🎟 Code <strong>{couponApplied.code}</strong> — −{formatCurrency(couponDiscount)}
                 </p>
@@ -1266,7 +1266,7 @@ export default function POSPage() {
                 {redeemPoints && loyaltyDiscount > 0 && (
                   <p className="text-xs text-gray-400 line-through">{formatCurrency(cartTotal)}</p>
                 )}
-                <span className="text-2xl font-bold text-teal">{formatCurrency(cartTotalAfterLoyalty)}</span>
+                <span className="text-2xl font-bold text-vz-teal">{formatCurrency(cartTotalAfterLoyalty)}</span>
               </div>
             </div>
             {cart.some(i => i.discount > 0) && (
@@ -1290,7 +1290,7 @@ export default function POSPage() {
               className={`w-full py-4 rounded-xl font-bold text-lg tracking-wide transition-colors flex items-center justify-center gap-3 ${
                 cart.length === 0
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  : 'bg-teal text-white hover:bg-teal-700 active:bg-teal-800 shadow-lg'
+                  : 'bg-vz-teal text-white hover:bg-vz-teal-deep active:bg-vz-teal-deep shadow-lg'
               }`}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
@@ -1306,7 +1306,7 @@ export default function POSPage() {
             <div className="relative">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-black text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal"
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-black text-sm focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
                 placeholder="Scanner code-barres ou rechercher un article..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -1339,7 +1339,7 @@ export default function POSPage() {
           <div className="flex-1 overflow-y-auto p-4">
             {searchLoading ? (
               <div className="flex justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal" />
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-vz-teal" />
               </div>
             ) : searchQuery.trim() && searchResults.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-gray-400">
@@ -1352,19 +1352,19 @@ export default function POSPage() {
                   <button
                     key={product.id}
                     onClick={() => addProductToCart(product)}
-                    className="text-left p-4 bg-white rounded-xl border-2 border-transparent hover:border-teal hover:shadow-md transition-all group"
+                    className="text-left p-4 bg-white rounded-xl border-2 border-transparent hover:border-vz-teal hover:shadow-md transition-all group"
                   >
                     <div className="flex items-start justify-between mb-2">
-                      <div className="w-10 h-10 rounded-lg bg-pink-50 flex items-center justify-center text-teal flex-shrink-0">
+                      <div className="w-10 h-10 rounded-lg bg-vz-accent-soft flex items-center justify-center text-vz-teal flex-shrink-0">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
                       </div>
-                      <span className="text-lg font-bold text-teal">{formatCurrency(product.sale_price)}</span>
+                      <span className="text-lg font-bold text-vz-teal">{formatCurrency(product.sale_price)}</span>
                     </div>
-                    <p className="text-sm font-semibold text-black group-hover:text-teal leading-tight line-clamp-2">{product.name}</p>
+                    <p className="text-sm font-semibold text-black group-hover:text-vz-teal leading-tight line-clamp-2">{product.name}</p>
                     <p className="text-xs text-gray-400 mt-1">{product.barcode}{product.category ? ` · ${product.category}` : ''}</p>
                     <div className="mt-2 flex items-center gap-1">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        product.status === 'display' ? 'bg-teal-50 text-teal' : 'bg-gray-100 text-gray-500'
+                        product.status === 'display' ? 'bg-vz-teal-soft text-vz-teal' : 'bg-gray-100 text-gray-500'
                       }`}>
                         {product.status === 'display' ? 'En vitrine' : 'En stock'}
                       </span>
@@ -1394,7 +1394,7 @@ export default function POSPage() {
       >
         {selectedClient && (
           <div className="space-y-4">
-            <div className="text-center p-4 bg-pink-50 rounded-lg">
+            <div className="text-center p-4 bg-vz-accent-soft rounded-lg">
               <p className="text-xl font-bold text-black">{selectedClient.first_name} {selectedClient.last_name}</p>
               {selectedClient.phone && <p className="text-sm text-gray-500 mt-1">{selectedClient.phone}</p>}
               {selectedClient.email && <p className="text-sm text-gray-500">{selectedClient.email}</p>}
@@ -1406,7 +1406,7 @@ export default function POSPage() {
               <div className="p-4 bg-purple-50 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-semibold text-purple-800">Carte fidelite</h4>
-                  <span className="text-xs px-2 py-1 rounded-full font-medium bg-teal-100 text-teal-700">
+                  <span className="text-xs px-2 py-1 rounded-full font-medium bg-vz-teal-soft text-vz-teal-deep">
                     {selectedClient.loyalty.membership_number}
                   </span>
                 </div>
@@ -1507,12 +1507,12 @@ export default function POSPage() {
           )}
 
           {/* Total */}
-          <div className="text-center p-4 bg-teal-50 rounded-lg">
+          <div className="text-center p-4 bg-vz-teal-soft rounded-lg">
             <p className="text-sm text-gray-500">Total a encaisser</p>
             {redeemPoints && loyaltyDiscount > 0 && (
               <p className="text-sm text-gray-400 line-through">{formatCurrency(cartTotal)}</p>
             )}
-            <p className="text-3xl font-bold text-teal">{formatCurrency(cartTotalAfterLoyalty)}</p>
+            <p className="text-3xl font-bold text-vz-teal">{formatCurrency(cartTotalAfterLoyalty)}</p>
             {redeemPoints && loyaltyDiscount > 0 && (
               <p className="text-xs text-purple-600 mt-1">-{formatCurrency(loyaltyDiscount)} fidélité déduit</p>
             )}
@@ -1628,7 +1628,7 @@ export default function POSPage() {
                   onClick={() => setNumpadTarget({ type: payment.method === 'especes' ? 'cash' : 'payment', index })}
                   className={`px-4 py-2.5 rounded-xl font-bold text-base transition-colors min-h-[44px] ${
                     numpadTarget?.index === index
-                      ? 'bg-teal text-white'
+                      ? 'bg-vz-teal text-white'
                       : 'bg-white border border-gray-200 text-black hover:bg-gray-100'
                   }`}
                 >
@@ -1676,7 +1676,7 @@ export default function POSPage() {
 
           {/* Remaining */}
           {payments.length > 0 && (
-            <div className="flex items-center justify-between p-3 bg-pink-50 rounded-lg">
+            <div className="flex items-center justify-between p-3 bg-vz-accent-soft rounded-lg">
               <span className="text-sm font-medium">Reste a payer</span>
               <span className={`font-bold ${remaining <= 0.01 ? 'text-green-600' : 'text-red-600'}`}>
                 {formatCurrency(Math.max(0, remaining))}
@@ -1710,7 +1710,7 @@ export default function POSPage() {
           <pre className="whitespace-pre-wrap text-sm font-mono text-black">{receiptText}</pre>
         </div>
         {printMsg && (
-          <p className="mt-3 text-sm text-teal">{printMsg}</p>
+          <p className="mt-3 text-sm text-vz-teal">{printMsg}</p>
         )}
       </Modal>
 
@@ -1737,9 +1737,9 @@ export default function POSPage() {
         actions={<Button onClick={() => setZReport(null)}>Fermer</Button>}>
         {zReport && (
           <div className="space-y-3">
-            <div className="p-4 bg-teal-50 rounded-xl text-center">
+            <div className="p-4 bg-vz-teal-soft rounded-xl text-center">
               <p className="text-xs text-gray-500 mb-1">Rapport Z n°{zReport.z_report_number}</p>
-              <p className="text-3xl font-bold text-teal">{formatCurrency(zReport.total_net)}</p>
+              <p className="text-3xl font-bold text-vz-teal">{formatCurrency(zReport.total_net)}</p>
               <p className="text-sm text-gray-500 mt-1">Chiffre d&apos;affaires net</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -1769,9 +1769,9 @@ export default function POSPage() {
       <Modal open={showSubscribeModal} onClose={closeSubscribeModal} title="Souscription fidelite">
         {subscribeSuccess ? (
           <div className="space-y-4">
-            <div className="p-4 bg-teal-50 rounded-lg">
+            <div className="p-4 bg-vz-teal-soft rounded-lg">
               <p className="text-sm text-gray-600">Carte creee :</p>
-              <p className="text-3xl font-bold text-teal mt-1 tracking-wider">
+              <p className="text-3xl font-bold text-vz-teal mt-1 tracking-wider">
                 {subscribeSuccess.membership_number}
               </p>
             </div>

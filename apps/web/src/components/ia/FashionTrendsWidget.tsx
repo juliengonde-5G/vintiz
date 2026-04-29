@@ -64,7 +64,7 @@ export default function FashionTrendsWidget({ signals }: Props) {
                       style={{ backgroundColor: colorSwatch(s.term) }}
                     />
                   ) : (
-                    <span className="h-6 w-6 rounded bg-teal-50 text-teal flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                    <span className="h-6 w-6 rounded bg-vz-teal-soft text-vz-teal flex items-center justify-center text-[10px] font-bold flex-shrink-0">
                       {bucket.kind === 'cut' ? '✂' : 'B'}
                     </span>
                   )}

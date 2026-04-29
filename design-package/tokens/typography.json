@@ -1,36 +1,47 @@
 {
   "$schema": "https://json.schemastore.org/design-tokens.json",
-  "_doc": "Vintiz typography v2: Lexend Mega for headlines (display), Poppins for body. Both available on Google Fonts. Variables --font-display + --font-body should be set on :root from next/font.",
-  "fonts": {
+  "_doc": "Vintiz Charte v3 — typographie Sauge Néo (2026-04). Remplace v2 (Lexend Mega + Poppins).",
+  "font": {
     "display": {
-      "family": "Lexend Mega",
-      "fallback": ["Poppins", "system-ui", "sans-serif"],
-      "weights": [400, 500, 600, 700],
-      "css_var": "--font-display"
+      "$value": "Fraunces",
+      "$type": "fontFamily",
+      "$description": "Display serif — opsz 9-144, weights 400/450/500. Fallback: Söhne Breit, Cormorant Garamond, serif."
     },
     "body": {
-      "family": "Poppins",
-      "fallback": ["system-ui", "sans-serif"],
-      "weights": [300, 400, 500, 600, 700],
-      "css_var": "--font-body"
+      "$value": "Manrope",
+      "$type": "fontFamily",
+      "$description": "Body sans — weights 300/400/500/600/700. Fallback: Söhne, system-ui, sans-serif."
+    },
+    "mono": {
+      "$value": "JetBrains Mono",
+      "$type": "fontFamily",
+      "$description": "Monospaced — weights 400/500. Pour numéros, codes, références. Fallback: ui-monospace, monospace."
     }
   },
   "scale": {
-    "_doc": "Tailwind text- utilities used in Vintiz UI. line-height defaults to 1.5 for body text and 1.2 for display.",
-    "xs": { "size": "0.75rem", "line_height": "1rem" },
-    "sm": { "size": "0.875rem", "line_height": "1.25rem" },
-    "base": { "size": "1rem", "line_height": "1.5rem" },
-    "lg": { "size": "1.125rem", "line_height": "1.75rem" },
-    "xl": { "size": "1.25rem", "line_height": "1.75rem" },
-    "2xl": { "size": "1.5rem", "line_height": "2rem" },
-    "3xl": { "size": "1.875rem", "line_height": "2.25rem" },
-    "4xl": { "size": "2.25rem", "line_height": "2.5rem" }
-  },
-  "tracking": {
-    "_doc": "Letter-spacing tokens — uppercase labels use 'wider', display uses default.",
-    "tight": "-0.025em",
-    "normal": "0em",
-    "wide": "0.025em",
-    "wider": "0.05em"
+    "hero": {
+      "$value": { "size": "64px", "lineHeight": "1", "letterSpacing": "-0.015em", "fontWeight": "450", "mobile": "38px" },
+      "$type": "typography"
+    },
+    "h1": {
+      "$value": { "size": "40px", "lineHeight": "1.05", "letterSpacing": "-0.01em", "fontWeight": "500", "mobile": "28px" },
+      "$type": "typography"
+    },
+    "h2": {
+      "$value": { "size": "28px", "lineHeight": "1.15", "fontWeight": "500", "mobile": "22px" },
+      "$type": "typography"
+    },
+    "body": {
+      "$value": { "size": "16px", "lineHeight": "1.55", "mobile": "14px" },
+      "$type": "typography"
+    },
+    "caption": {
+      "$value": { "size": "11px", "letterSpacing": "0.12em", "textTransform": "uppercase" },
+      "$type": "typography"
+    },
+    "mono": {
+      "$value": { "size": "13px", "mobile": "11px" },
+      "$type": "typography"
+    }
   }
 }

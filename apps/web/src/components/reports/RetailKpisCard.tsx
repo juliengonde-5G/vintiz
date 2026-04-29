@@ -87,7 +87,7 @@ export default function RetailKpisCard() {
               key={p}
               onClick={() => setPeriod(p)}
               className={`px-3 py-1 rounded text-xs font-medium ${
-                period === p ? 'bg-white text-teal shadow-sm' : 'text-gray-500'
+                period === p ? 'bg-white text-vz-teal shadow-sm' : 'text-gray-500'
               }`}
             >
               {p}j
@@ -109,7 +109,7 @@ export default function RetailKpisCard() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div>
               <p className="text-xs text-gray-500 mb-1">CA net</p>
-              <p className="text-lg font-bold text-teal">
+              <p className="text-lg font-bold text-vz-teal">
                 {formatCurrency(data.net_revenue)}
               </p>
               <ChangeBadge value={data.change_pct.revenue} />
@@ -178,7 +178,7 @@ export default function RetailKpisCard() {
                     <span className="text-gray-700 truncate max-w-[200px]">
                       {c.category_id.slice(0, 8)}…
                     </span>
-                    <span className="text-teal font-medium">
+                    <span className="text-vz-teal font-medium">
                       {formatCurrency(c.revenue)} · {c.qty_sold} pièces
                     </span>
                   </li>

@@ -36,7 +36,7 @@ export default function SeasonTimeline({
               <th
                 key={m}
                 className={`py-2 px-1.5 text-center text-gray-500 font-medium ${
-                  i + 1 === cur ? 'bg-teal-50 text-teal' : ''
+                  i + 1 === cur ? 'bg-vz-teal-soft text-vz-teal' : ''
                 }`}
               >
                 {m}
@@ -68,8 +68,8 @@ export default function SeasonTimeline({
                         className={`mx-auto h-3 w-3 rounded-full ${
                           active
                             ? isCur
-                              ? 'bg-teal ring-2 ring-teal/30'
-                              : 'bg-teal/60'
+                              ? 'bg-vz-teal ring-2 ring-vz-teal/30'
+                              : 'bg-vz-teal/60'
                             : 'bg-gray-100'
                         }`}
                       />

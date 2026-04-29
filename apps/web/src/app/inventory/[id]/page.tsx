@@ -200,7 +200,7 @@ export default function ProductDetailPage() {
     <div className="min-h-screen bg-background">
       <Sidebar />
       <main className="md:ml-64 p-8 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal" />
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-vz-teal" />
       </main>
     </div>
   );
@@ -210,7 +210,7 @@ export default function ProductDetailPage() {
       <Sidebar />
       <main className="md:ml-64 p-8">
         <p className="text-red-600">{error || 'Produit introuvable'}</p>
-        <button onClick={() => router.back()} className="mt-4 text-teal underline">Retour</button>
+        <button onClick={() => router.back()} className="mt-4 text-vz-teal underline">Retour</button>
       </main>
     </div>
   );
@@ -264,7 +264,7 @@ export default function ProductDetailPage() {
                       <div className="flex flex-wrap gap-2 mb-2">
                         {['XS','S','M','L','XL','XXL','XXXL','TU','34','36','38','40','42','44','46'].map(s => (
                           <button key={s} type="button" onClick={() => setEditing(p => ({...p, size: p.size === s ? '' : s}))}
-                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${editing.size === s ? 'bg-teal text-white' : 'bg-gray-100 hover:bg-gray-200 text-black'}`}>
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${editing.size === s ? 'bg-vz-teal text-white' : 'bg-gray-100 hover:bg-gray-200 text-black'}`}>
                             {s}
                           </button>
                         ))}
@@ -284,7 +284,7 @@ export default function ProductDetailPage() {
                         ].map(({l,c}) => (
                           <button key={l} type="button" onClick={() => setEditing(p => ({...p, color: p.color === l ? '' : l}))}
                             title={l}
-                            className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-all ${editing.color === l ? 'ring-2 ring-teal ring-offset-1 bg-teal-50' : 'hover:bg-gray-50'}`}>
+                            className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-all ${editing.color === l ? 'ring-2 ring-vz-teal ring-offset-1 bg-vz-teal-soft' : 'hover:bg-gray-50'}`}>
                             <div className="w-6 h-6 rounded-full border border-gray-200" style={{background:c}} />
                             <span className="text-xs text-gray-600 whitespace-nowrap">{l}</span>
                           </button>
@@ -295,7 +295,7 @@ export default function ProductDetailPage() {
                     <div>
                       <label className="block text-sm font-medium text-black mb-1.5">Statut</label>
                       <select value={editing.status || 'stock'} onChange={e => setEditing(p => ({...p, status: e.target.value}))}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal">
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal">
                         {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>
@@ -330,7 +330,7 @@ export default function ProductDetailPage() {
                     <div><p className="text-xs text-gray-500 mb-0.5">Couleur</p><p className="text-sm text-gray-700">{product.color || '—'}</p></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Statut</p><Badge variant={statusVariants[product.status] || 'stock'}>{statusOptions.find(o => o.value === product.status)?.label || product.status}</Badge></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Prix d&apos;achat</p><p className="text-sm text-gray-700">{product.purchase_price?.toFixed(2)} €</p></div>
-                    <div><p className="text-xs text-gray-500 mb-0.5">Prix de vente</p><p className="text-sm font-bold text-teal">{product.sale_price?.toFixed(2)} €</p></div>
+                    <div><p className="text-xs text-gray-500 mb-0.5">Prix de vente</p><p className="text-sm font-bold text-vz-teal">{product.sale_price?.toFixed(2)} €</p></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Code-barres</p><p className="text-xs font-mono text-gray-500">{product.barcode}</p></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Semaine</p><p className="text-sm text-gray-700">{product.week_number ? `SEM ${product.week_number}` : '—'}</p></div>
                     <div className="sm:col-span-2"><p className="text-xs text-gray-500 mb-0.5">Date de mise en rayon</p><p className="text-sm text-gray-700">{product.shelf_date ? new Date(product.shelf_date).toLocaleDateString('fr-FR', {day: '2-digit', month: 'long', year: 'numeric'}) : '— Non renseignée'}</p></div>
@@ -369,7 +369,7 @@ export default function ProductDetailPage() {
 
                 {score.breakdown && (
                   <details className="mt-4 group">
-                    <summary className="cursor-pointer text-xs text-teal font-medium">
+                    <summary className="cursor-pointer text-xs text-vz-teal font-medium">
                       Voir le détail du calcul
                     </summary>
                     <pre className="mt-2 p-3 bg-gray-50 rounded-lg text-[10px] leading-snug overflow-x-auto">
@@ -403,7 +403,7 @@ export default function ProductDetailPage() {
                     <div key={tx.id} className="flex justify-between text-sm p-2 bg-gray-50 rounded">
                       <span className="text-gray-600">#{tx.transaction_number}</span>
                       <span className="text-gray-500">{new Date(tx.created_at).toLocaleDateString('fr-FR')}</span>
-                      <span className="font-medium text-teal">{tx.total_ttc.toFixed(2)} €</span>
+                      <span className="font-medium text-vz-teal">{tx.total_ttc.toFixed(2)} €</span>
                     </div>
                   ))}
                 </div>
@@ -417,7 +417,7 @@ export default function ProductDetailPage() {
           <div className="text-center space-y-4">
             {labelLoading ? (
               <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal" />
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-vz-teal" />
               </div>
             ) : labelUrl ? (
               <>
@@ -435,7 +435,7 @@ export default function ProductDetailPage() {
                     {satoSending ? 'Envoi...' : 'Imprimer sur SATO'}
                   </Button>
                 </div>
-                {satoMsg && <p className="text-sm text-teal mt-2">{satoMsg}</p>}
+                {satoMsg && <p className="text-sm text-vz-teal mt-2">{satoMsg}</p>}
               </>
             ) : (
               <p className="text-red-600 py-4">Erreur lors de la génération de l&apos;étiquette. Vérifiez la connexion API.</p>

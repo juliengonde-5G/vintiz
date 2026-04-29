@@ -151,24 +151,24 @@ export default function AccountShopperPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="vous@email.fr"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal focus:border-teal mb-3"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vz-teal focus:border-vz-teal mb-3"
             />
             <button
               type="submit"
               disabled={loading || !email}
-              className="w-full bg-teal text-white py-3 rounded-lg font-medium hover:bg-teal/90 disabled:opacity-50"
+              className="w-full bg-vz-teal text-white py-3 rounded-lg font-medium hover:bg-vz-teal/90 disabled:opacity-50"
             >
               {loading ? "Chargement…" : "Voir mes recommandations"}
             </button>
             <p className="text-xs text-gray-500 mt-3">
-              Nouveau ? <Link href="/account/login" className="text-teal underline">Connectez-vous par email</Link>{" "}
+              Nouveau ? <Link href="/account/login" className="text-vz-teal underline">Connectez-vous par email</Link>{" "}
               pour récupérer votre carte de fidélité.
             </p>
           </form>
         )}
 
         {gate === "loyalty_required" && (
-          <div className="bg-pink/30 border border-pink rounded-2xl p-6 max-w-2xl">
+          <div className="bg-vz-accent-soft/30 border border-vz-accent-soft rounded-2xl p-6 max-w-2xl">
             <h2 className="text-xl font-display font-semibold text-black mb-2">
               Réservé aux membres
             </h2>
@@ -179,7 +179,7 @@ export default function AccountShopperPage() {
             </p>
             <Link
               href="/account/login"
-              className="inline-block bg-teal text-white px-5 py-2 rounded-lg font-medium"
+              className="inline-block bg-vz-teal text-white px-5 py-2 rounded-lg font-medium"
             >
               Adhérer en boutique
             </Link>
@@ -187,7 +187,7 @@ export default function AccountShopperPage() {
         )}
 
         {gate === "profiling_consent_required" && (
-          <div className="bg-cream border border-teal/30 rounded-2xl p-6 max-w-2xl">
+          <div className="bg-vz-bg border border-vz-teal/30 rounded-2xl p-6 max-w-2xl">
             <h2 className="text-xl font-display font-semibold text-black mb-2">
               Activez votre Personal Shopper
             </h2>
@@ -200,7 +200,7 @@ export default function AccountShopperPage() {
             <button
               onClick={enableProfiling}
               disabled={toggleBusy}
-              className="bg-teal text-white px-5 py-2 rounded-lg font-medium disabled:opacity-50"
+              className="bg-vz-teal text-white px-5 py-2 rounded-lg font-medium disabled:opacity-50"
             >
               {toggleBusy ? "Activation…" : "Activer mon Personal Shopper"}
             </button>
@@ -215,12 +215,12 @@ export default function AccountShopperPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder='Ex : "t-shirt blanc taille M"'
-                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal focus:border-teal"
+                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
               />
               <button
                 type="submit"
                 disabled={searchBusy || !searchQuery.trim()}
-                className="bg-teal text-white px-6 py-3 rounded-lg font-medium hover:bg-teal/90 disabled:opacity-50"
+                className="bg-vz-teal text-white px-6 py-3 rounded-lg font-medium hover:bg-vz-teal/90 disabled:opacity-50"
               >
                 {searchBusy ? "…" : "Rechercher"}
               </button>
@@ -284,7 +284,7 @@ function ProductGrid({
               <p className="text-xs text-gray-500">
                 {[item.size, item.color].filter(Boolean).join(" · ") || "—"}
               </p>
-              <p className="text-base font-semibold text-teal mt-auto">{formatPrice(item.price_cents)}</p>
+              <p className="text-base font-semibold text-vz-teal mt-auto">{formatPrice(item.price_cents)}</p>
               <p className="text-xs text-gray-500">En boutique · Vernon</p>
             </div>
           </article>

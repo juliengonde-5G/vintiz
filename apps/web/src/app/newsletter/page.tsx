@@ -100,7 +100,7 @@ export default function NewsletterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream">
+    <div className="min-h-screen bg-vz-bg">
       <Sidebar />
       <main className="md:ml-64 px-4 py-6 md:px-8 md:py-8">
         <div className="max-w-6xl mx-auto">
@@ -123,7 +123,7 @@ export default function NewsletterPage() {
             </Card>
             <Card>
               <p className="text-xs uppercase tracking-wider text-black/50">Actives</p>
-              <p className="text-3xl font-display text-teal mt-1">{data?.active ?? '—'}</p>
+              <p className="text-3xl font-display text-vz-teal mt-1">{data?.active ?? '—'}</p>
             </Card>
             <Card>
               <p className="text-xs uppercase tracking-wider text-black/50">Désinscrites</p>
@@ -146,7 +146,7 @@ export default function NewsletterPage() {
                     onClick={() => setFilter(f)}
                     className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                       filter === f
-                        ? 'bg-teal text-white'
+                        ? 'bg-vz-teal text-white'
                         : 'bg-white border border-black/10 text-black/70 hover:bg-black/5'
                     }`}
                   >
@@ -193,7 +193,7 @@ export default function NewsletterPage() {
                         <td className="py-3 pr-4 text-black/60 text-xs">{sub.source}</td>
                         <td className="py-3 pr-4">
                           {sub.is_active ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal/15 text-teal">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-vz-teal/15 text-vz-teal">
                               Active
                             </span>
                           ) : (

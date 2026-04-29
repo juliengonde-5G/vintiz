@@ -165,7 +165,7 @@ export default function AccountRgpdPage() {
   if (!email) {
     return (
       <AccountShell title="Confidentialité & RGPD">
-        <Link href="/account/login" className="text-teal underline">Se connecter</Link>
+        <Link href="/account/login" className="text-vz-teal underline">Se connecter</Link>
       </AccountShell>
     );
   }
@@ -177,7 +177,7 @@ export default function AccountRgpdPage() {
     >
       <div className="space-y-8">
         {actionMsg && (
-          <div className="p-3 bg-teal/10 text-teal rounded-lg text-sm">{actionMsg}</div>
+          <div className="p-3 bg-vz-teal/10 text-vz-teal rounded-lg text-sm">{actionMsg}</div>
         )}
         {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
 
@@ -201,8 +201,8 @@ export default function AccountRgpdPage() {
                   className={
                     "shrink-0 px-3 py-2 rounded-lg text-sm font-medium " +
                     (c.granted
-                      ? "bg-pink/40 text-black"
-                      : "bg-teal text-white")
+                      ? "bg-vz-accent-soft/40 text-black"
+                      : "bg-vz-teal text-white")
                   }
                 >
                   {busy === c.purpose ? "…" : c.granted ? "Désactiver" : "Activer"}
@@ -224,7 +224,7 @@ export default function AccountRgpdPage() {
               type="button"
               onClick={exportData}
               disabled={busy === "export"}
-              className="bg-teal text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50"
+              className="bg-vz-teal text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50"
             >
               {busy === "export" ? "Export en cours…" : "Télécharger mes données"}
             </button>
@@ -259,7 +259,7 @@ export default function AccountRgpdPage() {
                   type="button"
                   onClick={cancelDeletion}
                   disabled={busy === "deletion"}
-                  className="bg-teal text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50"
+                  className="bg-vz-teal text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50"
                 >
                   {busy === "deletion" ? "…" : "Annuler la suppression"}
                 </button>
@@ -270,13 +270,13 @@ export default function AccountRgpdPage() {
 
         <section className="text-sm text-gray-600">
           <p>
-            DPO : <a href="mailto:dpo@solidarite-textiles.fr" className="text-teal underline">dpo@solidarite-textiles.fr</a>
+            DPO : <a href="mailto:dpo@solidarite-textiles.fr" className="text-vz-teal underline">dpo@solidarite-textiles.fr</a>
           </p>
           <p className="mt-1">
             Voir aussi :{" "}
-            <Link href="/confidentialite" className="text-teal underline">Politique de confidentialité</Link>{" · "}
-            <Link href="/cgv" className="text-teal underline">CGV</Link>{" · "}
-            <Link href="/mentions-legales" className="text-teal underline">Mentions légales</Link>
+            <Link href="/confidentialite" className="text-vz-teal underline">Politique de confidentialité</Link>{" · "}
+            <Link href="/cgv" className="text-vz-teal underline">CGV</Link>{" · "}
+            <Link href="/mentions-legales" className="text-vz-teal underline">Mentions légales</Link>
           </p>
         </section>
       </div>

@@ -30,13 +30,13 @@ const GA_URL = 'https://analytics.google.com/';
 const PAGESPEED_URL_BASE = 'https://pagespeed.web.dev/report?url=';
 
 function scoreColor(score: number): string {
-  if (score >= 85) return 'text-teal';
+  if (score >= 85) return 'text-vz-teal';
   if (score >= 60) return 'text-orange-500';
   return 'text-red-600';
 }
 
 function scoreBg(score: number): string {
-  if (score >= 85) return 'bg-teal/10 border-teal/30';
+  if (score >= 85) return 'bg-vz-teal/10 border-vz-teal/30';
   if (score >= 60) return 'bg-orange-50 border-orange-200';
   return 'bg-red-50 border-red-200';
 }
@@ -70,7 +70,7 @@ export default function SEOPage() {
     : PAGESPEED_URL_BASE;
 
   return (
-    <div className="min-h-screen bg-cream md:pl-64">
+    <div className="min-h-screen bg-vz-bg md:pl-64">
       <Sidebar />
       <main className="p-4 md:p-8">
         <div className="max-w-6xl mx-auto">
@@ -123,7 +123,7 @@ export default function SEOPage() {
                       href={status.site_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-lg font-display text-teal hover:underline break-all"
+                      className="text-lg font-display text-vz-teal hover:underline break-all"
                     >
                       {status.site_url}
                     </a>
@@ -151,7 +151,7 @@ export default function SEOPage() {
                   <div className="flex items-start gap-3">
                     <div
                       className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        status.ga_measurement_id ? 'bg-teal/10 text-teal' : 'bg-gray-100 text-gray-400'
+                        status.ga_measurement_id ? 'bg-vz-teal/10 text-vz-teal' : 'bg-gray-100 text-gray-400'
                       }`}
                     >
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -172,7 +172,7 @@ export default function SEOPage() {
                     <div
                       className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                         status.google_site_verification_configured
-                          ? 'bg-teal/10 text-teal'
+                          ? 'bg-vz-teal/10 text-vz-teal'
                           : 'bg-gray-100 text-gray-400'
                       }`}
                     >
@@ -196,7 +196,7 @@ export default function SEOPage() {
                     href={GA_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm px-4 py-2 bg-teal text-white rounded-lg hover:bg-teal/90 transition-colors"
+                    className="text-sm px-4 py-2 bg-vz-teal text-white rounded-lg hover:bg-vz-teal/90 transition-colors"
                   >
                     Ouvrir GA4 →
                   </a>
@@ -204,7 +204,7 @@ export default function SEOPage() {
                     href={SEARCH_CONSOLE_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm px-4 py-2 bg-white border border-teal text-teal rounded-lg hover:bg-teal hover:text-white transition-colors"
+                    className="text-sm px-4 py-2 bg-white border border-vz-teal text-vz-teal rounded-lg hover:bg-vz-teal hover:text-white transition-colors"
                   >
                     Search Console →
                   </a>
@@ -243,7 +243,7 @@ export default function SEOPage() {
                       <span
                         className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                           check.passed
-                            ? 'bg-teal/10 text-teal'
+                            ? 'bg-vz-teal/10 text-vz-teal'
                             : 'bg-red-50 text-red-600'
                         }`}
                       >
@@ -269,7 +269,7 @@ export default function SEOPage() {
                 <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside">
                   <li>
                     Créer une propriété GA4 sur{' '}
-                    <a className="text-teal underline" href={GA_URL} target="_blank" rel="noopener noreferrer">
+                    <a className="text-vz-teal underline" href={GA_URL} target="_blank" rel="noopener noreferrer">
                       analytics.google.com
                     </a>{' '}
                     et récupérer le Measurement ID (<code className="bg-gray-100 px-1 py-0.5 rounded">G-XXXXXXXXXX</code>).

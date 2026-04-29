@@ -59,7 +59,7 @@ export default function AccountNav() {
       {open && (
         <div className="md:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setOpen(false)}>
           <aside
-            className="absolute left-0 top-0 h-full w-72 bg-cream shadow-xl p-6 overflow-y-auto"
+            className="absolute left-0 top-0 h-full w-72 bg-vz-bg shadow-xl p-6 overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <NavInner zones={ZONES} email={email} isActive={isActive} onLogout={logout} onClick={() => setOpen(false)} />
@@ -105,8 +105,8 @@ function NavInner({
               className={
                 "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors " +
                 (active
-                  ? "bg-teal text-white"
-                  : "text-black hover:bg-pink/30")
+                  ? "bg-vz-teal text-white"
+                  : "text-black hover:bg-vz-accent-soft/30")
               }
             >
               <span aria-hidden>{zone.icon}</span>

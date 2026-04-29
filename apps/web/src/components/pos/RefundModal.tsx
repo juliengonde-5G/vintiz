@@ -283,7 +283,7 @@ export default function RefundModal({
                   key={m.value}
                   className={`p-2 border rounded-lg cursor-pointer text-sm ${
                     method === m.value
-                      ? 'border-teal bg-teal-50/40'
+                      ? 'border-vz-teal bg-vz-teal-soft/40'
                       : 'border-gray-200 hover:bg-gray-50'
                   }`}
                 >
@@ -315,7 +315,7 @@ export default function RefundModal({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="ex. Mauvaise taille, défaut visible…"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-vz-teal"
             />
           </div>
         </div>

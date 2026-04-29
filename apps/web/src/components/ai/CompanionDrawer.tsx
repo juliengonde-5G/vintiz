@@ -76,7 +76,7 @@ export default function CompanionDrawer() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 h-14 w-14 rounded-full bg-gradient-teal text-white shadow-depth flex items-center justify-center hover:scale-105 active:scale-95 transition-transform ring-4 ring-white"
+          className="fixed bottom-5 right-5 z-40 h-14 w-14 rounded-full bg-vz-teal text-white shadow-vz-soft flex items-center justify-center hover:scale-105 active:scale-95 transition-transform ring-4 ring-white"
           aria-label="Ouvrir le compagnon IA"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -94,9 +94,9 @@ export default function CompanionDrawer() {
             className="fixed inset-0 bg-black/25 z-40 animate-slide-up"
             onClick={() => setOpen(false)}
           />
-          <aside className="fixed bottom-0 right-0 top-0 z-50 w-full sm:w-[420px] bg-white shadow-depth flex flex-col animate-slide-in-right">
+          <aside className="fixed bottom-0 right-0 top-0 z-50 w-full sm:w-[420px] bg-white shadow-vz-soft flex flex-col animate-slide-in-right">
             {/* Header */}
-            <header className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-teal text-white">
+            <header className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-vz-teal text-white">
               <div className="flex items-center gap-3">
                 <div className="h-9 w-9 rounded-xl bg-white/15 flex items-center justify-center">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -123,9 +123,9 @@ export default function CompanionDrawer() {
             </header>
 
             {/* Messages */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-cream">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-vz-bg">
               {messages.length === 0 && (
-                <div className="rounded-2xl bg-white p-4 text-sm text-gray-600 shadow-card">
+                <div className="rounded-2xl bg-white p-4 text-sm text-gray-600 shadow-vz-soft">
                   <p className="font-medium text-black mb-1">Coucou 👋</p>
                   Je peux t&apos;aider a repondre aux questions sur ta boutique : CA du jour,
                   produits a mettre en avant, idees de vitrine, analyse d&apos;une zone, etc.
@@ -138,8 +138,8 @@ export default function CompanionDrawer() {
                   key={i}
                   className={`rounded-2xl px-4 py-3 max-w-[85%] text-sm ${
                     m.role === 'user'
-                      ? 'ml-auto bg-teal text-white shadow-soft'
-                      : 'bg-white text-black shadow-card'
+                      ? 'ml-auto bg-vz-teal text-white shadow-vz-soft'
+                      : 'bg-white text-black shadow-vz-soft'
                   }`}
                 >
                   {m.content.split('\n').map((line, j) => (
@@ -148,14 +148,14 @@ export default function CompanionDrawer() {
                 </div>
               ))}
               {loading && (
-                <div className="rounded-2xl bg-white px-4 py-3 shadow-card inline-flex items-center gap-2 text-sm text-gray-500">
-                  <span className="h-2 w-2 bg-teal rounded-full animate-pulse" />
-                  <span className="h-2 w-2 bg-teal rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-                  <span className="h-2 w-2 bg-teal rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+                <div className="rounded-2xl bg-white px-4 py-3 shadow-vz-soft inline-flex items-center gap-2 text-sm text-gray-500">
+                  <span className="h-2 w-2 bg-vz-teal rounded-full animate-pulse" />
+                  <span className="h-2 w-2 bg-vz-teal rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+                  <span className="h-2 w-2 bg-vz-teal rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
                 </div>
               )}
               {error && (
-                <div className="rounded-2xl bg-pink-50 text-pink-700 text-sm px-4 py-3 border border-pink-100">
+                <div className="rounded-2xl bg-vz-accent-soft text-vz-accent text-sm px-4 py-3 border border-vz-accent-soft">
                   {error}
                 </div>
               )}
@@ -170,12 +170,12 @@ export default function CompanionDrawer() {
                   onKeyDown={handleKey}
                   placeholder="Ecris ton message…"
                   rows={1}
-                  className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-teal focus:border-teal max-h-32"
+                  className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-vz-teal focus:border-vz-teal max-h-32"
                 />
                 <button
                   onClick={send}
                   disabled={loading || !input.trim()}
-                  className="h-11 w-11 rounded-xl bg-teal text-white flex items-center justify-center hover:bg-teal-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="h-11 w-11 rounded-xl bg-vz-teal text-white flex items-center justify-center hover:bg-vz-teal-deep disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="Envoyer"
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

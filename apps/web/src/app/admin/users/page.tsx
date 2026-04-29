@@ -22,8 +22,8 @@ const ROLE_LABEL: Record<UserRow['role'], string> = {
   collaborateur: 'Collaborateur',
 };
 const ROLE_BADGE: Record<UserRow['role'], string> = {
-  manager: 'bg-teal/10 text-teal',
-  collaborateur: 'bg-pink/10 text-pink-700',
+  manager: 'bg-vz-teal/10 text-vz-teal',
+  collaborateur: 'bg-vz-accent-soft/10 text-vz-accent',
 };
 
 interface CreateDraft {
@@ -180,7 +180,7 @@ export default function AdminUsersPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-cream">
+    <div className="flex h-screen overflow-hidden bg-vz-bg">
       <Sidebar />
       <main className="flex-1 overflow-y-auto md:ml-64 p-4 md:p-8">
         <header className="mb-6 flex items-center justify-between flex-wrap gap-3">
@@ -238,8 +238,8 @@ export default function AdminUsersPage() {
                     <td className="text-center text-xs">{u.has_pin ? '✓' : '—'}</td>
                     <td className="text-center text-xs">{u.is_active ? 'Actif' : 'Inactif'}</td>
                     <td className="text-right text-xs space-x-2">
-                      <button className="text-teal hover:underline" onClick={() => setEditing(u)}>Éditer</button>
-                      <button className="text-teal hover:underline" onClick={() => { setPinUser(u); setPinDraft(''); }}>
+                      <button className="text-vz-teal hover:underline" onClick={() => setEditing(u)}>Éditer</button>
+                      <button className="text-vz-teal hover:underline" onClick={() => { setPinUser(u); setPinDraft(''); }}>
                         {u.has_pin ? 'Changer PIN' : 'Définir PIN'}
                       </button>
                       {u.has_pin && (

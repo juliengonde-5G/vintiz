@@ -175,7 +175,7 @@ export default function InventoryPage() {
           <select
             value={categoryFilter}
             onChange={(e) => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
-            className="min-h-[44px] px-4 py-2 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal"
+            className="min-h-[44px] px-4 py-2 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
           >
             <option value="">Toutes les categories</option>
             {categories.map((c) => (
@@ -185,7 +185,7 @@ export default function InventoryPage() {
           <select
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
-            className="min-h-[44px] px-4 py-2 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal"
+            className="min-h-[44px] px-4 py-2 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
           >
             <option value="">Tous les statuts</option>
             <option value="stock">En stock</option>
@@ -230,7 +230,7 @@ export default function InventoryPage() {
                   return (
                     <tr
                       key={p.id}
-                      className="border-b border-gray-100 hover:bg-pink-50 transition-colors cursor-pointer"
+                      className="border-b border-gray-100 hover:bg-vz-accent-soft transition-colors cursor-pointer"
                       onClick={() => router.push('/inventory/' + p.id)}
                     >
                       <td className="px-3 py-2">
@@ -255,7 +255,7 @@ export default function InventoryPage() {
                       <td className="px-4 py-3 text-sm text-gray-600">{p.brand || '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{p.size || '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-500 text-right">{formatCurrency(p.purchase_price)}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-teal text-right">{formatCurrency(p.sale_price)}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-vz-teal text-right">{formatCurrency(p.sale_price)}</td>
                       <td className="px-4 py-3">
                         <Badge variant={s.variant}>{s.label}</Badge>
                       </td>

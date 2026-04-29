@@ -12,9 +12,9 @@ export default function DevContact() {
   }
 
   return (
-    <main className="bg-cream min-h-screen">
+    <main className="bg-vz-bg min-h-screen">
       <section className="max-w-6xl mx-auto px-6 py-16 lg:py-24">
-        <h1 className="font-mockSerif italic text-teal text-6xl md:text-8xl">Contact</h1>
+        <h1 className="font-mockSerif italic text-vz-teal text-6xl md:text-8xl">Contact</h1>
 
         <div className="mt-12 grid lg:grid-cols-2 gap-12 lg:gap-20">
           <div>
@@ -23,8 +23,8 @@ export default function DevContact() {
 
           <div className="w-full">
             {sent ? (
-              <div className="rounded-2xl border border-teal/30 bg-white p-8 text-center">
-                <p className="font-mockSerif text-2xl text-teal">Merci !</p>
+              <div className="rounded-2xl border border-vz-teal/30 bg-white p-8 text-center">
+                <p className="font-mockSerif text-2xl text-vz-teal">Merci !</p>
                 <p className="mt-2 text-sm text-black/70">
                   Votre message nous est bien parvenu. Nous vous répondons sous 48 h.
                 </p>
@@ -39,7 +39,7 @@ export default function DevContact() {
                 <Field id="comment" label="Commentaire" textarea />
                 <button
                   type="submit"
-                  className="inline-flex items-center rounded-full bg-pink px-10 py-3 text-sm tracking-widest font-medium text-black hover:bg-pink-400 transition-colors"
+                  className="inline-flex items-center rounded-full bg-vz-accent-soft px-10 py-3 text-sm tracking-widest font-medium text-black hover:bg-vz-accent transition-colors"
                 >
                   ENVOYER
                 </button>
@@ -67,7 +67,7 @@ function Field({
 }) {
   const placeholder = required ? `${label} *` : label;
   const cls =
-    "w-full rounded-lg border border-pink/60 bg-cream/40 px-4 py-3 text-sm text-black placeholder:text-teal/70 focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal";
+    "w-full rounded-lg border border-vz-accent-soft/60 bg-vz-bg/40 px-4 py-3 text-sm text-black placeholder:text-vz-teal/70 focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal";
   return (
     <div>
       <label htmlFor={id} className="sr-only">

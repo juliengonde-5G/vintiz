@@ -73,7 +73,7 @@ export default function AccountLoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-cream">
+    <main className="min-h-screen bg-vz-bg">
       <Navbar />
       <section className="max-w-md mx-auto px-4 pt-16 pb-24">
         <h1 className="text-3xl font-display font-bold text-black mb-2">Mon espace Vintiz</h1>
@@ -94,13 +94,13 @@ export default function AccountLoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="vous@email.fr"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal focus:border-teal"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
               />
             </div>
             <button
               type="submit"
               disabled={busy || !email}
-              className="w-full bg-teal text-white py-3 rounded-lg font-medium hover:bg-teal/90 disabled:opacity-50"
+              className="w-full bg-vz-teal text-white py-3 rounded-lg font-medium hover:bg-vz-teal/90 disabled:opacity-50"
             >
               {busy ? "Envoi…" : "Recevoir mon code"}
             </button>
@@ -110,7 +110,7 @@ export default function AccountLoginPage() {
         {step === "code" && (
           <form onSubmit={verifyCode} className="space-y-4">
             {info && (
-              <div className="p-3 bg-teal/10 text-teal rounded-lg text-sm">{info}</div>
+              <div className="p-3 bg-vz-teal/10 text-vz-teal rounded-lg text-sm">{info}</div>
             )}
             <div>
               <label className="block text-sm text-gray-700 mb-1" htmlFor="code-input">
@@ -126,14 +126,14 @@ export default function AccountLoginPage() {
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                 placeholder="000000"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-center text-2xl tracking-[0.5em] focus:ring-2 focus:ring-teal focus:border-teal"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-center text-2xl tracking-[0.5em] focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
                 autoFocus
               />
             </div>
             <button
               type="submit"
               disabled={busy || code.length !== 6}
-              className="w-full bg-teal text-white py-3 rounded-lg font-medium hover:bg-teal/90 disabled:opacity-50"
+              className="w-full bg-vz-teal text-white py-3 rounded-lg font-medium hover:bg-vz-teal/90 disabled:opacity-50"
             >
               {busy ? "Vérification…" : "Me connecter"}
             </button>

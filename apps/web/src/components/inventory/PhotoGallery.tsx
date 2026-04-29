@@ -158,7 +158,7 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
               key={photo.id}
               className={`flex items-center gap-3 p-2 border rounded-lg ${
                 photo.is_primary
-                  ? 'border-teal bg-teal-50/40'
+                  ? 'border-vz-teal bg-vz-teal-soft/40'
                   : 'border-gray-200 bg-white'
               }`}
             >
@@ -171,7 +171,7 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-500 truncate">{photo.url}</p>
                 {photo.is_primary && (
-                  <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-teal text-white">
+                  <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-vz-teal text-white">
                     Principale
                   </span>
                 )}
@@ -202,7 +202,7 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
                     type="button"
                     onClick={() => setPrimary(photo.id)}
                     disabled={busy}
-                    className="px-2 py-1 text-xs rounded bg-teal-50 text-teal hover:bg-teal-100"
+                    className="px-2 py-1 text-xs rounded bg-vz-teal-soft text-vz-teal hover:bg-vz-teal-soft"
                   >
                     Principale
                   </button>
@@ -236,7 +236,7 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
               e.target.value = '';
             }
           }}
-          className="block w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-teal file:text-white hover:file:bg-teal-700 disabled:opacity-50"
+          className="block w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-vz-teal file:text-white hover:file:bg-vz-teal-deep disabled:opacity-50"
         />
         <p className="text-xs text-gray-400">
           JPG / PNG / WEBP, 5 Mo max. Stockage local pour l&apos;instant ;
@@ -254,14 +254,14 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
             value={newUrl}
             onChange={(e) => setNewUrl(e.target.value)}
             placeholder="https://…"
-            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal"
+            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-vz-teal"
             disabled={busy}
           />
           <button
             type="button"
             onClick={addPhoto}
             disabled={busy || !newUrl.trim()}
-            className="px-4 py-2 bg-teal text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50"
+            className="px-4 py-2 bg-vz-teal text-white text-sm font-medium rounded-lg hover:bg-vz-teal-deep disabled:opacity-50"
           >
             Ajouter
           </button>

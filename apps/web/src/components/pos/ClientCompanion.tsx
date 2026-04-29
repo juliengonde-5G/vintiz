@@ -109,7 +109,7 @@ export default function ClientCompanion({
   if (!clientId) return null;
 
   return (
-    <aside className="bg-gradient-warm rounded-xl border border-pink/30 p-3 mb-3 shadow-sm space-y-3">
+    <aside className="bg-vz-bg rounded-xl border border-vz-accent-soft/30 p-3 mb-3 shadow-sm space-y-3">
       <header className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-black flex items-center gap-2">
           <span aria-hidden>💡</span>
@@ -123,7 +123,7 @@ export default function ClientCompanion({
           <section className="bg-white rounded-lg p-3 text-xs space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-gray-500">Solde fidélité</span>
-              <span className="font-semibold text-teal">
+              <span className="font-semibold text-vz-teal">
                 {payload.loyalty.points_current} pts
               </span>
             </div>
@@ -154,7 +154,7 @@ export default function ClientCompanion({
                     'text-xs px-2 py-1.5 rounded-lg ' +
                     (alert.level === 'warning'
                       ? 'bg-orange-50 text-orange-800 border border-orange-200'
-                      : 'bg-teal/10 text-teal border border-teal/30')
+                      : 'bg-vz-teal/10 text-vz-teal border border-vz-teal/30')
                   }
                 >
                   {alert.message}
@@ -182,7 +182,7 @@ export default function ClientCompanion({
                       <button
                         type="button"
                         onClick={() => onApplyCoupon(coupon.code)}
-                        className="text-[10px] px-2 py-1 rounded bg-teal text-white"
+                        className="text-[10px] px-2 py-1 rounded bg-vz-teal text-white"
                       >
                         Appliquer
                       </button>
@@ -203,7 +203,7 @@ export default function ClientCompanion({
                       type="button"
                       onClick={() => onAddSuggestion?.(s.product_id)}
                       disabled={!onAddSuggestion}
-                      className="block w-full bg-white rounded-lg overflow-hidden border border-gray-200 text-left p-0 hover:border-teal hover:shadow-sm transition-all"
+                      className="block w-full bg-white rounded-lg overflow-hidden border border-gray-200 text-left p-0 hover:border-vz-teal hover:shadow-sm transition-all"
                     >
                       <div className="aspect-square bg-gray-100">
                         {s.photo_url ? (
@@ -220,7 +220,7 @@ export default function ClientCompanion({
                         <p className="text-[10px] text-gray-500 truncate">
                           {[s.size, s.color].filter(Boolean).join(' · ') || '—'}
                         </p>
-                        <p className="text-[10px] text-teal font-semibold">
+                        <p className="text-[10px] text-vz-teal font-semibold">
                           {formatEur(s.price_cents)}
                         </p>
                       </div>

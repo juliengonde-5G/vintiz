@@ -28,8 +28,8 @@ const SEGMENT_LABELS: Record<string, string> = {
 };
 
 const SEGMENT_COLORS: Record<string, string> = {
-  champion: 'bg-teal text-white',
-  loyal: 'bg-pink text-black',
+  champion: 'bg-vz-teal text-white',
+  loyal: 'bg-vz-accent-soft text-black',
   new: 'bg-yellow-100 text-yellow-800',
   promising: 'bg-blue-100 text-blue-800',
   cant_lose: 'bg-orange-200 text-orange-900',
@@ -96,7 +96,7 @@ export default function RfmSegmentsCard() {
       ) : total === 0 ? (
         <div className="text-sm text-gray-500 text-center py-6">
           Aucune cliente segmentée.{' '}
-          <button onClick={runNow} className="text-teal underline">
+          <button onClick={runNow} className="text-vz-teal underline">
             Lancer un premier calcul
           </button>
           .
@@ -116,7 +116,7 @@ export default function RfmSegmentsCard() {
                 </span>
                 <div className="flex-1 bg-gray-100 rounded-full h-2">
                   <div
-                    className="bg-teal h-2 rounded-full"
+                    className="bg-vz-teal h-2 rounded-full"
                     style={{ width: `${pct}%` }}
                   />
                 </div>

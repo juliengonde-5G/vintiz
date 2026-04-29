@@ -1,21 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,450;9..144,500&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Vintiz — Charte v3 « Sauge Néo » (2026-04)
+   Mode sombre via [data-theme="dark"] sur <html> ou conteneur. */
 :root {
-  --color-pink: #E8B4D0;
-  --color-teal: #2A8B8B;
-  --color-black: #1A1A1A;
-  --color-white: #FFFFFF;
-  --color-background: #FFF5F8;
-  --background: #FFF5F8;
-  --foreground: #1A1A1A;
+  --vz-bg: #F6F5F1;
+  --vz-bg-alt: #ECEAE3;
+  --vz-surface: #FFFFFF;
+  --vz-ink: #0E0E0C;
+  --vz-ink-soft: #4A4A47;
+  --vz-ink-mute: #8B8B86;
+  --vz-line: #D5D3CC;
+  --vz-teal: #0B7A6A;
+  --vz-teal-deep: #054238;
+  --vz-teal-soft: #CDE5DF;
+  --vz-accent: #E84E8B;
+  --vz-accent-soft: #FFD5E5;
+  --vz-gold: #8E7B57;
+
+  --vz-font-display: "Fraunces", "Söhne Breit", "Cormorant Garamond", serif;
+  --vz-font-body: "Manrope", "Söhne", system-ui, sans-serif;
+  --vz-font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --vz-radius: 8px;
+  --vz-radius-lg: 16px;
+  --vz-radius-pill: 999px;
+
+  --vz-shadow-soft: 0 1px 0 rgba(14,14,12,0.04), 0 16px 40px -20px rgba(14,14,12,0.16);
+
+  --background: var(--vz-bg);
+  --foreground: var(--vz-ink);
+  --card: var(--vz-surface);
+  --card-foreground: var(--vz-ink);
+  --popover: var(--vz-surface);
+  --popover-foreground: var(--vz-ink);
+  --primary: var(--vz-teal);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--vz-bg-alt);
+  --secondary-foreground: var(--vz-ink);
+  --muted: var(--vz-bg-alt);
+  --muted-foreground: var(--vz-ink-mute);
+  --accent: var(--vz-accent);
+  --accent-foreground: #FFFFFF;
+  --border: var(--vz-line);
+  --input: var(--vz-line);
+  --ring: var(--vz-teal);
+  --radius: var(--vz-radius);
+}
+
+[data-theme="dark"], .dark {
+  --vz-bg: #0F100E;
+  --vz-bg-alt: #171814;
+  --vz-surface: #1A1B17;
+  --vz-ink: #F0EFEA;
+  --vz-ink-soft: #A5A49E;
+  --vz-ink-mute: #65645F;
+  --vz-line: #262722;
+  --vz-teal: #1FA790;
+  --vz-teal-deep: #11675A;
+  --vz-teal-soft: #1A3A35;
+  --vz-accent: #FF6FA0;
+  --vz-accent-soft: #3A1F2C;
+
+  --background: var(--vz-bg);
+  --foreground: var(--vz-ink);
+  --card: var(--vz-surface);
+  --primary: var(--vz-teal);
+  --secondary: var(--vz-bg-alt);
+  --muted: var(--vz-bg-alt);
+  --muted-foreground: var(--vz-ink-mute);
+  --accent: var(--vz-accent);
+  --border: var(--vz-line);
+  --input: var(--vz-line);
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--vz-font-body);
+  -webkit-font-smoothing: antialiased;
 }
 
 @layer base {

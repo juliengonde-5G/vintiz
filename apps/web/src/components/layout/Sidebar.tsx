@@ -328,14 +328,14 @@ export default function Sidebar() {
                         title={desktopCollapsed ? item.label : undefined}
                         className={`relative flex items-center gap-3 ${desktopCollapsed ? 'md:justify-center md:px-2 px-4' : 'px-4'} py-2.5 rounded-xl min-h-[44px] transition-all ${
                           isActive
-                            ? 'bg-gradient-warm text-teal font-medium shadow-sm'
+                            ? 'bg-vz-bg text-vz-teal font-medium shadow-sm'
                             : 'text-gray-600 hover:bg-gray-50 hover:text-black'
                         }`}
                       >
                         {isActive && (
-                          <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-teal" />
+                          <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-vz-teal" />
                         )}
-                        <span className={isActive ? 'text-teal' : 'text-gray-400'}>
+                        <span className={isActive ? 'text-vz-teal' : 'text-gray-400'}>
                           {item.icon}
                         </span>
                         <span className={`text-sm ${desktopCollapsed ? 'md:hidden' : ''}`}>{item.label}</span>
@@ -352,8 +352,8 @@ export default function Sidebar() {
         {/* User + Logout */}
         <div className={`p-3 border-t border-gray-100 space-y-1 ${desktopCollapsed ? 'md:p-2' : ''}`}>
           {!desktopCollapsed ? (
-            <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-cream">
-              <div className="h-9 w-9 rounded-full bg-gradient-signature flex items-center justify-center text-white font-semibold font-display text-sm">
+            <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-vz-bg">
+              <div className="h-9 w-9 rounded-full bg-vz-teal flex items-center justify-center text-white font-semibold font-display text-sm">
                 {userName.slice(0, 1).toUpperCase()}
               </div>
               <div className="min-w-0">
@@ -363,7 +363,7 @@ export default function Sidebar() {
             </div>
           ) : (
             <div className="hidden md:flex justify-center" title={userName}>
-              <div className="h-9 w-9 rounded-full bg-gradient-signature flex items-center justify-center text-white font-semibold font-display text-sm">
+              <div className="h-9 w-9 rounded-full bg-vz-teal flex items-center justify-center text-white font-semibold font-display text-sm">
                 {userName.slice(0, 1).toUpperCase()}
               </div>
             </div>

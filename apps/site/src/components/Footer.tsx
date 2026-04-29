@@ -10,9 +10,9 @@ export default function Footer() {
           <p className="text-xs text-white/40">&copy; 2026 Vintiz — Vernon, Normandie</p>
         </div>
         <div className="flex gap-5 text-xs text-white/40">
-          <Link href="/mentions-legales" className="hover:text-pink transition-colors">Mentions légales</Link>
-          <Link href="/cgv" className="hover:text-pink transition-colors">CGV</Link>
-          <Link href="/confidentialite" className="hover:text-pink transition-colors">Confidentialité</Link>
+          <Link href="/mentions-legales" className="hover:text-vz-accent-soft transition-colors">Mentions légales</Link>
+          <Link href="/cgv" className="hover:text-vz-accent-soft transition-colors">CGV</Link>
+          <Link href="/confidentialite" className="hover:text-vz-accent-soft transition-colors">Confidentialité</Link>
         </div>
       </div>
     </footer>

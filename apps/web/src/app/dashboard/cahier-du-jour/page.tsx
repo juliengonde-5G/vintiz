@@ -210,7 +210,7 @@ export default function CahierDuJourPage() {
         </div>
 
         {toast && (
-          <div className="mb-3 p-2 bg-teal-50 text-teal border border-teal-100 rounded-lg text-sm">
+          <div className="mb-3 p-2 bg-vz-teal-soft text-vz-teal border border-vz-teal-soft rounded-lg text-sm">
             {toast}
           </div>
         )}
@@ -223,7 +223,7 @@ export default function CahierDuJourPage() {
         {loading && !data && <p className="text-gray-500">Chargement du cahier...</p>}
 
         {data && (
-          <div className="cahier-page max-w-[900px] mx-auto bg-white rounded-2xl shadow-card p-6 md:p-8 space-y-6">
+          <div className="cahier-page max-w-[900px] mx-auto bg-white rounded-2xl shadow-vz-soft p-6 md:p-8 space-y-6">
             {isPast && (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-3 py-2">
                 Archive — consultation uniquement
@@ -243,7 +243,7 @@ export default function CahierDuJourPage() {
                   <p className="text-sm text-gray-500 capitalize">{formattedDate}</p>
                 </div>
                 {data.header.weather && (
-                  <div className="flex items-center gap-3 bg-cream rounded-xl px-4 py-2">
+                  <div className="flex items-center gap-3 bg-vz-bg rounded-xl px-4 py-2">
                     {data.header.weather.icon && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -265,15 +265,15 @@ export default function CahierDuJourPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-                <div className="border border-teal-50 rounded-xl p-3">
+                <div className="border border-vz-teal-soft rounded-xl p-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-semibold text-teal uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-vz-teal uppercase tracking-wider">
                       Message du jour
                     </span>
                     {!readOnly && !editingText && (
                       <button
                         onClick={() => setEditingText(true)}
-                        className="text-xs text-teal underline"
+                        className="text-xs text-vz-teal underline"
                       >
                         Modifier
                       </button>
@@ -292,7 +292,7 @@ export default function CahierDuJourPage() {
                   )}
                 </div>
 
-                <div className="border border-pink-100 rounded-xl p-3">
+                <div className="border border-vz-accent-soft rounded-xl p-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-semibold text-black uppercase tracking-wider">
                       Operation en cours
@@ -300,7 +300,7 @@ export default function CahierDuJourPage() {
                     {!readOnly && !editingText && (
                       <button
                         onClick={() => setEditingText(true)}
-                        className="text-xs text-teal underline"
+                        className="text-xs text-vz-teal underline"
                       >
                         Modifier
                       </button>
@@ -376,7 +376,7 @@ export default function CahierDuJourPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse">
                   <thead>
-                    <tr className="bg-cream text-xs uppercase text-gray-600">
+                    <tr className="bg-vz-bg text-xs uppercase text-gray-600">
                       <Th>OBJ</Th>
                       <Th>CA</Th>
                       <Th>CA N-1</Th>
@@ -395,7 +395,7 @@ export default function CahierDuJourPage() {
                       <Td>{data.performance.prog_vs_obj_pct != null ? `${data.performance.prog_vs_obj_pct}%` : '—'}</Td>
                       <Td>
                         {data.performance.delta_vs_n1_pct != null ? (
-                          <span className={data.performance.delta_vs_n1_pct >= 0 ? 'text-teal font-semibold' : 'text-red-600 font-semibold'}>
+                          <span className={data.performance.delta_vs_n1_pct >= 0 ? 'text-vz-teal font-semibold' : 'text-red-600 font-semibold'}>
                             {data.performance.delta_vs_n1_pct > 0 ? '+' : ''}{data.performance.delta_vs_n1_pct}%
                           </span>
                         ) : '—'}
@@ -433,7 +433,7 @@ export default function CahierDuJourPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse">
                   <thead>
-                    <tr className="bg-cream text-xs uppercase text-gray-600">
+                    <tr className="bg-vz-bg text-xs uppercase text-gray-600">
                       <Th align="left">Zone</Th>
                       <Th>OBJ</Th>
                       <Th>CA</Th>
@@ -459,7 +459,7 @@ export default function CahierDuJourPage() {
                         <Td>{CURRENCY(z.ca_n1)}</Td>
                         <Td>
                           {z.delta_pct != null ? (
-                            <span className={z.delta_pct >= 0 ? 'text-teal font-semibold' : 'text-red-600 font-semibold'}>
+                            <span className={z.delta_pct >= 0 ? 'text-vz-teal font-semibold' : 'text-red-600 font-semibold'}>
                               {z.delta_pct > 0 ? '+' : ''}{z.delta_pct}%
                             </span>
                           ) : '—'}
@@ -500,7 +500,7 @@ export default function CahierDuJourPage() {
 }
 
 function StatBlock({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: 'teal' | 'pink' }) {
-  const color = accent === 'teal' ? 'text-teal' : accent === 'pink' ? 'text-pink-600' : 'text-black';
+  const color = accent === 'teal' ? 'text-vz-teal' : accent === 'pink' ? 'text-vz-accent' : 'text-black';
   return (
     <div className="border border-gray-100 rounded-xl p-3 bg-white">
       <div className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</div>
@@ -522,7 +522,7 @@ function Th({ children, align = 'right' }: { children: React.ReactNode; align?: 
 function Td({ children, align = 'right', accent }: { children: React.ReactNode; align?: 'left' | 'right'; accent?: boolean }) {
   const alignCls = align === 'left' ? 'text-left' : 'text-right';
   return (
-    <td className={`px-2 py-2 ${alignCls} ${accent ? 'font-bold text-teal' : 'text-black'}`}>
+    <td className={`px-2 py-2 ${alignCls} ${accent ? 'font-bold text-vz-teal' : 'text-black'}`}>
       {children}
     </td>
   );
@@ -570,9 +570,9 @@ function ProgressionChart({
         />
       ))}
       {/* Target */}
-      <path d={path(tgtPts)} fill="none" stroke="#FFC5DF" strokeWidth={2} strokeDasharray="4 4" />
+      <path d={path(tgtPts)} fill="none" stroke="#FFD5E5" strokeWidth={2} strokeDasharray="4 4" />
       {/* Real */}
-      <path d={path(realPts)} fill="none" stroke="#008678" strokeWidth={2.5} />
+      <path d={path(realPts)} fill="none" stroke="#0B7A6A" strokeWidth={2.5} />
       {/* Hours */}
       {hours.filter((_, i) => i % 2 === 0).map((h) => (
         <text key={h} x={x(h)} y={height - 4} fontSize="10" textAnchor="middle" fill="#888">
