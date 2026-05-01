@@ -152,16 +152,26 @@ PRESERVED_TABLES = (
     "zone_tags",
     "furniture_items",
     "brand_tiers",
-    "markdown_rules",
-    "app_settings",
+    # NB: ``markdown_rules`` was dropped by migration 0027 and
+    # ``app_settings`` is a file (data/app_config.json), not a DB table.
+    # Both used to be listed here and produced confusing
+    # ``(skipped: ProgrammingError)`` lines on every run.
 )
 
 
-async def _table_exists(db: AsyncSession, name: str) -> bool:
-    def _check(sync_conn) -> bool:
-        return inspect(sync_conn).has_table(name)
+async def _existing_tables() -> set[str]:
+    """Return all real tables in the connected database in one round-trip.
 
-    return await db.run_sync(_check)
+    Replaces the previous ``_table_exists`` per-call check that wrongly fed
+    an ``AsyncSession`` to ``inspect()``. ``run_sync`` on a *connection*
+    yields the underlying sync connection, which ``inspect()`` accepts;
+    ``run_sync`` on a session does not. Caching the names also drops 40+
+    extra round-trips.
+    """
+    async with engine.connect() as conn:
+        return await conn.run_sync(
+            lambda sync_conn: set(inspect(sync_conn).get_table_names())
+        )
 
 
 async def _count(db: AsyncSession, table: str) -> int:
@@ -190,9 +200,16 @@ async def main(confirm: bool, dry_run: bool) -> int:
     print(f"Vintiz data purge — mode: {'DRY-RUN' if dry_run else 'LIVE'}")
     print("=" * 70)
 
+    # Single round-trip introspection — replaces the per-table inspect()
+    # call that previously failed on AsyncSession.
+    existing_tables = await _existing_tables()
+
     async with AsyncSession(engine) as db:
         print("\n--- Preserved tables (counts unchanged) ---")
         for t in PRESERVED_TABLES:
+            if t not in existing_tables:
+                print(f"  {t:30s}  (table absent — skipped)")
+                continue
             try:
                 c = await _count(db, t)
                 print(f"  {t:30s}  {c:>10,d} rows kept")
@@ -205,12 +222,7 @@ async def main(confirm: bool, dry_run: bool) -> int:
         wiped_table_count = 0
 
         for table in TABLES_TO_WIPE:
-            try:
-                exists = await _table_exists(db, table)
-            except Exception as exc:
-                print(f"  {table:30s}  inspect failed: {exc}")
-                continue
-            if not exists:
+            if table not in existing_tables:
                 print(f"  {table:30s}  (table absent — skipped)")
                 continue
 
