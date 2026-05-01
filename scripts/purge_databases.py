@@ -1,11 +1,22 @@
-"""One-shot data purge for Vintiz.
+"""One-shot data purge for Vintiz — single source of truth.
 
 Wipes operational data (clients / products / transactions and their
 satellites) while preserving structural rows: users, categories, price grids,
 store zones, brand tiers, app settings.
 
+This is the **only** way to purge — the in-app endpoint
+``POST /api/admin/data/purge`` and its UI panel were removed (2026-05) after
+they silently drifted from the actual schema (wrong table name
+``cash_drawer_sessions`` + 4 missing tables). Keeping the wipe list in one
+place removes that drift surface.
+
 Usage:
+    PYTHONPATH=apps/api python scripts/purge_databases.py --dry-run
     PYTHONPATH=apps/api python scripts/purge_databases.py --confirm
+
+In production (Docker):
+    docker exec -it vintiz-api python scripts/purge_databases.py --dry-run
+    docker exec -it vintiz-api python scripts/purge_databases.py --confirm
 
 The script refuses to run without --confirm. It prints the row count for each
 table before and after the purge so the operator can audit what happened.
@@ -54,13 +65,20 @@ from app.core.database import engine
 
 
 # Wipe order matters: foreign keys are cleared from leaves to roots.
+#
+# Drift fix (2026-05): the previous list referenced ``cash_drawer_sessions``
+# (the table is actually ``cash_drawers``) and missed ``offers``,
+# ``weekly_tasks``, ``window_decors``, ``local_events``. Symptom in prod:
+# purge silently skipped these tables (or aborted on the wrong table name).
 TABLES_TO_WIPE: list[str] = [
+    # Offers — wipe before transactions/clients so coupon/avoir refs clear
+    "offers",
     # Sales
     "payments",
     "transaction_items",
     "receipts",
     "z_reports",
-    "cash_drawer_sessions",
+    "cash_drawers",
     "transactions",
     # Loyalty / avoir
     "avoir_transactions",
@@ -98,10 +116,13 @@ TABLES_TO_WIPE: list[str] = [
     "seo_snapshots",
     # Merchandising side-effects
     "window_display_proposals",
+    "window_decors",
     "store_arrangements",
     "ai_recommendations",
     "trend_analyses",
     "zone_products",
+    # Weekly checklist
+    "weekly_tasks",
     # Local calendar
     "cahier_day_archives",
     "commercial_operations",

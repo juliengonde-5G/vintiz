@@ -1991,7 +1991,6 @@ export default function SettingsPage() {
         {/* SYSTEM TAB */}
         {tab === 'system' && (
           <div className="space-y-6">
-            <PurgeDataCard />
             <Card title="Informations systeme">
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between py-2 border-b border-gray-100">
@@ -2031,97 +2030,3 @@ export default function SettingsPage() {
   );
 }
 
-
-// ---------------------------------------------------------------------------
-// Purge operational data (Lot 1 — exposed in /settings > Système)
-// ---------------------------------------------------------------------------
-
-function PurgeDataCard() {
-  const [showModal, setShowModal] = React.useState(false);
-  const [confirmText, setConfirmText] = React.useState('');
-  const [busy, setBusy] = React.useState(false);
-  const [result, setResult] = React.useState<{ total_deleted: number; per_table: Record<string, number> } | null>(null);
-  const [errorMsg, setErrorMsg] = React.useState('');
-
-  const purge = async () => {
-    if (confirmText !== 'PURGE') return;
-    setBusy(true);
-    setErrorMsg('');
-    try {
-      const res = await api.post('/api/admin/data/purge', { confirm: 'PURGE' });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setErrorMsg(body.detail || `HTTP ${res.status}`);
-      } else {
-        setResult(await res.json());
-        setShowModal(false);
-        setConfirmText('');
-      }
-    } catch (e: any) {
-      setErrorMsg(e?.message || 'Erreur réseau');
-    }
-    setBusy(false);
-  };
-
-  return (
-    <Card title="Purge des données opérationnelles">
-      <p className="text-sm text-gray-500 mb-3">
-        Supprime toutes les <strong>ventes, clients, produits, lots d&apos;arrivage,
-        coupons, offres, événements et tâches hebdo</strong>.
-        <br />
-        Conserve : utilisateurs, catégories, grilles de prix, zones boutique,
-        tiers de marques, configuration app.
-      </p>
-      <p className="text-xs text-red-600 mb-3">⚠️ Action irréversible. À utiliser avant l&apos;ouverture publique pour partir d&apos;une base propre.</p>
-
-      <Button variant="outline" onClick={() => { setShowModal(true); setConfirmText(''); setErrorMsg(''); }}>
-        Lancer la purge…
-      </Button>
-
-      {result && (
-        <div className="mt-4 p-3 bg-green-50 text-green-800 rounded-lg text-sm">
-          <p className="font-medium mb-1">{result.total_deleted.toLocaleString('fr-FR')} ligne(s) supprimée(s)</p>
-          <details className="text-xs">
-            <summary className="cursor-pointer">Détail par table</summary>
-            <ul className="mt-1 space-y-0.5">
-              {Object.entries(result.per_table)
-                .filter(([, n]) => n > 0)
-                .map(([table, n]) => (
-                  <li key={table} className="font-mono">{table} : {n}</li>
-                ))}
-            </ul>
-          </details>
-        </div>
-      )}
-
-      <Modal
-        open={showModal}
-        onClose={() => { if (!busy) { setShowModal(false); setConfirmText(''); } }}
-        title="Confirmer la purge"
-      >
-          <div className="space-y-3 text-sm">
-            <p className="text-gray-700">
-              Cette opération va effacer <strong>toutes</strong> les ventes, clients et
-              produits. Tape <code className="px-1 bg-gray-100 rounded font-mono">PURGE</code> en
-              majuscules pour confirmer.
-            </p>
-            <input
-              type="text"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              placeholder="PURGE"
-              autoFocus
-              className="w-full px-3 py-2 border border-gray-200 rounded font-mono text-center"
-            />
-            {errorMsg && <p className="text-red-600 text-xs">{errorMsg}</p>}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowModal(false)} disabled={busy}>Annuler</Button>
-              <Button onClick={purge} disabled={busy || confirmText !== 'PURGE'}>
-                {busy ? 'Purge en cours…' : 'Purger'}
-              </Button>
-            </div>
-        </div>
-      </Modal>
-    </Card>
-  );
-}
