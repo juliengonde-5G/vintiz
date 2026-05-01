@@ -31,39 +31,6 @@ router.include_router(_users_module.router)
 
 
 # ---------------------------------------------------------------------------
-# Operational data purge (Lot 1 follow-up — exposed for in-app use)
-# ---------------------------------------------------------------------------
-
-
-class PurgeRequest(BaseModel):
-    confirm: str  # must equal "PURGE" to proceed
-
-
-@router.post("/data/purge", dependencies=[Depends(manager_only)])
-async def purge_operational_data_endpoint(
-    payload: PurgeRequest,
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """Wipe operational data (clients, products, transactions, …) while
-    preserving structural rows (users, categories, zones, price grids,
-    brand tiers, app_settings).
-
-    Body must contain ``{"confirm": "PURGE"}`` to proceed — guards against
-    accidental clicks. The deletion runs in a single transaction.
-    """
-    if payload.confirm != "PURGE":
-        raise HTTPException(
-            status_code=400,
-            detail="Confirmation invalide — envoyer {\"confirm\": \"PURGE\"}",
-        )
-    from app.services.purge import purge_operational_data
-
-    summary = await purge_operational_data(db)
-    await db.commit()
-    return summary
-
-
-# ---------------------------------------------------------------------------
 # Cash drawer sessions — admin overview (/admin > Sessions caisses)
 # ---------------------------------------------------------------------------
 
