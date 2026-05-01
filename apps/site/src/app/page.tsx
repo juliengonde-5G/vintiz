@@ -6,7 +6,7 @@ import { useState, FormEvent } from "react";
 
 const INSTAGRAM_URL = "https://www.instagram.com/vintiz.fr/";
 const FACEBOOK_URL = "https://www.facebook.com/vintiz.fr";
-const TIKTOK_URL = "https://www.tiktok.com/@vintiz.vernon";
+const TIKTOK_URL = "https://www.tiktok.com/@vintiz.fr";
 
 export default function Home() {
   const [email, setEmail] = useState("");
