@@ -333,6 +333,75 @@ async def run_daily_loyalty_expiry() -> None:
         logger.error("Loyalty expiry job failed: %s", exc)
 
 
+async def run_weekly_fashion_book() -> None:
+    """Pre-generate the Fashion Book every Monday at 07:30 Paris.
+
+    The /api/ai/trends endpoint serves the cached version directly — by
+    refreshing it Monday morning before the boutique opens, the manager
+    never waits for the Anthropic call when opening the IA tab.
+    """
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.api.ai.router import get_fashion_trends
+
+        async with AsyncSession(engine) as db:
+            result = await get_fashion_trends(db=db, current_user=None, force_refresh=True)
+            await db.commit()
+            logger.info(
+                "Fashion Book regenerated for week %s/%s — %d trends",
+                result.get("week"),
+                result.get("year"),
+                len(result.get("trends") or []),
+            )
+    except Exception as exc:
+        logger.error("Fashion Book cron failed: %s", exc)
+
+
+async def run_weekly_marketing_report() -> None:
+    """Pre-generate the bicephalous marketing report every Monday at 08:30 Paris."""
+    try:
+        import json as _json
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.api.ai.router import _build_marketing_persona_report, _set_setting
+
+        async with AsyncSession(engine) as db:
+            result = await _build_marketing_persona_report(db)
+            await _set_setting(
+                db, "ai_marketing_persona_cache",
+                _json.dumps(result, ensure_ascii=False),
+            )
+            await db.commit()
+            logger.info(
+                "Marketing report regenerated for week %s/%s",
+                result.get("week"),
+                result.get("year"),
+            )
+    except Exception as exc:
+        logger.error("Marketing report cron failed: %s", exc)
+
+
+async def run_weekly_checklist() -> None:
+    """Pre-generate the weekly checklist every Monday at 09:00 Paris."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.api.ai.router import get_weekly_checklist
+
+        async with AsyncSession(engine) as db:
+            result = await get_weekly_checklist(db=db, current_user=None, force_refresh=True)
+            await db.commit()
+            logger.info(
+                "Weekly checklist regenerated for week %s/%s — %d items",
+                result.get("week"),
+                result.get("year"),
+                len(result.get("checklist") or []),
+            )
+    except Exception as exc:
+        logger.error("Weekly checklist cron failed: %s", exc)
+
+
 async def run_daily_trend_alerts() -> None:
     """Send trend product alerts to opt-in clients (PR2). 11:00 Paris."""
     try:
@@ -441,5 +510,24 @@ def register_all_jobs(scheduler) -> None:
         run_daily_trend_alerts,
         CronTrigger(hour=11, minute=0),
         id="daily_trend_alerts",
+        replace_existing=True,
+    )
+    # Weekly editorial briefs — Monday morning, before opening.
+    scheduler.add_job(
+        run_weekly_fashion_book,
+        CronTrigger(day_of_week="mon", hour=7, minute=30),
+        id="weekly_fashion_book",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_weekly_marketing_report,
+        CronTrigger(day_of_week="mon", hour=8, minute=30),
+        id="weekly_marketing_report",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_weekly_checklist,
+        CronTrigger(day_of_week="mon", hour=9, minute=0),
+        id="weekly_checklist",
         replace_existing=True,
     )

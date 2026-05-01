@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
@@ -64,22 +64,40 @@ const PRIO_COLOR: Record<string, string> = {
 };
 
 export default function MarketingReportPage() {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [generatingVisual, setGeneratingVisual] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
-  const generate = async () => {
+  const loadReport = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.post('/api/ai/persona/marketing', {});
+      const res = await api.get('/api/ai/persona/marketing');
       if (!res.ok) throw new Error('report failed');
       setReport(await res.json());
     } catch {
-      setError('Le rapport n’a pas pu être généré. Vérifie la clé ANTHROPIC_API_KEY.');
+      setError("Le rapport n'a pas pu être chargé. Vérifie la clé ANTHROPIC_API_KEY.");
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadReport(); }, [loadReport]);
+
+  const regenerate = async () => {
+    if (regenerating) return;
+    setRegenerating(true);
+    setError(null);
+    try {
+      const res = await api.post('/api/ai/persona/marketing/regenerate', {});
+      if (!res.ok) throw new Error('regenerate failed');
+      setReport(await res.json());
+    } catch {
+      setError("Le rapport n'a pas pu être régénéré.");
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -137,9 +155,13 @@ export default function MarketingReportPage() {
                 publication Instagram de la semaine. Jean-Marc (direction régionale retail)
                 analyse la conjoncture et les 3 prochains mois.
               </p>
+              <p className="text-xs opacity-75 mt-3 italic">
+                Régénéré automatiquement chaque lundi à 8h30 (Paris). La publication
+                Instagram est intégrée à la checklist hebdo.
+              </p>
             </div>
-            <Button onClick={generate} disabled={loading} variant="secondary">
-              {loading ? 'Analyse en cours…' : report ? 'Régénérer' : 'Générer le rapport'}
+            <Button onClick={regenerate} disabled={regenerating || loading} variant="secondary">
+              {regenerating ? 'Régénération…' : 'Régénérer manuellement'}
             </Button>
           </div>
         </div>
@@ -153,9 +175,9 @@ export default function MarketingReportPage() {
         {!report && !loading && (
           <Card variant="gradient">
             <p className="text-sm text-gray-700">
-              Cliquez sur <strong>Générer le rapport</strong> pour obtenir le brief
-              hebdomadaire complet — la publication Instagram de la semaine avec son visuel,
-              et la note retail mensuelle (conjoncture, prévisions 3 mois, événements majeurs).
+              Le rapport hebdomadaire n'est pas encore disponible. Il se régénère
+              automatiquement chaque lundi à 8h30. Si tu veux le forcer maintenant,
+              utilise « Régénérer manuellement ».
             </p>
           </Card>
         )}
