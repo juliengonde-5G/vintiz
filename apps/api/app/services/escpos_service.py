@@ -9,10 +9,31 @@ The printer is an 80 mm thermal model, 42 characters wide in Font A.
 
 from __future__ import annotations
 
+import logging
 import socket
+import threading
+import time
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
+
+_log = logging.getLogger("vintiz")
+
+# Per-host serialization: two concurrent ESC/POS streams on the same printer
+# would interleave bytes and corrupt the output (and the cash drawer kick
+# is part of the same byte stream).
+_host_locks: dict[tuple[str, int], threading.Lock] = {}
+_host_locks_guard = threading.Lock()
+
+
+def _lock_for(host: str, port: int) -> threading.Lock:
+    key = (host, int(port))
+    with _host_locks_guard:
+        lock = _host_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _host_locks[key] = lock
+        return lock
 
 # ESC/POS control bytes -----------------------------------------------------
 ESC = b"\x1b"
@@ -165,12 +186,46 @@ def build_test_ticket(width: int = 42) -> bytes:
     return bytes(out)
 
 
-def send_raw(host: str, port: int, payload: bytes, timeout: float = 5.0) -> None:
-    """Send a raw byte payload to a network printer (port 9100)."""
+
+
+def send_raw(
+    host: str,
+    port: int,
+    payload: bytes,
+    timeout: float = 5.0,
+    *,
+    retries: int = 3,
+) -> None:
+    """Send a raw byte payload to a network printer (port 9100).
+
+    Retries with exponential backoff (0.3s, 0.6s, 1.2s) on transient TCP
+    errors — the boutique Wi-Fi can drop the printer for a few seconds during
+    AP roaming. Concurrent calls to the same host:port are serialized so that
+    two payloads (e.g. a receipt + a drawer kick) never interleave their
+    bytes on the wire.
+    """
     if not host:
         raise ValueError("Imprimante non configuree : adresse IP manquante")
-    with socket.create_connection((host, int(port)), timeout=timeout) as sock:
-        sock.sendall(payload)
+    last_exc: Exception | None = None
+    lock = _lock_for(host, port)
+    with lock:
+        for attempt in range(max(1, retries)):
+            try:
+                with socket.create_connection((host, int(port)), timeout=timeout) as sock:
+                    sock.sendall(payload)
+                return
+            except (OSError, socket.timeout) as exc:
+                last_exc = exc
+                if attempt + 1 >= retries:
+                    break
+                backoff = 0.3 * (2 ** attempt)
+                _log.warning(
+                    "escpos send_raw failed on %s:%s (attempt %d/%d): %s — retry in %.1fs",
+                    host, port, attempt + 1, retries, exc, backoff,
+                )
+                time.sleep(backoff)
+    assert last_exc is not None
+    raise last_exc
 
 
 def print_receipt(transaction: Any, host: str, port: int = 9100, *, width: int = 42, cut: bool = True) -> int:

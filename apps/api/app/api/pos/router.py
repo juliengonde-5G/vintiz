@@ -434,13 +434,22 @@ async def resend_transaction(
     transaction_id: uuid.UUID,
     request: ResendRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(manager_only),
 ):
-    """Resend a transaction receipt by email or SMS."""
+    """Resend a transaction receipt by email or SMS.
+
+    Manager-only: the receipt payload contains client PII (name, email,
+    purchased items). A staff or magic-link client JWT must not be able to
+    pull arbitrary tickets by guessing transaction UUIDs.
+    """
     pos_service = PosService(db)
     transaction = await pos_service.get_transaction(transaction_id)
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction introuvable")
+    logger.info(
+        "Receipt resend requested by user=%s for transaction=%s channel=%s",
+        current_user.id, transaction_id, request.channel,
+    )
 
     client = transaction.get("client")
     if not client:
@@ -562,7 +571,13 @@ async def print_transaction_receipt(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Imprimante injoignable : {exc}") from exc
 
-    # Auto-kick drawer if cash payment and drawer enabled
+    # Auto-kick drawer if cash payment and drawer enabled. The kick is best
+    # effort (the printer was reachable just above), but a silent failure
+    # would leave the drawer closed on a cash sale without alerting the
+    # cashier — accounting risk. Surface the outcome in the response and
+    # log the full traceback if the kick fails.
+    drawer_kick_ok: bool | None = None
+    drawer_error: str | None = None
     drawer_cfg = cfg["cash_drawer"]
     if drawer_cfg.get("enabled") and drawer_cfg.get("kick_on_cash"):
         has_cash = any(
@@ -578,10 +593,21 @@ async def print_transaction_receipt(
                     on_time=int(drawer_cfg.get("on_time_ms") or 50),
                     off_time=int(drawer_cfg.get("off_time_ms") or 250),
                 )
-            except Exception:  # noqa: BLE001 — drawer is best effort
-                pass
+                drawer_kick_ok = True
+            except Exception as exc:  # noqa: BLE001
+                drawer_kick_ok = False
+                drawer_error = str(exc)
+                logger.exception(
+                    "Cash drawer kick failed for transaction %s on %s:%s",
+                    transaction_id, host, port,
+                )
 
-    return {"success": True, "transaction_id": str(transaction_id)}
+    response: dict = {"success": True, "transaction_id": str(transaction_id)}
+    if drawer_kick_ok is not None:
+        response["drawer_kicked"] = drawer_kick_ok
+        if drawer_error:
+            response["drawer_error"] = drawer_error
+    return response
 
 
 @router.get("/transactions/{transaction_id}/receipt")

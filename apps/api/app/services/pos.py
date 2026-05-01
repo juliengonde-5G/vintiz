@@ -493,13 +493,27 @@ class PosService:
             self.db.add(account)
             await self.db.flush()
 
+        # Idempotency guard: a replay (e.g. router crash between flush and
+        # commit on the first attempt) must NOT credit the same sale twice.
+        # The earn ledger row is keyed by the unique transaction_number.
+        sale_marker = f"Sale #{transaction.transaction_number}"
+        already = await self.db.execute(
+            select(LoyaltyTransaction.id).where(
+                LoyaltyTransaction.account_id == account.id,
+                LoyaltyTransaction.tx_type == LoyaltyTxType.earn,
+                LoyaltyTransaction.description == sale_marker,
+            ).limit(1)
+        )
+        if already.scalar_one_or_none() is not None:
+            return
+
         before = int(account.points or 0)
         account.points = before + points
         self.db.add(LoyaltyTransaction(
             account_id=account.id,
             tx_type=LoyaltyTxType.earn,
             points=points,
-            description=f"Sale #{transaction.transaction_number}",
+            description=sale_marker,
         ))
 
         crossed = milestones_crossed(before, account.points)
