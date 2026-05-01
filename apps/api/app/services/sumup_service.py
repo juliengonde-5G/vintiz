@@ -18,6 +18,7 @@ for single-worker dev/test setups and is reset on process restart.
 """
 from __future__ import annotations
 
+import logging
 import os
 import time
 import uuid
@@ -25,6 +26,8 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 import httpx
+
+_log = logging.getLogger("vintiz")
 
 SUMUP_API_BASE = "https://api.sumup.com/v0.1"
 
@@ -171,9 +174,22 @@ class SumUpService:
         # Auto-detect: sandbox whenever no API key is set
         if env not in ("sandbox", "production"):
             env = "sandbox" if not self.api_key else "production"
-        # If production requested but no key, fall back to sandbox
+        # If production requested but no key, fall back to sandbox. Loud
+        # WARNING when the SYSTEM environment itself is production: a missing
+        # SUMUP_API_KEY in real prod was previously silent and let any
+        # checkout_id auto-resolve to PAID — fake-payment surface.
         if env == "production" and not self.api_key:
             env = "sandbox"
+            try:
+                from app.core.config import settings as _app_settings
+                if _app_settings.is_production:
+                    _log.error(
+                        "SumUp configured as production but SUMUP_API_KEY is missing. "
+                        "Falling back to sandbox — card payments will NOT be processed. "
+                        "Configure SUMUP_API_KEY + SUMUP_MERCHANT_CODE before going live."
+                    )
+            except Exception:  # noqa: BLE001 — never block boot on log
+                pass
         self.environment = env
         delay_persisted = persisted.get("sandbox_auto_delay_sec")
         try:
@@ -410,8 +426,21 @@ class SumUpService:
             # Legacy one-shot simulation — still return PAID for backward compat
             return {"checkout_id": checkout_id, "status": "PAID", "environment": "sandbox", "simulated": True}
 
+        # Sandbox mode: an arbitrary, unknown checkout_id must NOT auto-resolve
+        # to PAID. The previous behaviour let a forged ID pass for a real
+        # payment when the API key was unset in prod (fake-payment surface).
         if self.environment == "sandbox" or not self.api_key:
-            return {"checkout_id": checkout_id, "status": "PAID", "environment": "sandbox", "simulated": True}
+            _log.warning(
+                "Rejected sandbox status poll for unknown checkout_id=%s",
+                checkout_id,
+            )
+            return {
+                "checkout_id": checkout_id,
+                "status": "FAILED",
+                "environment": "sandbox",
+                "simulated": True,
+                "error": "unknown checkout_id",
+            }
 
         try:
             async with httpx.AsyncClient(timeout=10) as client:

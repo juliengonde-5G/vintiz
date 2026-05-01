@@ -204,7 +204,14 @@ async def redeem_coupon(
     )).scalar_one_or_none()
     if coupon is None:
         raise CouponError("not_found")
+    # Idempotent on replay: if this very same transaction already redeemed
+    # the coupon, we re-confirm the link instead of raising "redeemed". This
+    # keeps the POS retry path safe — prior to this guard, a replay after
+    # mid-flush crash would surface a confusing "code déjà utilisé" error
+    # for a coupon that the cashier never actually billed twice.
     if coupon.redeemed_at is not None:
+        if coupon.redeemed_transaction_id == transaction_id:
+            return coupon
         raise CouponError("redeemed")
     coupon.redeemed_at = now
     coupon.redeemed_transaction_id = transaction_id
