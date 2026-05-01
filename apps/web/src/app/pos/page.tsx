@@ -12,8 +12,8 @@ import LoyaltyCustomerCard, { type CustomerBrief } from '@/components/pos/Loyalt
 import ClientCompanion from '@/components/pos/ClientCompanion';
 import { api } from '@/lib/api';
 import { useConnectivity } from '@/lib/connectivity';
-import {
 import { formatCurrency } from '@/lib/format';
+import {
   count as queueCount,
   drain as drainQueue,
   enqueue as enqueueOffline,
