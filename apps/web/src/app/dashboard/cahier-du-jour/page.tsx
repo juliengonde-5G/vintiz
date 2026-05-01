@@ -59,7 +59,16 @@ interface CahierPayload {
 const CURRENCY = (n: number | null | undefined) =>
   n == null ? '—' : n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// Local date → YYYY-MM-DD. Avoids the Date.toISOString() pitfall which
+// converts to UTC and can shift the date by one day in fuseaux ≠ UTC
+// (Paris CEST = UTC+2 → midnight local devient 22:00 UTC la veille).
+const formatLocalISO = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+const todayISO = () => formatLocalISO(new Date());
 
 const N1_SOURCE_LABELS: Record<string, string> = {
   same_date_last_year: 'Compare a la meme date N-1',
@@ -123,7 +132,7 @@ export default function CahierDuJourPage() {
   const navigateDay = (offset: number) => {
     const d = new Date(selectedDate + 'T00:00:00');
     d.setDate(d.getDate() + offset);
-    const iso = d.toISOString().slice(0, 10);
+    const iso = formatLocalISO(d);
     setSelectedDate(iso);
     const url = new URL(window.location.href);
     if (iso === todayISO()) url.searchParams.delete('date');

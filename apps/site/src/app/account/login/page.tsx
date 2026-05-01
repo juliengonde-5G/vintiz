@@ -149,6 +149,17 @@ export default function AccountLoginPage() {
             {info && (
               <div className="p-3 bg-vz-teal/10 text-vz-teal rounded-lg text-sm">{info}</div>
             )}
+            <div className="p-3 bg-vz-bg-alt border border-vz-line rounded-lg text-xs text-vz-ink-soft space-y-1">
+              <p>
+                <strong>Le code n&apos;arrive pas&nbsp;?</strong>
+              </p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>Vérifiez le dossier spam / courrier indésirable.</li>
+                <li>Le délai d&apos;arrivée est généralement de 30 s à 2 min.</li>
+                <li>Sur SMS, vérifiez que le numéro saisi commence par +33.</li>
+                <li>Essayez l&apos;autre canal (email / SMS) en revenant en arrière.</li>
+              </ul>
+            </div>
             <div>
               <label className="block text-sm text-gray-700 mb-1" htmlFor="code-input">
                 Code à 6 chiffres
