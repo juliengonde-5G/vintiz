@@ -179,13 +179,30 @@ async def _count(db: AsyncSession, table: str) -> int:
     return int(result.scalar_one())
 
 
-async def _wipe(db: AsyncSession, table: str) -> int:
-    """DELETE all rows. Returns rows deleted."""
-    before = await _count(db, table)
-    if before == 0:
-        return 0
-    await db.execute(text(f"DELETE FROM {table}"))
-    return before
+async def _truncate_cascade(db: AsyncSession, tables: list[str]) -> None:
+    """PostgreSQL bulk wipe — atomic + handles FK chains automatically.
+
+    Without CASCADE the previous DELETE-loop hit
+    ``ForeignKeyViolationError: events_log_product_id_fkey`` because
+    ``events_log`` (which references ``products`` via FK) was wiped
+    *after* ``products``. Reordering the list manually is fragile —
+    every new FK on a Vintiz table would re-introduce the bug.
+
+    ``TRUNCATE … CASCADE``:
+    - Wipes all listed tables in a single statement.
+    - CASCADE auto-extends to any referencing table — but only the ones
+      we already listed (FKs in Vintiz only point downward into wipe-list
+      tables, never up to ``users`` / ``categories`` / etc.).
+    - ``RESTART IDENTITY`` resets sequences (e.g. ``transaction_number_seq``
+      back to 1) so a re-opened boutique starts clean.
+    - Atomic: either all tables are emptied or none — no partial state.
+    """
+    if not tables:
+        return
+    quoted = ", ".join(f'"{t}"' for t in tables)
+    await db.execute(
+        text(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE")
+    )
 
 
 async def main(confirm: bool, dry_run: bool) -> int:
@@ -217,35 +234,42 @@ async def main(confirm: bool, dry_run: bool) -> int:
                 print(f"  {t:30s}  (skipped: {exc.__class__.__name__})")
 
         print("\n--- Wiping operational tables ---")
+        # Phase 1: count what we're about to wipe (per-table report).
         total_before = 0
-        total_after = 0
-        wiped_table_count = 0
-
+        wipe_targets: list[str] = []
         for table in TABLES_TO_WIPE:
             if table not in existing_tables:
                 print(f"  {table:30s}  (table absent — skipped)")
                 continue
-
             before = await _count(db, table)
             total_before += before
-
-            if dry_run:
-                print(f"  {table:30s}  would delete {before:>10,d} rows")
-                continue
-
-            deleted = await _wipe(db, table)
-            wiped_table_count += 1 if deleted else 0
-            after = await _count(db, table)
-            total_after += after
-            print(
-                f"  {table:30s}  deleted {deleted:>10,d}  remaining {after:>4,d}"
-            )
+            wipe_targets.append(table)
+            verb = "would delete" if dry_run else "queued    "
+            print(f"  {table:30s}  {verb} {before:>10,d} rows")
 
         if dry_run:
             print(f"\nDRY-RUN: would delete {total_before:,d} rows total")
             return 0
 
+        # Phase 2: single atomic TRUNCATE … CASCADE on PostgreSQL ;
+        # per-table DELETE fallback for SQLite (dev tests). PG is the
+        # only target the prod ops actually use.
+        dialect = engine.dialect.name
+        if dialect == "postgresql":
+            await _truncate_cascade(db, wipe_targets)
+            wiped_table_count = len(wipe_targets)
+        else:
+            wiped_table_count = 0
+            for table in wipe_targets:
+                await db.execute(text(f"DELETE FROM {table}"))
+                wiped_table_count += 1
+
         await db.commit()
+
+        # Phase 3: verify everything reached zero.
+        total_after = 0
+        for table in wipe_targets:
+            total_after += await _count(db, table)
 
     print("\n" + "=" * 70)
     print(
