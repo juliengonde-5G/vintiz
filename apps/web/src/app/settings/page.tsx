@@ -187,19 +187,43 @@ export default function SettingsPage() {
     if (tab === 'fidelite') loadLoyaltyConfig();
   }, [tab]);
 
-  // ── SumUp sandbox: auto-refresh snapshot every 2s while payment tab is open ──
+  // ── SumUp sandbox snapshot: auto-refresh while the payment tab is open
+  // and the page is visible. Polling every 5 s (was 2 s) is enough for the
+  // 5 s auto-approve delay; we also pause when the tab is backgrounded so
+  // a forgotten /settings tab doesn't keep hammering the API.
   useEffect(() => {
     if (tab !== 'payment') return;
     let cancelled = false;
+    let handle: ReturnType<typeof setInterval> | null = null;
+
     const refresh = async () => {
       try {
         const res = await api.get('/api/pos/payments/cb/sandbox/state?limit=40');
         if (!cancelled && res.ok) setSandbox(await res.json());
       } catch { /* silent */ }
     };
+    const start = () => {
+      if (handle !== null) return;
+      handle = setInterval(refresh, 5000);
+    };
+    const stop = () => {
+      if (handle === null) return;
+      clearInterval(handle);
+      handle = null;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') { refresh(); start(); }
+      else { stop(); }
+    };
+
     refresh();
-    const handle = setInterval(refresh, 2000);
-    return () => { cancelled = true; clearInterval(handle); };
+    if (typeof document === 'undefined' || document.visibilityState === 'visible') start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      stop();
+    };
   }, [tab]);
 
   const runSandboxTest = async () => {

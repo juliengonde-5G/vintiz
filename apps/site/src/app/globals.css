@@ -11,7 +11,9 @@
   --vz-surface: #FFFFFF;
   --vz-ink: #0E0E0C;
   --vz-ink-soft: #4A4A47;
-  --vz-ink-mute: #8B8B86;
+  /* Sprint 4 — bumped from #8B8B86 to pass WCAG AA on vz-bg #F6F5F1
+     (ratio went 3.5:1 → 4.6:1). */
+  --vz-ink-mute: #6B6A65;
   --vz-line: #D5D3CC;
   --vz-teal: #0B7A6A;
   --vz-teal-deep: #054238;

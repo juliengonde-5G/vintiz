@@ -554,8 +554,36 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchDashboard();
     fetchWeather();
-    const interval = setInterval(fetchDashboard, 60000);
-    return () => clearInterval(interval);
+
+    // Pause polling when the tab is hidden so we don't burn the
+    // OpenWeather quota and DB hits while the manager has the dashboard
+    // open in a background tab. Resume + immediate refresh on focus.
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (interval !== null) return;
+      interval = setInterval(fetchDashboard, 60000);
+    };
+    const stop = () => {
+      if (interval === null) return;
+      clearInterval(interval);
+      interval = null;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchDashboard();
+        start();
+      } else {
+        stop();
+      }
+    };
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      start();
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      stop();
+    };
   }, [fetchDashboard, fetchWeather]);
 
   const kpis = data

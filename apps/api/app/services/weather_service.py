@@ -4,11 +4,18 @@ from datetime import datetime
 
 import httpx
 
+from app.core.cache import cache_get_or_set
+
 logger = logging.getLogger("vintiz")
 
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
 VERNON_LAT = 49.0937
 VERNON_LON = 1.4833
+
+# Cache TTLs — current weather refreshed every 15 min is plenty for a
+# boutique dashboard ; the 5-day forecast doesn't move that fast either.
+_CURRENT_TTL_SECONDS = 900   # 15 minutes
+_FORECAST_TTL_SECONDS = 3600  # 1 hour
 
 # Realistic seasonal fallback data for Vernon (Normandie)
 def _get_seasonal_fallback() -> dict:
@@ -25,8 +32,8 @@ def _get_seasonal_fallback() -> dict:
             "humidity": 85, "icon": "09d", "wind_speed": 5.1, "city": "Vernon"}
 
 
-async def get_current_weather() -> dict:
-    """Fetch current weather for Vernon (27200)."""
+async def _fetch_current_weather_uncached() -> dict:
+    """Direct OpenWeather call — wrapped by the cached entry-point below."""
     if not OPENWEATHER_API_KEY:
         return _get_seasonal_fallback()
 
@@ -57,8 +64,30 @@ async def get_current_weather() -> dict:
         return {"description": "Erreur météo", "temp": 0, "feels_like": 0, "humidity": 0, "icon": "01d", "wind_speed": 0, "city": "Vernon"}
 
 
+async def get_current_weather() -> dict:
+    """Fetch current weather for Vernon (27200), Redis-cached 15 min.
+
+    Without the cache, every dashboard auto-refresh (60 s) × every open admin
+    tab burned an OpenWeather call — quota gone in a day. 15 min is enough
+    granularity for a retail dashboard.
+    """
+    return await cache_get_or_set(
+        key="vintiz:weather:current:vernon",
+        ttl=_CURRENT_TTL_SECONDS,
+        factory=_fetch_current_weather_uncached,
+    )
+
+
 async def get_weather_forecast() -> list:
-    """Fetch 5-day forecast for Vernon."""
+    """Fetch 5-day forecast for Vernon, Redis-cached 1 h."""
+    return await cache_get_or_set(
+        key="vintiz:weather:forecast:vernon",
+        ttl=_FORECAST_TTL_SECONDS,
+        factory=_fetch_weather_forecast_uncached,
+    )
+
+
+async def _fetch_weather_forecast_uncached() -> list:
     if not OPENWEATHER_API_KEY:
         from datetime import date, timedelta
         base = _get_seasonal_fallback()

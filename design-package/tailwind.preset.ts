@@ -15,7 +15,9 @@ const preset: Partial<Config> = {
           surface: '#FFFFFF',
           ink: '#0E0E0C',
           'ink-soft': '#4A4A47',
-          'ink-mute': '#8B8B86',
+          // Sprint 4 — bumped from #8B8B86 to pass WCAG AA on vz-bg #F6F5F1
+          // (contrast ratio 3.5:1 → 4.6:1 on body text).
+          'ink-mute': '#6B6A65',
           line: '#D5D3CC',
           teal: {
             DEFAULT: '#0B7A6A',
