@@ -131,8 +131,8 @@ const jsonLd = {
     },
   ],
   sameAs: [
-    "https://www.instagram.com/vintiz.vernon/",
-    "https://www.facebook.com/vintiz.vernon",
+    "https://www.instagram.com/vintiz.fr/",
+    "https://www.facebook.com/vintiz.fr",
     "https://www.tiktok.com/@vintiz.vernon",
   ],
 };

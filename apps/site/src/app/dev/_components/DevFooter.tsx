@@ -31,10 +31,10 @@ export default function DevFooter() {
         <div className="flex flex-col items-center gap-4">
           <Image src="/logo-teal.png" alt="Vintiz" width={88} height={88} className="h-16 w-auto" />
           <div className="flex items-center gap-3">
-            <a href="https://www.facebook.com/vintiz.vernon" aria-label="Facebook Vintiz" className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors">
+            <a href="https://www.facebook.com/vintiz.fr" aria-label="Facebook Vintiz" className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" /></svg>
             </a>
-            <a href="https://www.instagram.com/vintiz.vernon/" aria-label="Instagram Vintiz" className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors">
+            <a href="https://www.instagram.com/vintiz.fr/" aria-label="Instagram Vintiz" className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
                 <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
