@@ -185,6 +185,11 @@ def _apple_certs_configured() -> bool:
     return bool(p12_path and wwdr_path and team and team != _APPLE_TEAM_ID_PLACEHOLDER)
 
 
+def apple_wallet_available() -> bool:
+    """Public alias — front-end checks before showing the .pkpass button."""
+    return _apple_certs_configured()
+
+
 def build_apple_pkpass(payload: WalletPassPayload) -> bytes | None:
     """Produce a signed ``.pkpass`` ZIP, or ``None`` when certs are missing.
 
@@ -303,6 +308,11 @@ def _google_creds_configured() -> bool:
     sa_path = os.getenv("WALLET_GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
     issuer = os.getenv("WALLET_GOOGLE_ISSUER_ID", "").strip()
     return bool(sa_path and issuer and issuer != "0000000000000000000")
+
+
+def google_wallet_available() -> bool:
+    """Public alias — front-end checks before showing the Google Wallet button."""
+    return _google_creds_configured()
 
 
 def build_google_save_url(payload: WalletPassPayload) -> str | None:

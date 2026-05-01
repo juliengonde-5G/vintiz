@@ -1817,7 +1817,12 @@ async def public_wallet_pass(
     ``pass.json`` and the Google ``LoyaltyObject`` plus the metadata the
     front needs to render a preview card.
     """
-    from app.services.wallet import build_pass_by_email, payload_to_dict
+    from app.services.wallet import (
+        apple_wallet_available,
+        build_pass_by_email,
+        google_wallet_available,
+        payload_to_dict,
+    )
 
     email_clean = email.strip().lower()
     if "@" not in email_clean or "." not in email_clean.split("@", 1)[-1]:
@@ -1825,7 +1830,10 @@ async def public_wallet_pass(
     pass_payload = await build_pass_by_email(db, email_clean)
     if pass_payload is None:
         raise HTTPException(status_code=404, detail="Compte introuvable")
-    return payload_to_dict(pass_payload)
+    out = payload_to_dict(pass_payload)
+    out["apple_signed_available"] = apple_wallet_available()
+    out["google_save_available"] = google_wallet_available()
+    return out
 
 
 @router.get("/clients/{client_id}/wallet")
@@ -1835,12 +1843,20 @@ async def client_wallet_pass(
     current_user: User = Depends(get_current_user),
 ):
     """Manager-side wallet payload (preview a client's pass)."""
-    from app.services.wallet import build_pass_for_client, payload_to_dict
+    from app.services.wallet import (
+        apple_wallet_available,
+        build_pass_for_client,
+        google_wallet_available,
+        payload_to_dict,
+    )
 
     pass_payload = await build_pass_for_client(db, client_id)
     if pass_payload is None:
         raise HTTPException(status_code=404, detail="Client not found")
-    return payload_to_dict(pass_payload)
+    out = payload_to_dict(pass_payload)
+    out["apple_signed_available"] = apple_wallet_available()
+    out["google_save_available"] = google_wallet_available()
+    return out
 
 
 # ---------------------------------------------------------------------------
