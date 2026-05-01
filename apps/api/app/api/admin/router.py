@@ -398,6 +398,47 @@ async def send_email_test(
 
 
 # ---------------------------------------------------------------------------
+# Magic-link probe (manager-only) — debug "OTP not arriving"
+# ---------------------------------------------------------------------------
+
+
+class MagicLinkProbeRequest(BaseModel):
+    target: str  # email or phone — the same field accepted by the public endpoint
+
+
+@router.post("/magic-link/probe", dependencies=[Depends(manager_only)])
+async def magic_link_probe(
+    payload: MagicLinkProbeRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Manager-only diagnostic: trigger a real OTP send and report back the
+    actual delivery channel/backend/mode. Bypasses the public anti-enumeration
+    silence so the manager can see *why* a customer is not receiving codes.
+
+    Possible outcomes for ``delivery_mode``:
+      - ``sent``       OTP successfully delivered through the live backend
+      - ``simulated``  no real backend configured (Brevo/SMTP/Twilio) — the
+                        OTP was only logged, the customer will not receive it
+      - ``failed``     backend present but the call itself failed
+      - ``skipped``    rate-limit hit, malformed input, etc. (see ``reason``)
+    """
+    from app.services.magic_link import issue
+
+    target = (payload.target or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="target manquant")
+    result = await issue(db, target, ip=None)
+    await db.commit()
+    return {
+        "target": target,
+        "delivery_mode": result.get("delivery_mode"),
+        "backend": result.get("backend"),
+        "channel": result.get("channel"),
+        "reason": result.get("reason"),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Weather endpoint
 # ---------------------------------------------------------------------------
 

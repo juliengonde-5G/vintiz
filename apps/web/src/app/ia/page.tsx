@@ -373,8 +373,6 @@ export default function IAPage() {
     });
   };
 
-  const isMonday = new Date().getDay() === 1;
-
   const loadTrends = useCallback(async () => {
     setLoading(true);
     try {
@@ -631,18 +629,12 @@ export default function IAPage() {
               <div>
                 <h2 className="text-lg font-semibold text-black">Checklist de la semaine</h2>
                 {checklist && <p className="text-sm text-gray-500">Semaine {checklist.week} — {checklist.year} · Générée le {new Date(checklist.generated_at).toLocaleDateString('fr-FR')}</p>}
-                {!isMonday && <p className="text-xs text-gray-400 mt-1">La checklist est actualisée chaque lundi par l&apos;IA</p>}
+                <p className="text-xs text-gray-400 mt-1">Régénérée automatiquement chaque lundi à 9h00 (Paris).</p>
               </div>
               <div className="flex items-center gap-2">
-                {isMonday && (
-                  <button onClick={() => loadChecklist(true)} disabled={checklistLoading}
-                    className="min-h-[44px] px-4 py-2 rounded-lg bg-vz-teal text-white hover:bg-vz-teal-deep text-sm font-medium transition-colors">
-                    {checklistLoading ? 'Génération...' : '🔄 Actualiser (lundi)'}
-                  </button>
-                )}
-                <button onClick={() => loadChecklist(false)} disabled={checklistLoading}
-                  className="min-h-[44px] px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium transition-colors">
-                  {checklistLoading ? '...' : 'Charger'}
+                <button onClick={() => loadChecklist(true)} disabled={checklistLoading}
+                  className="min-h-[44px] px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium transition-colors disabled:opacity-50">
+                  {checklistLoading ? 'Régénération…' : 'Régénérer manuellement'}
                 </button>
               </div>
             </div>
@@ -732,15 +724,12 @@ export default function IAPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {isMonday && (
-                    <button onClick={() => loadTrendsMode(true)} disabled={trendsModeLoading}
-                      className="min-h-[44px] px-4 py-2 rounded-lg bg-vz-teal text-white hover:bg-vz-teal-deep text-sm font-medium transition-colors">
-                      {trendsModeLoading ? 'Actualisation IA…' : 'Actualiser (lundi)'}
-                    </button>
-                  )}
-                  <button onClick={() => loadTrendsMode(false)} disabled={trendsModeLoading}
-                    className="min-h-[44px] px-4 py-2 rounded-lg border border-vz-line text-vz-ink hover:bg-white text-sm font-medium transition-colors">
-                    {trendsModeLoading ? '…' : 'Charger'}
+                  <span className="text-[11px] text-vz-ink-mute italic max-w-[200px] text-right hidden md:block">
+                    Régénéré automatiquement chaque lundi à 7h30 (Paris).
+                  </span>
+                  <button onClick={() => loadTrendsMode(true)} disabled={trendsModeLoading}
+                    className="min-h-[44px] px-4 py-2 rounded-lg border border-vz-line text-vz-ink hover:bg-white text-sm font-medium transition-colors disabled:opacity-50">
+                    {trendsModeLoading ? 'Actualisation…' : 'Régénérer manuellement'}
                   </button>
                 </div>
               </div>
@@ -754,7 +743,7 @@ export default function IAPage() {
             {trendsModeLoading ? (
               <Card><div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-vz-teal" /></div></Card>
             ) : !trendsMode ? (
-              <Card><p className="text-gray-400 text-center py-8">Cliquez &quot;Charger&quot; pour ouvrir le Fashion Book de la semaine.</p></Card>
+              <Card><p className="text-gray-400 text-center py-8">Chargement du Fashion Book…</p></Card>
             ) : (
               <>
                 {/* The 5 trend articles */}

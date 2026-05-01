@@ -259,19 +259,10 @@ async def get_weekly_checklist(
     )
     avg_by_cat = {str(row[0]): float(row[1]) for row in avg_by_cat_result.all()}
 
-    # Build overpriced list (sale_price > 1.5 * category avg)
-    overpriced = []
-    for p in low_score_products:
-        cat_avg = avg_by_cat.get(str(p.category_id), float(p.sale_price))
-        if cat_avg > 0 and float(p.sale_price) > 1.5 * cat_avg:
-            overpriced.append({
-                "id": str(p.id),
-                "name": p.name,
-                "sale_price": float(p.sale_price),
-                "category_avg": round(cat_avg, 2),
-                "suggested_price": round(cat_avg * 1.1, 2),
-            })
-    overpriced = overpriced[:10]
+    # Note prix : la politique boutique impose un prix correct dès la mise en
+    # rayon (pas de markdown). Aucune routine de réduction de prix n'est
+    # générée — le merchandising agit sur la visibilité, la rotation, la
+    # composition de vitrine, mais jamais sur le tarif post-shelving.
 
     # Products to highlight (mid range score)
     mise_en_avant_products = [
@@ -295,17 +286,21 @@ async def get_weekly_checklist(
             "products": mise_en_avant_products,
         },
         {
-            "type": "reduction_prix",
-            "priority": "moyenne",
-            "title": f"Reduire le prix de {len(overpriced)} produits sur-evalues",
-            "description": "Ces articles sont prix au-dessus de 1.5x la moyenne de leur categorie. Une reduction pourrait accelerer leur vente.",
-            "products": overpriced,
-        },
-        {
             "type": "vitrine",
             "priority": "haute",
             "title": "Reorganiser la vitrine cette semaine",
             "description": f"Semaine {week} — Privilegier les pieces colorees et les marques premium en vitrine pour maximiser l'attractivite.",
+        },
+        {
+            "type": "publication_marketing",
+            "priority": "haute",
+            "title": "Publier le post Instagram de la semaine",
+            "description": (
+                "Le rapport marketing du lundi propose une publication hebdo (post Instagram + carrousel + "
+                "story) autour d'une pièce hero de la boutique. Programmer la publication au créneau "
+                "recommandé et préparer le visuel d'accompagnement."
+            ),
+            "deeplink": "/ia/marketing",
         },
         {
             "type": "commande",
@@ -326,18 +321,16 @@ async def get_weekly_checklist(
                 f"- {p['name']} (prix: {p['sale_price']}€, score: {p.get('trend_score', 'N/A')})"
                 for p in mise_en_avant_products[:5]
             )
-            overpriced_summary = "\n".join(
-                f"- {p['name']} (prix actuel: {p['sale_price']}€, suggere: {p['suggested_price']}€)"
-                for p in overpriced[:5]
-            )
             prompt = f"""Tu es un expert en boutique de seconde main premium.
 Semaine {week}/{year}. Voici un résumé des produits en boutique:
 
 Produits à faible score (à mettre en avant):
 {product_summary or 'Aucun'}
 
-Produits sur-évalués (à réduire):
-{overpriced_summary or 'Aucun'}
+INTERDICTION ABSOLUE : ne propose JAMAIS de baisse de prix, de markdown, de
+soldes ou de remise. La boutique fixe le prix correct dès la mise en rayon.
+Tes leviers : visibilité (vitrine, mise en avant), composition de rayon,
+mise en scène, rotation, publication Instagram. Pas de pricing.
 
 Génère 2-3 recommandations concrètes et actionnables pour améliorer les ventes cette semaine. Sois bref et pratique (max 100 mots)."""
             msg = await client_ai.messages.create(
@@ -459,6 +452,10 @@ Contraintes :
 - Maximum 5 tendances. Préfère 4 fortes plutôt que 5 médiocres.
 - Cite une vraie source identifiable par tendance (pas "tendances générales").
 - Les `match_keywords` servent à matcher l'inventaire boutique (mots simples, FR).
+- INTERDICTION : ne mentionne aucune stratégie prix, markdown, soldes,
+  remises ou évolution tarifaire. La boutique pratique un prix juste dès
+  la mise en rayon. Si tu veux parler de "valeur perçue", reste sur la
+  matière, l'origine, l'usage — jamais sur l'arbitrage prix.
 - Réponds UNIQUEMENT avec le JSON, sans markdown ni commentaire."""
             msg = await client_ai.messages.create(
                 model="claude-haiku-4-5",
@@ -661,12 +658,12 @@ Contraintes :
 # Persona Marketing
 # ---------------------------------------------------------------------------
 
-@router.post("/persona/marketing")
-async def generate_marketing_persona(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-):
-    """Generate a marketing manager persona report for the boutique."""
+async def _build_marketing_persona_report(db: AsyncSession) -> dict:
+    """Generate the bicephalous marketing persona report.
+
+    Pure function (no auth, no caching) — called both by the GET endpoint
+    fallback and by the Monday cron via app.jobs.run_weekly_marketing_report.
+    """
     now = datetime.now(timezone.utc)
 
     # Collect boutique metrics
@@ -811,6 +808,12 @@ Tu prends DEUX personas successifs et tu réponds en JSON :
   }}
 }}
 
+INTERDICTION ABSOLUE : ne propose JAMAIS de baisse de prix, de markdown,
+de soldes ou de stratégie tarifaire dynamique. La boutique fixe un prix
+correct dès la mise en rayon — c'est un parti-pris. Tes leviers :
+acquisition, visibilité, mise en scène, fidélisation, narratif éditorial,
+événements, partenariats. Pas de pricing.
+
 Réponds UNIQUEMENT avec le JSON, sans markdown."""
             msg = await client_ai.messages.create(
                 model="claude-haiku-4-5",
@@ -875,7 +878,7 @@ Réponds UNIQUEMENT avec le JSON, sans markdown."""
             "evenements_majeurs": [
                 {"date": "26/05", "evenement": "Fête des mères", "impact": "Pic acquisition cadeau, panier moyen +25 %, prévoir packaging cadeau."},
                 {"date": "06-08/06", "evenement": "Vacances de la Pentecôte", "impact": "Affluence touristique sur Vernon (Giverny), trafic boutique +30 % le weekend."},
-                {"date": "26/06", "evenement": "Soldes d'été", "impact": "Lancement cadre — démarques sur le stock 6+ semaines, vitrine soldes obligatoire."},
+                {"date": "21/06", "evenement": "Fête de la Musique", "impact": "Trafic centre-ville en soirée — nocturne possible, vitrine été à valider."},
                 {"date": "14/07", "evenement": "Fête nationale", "impact": "Boutique fermée. Programme retro le 13/07, soir."},
             ],
             "recommandations_boutique": [
@@ -892,11 +895,53 @@ Réponds UNIQUEMENT avec le JSON, sans markdown."""
 
     return {
         "generated_at": now.isoformat(),
+        "week": now.isocalendar()[1],
+        "year": now.year,
         "context": context,
         "hero_product": hero_product,
         "digital_marketing": digital_marketing,
         "retail_director": retail_director,
     }
+
+
+@router.get("/persona/marketing")
+async def get_marketing_persona(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Return the cached weekly marketing report.
+
+    Generation runs every Monday at 08:30 Paris via the cron
+    ``run_weekly_marketing_report``. If the cache is empty (first deploy or
+    during the week before the first Monday), generate on-the-fly and store.
+    """
+    cached = await _get_setting(db, "ai_marketing_persona_cache")
+    if cached:
+        try:
+            data = json.loads(cached)
+            now = datetime.now(timezone.utc)
+            if data.get("week") == now.isocalendar()[1] and data.get("year") == now.year:
+                return data
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    result = await _build_marketing_persona_report(db)
+    await _set_setting(db, "ai_marketing_persona_cache", json.dumps(result, ensure_ascii=False))
+    await db.commit()
+    return result
+
+
+@router.post("/persona/marketing/regenerate")
+async def regenerate_marketing_persona(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Manager-triggered manual regeneration. Use sparingly — the cron
+    rebuilds this report every Monday at 08:30 Paris automatically."""
+    result = await _build_marketing_persona_report(db)
+    await _set_setting(db, "ai_marketing_persona_cache", json.dumps(result, ensure_ascii=False))
+    await db.commit()
+    return result
 
 
 # ---------------------------------------------------------------------------

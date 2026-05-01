@@ -13,6 +13,8 @@ interface WalletPayload {
   benefit_text: string;
   primary_color: string;
   qr_payload: string;
+  apple_signed_available?: boolean;
+  google_save_available?: boolean;
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -99,23 +101,27 @@ export default function WalletCard({ email }: { email: string }) {
       <p className="mt-4 text-xs opacity-90">{data.benefit_text}</p>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <a
-          href={`${API_URL}/api/crm/account/wallet/apple?email=${encodeURIComponent(email)}`}
-          download
-          className="text-[11px] bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 font-medium transition-colors"
-          title="Télécharger un .pkpass signé pour Apple Wallet"
-        >
-          Ajouter à Apple Wallet
-        </a>
-        <a
-          href={`${API_URL}/api/crm/account/wallet/google?email=${encodeURIComponent(email)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[11px] bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 font-medium transition-colors"
-          title="Ajouter à Google Wallet"
-        >
-          Ajouter à Google Wallet
-        </a>
+        {data.apple_signed_available && (
+          <a
+            href={`${API_URL}/api/crm/account/wallet/apple?email=${encodeURIComponent(email)}`}
+            download
+            className="text-[11px] bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 font-medium transition-colors"
+            title="Télécharger un .pkpass signé pour Apple Wallet"
+          >
+            Ajouter à Apple Wallet
+          </a>
+        )}
+        {data.google_save_available && (
+          <a
+            href={`${API_URL}/api/crm/account/wallet/google?email=${encodeURIComponent(email)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 font-medium transition-colors"
+            title="Ajouter à Google Wallet"
+          >
+            Ajouter à Google Wallet
+          </a>
+        )}
         <a
           href={`${API_URL}/api/crm/account/wallet/qr.png?email=${encodeURIComponent(email)}`}
           download={`vintiz-${data.membership_number}-qr.png`}
