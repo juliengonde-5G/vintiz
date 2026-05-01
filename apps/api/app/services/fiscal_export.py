@@ -49,7 +49,7 @@ class FiscalExportService:
         self,
         period_from: datetime | None = None,
         period_to: datetime | None = None,
-        merchant_name: str = "Frip & Co Vernon",
+        merchant_name: str = "Vintiz Vernon",
         merchant_id: str = "",
     ) -> dict:
         """Return a Python dict describing the period — feeds both encoders."""

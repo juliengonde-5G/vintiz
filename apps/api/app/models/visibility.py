@@ -73,7 +73,7 @@ class SocialPost(Base):
         nullable=False,
     )
     caption: Mapped[str] = mapped_column(Text, nullable=False)
-    # JSON list of strings, e.g. ["#fripandco", "#vernon", "#secondemain"]
+    # JSON list of strings, e.g. ["#vintiz", "#vernon", "#secondemain"]
     hashtags: Mapped[list] = mapped_column(JSONType, nullable=False, default=list)
     best_time: Mapped[str | None] = mapped_column(String(10), nullable=True)  # "HH:MM"
     media_brief: Mapped[str | None] = mapped_column(Text, nullable=True)

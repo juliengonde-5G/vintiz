@@ -161,10 +161,10 @@ def test_normalize_post_payload_normalizes_hashtags():
         "category": "VALEURS",
         "platform": "instagram",
         "caption": "test",
-        "hashtags": ["fripandco", "#vernon"],
+        "hashtags": ["vintizvernon", "#vernon"],
     })
     assert out is not None
-    assert out["hashtags"] == ["#fripandco", "#vernon"]
+    assert out["hashtags"] == ["#vintizvernon", "#vernon"]
 
 
 def test_normalize_post_payload_drops_invalid_best_time():

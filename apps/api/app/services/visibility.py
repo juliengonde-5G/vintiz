@@ -108,8 +108,9 @@ def _system_prompt() -> str:
         text = candidate.read_text(encoding="utf-8")
     except FileNotFoundError:
         text = (
-            "Tu es community manager de Frip & Co Vernon. Génère 4 posts "
-            "(produit_star, valeurs, témoignage, actu_locale) au format JSON."
+            "Tu es community manager de Vintiz Vernon. Génère 4 posts "
+            "(produit_star, valeurs, témoignage, actu_locale) au format JSON. "
+            "Référence le site vintiz.fr dans les captions, pas @vintiz.vernon."
         )
     if "## System" in text and "## Cost control" in text:
         text = text.split("## System", 1)[1].split("## Cost control", 1)[0].strip()
@@ -124,12 +125,13 @@ def _generate_fallback_posts() -> list[dict]:
             "category": "PRODUIT_STAR",
             "platform": "both",
             "caption": (
-                "Coup de cœur de la semaine 🛍️ Une pièce dénichée chez Frip & Co "
-                "Vernon, à essayer en boutique aujourd'hui. Quantité unique."
+                "Coup de cœur de la semaine 🛍️ Une pièce dénichée chez Vintiz "
+                "Vernon, à essayer en boutique aujourd'hui. Quantité unique. "
+                "→ vintiz.fr"
             ),
             "hashtags": [
-                "#fripandco", "#vernon", "#secondemain", "#friperievernon",
-                "#modecirculaire",
+                "#vintiz", "#vintizvernon", "#vernon", "#secondemain",
+                "#friperievernon", "#modecirculaire",
             ],
             "best_time": "12:00",
             "media_brief": (
@@ -143,11 +145,12 @@ def _generate_fallback_posts() -> list[dict]:
             "caption": (
                 "Chaque pièce qui revit chez nous, c'est une boucle bouclée : "
                 "tri, sélection, mise en rayon — fait à Vernon par des "
-                "personnes en parcours d'insertion. La mode peut faire ça."
+                "personnes en parcours d'insertion. La mode peut faire ça. "
+                "vintiz.fr"
             ),
             "hashtags": [
-                "#ESS", "#economiecirculaire", "#insertion", "#vernon",
-                "#secondemainpremium",
+                "#vintiz", "#ESS", "#economiecirculaire", "#insertion",
+                "#vernon", "#secondemainpremium",
             ],
             "best_time": "18:30",
             "media_brief": (
@@ -159,11 +162,14 @@ def _generate_fallback_posts() -> list[dict]:
             "category": "TEMOIGNAGE",
             "platform": "instagram",
             "caption": (
-                "« J'ai trouvé chez Frip & Co LA veste que je cherchais "
+                "« J'ai trouvé chez Vintiz LA veste que je cherchais "
                 "depuis des mois. » Merci Julie de Vernon 💚 Venez la "
-                "trouver à votre tour."
+                "trouver à votre tour. → vintiz.fr"
             ),
-            "hashtags": ["#fripandco", "#temoignage", "#vernon", "#friperie"],
+            "hashtags": [
+                "#vintiz", "#vintizvernon", "#temoignage", "#vernon",
+                "#friperie",
+            ],
             "best_time": "19:00",
             "media_brief": (
                 "Photo client·e (anonymisée si demandé) portant la pièce + "
@@ -175,9 +181,12 @@ def _generate_fallback_posts() -> list[dict]:
             "platform": "tiktok",
             "caption": (
                 "Samedi marché de Vernon ☀️ Passez nous voir juste après — "
-                "rue Saint-Jacques, ouvert 10h-19h."
+                "rue Saint-Jacques, ouvert 10h-19h. Toutes les nouveautés "
+                "sur vintiz.fr"
             ),
-            "hashtags": ["#vernon", "#normandie", "#fripandco", "#weekend"],
+            "hashtags": [
+                "#vintiz", "#vernon", "#normandie", "#weekend",
+            ],
             "best_time": "10:00",
             "media_brief": (
                 "Plan extérieur boutique, ambiance samedi marché. "
@@ -239,9 +248,8 @@ async def _ask_claude_for_posts() -> list[dict] | None:
             messages=[{
                 "role": "user",
                 "content": (
-                    "Génère les 4 posts de la semaine pour Frip & Co "
-                    "Vernon (1 par catégorie obligatoire). "
-                    "Réponds en JSON strict."
+                    "Génère les 4 posts de la semaine pour Vintiz Vernon "
+                    "(1 par catégorie obligatoire). Réponds en JSON strict."
                 ),
             }],
         )
@@ -336,13 +344,13 @@ def suggest_review_reply_fallback(review: GoogleReview) -> str:
         return (
             f"Merci beaucoup {review.author or 'beaucoup'} pour votre retour ! "
             "Votre confiance nous touche. Au plaisir de vous revoir bientôt "
-            "en boutique. — L'équipe Frip & Co"
+            "en boutique. — L'équipe Vintiz"
         )
     return (
         f"Bonjour {review.author or ''}, merci d'avoir pris le temps de nous "
         "écrire. Nous prenons votre retour très au sérieux et aimerions en "
         "discuter — pouvez-vous nous écrire à contact@vintiz.fr ? "
-        "— L'équipe Frip & Co"
+        "— L'équipe Vintiz"
     )
 
 
@@ -362,10 +370,11 @@ async def suggest_review_reply(review: GoogleReview) -> tuple[str, bool]:
             model=SOCIAL_POSTS_MODEL,
             max_tokens=400,
             system=(
-                "Tu rédiges la réponse de Frip & Co Vernon (boutique seconde "
+                "Tu rédiges la réponse de Vintiz Vernon (boutique seconde "
                 "main premium ESS) à un avis Google. Ton chaleureux, "
                 "professionnel, vouvoiement, 3-5 phrases max. Si l'avis est "
-                "négatif, propose un échange par email contact@vintiz.fr."
+                "négatif, propose un échange par email contact@vintiz.fr. "
+                "N'utilise jamais l'ancien nom 'Frip & Co'."
             ),
             messages=[{
                 "role": "user",
