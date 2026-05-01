@@ -99,6 +99,25 @@ if [ "$code" = "200" ]; then
   ok "$HEALTH_PATH → 200"
 else
   fail "$HEALTH_PATH → $code (attendu 200) — l'API est down ou l'URL est fausse, on stoppe."
+  if [ "$code" = "000" ]; then
+    echo ""
+    echo "  → Code HTTP 000 = curl n'a pas pu joindre $API_URL"
+    echo "    (DNS / TCP refused / timeout — l'API ne tourne pas à cette URL)."
+    case "$API_URL" in
+      http://localhost:*|http://127.0.0.1:*)
+        echo ""
+        echo "  Tu utilises l'URL par défaut. Pour smoke-tester la prod :"
+        echo "    bash scripts/smoke_prod.sh https://api.vintiz.fr"
+        ;;
+      *)
+        echo ""
+        echo "  Vérifie que :"
+        echo "   - le DNS pointe bien sur le VPS  (dig +short ${API_URL#*//})"
+        echo "   - les containers tournent       (docker ps | grep vintiz-api)"
+        echo "   - Caddy est up                  (docker ps | grep caddy)"
+        ;;
+    esac
+  fi
   echo ""
   echo "════════════════════════════════════════════════════════"
   echo "  Résultat : $PASS OK, $FAIL KO, $SKIP skip"
