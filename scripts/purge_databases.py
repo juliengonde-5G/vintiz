@@ -54,9 +54,23 @@ import asyncio
 import sys
 from pathlib import Path
 
-# Allow `python scripts/purge_databases.py` from repo root by extending sys.path
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "apps" / "api"))
+# Make ``import app.core.database`` work in both the dev and Docker layouts:
+# - Dev (repo root):     <ROOT>/apps/api/app/core/database.py
+# - Docker (api image):  /app/app/core/database.py  (WORKDIR is /app, scripts at /app/scripts)
+# Add the first directory that contains ``app/core/database.py``.
+_HERE = Path(__file__).resolve()
+for _candidate in (
+    _HERE.parents[1] / "apps" / "api",   # dev layout
+    _HERE.parents[1],                    # Docker prod (/app)
+):
+    if (_candidate / "app" / "core" / "database.py").exists():
+        sys.path.insert(0, str(_candidate))
+        break
+else:
+    raise SystemExit(
+        "purge_databases: cannot locate the api `app` package — checked "
+        f"{_HERE.parents[1] / 'apps' / 'api'} and {_HERE.parents[1]}"
+    )
 
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession
