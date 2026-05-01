@@ -161,8 +161,11 @@ if [ "$code" = "200" ]; then
       fail "  route MANQUANTE : $p"
     fi
   done
-  # Sanity sur les routes paramétriques (présence du préfixe seulement)
-  for p in "/api/inventory/products/" "/api/pos/products/" "/api/crm/clients/"; do
+  # Sanity sur les routes paramétriques (présence du préfixe seulement).
+  # Les produits vivent uniquement sous /api/inventory/products/ — il n'y
+  # a jamais eu de /api/pos/products/ (le POS consomme inventory + pos
+  # transactions séparément).
+  for p in "/api/inventory/products/" "/api/crm/clients/"; do
     if grep -q "\"$p" /tmp/smoke_body; then
       ok "  préfixe paramétrique présent : ${p}…"
     else
@@ -192,11 +195,16 @@ else
 fi
 
 # PR1: magic-link issue est public et toujours 204 (anti-énumération).
+# 429 est aussi acceptable : l'IP du smoke peut avoir été rate-limitée
+# par les runs précédents (rate-limit /h/email = 6, /h/IP = 30).
 code=$(http_post_anon "/api/auth/magic-link/request" '{"email":"smoke-no-such@vintiz.fr"}')
 if [ "$code" = "204" ]; then
   ok "/api/auth/magic-link/request (email inconnu) → 204"
+elif [ "$code" = "429" ]; then
+  warn "/api/auth/magic-link/request → 429 (rate-limit — IP a déjà été testée récemment)"
 else
   fail "/api/auth/magic-link/request → $code (attendu 204)"
+  echo "    body: $(head -c 300 /tmp/smoke_body)"
 fi
 
 code=$(http_get_anon "/api/crm/account/wallet?email=smoke-no-such@vintiz.fr")
