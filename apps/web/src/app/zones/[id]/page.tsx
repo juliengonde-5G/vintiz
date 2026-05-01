@@ -84,16 +84,17 @@ export default function ZoneDetailPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [zonesRes, analyticsRes, productsRes] = await Promise.all([
-        api.get('/api/admin/zones'),
+      const [zoneRes, analyticsRes, productsRes] = await Promise.all([
+        api.get(`/api/admin/zones/${zoneId}`),
         api.get(`/api/admin/zones/${zoneId}/analytics`),
         api.get(`/api/admin/zones/${zoneId}/products`),
       ]);
-      if (zonesRes.ok) {
-        const list: Zone[] = await zonesRes.json();
-        const z = list.find((x) => x.id === zoneId) || null;
+      if (zoneRes.ok) {
+        const z: Zone = await zoneRes.json();
         setZone(z);
-        if (z) setForm(z);
+        setForm(z);
+      } else {
+        setZone(null);
       }
       if (analyticsRes.ok) setAnalytics(await analyticsRes.json());
       if (productsRes.ok) setProducts(await productsRes.json());

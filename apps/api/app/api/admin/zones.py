@@ -129,6 +129,29 @@ async def list_zones(
     return output
 
 
+@router.get("/zones/{zone_id}")
+async def get_zone(
+    zone_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Get a single zone by id with current product count.
+
+    Used by the detail page to avoid re-downloading the full list and
+    array-finding client-side (which could silently miss a zone on a stale
+    cache hit).
+    """
+    result = await db.execute(select(StoreZone).where(StoreZone.id == zone_id))
+    zone = result.scalar_one_or_none()
+    if zone is None:
+        raise HTTPException(status_code=404, detail="Zone not found")
+    count_result = await db.execute(
+        select(func.count(Product.id)).where(Product.zone_id == zone.id)
+    )
+    product_count = count_result.scalar_one() or 0
+    return _serialize_zone(zone, product_count=product_count)
+
+
 @router.post("/zones", status_code=status.HTTP_201_CREATED)
 async def create_zone(
     zone_in: ZoneCreate,
