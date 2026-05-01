@@ -64,7 +64,15 @@ http_get_anon() {
 
 http_post_anon() {
   local path="$1"
-  local body="${2:-{}}"
+  # NB: bash parses ${2:-{}} as ${2:-{} + literal '}' so the default appended
+  # an extra '}' to any provided body, breaking JSON ("Extra data" 422 from
+  # Pydantic). Branch explicitly to dodge the brace-expansion footgun.
+  local body
+  if [ -z "${2-}" ]; then
+    body="{}"
+  else
+    body="$2"
+  fi
   curl -s -o /tmp/smoke_body -w '%{http_code}' --max-time 10 \
     -X POST \
     -H 'accept: application/json' \

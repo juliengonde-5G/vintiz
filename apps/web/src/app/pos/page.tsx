@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Button from '@/components/ui/Button';
 import NumPad from '@/components/ui/NumPad';
@@ -121,8 +121,10 @@ export default function POSPage() {
 
   // CB / SumUp
   const [cbCheckoutId, setCbCheckoutId] = useState<string | null>(null);
-  const [cbStatus, setCbStatus] = useState<'idle' | 'pending' | 'paid' | 'failed'>('idle');
-  const [cbPollingRef, setCbPollingRef] = useState<ReturnType<typeof setInterval> | null>(null);
+  const [cbStatus, setCbStatus] = useState<'idle' | 'pending' | 'paid' | 'failed' | 'timeout'>('idle');
+  const cbPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cbTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const CB_POLL_MAX_MS = 90_000; // 90s — past this the cashier confirms manually
 
   // Loyalty redemption
   const [redeemPoints, setRedeemPoints] = useState(false);
@@ -181,12 +183,16 @@ export default function POSPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clientDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Computed
-  const cartTotal = cart.reduce((sum, item) => {
-    const linePrice = item.price * item.quantity;
-    const afterDiscount = linePrice * (1 - item.discount / 100);
-    return sum + afterDiscount;
-  }, 0);
+  // Computed — memoised so unrelated state changes (modals, focus, etc.)
+  // don't re-run the cart reduce on every render.
+  const cartTotal = useMemo(
+    () => cart.reduce((sum, item) => {
+      const linePrice = item.price * item.quantity;
+      const afterDiscount = linePrice * (1 - item.discount / 100);
+      return sum + afterDiscount;
+    }, 0),
+    [cart],
+  );
 
   // Loyalty discount: 1 point = 0.10 EUR, max 50% of cart
   const loyaltyPoints = selectedClient?.loyalty?.points || 0;
@@ -195,7 +201,10 @@ export default function POSPage() {
   // Coupon discount (P4-008) stacks on top of loyalty.
   const cartTotalAfterLoyalty = Math.max(0, cartTotal - loyaltyDiscount - couponDiscount);
 
-  const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+  const totalPaid = useMemo(
+    () => payments.reduce((sum, p) => sum + p.amount, 0),
+    [payments],
+  );
   const remaining = cartTotalAfterLoyalty - totalPaid;
 
   // ── Cashier identification ──────────────────────────────────────
@@ -452,7 +461,10 @@ export default function POSPage() {
   const printReceipt = useCallback((text: string) => {
     const w = window.open('', '_blank', 'width=400,height=700');
     if (!w) {
-      alert("Impossible d'ouvrir la fenêtre d'impression. Autorisez les pop-ups pour ce site.");
+      setPrintMsg(
+        "Impossible d'ouvrir la fenêtre d'impression. " +
+        "Autorisez les pop-ups pour ce site dans les réglages Safari.",
+      );
       return;
     }
     const safe = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -558,7 +570,23 @@ export default function POSPage() {
   };
 
   // ── CB / SumUp ───────────────────────────────────────────────────
+  const stopCbPolling = useCallback(() => {
+    if (cbPollingRef.current) {
+      clearInterval(cbPollingRef.current);
+      cbPollingRef.current = null;
+    }
+    if (cbTimeoutRef.current) {
+      clearTimeout(cbTimeoutRef.current);
+      cbTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount: never leak an interval/timeout if the cashier
+  // navigates away mid-payment.
+  useEffect(() => () => stopCbPolling(), [stopCbPolling]);
+
   const initiateCBPayment = async (amount: number) => {
+    stopCbPolling();
     setCbStatus('pending');
     try {
       const res = await api.post('/api/pos/payments/cb/initiate', {
@@ -568,25 +596,27 @@ export default function POSPage() {
       if (res.ok) {
         const data = await res.json();
         setCbCheckoutId(data.checkout_id);
-        // Poll every 3 seconds for status
-        const pollRef = setInterval(async () => {
+        // Poll every 3s for status, hard-stop at CB_POLL_MAX_MS so we never
+        // leak the interval if the TPE never replies (network drop, etc.).
+        cbPollingRef.current = setInterval(async () => {
           try {
             const statusRes = await api.get(`/api/pos/payments/cb/${data.checkout_id}/status`);
             if (statusRes.ok) {
               const s = await statusRes.json();
               if (s.status === 'PAID') {
-                clearInterval(pollRef);
+                stopCbPolling();
                 setCbStatus('paid');
-                setCbPollingRef(null);
               } else if (s.status === 'FAILED') {
-                clearInterval(pollRef);
+                stopCbPolling();
                 setCbStatus('failed');
-                setCbPollingRef(null);
               }
             }
           } catch { /* keep polling */ }
         }, 3000);
-        setCbPollingRef(pollRef);
+        cbTimeoutRef.current = setTimeout(() => {
+          stopCbPolling();
+          setCbStatus(prev => (prev === 'pending' ? 'timeout' : prev));
+        }, CB_POLL_MAX_MS);
       } else {
         setCbStatus('failed');
       }
@@ -596,7 +626,7 @@ export default function POSPage() {
   };
 
   const cancelCBPayment = async () => {
-    if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
+    stopCbPolling();
     if (cbCheckoutId) {
       await api.delete(`/api/pos/payments/cb/${cbCheckoutId}`).catch(() => {});
     }
@@ -606,9 +636,37 @@ export default function POSPage() {
     setPayments(prev => prev.filter(p => p.method !== 'carte'));
   };
 
-  const confirmCBManually = () => {
-    if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
-    setCbStatus('paid');
+  // Cashier-confirmed payment after the 90s timeout. We require an explicit
+  // last-status poll so we don't mark a checkout PAID when SumUp says it
+  // FAILED — the audit's confirmCBManually used to validate the sale blind.
+  const confirmCBManually = async () => {
+    stopCbPolling();
+    if (!cbCheckoutId) {
+      setCbStatus('paid');
+      return;
+    }
+    try {
+      const res = await api.get(`/api/pos/payments/cb/${cbCheckoutId}/status`);
+      if (res.ok) {
+        const s = await res.json();
+        if (s.status === 'PAID') {
+          setCbStatus('paid');
+          return;
+        }
+        if (s.status === 'FAILED' || s.status === 'CANCELLED') {
+          setCbStatus('failed');
+          return;
+        }
+      }
+    } catch { /* fall through — still let the cashier confirm */ }
+    // Last resort — surface a confirm dialog instead of validating blind.
+    if (window.confirm(
+      'SumUp ne confirme pas le paiement.\n\n' +
+      'Confirme manuellement UNIQUEMENT si tu vois "Paiement accepté" sur le TPE.\n' +
+      'Sinon, annule et redemande le paiement.',
+    )) {
+      setCbStatus('paid');
+    }
   };
 
   // ── Payment ──────────────────────────────────────────────────────
@@ -880,7 +938,7 @@ export default function POSPage() {
     setCbStatus('idle');
     setRedeemPoints(false);
     setNumpadTarget(null);
-    if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
+    stopCbPolling();
   };
 
   const methodLabels: Record<string, string> = {
@@ -1307,7 +1365,7 @@ export default function POSPage() {
                 setCbCheckoutId(null);
                 setCbStatus('idle');
                 setNumpadTarget(null);
-                if (cbPollingRef) { clearInterval(cbPollingRef); setCbPollingRef(null); }
+                stopCbPolling();
                 setShowPayment(true);
               }}
               className={`w-full py-4 rounded-xl font-bold text-lg tracking-wide transition-colors flex items-center justify-center gap-3 ${
@@ -1591,6 +1649,7 @@ export default function POSPage() {
             <div className={`p-4 rounded-xl border-2 ${
               cbStatus === 'paid' ? 'border-green-400 bg-green-50' :
               cbStatus === 'failed' ? 'border-red-400 bg-red-50' :
+              cbStatus === 'timeout' ? 'border-amber-400 bg-amber-50' :
               'border-blue-300 bg-blue-50'
             }`}>
               <div className="flex items-center gap-3 mb-3">
@@ -1603,14 +1662,28 @@ export default function POSPage() {
                 {cbStatus === 'failed' && (
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" className="shrink-0"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 )}
+                {cbStatus === 'timeout' && (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" className="shrink-0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                )}
                 <div>
-                  <p className={`font-semibold text-sm ${cbStatus === 'paid' ? 'text-green-700' : cbStatus === 'failed' ? 'text-red-700' : 'text-blue-700'}`}>
+                  <p className={`font-semibold text-sm ${
+                    cbStatus === 'paid' ? 'text-green-700' :
+                    cbStatus === 'failed' ? 'text-red-700' :
+                    cbStatus === 'timeout' ? 'text-amber-700' :
+                    'text-blue-700'
+                  }`}>
                     {cbStatus === 'pending' ? 'En attente de confirmation TPE...' :
                      cbStatus === 'paid' ? 'Paiement CB confirmé' :
+                     cbStatus === 'timeout' ? 'TPE pas de réponse — vérifie l\'écran du Solo' :
                      'Paiement CB échoué'}
                   </p>
                   {cbStatus === 'pending' && (
                     <p className="text-xs text-blue-500">Présentez la carte sur le lecteur</p>
+                  )}
+                  {cbStatus === 'timeout' && (
+                    <p className="text-xs text-amber-700">
+                      Confirme uniquement si le TPE indique &laquo;&nbsp;Paiement accepté&nbsp;&raquo;.
+                    </p>
                   )}
                 </div>
               </div>
@@ -1627,6 +1700,22 @@ export default function POSPage() {
                     className="px-4 py-2 bg-white text-red-600 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[44px]"
                   >
                     Annuler
+                  </button>
+                </div>
+              )}
+              {cbStatus === 'timeout' && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={confirmCBManually}
+                    className="flex-1 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors min-h-[44px]"
+                  >
+                    Le TPE dit accepté — confirmer
+                  </button>
+                  <button
+                    onClick={cancelCBPayment}
+                    className="px-4 py-2 bg-white text-red-700 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[44px]"
+                  >
+                    Annuler / réessayer
                   </button>
                 </div>
               )}

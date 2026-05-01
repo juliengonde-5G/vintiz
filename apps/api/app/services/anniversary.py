@@ -102,9 +102,14 @@ async def run_anniversary_pass(
             coupon = await issue_anniversary_coupon(
                 db, client.id, percent_off=percent_off, now=now,
             )
+            # Commit each coupon as we go so a later client's crash can't
+            # roll back the ones we already issued — the run becomes safe
+            # to re-trigger and partial progress is durable.
+            await db.commit()
             coupons_issued += 1
-        except Exception as exc:
-            logger.warning("Anniversary coupon failed for %s: %s", client.id, exc)
+        except Exception:
+            logger.exception("Anniversary coupon failed for client_id=%s", client.id)
+            await db.rollback()
             failed += 1
             continue
 
@@ -121,8 +126,8 @@ async def run_anniversary_pass(
                 sent += 1
             else:
                 failed += 1
-        except EmailDeliveryError as exc:
-            logger.warning("Anniversary email failed for %s: %s", client.email, exc)
+        except EmailDeliveryError:
+            logger.exception("Anniversary email failed for client_id=%s", client.id)
             failed += 1
 
     return {

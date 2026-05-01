@@ -117,8 +117,14 @@ async def test_verify_no_client_returns_invalid(session):
 
 @pytest.mark.anyio
 async def test_issue_rate_limit_per_email(session):
-    """4th issue within an hour silently does nothing (no row inserted)."""
-    for _ in range(3):
+    """7th issue within an hour silently does nothing (no row inserted).
+
+    Tracks ``RATE_LIMIT_EMAIL_PER_HOUR`` — bumped from 3 to 6 for diagnostic
+    tolerance (5d9ebbe). Brute-force on a 6-digit OTP remains negligible.
+    """
+    from app.services.magic_link import RATE_LIMIT_EMAIL_PER_HOUR
+
+    for _ in range(RATE_LIMIT_EMAIL_PER_HOUR):
         await issue(session, "spam@x.fr", ip="127.0.0.1")
     await session.flush()
     rows = (
@@ -126,7 +132,7 @@ async def test_issue_rate_limit_per_email(session):
             select(MagicLinkToken).where(MagicLinkToken.email == "spam@x.fr")
         )
     ).scalars().all()
-    assert len(rows) == 3
+    assert len(rows) == RATE_LIMIT_EMAIL_PER_HOUR
 
     await issue(session, "spam@x.fr", ip="127.0.0.1")
     await session.flush()
@@ -135,4 +141,5 @@ async def test_issue_rate_limit_per_email(session):
             select(MagicLinkToken).where(MagicLinkToken.email == "spam@x.fr")
         )
     ).scalars().all()
-    assert len(rows) == 3  # 4th was rate-limited, no new row.
+    # The (N+1)-th was rate-limited, no new row.
+    assert len(rows) == RATE_LIMIT_EMAIL_PER_HOUR

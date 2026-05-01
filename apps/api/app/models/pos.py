@@ -93,6 +93,15 @@ class TransactionItem(Base):
     product_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("products.id"), nullable=True
     )
+    # Set on refund items only — points back to the original sale's item
+    # so partial refunds aggregate per *line*, not per product. Without it
+    # two distinct lines that share the same product_id would share the
+    # refund quota and the second refund would be wrongly rejected.
+    original_transaction_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("transaction_items.id"),
+        nullable=True,
+    )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     discount_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0)
