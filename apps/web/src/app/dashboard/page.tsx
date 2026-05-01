@@ -6,6 +6,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 
 type BriefingPriority = { title: string; body: string; action_url: string; type: string; priority: number };
 type DashboardBriefing = { greeting: string; priorities: BriefingPriority[] } | null;
@@ -84,9 +85,6 @@ interface TransactionDetail {
   payments: { method: string; amount: number }[];
 }
 
-function formatCurrency(value: number): string {
-  return value.toFixed(2).replace('.', ',') + '\u00A0\u20AC';
-}
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);

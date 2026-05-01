@@ -13,6 +13,7 @@ import ClientCompanion from '@/components/pos/ClientCompanion';
 import { api } from '@/lib/api';
 import { useConnectivity } from '@/lib/connectivity';
 import {
+import { formatCurrency } from '@/lib/format';
   count as queueCount,
   drain as drainQueue,
   enqueue as enqueueOffline,
@@ -72,9 +73,6 @@ interface ClientDetail {
   purchases: { id: string; transaction_number: number; total_ttc: number; created_at: string }[];
 }
 
-function formatCurrency(value: number): string {
-  return value.toFixed(2).replace('.', ',') + '\u00A0\u20AC';
-}
 
 export default function POSPage() {
   // Search

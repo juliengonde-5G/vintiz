@@ -5,6 +5,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import RefundModal from '@/components/pos/RefundModal';
 import { api } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 
 interface Transaction {
   id: string;
@@ -29,9 +30,6 @@ interface CashDrawer {
 
 type AdminTab = 'all' | 'cb' | 'cash' | 'drawers';
 
-function formatCurrency(v: number): string {
-  return v.toFixed(2).replace('.', ',') + '\u00A0\u20AC';
-}
 
 function formatDate(s: string): string {
   const d = new Date(s);

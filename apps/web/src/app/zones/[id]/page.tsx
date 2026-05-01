@@ -11,6 +11,7 @@ import SectionHeader from '@/components/ui/SectionHeader';
 import EmptyState from '@/components/ui/EmptyState';
 import Sparkline from '@/components/ui/Sparkline';
 import { api } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 
 type Zone = {
   id: string;
@@ -57,9 +58,6 @@ type Product = {
   trend_score: number | null;
 };
 
-function formatCurrency(v: number) {
-  return `${v.toFixed(2).replace('.', ',')} €`;
-}
 
 type Tab = 'overview' | 'products' | 'ai' | 'settings';
 

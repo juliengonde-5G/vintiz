@@ -9,6 +9,7 @@ import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Card from '@/components/ui/Card';
 import { api } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 
 const statusLabels: Record<string, { label: string; variant: 'stock' | 'display' | 'sold' | 'returned' }> = {
   stock: { label: 'En stock', variant: 'stock' },
@@ -50,9 +51,6 @@ function formatShelfDate(dateStr: string | null): string {
   }
 }
 
-function formatCurrency(v: number) {
-  return v.toFixed(2).replace('.', ',') + '\u00A0\u20AC';
-}
 
 export default function InventoryPage() {
   const router = useRouter();

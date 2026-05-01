@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 
 interface CategoryAgg {
   category_id: string;
@@ -31,9 +32,6 @@ interface RetailKpis {
   config: { store_surface_m2: number };
 }
 
-function formatCurrency(value: number): string {
-  return value.toFixed(2).replace('.', ',') + ' €';
-}
 
 function ChangeBadge({ value }: { value: number | null }) {
   if (value === null) return <span className="text-xs text-gray-400">—</span>;

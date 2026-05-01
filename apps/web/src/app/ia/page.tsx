@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 import CompanionHero from '@/components/ai/CompanionHero';
 import RecosDuJourTab from '@/components/ia/RecosDuJourTab';
 import { api } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 
 interface TrendItem {
   product_id: string;
@@ -78,9 +79,6 @@ interface AIRecoResult {
   error?: string;
 }
 
-function formatCurrency(v: number) {
-  return v.toFixed(2).replace('.', ',') + '\u00A0\u20AC';
-}
 
 // ---------------------------------------------------------------------------
 // Visual floor plan of the boutique (Lot N°2, ~184 m² utiles).

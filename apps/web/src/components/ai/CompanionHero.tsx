@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
+import { formatCurrencyInt } from '@/lib/format';
 
 type Priority = {
   title: string;
@@ -35,9 +36,6 @@ type Task = {
   created_at: string;
 };
 
-function formatCurrency(v: number) {
-  return v.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' €';
-}
 
 function priorityBadge(p: number) {
   if (p >= 4) return { bg: 'bg-vz-accent text-white', label: 'URGENT' };
@@ -117,7 +115,7 @@ export default function CompanionHero() {
               <div className="rounded-2xl bg-white/15 backdrop-blur-sm px-3 py-2 min-w-[96px]">
                 <p className="text-[10px] uppercase tracking-wider opacity-80">Aujourd&apos;hui</p>
                 <p className="font-display font-semibold text-xl mt-0.5">
-                  {formatCurrency(briefing.today.revenue)}
+                  {formatCurrencyInt(briefing.today.revenue)}
                 </p>
                 {deltaRevenue !== null && (
                   <p className="text-[11px] opacity-90 mt-0.5">

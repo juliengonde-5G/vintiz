@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 
 interface TransactionItem {
   id: string;
@@ -39,9 +40,6 @@ const METHODS: { value: RefundMethod; label: string; needsClient: boolean }[] = 
   { value: 'avoir', label: 'Avoir (store credit)', needsClient: true },
 ];
 
-function formatCurrency(v: number): string {
-  return v.toFixed(2).replace('.', ',') + ' €';
-}
 
 export default function RefundModal({
   open, transactionId, onClose, onCompleted,

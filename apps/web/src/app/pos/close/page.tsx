@@ -7,6 +7,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { api } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 
 interface DrawerState {
   id: string;
@@ -26,9 +27,6 @@ interface ZReport {
   difference: number;
 }
 
-function formatCurrency(value: number): string {
-  return value.toFixed(2).replace('.', ',') + '\u00A0\u20AC';
-}
 
 function SkeletonBlock({ className = '' }: { className?: string }) {
   return (

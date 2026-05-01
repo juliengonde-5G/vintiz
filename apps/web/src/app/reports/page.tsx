@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
+import { formatCurrency } from '@/lib/format';
 // L6 (audit 2026-05) : reporting ESS dédié supprimé — non pertinent.
 // Le calcul backend (kg revalorisés / CA reversé) reste disponible via
 // GET /api/reports/ess pour exports ad-hoc à Solidarité Textiles.
@@ -62,9 +63,6 @@ interface StockValue {
   total_sale_value: number;
 }
 
-function formatCurrency(value: number): string {
-  return value.toFixed(2).replace('.', ',') + '\u00A0\u20AC';
-}
 
 function SkeletonBlock({ className = '' }: { className?: string }) {
   return (
