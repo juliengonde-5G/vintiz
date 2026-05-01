@@ -25,7 +25,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import bcrypt
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token
@@ -164,6 +164,20 @@ async def issue(
     token_hash = _hash_token(token)
     expires_at = _now() + timedelta(minutes=CODE_TTL_MINUTES)
 
+    # Invalidate any still-valid OTP for this email so only the freshest
+    # code is accepted. Without this, two issue() calls within 10 min leave
+    # both rows valid; if a user types the older code by mistake the
+    # mismatch increments the *newest* token's attempts counter and they
+    # hit "too_many_attempts" on a code they never used.
+    await db.execute(
+        update(MagicLinkToken)
+        .where(
+            MagicLinkToken.email == norm_email,
+            MagicLinkToken.used_at.is_(None),
+        )
+        .values(used_at=_now())
+    )
+
     db.add(
         MagicLinkToken(
             email=norm_email,
@@ -264,7 +278,12 @@ async def verify(
     if not norm_email or not code:
         raise MagicLinkError("invalid_or_expired")
 
-    row = await db.execute(
+    # Lock the row so two concurrent verify() requests cannot both increment
+    # the attempts counter from the same starting value (race that lets
+    # an attacker brute-force OTP in parallel under MAX_ATTEMPTS). On SQLite
+    # (tests) FOR UPDATE is a no-op — single-writer model is enough there.
+    dialect = db.bind.dialect.name if db.bind else "postgresql"
+    stmt = (
         select(MagicLinkToken)
         .where(
             MagicLinkToken.email == norm_email,
@@ -274,6 +293,9 @@ async def verify(
         .order_by(MagicLinkToken.created_at.desc())
         .limit(1)
     )
+    if dialect == "postgresql":
+        stmt = stmt.with_for_update()
+    row = await db.execute(stmt)
     token: Optional[MagicLinkToken] = row.scalar_one_or_none()
     if token is None:
         raise MagicLinkError("invalid_or_expired")
@@ -282,10 +304,20 @@ async def verify(
         raise MagicLinkError("too_many_attempts")
 
     if not _check_code(code, token.code_hash):
-        token.attempts += 1
+        # Atomic conditional increment so a concurrent miss can't slip
+        # through the MAX_ATTEMPTS gate by reading a stale value.
+        result = await db.execute(
+            update(MagicLinkToken)
+            .where(
+                MagicLinkToken.id == token.id,
+                MagicLinkToken.attempts < MAX_ATTEMPTS,
+            )
+            .values(attempts=MagicLinkToken.attempts + 1)
+        )
         await db.flush()
-        # Surface a generic error: don't leak "wrong code" vs "expired".
-        if token.attempts >= MAX_ATTEMPTS:
+        # Reload to know the new attempt count after the conditional update.
+        await db.refresh(token)
+        if result.rowcount == 0 or token.attempts >= MAX_ATTEMPTS:
             raise MagicLinkError("too_many_attempts")
         raise MagicLinkError("invalid_or_expired")
 

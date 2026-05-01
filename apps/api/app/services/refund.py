@@ -79,23 +79,45 @@ class RefundService:
     async def _already_refunded_qty(
         self, original_tx_id: uuid.UUID, original_item: TransactionItem
     ) -> int:
-        """How many units of ``original_item``'s product have already been
-        refunded under prior refund transactions linked to the original sale.
+        """How many units of ``original_item`` have already been refunded
+        under prior refund transactions linked to the original sale.
 
-        Manual items (product_id is NULL) match by item id directly.
+        Aggregation is by ``original_transaction_item_id`` so two distinct
+        lines of the same product on the same sale don't share their refund
+        quota. Refund rows created before this column existed
+        (``original_transaction_item_id IS NULL``) fall back to the legacy
+        product_id match — accurate for the ~99 % of sales that have a
+        single line per product.
         """
-        if original_item.product_id is None:
-            return 0
-        result = await self.db.execute(
+        # New path: rows that point at this exact item.
+        modern_row = await self.db.execute(
             select(func.coalesce(func.sum(TransactionItem.quantity), 0))
             .join(Transaction, TransactionItem.transaction_id == Transaction.id)
             .where(
                 Transaction.original_transaction_id == original_tx_id,
                 Transaction.transaction_type == TransactionType.refund,
+                TransactionItem.original_transaction_item_id == original_item.id,
+            )
+        )
+        modern_qty = int(modern_row.scalar_one() or 0)
+
+        if original_item.product_id is None:
+            return modern_qty
+
+        # Legacy path: pre-Sprint-2 refund rows have NULL on the new column.
+        # Match by product_id only when the modern column is missing.
+        legacy_row = await self.db.execute(
+            select(func.coalesce(func.sum(TransactionItem.quantity), 0))
+            .join(Transaction, TransactionItem.transaction_id == Transaction.id)
+            .where(
+                Transaction.original_transaction_id == original_tx_id,
+                Transaction.transaction_type == TransactionType.refund,
+                TransactionItem.original_transaction_item_id.is_(None),
                 TransactionItem.product_id == original_item.product_id,
             )
         )
-        return int(result.scalar_one() or 0)
+        legacy_qty = int(legacy_row.scalar_one() or 0)
+        return modern_qty + legacy_qty
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -197,6 +219,7 @@ class RefundService:
                 TransactionItem(
                     transaction_id=refund_tx.id,
                     product_id=original_item.product_id,
+                    original_transaction_item_id=original_item.id,
                     quantity=qty,
                     unit_price=float(original_item.unit_price),
                     discount_percent=float(original_item.discount_percent or 0),

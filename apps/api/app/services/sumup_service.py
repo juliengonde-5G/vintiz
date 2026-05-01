@@ -497,24 +497,58 @@ class SumUpService:
     # Cancel
     # ------------------------------------------------------------------
     async def cancel_checkout(self, checkout_id: str) -> bool:
+        """Cancel a checkout — refuses to cancel a PAID one.
+
+        Cancelling a checkout that already moved to PAID would create a
+        comptable mismatch: the customer's card is debited at SumUp but
+        the cashier UI marks the sale as cancelled and never creates the
+        Vintiz transaction. We hard-fail in that case so the caller has
+        to confirm the payment manually instead of losing the money.
+        """
         if checkout_id.startswith("SBX-"):
             co = self.store.get(checkout_id)
-            if co and co.status == "PENDING":
+            if co is None:
+                self.store.log("cancel_unknown", checkout_id, "FAILED", {})
+                return False
+            if co.status == "PAID":
+                _log.warning(
+                    "cancel_checkout refused: %s already PAID — refusing to cancel",
+                    checkout_id,
+                )
+                self.store.log("cancel_refused", checkout_id, co.status, {"reason": "already_paid"})
+                return False
+            if co.status == "PENDING":
                 co.status = "CANCELLED"
                 co.manual_override = True
                 co.updated_at = time.time()
-            self.store.log("cancel", checkout_id, "CANCELLED", {})
+            self.store.log("cancel", checkout_id, co.status, {})
             return True
         if checkout_id.startswith("SIM-") or self.environment == "sandbox" or not self.api_key:
             return True
+        # Production: peek at the current status before issuing DELETE. If the
+        # checkout is already PAID at SumUp, refuse the cancel and let the
+        # cashier finalise the sale manually.
         try:
             async with httpx.AsyncClient(timeout=10) as client:
+                peek = await client.get(
+                    f"{SUMUP_API_BASE}/checkouts/{checkout_id}",
+                    headers=self._headers,
+                )
+                if peek.status_code == 200:
+                    current = (peek.json() or {}).get("status", "")
+                    if current == "PAID":
+                        _log.warning(
+                            "cancel_checkout refused (production): %s already PAID at SumUp",
+                            checkout_id,
+                        )
+                        return False
                 resp = await client.delete(
                     f"{SUMUP_API_BASE}/checkouts/{checkout_id}",
                     headers=self._headers,
                 )
                 return resp.status_code in (200, 204)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("cancel_checkout network error for %s: %s", checkout_id, exc)
             return False
 
     # ------------------------------------------------------------------

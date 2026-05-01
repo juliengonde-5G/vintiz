@@ -48,7 +48,7 @@ async def run_daily_embedding_refresh() -> None:
                 taste_count,
             )
     except Exception as exc:
-        logger.error("Embedding refresh job failed: %s", exc)
+        logger.exception("Embedding refresh job failed: %s", exc)
 
 
 async def run_daily_seo_snapshot() -> None:
@@ -64,7 +64,7 @@ async def run_daily_seo_snapshot() -> None:
             logger.info("SEO snapshot: score=%s fetched_at=%s",
                         payload.get("score"), payload.get("fetched_at"))
     except Exception as exc:
-        logger.error("SEO snapshot job failed: %s", exc)
+        logger.exception("SEO snapshot job failed: %s", exc)
 
 
 async def run_weekly_social_posts() -> None:
@@ -83,7 +83,7 @@ async def run_weekly_social_posts() -> None:
                 all(r.used_llm for r in rows) if rows else False,
             )
     except Exception as exc:
-        logger.error("Social posts job failed: %s", exc)
+        logger.exception("Social posts job failed: %s", exc)
 
 
 async def run_weekly_window_display() -> None:
@@ -103,7 +103,7 @@ async def run_weekly_window_display() -> None:
                 len(proposal.proposal.get("items", [])),
             )
     except Exception as exc:
-        logger.error("Window-display job failed: %s", exc)
+        logger.exception("Window-display job failed: %s", exc)
 
 
 async def run_daily_return_to_sorting() -> None:
@@ -122,7 +122,7 @@ async def run_daily_return_to_sorting() -> None:
                 summary["returned"],
             )
     except Exception as exc:
-        logger.error("Return-to-sorting job failed: %s", exc)
+        logger.exception("Return-to-sorting job failed: %s", exc)
 
 
 async def run_daily_rgpd_purge() -> None:
@@ -145,7 +145,7 @@ async def run_daily_rgpd_purge() -> None:
             else:
                 logger.info("RGPD purge: nothing to delete")
     except Exception as exc:
-        logger.error("RGPD purge job failed: %s", exc)
+        logger.exception("RGPD purge job failed: %s", exc)
 
 
 async def run_daily_anniversary_emails() -> None:
@@ -167,7 +167,7 @@ async def run_daily_anniversary_emails() -> None:
                     summary["failures"],
                 )
     except Exception as exc:
-        logger.error("Anniversary cron failed: %s", exc)
+        logger.exception("Anniversary cron failed: %s", exc)
 
 
 async def run_weekly_new_arrivals_emails() -> None:
@@ -182,7 +182,7 @@ async def run_weekly_new_arrivals_emails() -> None:
             await db.commit()
             logger.info("New-arrivals cron summary: %s", summary)
     except Exception as exc:
-        logger.error("New-arrivals cron failed: %s", exc)
+        logger.exception("New-arrivals cron failed: %s", exc)
 
 
 async def run_morning_restock() -> None:
@@ -197,7 +197,7 @@ async def run_morning_restock() -> None:
             await db.commit()
             logger.info("Morning restock: %d products to display", payload.get("total", 0))
     except Exception as exc:
-        logger.error("Morning restock job failed: %s", exc)
+        logger.exception("Morning restock job failed: %s", exc)
 
 
 async def run_monday_position_reco() -> None:
@@ -212,7 +212,7 @@ async def run_monday_position_reco() -> None:
             await db.commit()
             logger.info("Monday position reco: %d products flagged", payload.get("total", 0))
     except Exception as exc:
-        logger.error("Monday position reco failed: %s", exc)
+        logger.exception("Monday position reco failed: %s", exc)
 
 
 async def run_thursday_six_weeks_exit() -> None:
@@ -231,7 +231,7 @@ async def run_thursday_six_weeks_exit() -> None:
                 payload.get("transitioned", 0),
             )
     except Exception as exc:
-        logger.error("Thursday 6-weeks exit failed: %s", exc)
+        logger.exception("Thursday 6-weeks exit failed: %s", exc)
 
 
 async def run_monthly_rfm_segmentation() -> None:
@@ -251,7 +251,7 @@ async def run_monthly_rfm_segmentation() -> None:
                 summary["segments"],
             )
     except Exception as exc:
-        logger.error("RFM segmentation job failed: %s", exc)
+        logger.exception("RFM segmentation job failed: %s", exc)
 
 
 async def run_weekly_scoring() -> None:
@@ -315,7 +315,7 @@ async def run_weekly_scoring() -> None:
                 n_estimates,
             )
     except Exception as exc:
-        logger.error("Weekly scoring job failed: %s", exc)
+        logger.exception("Weekly scoring job failed: %s", exc)
 
 
 async def run_daily_loyalty_expiry() -> None:
@@ -330,7 +330,7 @@ async def run_daily_loyalty_expiry() -> None:
             await db.commit()
             logger.info("Loyalty expiry: %d account(s) expired", count)
     except Exception as exc:
-        logger.error("Loyalty expiry job failed: %s", exc)
+        logger.exception("Loyalty expiry job failed: %s", exc)
 
 
 async def run_weekly_fashion_book() -> None:
@@ -355,7 +355,7 @@ async def run_weekly_fashion_book() -> None:
                 len(result.get("trends") or []),
             )
     except Exception as exc:
-        logger.error("Fashion Book cron failed: %s", exc)
+        logger.exception("Fashion Book cron failed: %s", exc)
 
 
 async def run_weekly_marketing_report() -> None:
@@ -379,7 +379,7 @@ async def run_weekly_marketing_report() -> None:
                 result.get("year"),
             )
     except Exception as exc:
-        logger.error("Marketing report cron failed: %s", exc)
+        logger.exception("Marketing report cron failed: %s", exc)
 
 
 async def run_weekly_checklist() -> None:
@@ -399,7 +399,7 @@ async def run_weekly_checklist() -> None:
                 len(result.get("checklist") or []),
             )
     except Exception as exc:
-        logger.error("Weekly checklist cron failed: %s", exc)
+        logger.exception("Weekly checklist cron failed: %s", exc)
 
 
 async def run_daily_trend_alerts() -> None:
@@ -414,7 +414,7 @@ async def run_daily_trend_alerts() -> None:
             await db.commit()
             logger.info("Trend alerts cron: %s", summary)
     except Exception as exc:
-        logger.error("Trend alerts cron failed: %s", exc)
+        logger.exception("Trend alerts cron failed: %s", exc)
 
 
 def register_all_jobs(scheduler) -> None:
