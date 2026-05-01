@@ -9,6 +9,7 @@ import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import DataTable from '@/components/ui/DataTable';
 import { api } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 
 interface Client {
   id: string;
@@ -31,9 +32,6 @@ interface Transaction {
   items_count: number;
 }
 
-function formatCurrency(value: number): string {
-  return value.toFixed(2).replace('.', ',') + '\u00A0\u20AC';
-}
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);

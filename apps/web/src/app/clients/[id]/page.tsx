@@ -8,6 +8,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import { api } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 
 type Tab = 'synthese' | 'achats' | 'fidelite' | 'gouts' | 'rgpd' | 'audit';
 
@@ -84,9 +85,6 @@ const CONSENT_LABELS: Record<string, string> = {
   data_sharing: 'Partage B2B',
 };
 
-function formatCurrency(value: number): string {
-  return value.toFixed(2).replace('.', ',') + ' €';
-}
 
 function formatDate(s: string | null): string {
   if (!s) return '—';

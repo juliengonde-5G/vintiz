@@ -1,0 +1,579 @@
+"""Public ``/account/*`` endpoints for the magic-link client space.
+
+Extracted from the monolithic ``crm/router.py`` (Sprint 3 #12) so each
+sub-domain owns its endpoints. The mounting URL prefix (``/api/crm``) is
+kept by the parent router; this sub-router declares no prefix so existing
+URLs stay byte-identical.
+
+Boundaries:
+- All endpoints here are PUBLIC (no auth header required).
+- Most accept ``email`` either as a query param or in the body and
+  resolve the client via ``_resolve_public_client``.
+- The wallet endpoints serve binary payloads (signed Apple .pkpass,
+  Google JWT URL, QR PNG); they're co-located here because they all
+  go through the same magic-link space.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import uuid
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
+from app.models.client import (
+    Client,
+    Consent,
+    ConsentPurpose,
+    LoyaltyAccount,
+)
+from app.models.pos import Transaction
+
+logger = logging.getLogger("vintiz")
+
+router = APIRouter(tags=["crm"])
+
+
+class AccountActionRequest(BaseModel):
+    email: str
+
+class PersonalShopperToggleRequest(BaseModel):
+    email: str
+    enabled: bool
+
+class PersonalShopperSearchRequest(BaseModel):
+    email: str
+    q: str
+
+_CONSENT_LABELS = {
+    ConsentPurpose.email_marketing: "Newsletter Vintiz",
+    ConsentPurpose.sms_marketing: "SMS commerciaux",
+    ConsentPurpose.profiling: "Profilage Personal Shopper",
+    ConsentPurpose.trend_alerts: "Alertes nouveautés tendance",
+    ConsentPurpose.data_sharing: "Partage de données B2B",
+}
+
+class ConsentToggleRequest(BaseModel):
+    email: str
+    granted: bool
+
+class OnboardingRequest(BaseModel):
+    liked_style_keys: list[str] = []
+    preferred_occasions: list[str] = []
+    preferred_price_buckets: list[str] = []
+    preferred_categories: list[str] = []
+
+class PublicOnboardingRequest(OnboardingRequest):
+    email: str
+
+
+
+def _normalize_email(value: str) -> str:
+    cleaned = value.strip().lower()
+    if "@" not in cleaned or "." not in cleaned.split("@", 1)[-1]:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+    return cleaned
+
+async def _resolve_public_client(db: AsyncSession, email: str) -> Client:
+    cleaned = _normalize_email(email)
+    row = await db.execute(select(Client).where(Client.email == cleaned))
+    client = row.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    return client
+
+async def _record_consent_toggle(
+    db: AsyncSession, client: Client, purpose: ConsentPurpose, granted: bool
+) -> None:
+    db.add(
+        Consent(
+            client_id=client.id,
+            purpose=purpose,
+            granted=granted,
+            policy_version="v2-2026-04",
+            source="account_self_service",
+        )
+    )
+    await db.flush()
+
+@router.get("/account/data-export")
+async def public_account_data_export(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public RGPD data export (Article 20 portability) by email lookup.
+
+    Returns the JSON portable snapshot directly. The audit logger records the
+    request via the SQLAlchemy listener; a future iteration will replace this
+    with a magic-link confirmation flow to prevent email enumeration leakage.
+    """
+    from app.services.rgpd import RgpdService
+
+    cleaned = _normalize_email(email)
+    result = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    return await RgpdService(db).export_client_data(client)
+
+@router.post("/account/deletion-request")
+async def public_account_deletion_request(
+    request: AccountActionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public RGPD deletion request (Article 17 erasure) by email lookup.
+
+    Stamps the soft-delete timestamp; the daily cron purges past 30 days.
+    The customer can cancel by re-submitting via the same flow within the
+    window (a future iteration will surface a "cancel" button on the site).
+    """
+    from app.services.rgpd import RgpdService
+
+    cleaned = _normalize_email(request.email)
+    result = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+
+    if client.deletion_requested_at is not None:
+        return {
+            "client_email": cleaned,
+            "deletion_requested_at": client.deletion_requested_at.isoformat(),
+            "purge_after": (
+                client.deletion_requested_at + timedelta(days=30)
+            ).isoformat(),
+            "already_pending": True,
+        }
+    requested_at = await RgpdService(db).request_deletion(client)
+    await db.commit()
+    return {
+        "client_email": cleaned,
+        "deletion_requested_at": requested_at.isoformat(),
+        "purge_after": (requested_at + timedelta(days=30)).isoformat(),
+        "already_pending": False,
+    }
+
+@router.post("/account/deletion-cancel")
+async def public_account_deletion_cancel(
+    request: AccountActionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public cancellation of a pending deletion request (within the 30-day window)."""
+    from app.services.rgpd import RgpdService
+
+    cleaned = _normalize_email(request.email)
+    result = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    if client.deletion_requested_at is None:
+        return {"client_email": cleaned, "deletion_cancelled": True, "was_pending": False}
+    await RgpdService(db).cancel_deletion(client)
+    await db.commit()
+    return {"client_email": cleaned, "deletion_cancelled": True, "was_pending": True}
+
+@router.post("/account/personal-shopper/toggle")
+async def toggle_personal_shopper(
+    payload: PersonalShopperToggleRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Append a ``profiling`` consent row from the client space.
+
+    Public endpoint (no JWT yet — magic-link cookie comes in PR3).
+    Returns 204 on success even if the toggle is a no-op (idempotent
+    UX); the underlying consent ledger keeps the full history.
+    """
+    from fastapi import Response
+
+    client = await _resolve_public_client(db, payload.email)
+    await _record_consent_toggle(
+        db, client, ConsentPurpose.profiling, payload.enabled
+    )
+    await db.commit()
+    return Response(status_code=204)
+
+@router.post("/account/trend-alerts/toggle")
+async def toggle_trend_alerts(
+    payload: PersonalShopperToggleRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Subscribe / unsubscribe from the trend product alerts (PR2)."""
+    from fastapi import Response
+
+    client = await _resolve_public_client(db, payload.email)
+    await _record_consent_toggle(
+        db, client, ConsentPurpose.trend_alerts, payload.enabled
+    )
+    await db.commit()
+    return Response(status_code=204)
+
+@router.post("/account/personal-shopper/search")
+async def personal_shopper_search(
+    payload: PersonalShopperSearchRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Free-text search of the live inventory (PR2 sémantique).
+
+    Gated like the rest of the Personal Shopper: the client must be
+    a loyalty member with profiling consent granted.
+    """
+    from app.services.loyalty import loyalty_active
+    from app.services.personal_shopper_search import search
+
+    client = await _resolve_public_client(db, payload.email)
+    if not loyalty_active(client):
+        raise HTTPException(status_code=403, detail="loyalty_required")
+
+    consent_row = await db.execute(
+        select(Consent)
+        .where(
+            Consent.client_id == client.id,
+            Consent.purpose == ConsentPurpose.profiling,
+        )
+        .order_by(Consent.created_at.desc())
+        .limit(1)
+    )
+    consent = consent_row.scalar_one_or_none()
+    if consent is None or not consent.granted:
+        raise HTTPException(status_code=403, detail="profiling_consent_required")
+
+    return await search(db, payload.q)
+
+@router.get("/account/personal-shopper/live")
+async def personal_shopper_live(
+    email: str = Query(..., min_length=5, max_length=255),
+    top_n: int = 8,
+    db: AsyncSession = Depends(get_db),
+):
+    """Live recommendation feed for the espace client (gated).
+
+    Mirrors :func:`public_personal_shopper_v2` but returns the bare
+    products payload the public site renders without the Claude
+    narrative — the narrative is a manager-side concern.
+    """
+    from app.services.personal_shopper import (
+        PersonalShopperGatedError,
+        PersonalShopperService,
+    )
+
+    client = await _resolve_public_client(db, email)
+    try:
+        result = await PersonalShopperService(db).recommend(
+            client.id, top_n=max(1, min(top_n, 10))
+        )
+    except PersonalShopperGatedError as exc:
+        raise HTTPException(status_code=403, detail=exc.reason)
+    await db.commit()
+    return result
+
+@router.get("/account/coupons")
+async def public_account_coupons(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """List active coupons attached to the customer (PR3 espace client)."""
+    from app.models.coupon import Coupon
+
+    client = await _resolve_public_client(db, email)
+    rows = await db.execute(
+        select(Coupon)
+        .where(
+            Coupon.client_id == client.id,
+            Coupon.is_active.is_(True),
+            Coupon.redeemed_at.is_(None),
+        )
+        .order_by(Coupon.valid_until.asc())
+    )
+    coupons = rows.scalars().all()
+    now = datetime.now(timezone.utc)
+
+    def _is_expired(valid_until):
+        if valid_until is None:
+            return False
+        # SQLite drops tzinfo — treat naive datetimes as UTC.
+        if valid_until.tzinfo is None:
+            valid_until = valid_until.replace(tzinfo=timezone.utc)
+        return valid_until < now
+
+    return [
+        {
+            "code": c.code,
+            "discount_type": c.discount_type.value,
+            "discount_value": float(c.discount_value or 0),
+            "source": c.source.value if c.source else None,
+            "valid_from": c.valid_from.isoformat() if c.valid_from else None,
+            "valid_until": c.valid_until.isoformat() if c.valid_until else None,
+            "expired": _is_expired(c.valid_until),
+            "notes": c.notes,
+        }
+        for c in coupons
+    ]
+
+@router.get("/account/transactions")
+async def public_account_transactions(
+    email: str = Query(..., min_length=5, max_length=255),
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """Paginated history of the customer's purchases (PR3 espace client)."""
+    from app.models.pos import TransactionItem
+    from sqlalchemy.orm import selectinload
+
+    client = await _resolve_public_client(db, email)
+    rows = await db.execute(
+        select(Transaction)
+        .options(selectinload(Transaction.items).selectinload(TransactionItem.product))
+        .where(Transaction.client_id == client.id)
+        .order_by(Transaction.created_at.desc())
+        .limit(max(1, min(limit, 100)))
+    )
+    transactions = rows.scalars().all()
+    return [
+        {
+            "id": str(t.id),
+            "transaction_number": t.transaction_number,
+            "transaction_type": t.transaction_type.value,
+            "total_ttc": float(t.total_ttc or 0),
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "items": [
+                {
+                    "name": (it.product.name if it.product else "Article"),
+                    "quantity": int(it.quantity or 0),
+                    "line_total": float(it.line_total or 0),
+                }
+                for it in (t.items or [])[:10]
+            ],
+        }
+        for t in transactions
+    ]
+
+@router.get("/account/consents")
+async def public_account_consents(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Human-readable consent state across all RGPD purposes (PR3 espace client).
+
+    For each ``ConsentPurpose``, returns the latest decision (granted /
+    revoked) with the source + timestamp. Purposes never opted into
+    surface as ``granted: false`` so the UI can render an explicit
+    "désactivé" state rather than nothing.
+    """
+    client = await _resolve_public_client(db, email)
+    rows = await db.execute(
+        select(Consent)
+        .where(Consent.client_id == client.id)
+        .order_by(Consent.created_at.desc())
+    )
+    history = rows.scalars().all()
+
+    latest: dict[ConsentPurpose, Consent] = {}
+    for row in history:
+        latest.setdefault(row.purpose, row)
+
+    out = []
+    for purpose in ConsentPurpose:
+        row = latest.get(purpose)
+        out.append({
+            "purpose": purpose.value,
+            "label": _CONSENT_LABELS.get(purpose, purpose.value),
+            "granted": bool(row.granted) if row else False,
+            "source": row.source if row else None,
+            "policy_version": row.policy_version if row else None,
+            "recorded_at": row.created_at.isoformat() if row and row.created_at else None,
+        })
+    return out
+
+@router.post("/account/consents/{purpose}")
+async def public_account_consent_toggle(
+    purpose: str,
+    payload: ConsentToggleRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Append a consent ledger row for any purpose from the espace client.
+
+    Mirrors :func:`toggle_personal_shopper` and :func:`toggle_trend_alerts`
+    but for the generic /account/rgpd page.
+    """
+    from fastapi import Response
+
+    try:
+        consent_purpose = ConsentPurpose(purpose)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="unknown_purpose")
+
+    client = await _resolve_public_client(db, payload.email)
+    db.add(
+        Consent(
+            client_id=client.id,
+            purpose=consent_purpose,
+            granted=payload.granted,
+            policy_version="v2-2026-04",
+            source="account_self_service",
+        )
+    )
+    if consent_purpose in (ConsentPurpose.email_marketing, ConsentPurpose.sms_marketing):
+        # Mirror legacy boolean flag (kept for the cron jobs that still
+        # consult ``Client.email_optin`` / ``sms_optin``).
+        flag = "email_optin" if consent_purpose == ConsentPurpose.email_marketing else "sms_optin"
+        setattr(client, flag, payload.granted)
+    await db.commit()
+    return Response(status_code=204)
+
+@router.post("/account/onboarding")
+async def public_submit_onboarding(
+    request: PublicOnboardingRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public: same as the authenticated endpoint, identified by email."""
+    from app.services.onboarding import cold_start_taste_profile
+
+    cleaned = _normalize_email(request.email)
+    result = await db.execute(select(Client).where(Client.email == cleaned))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+
+    profile = await cold_start_taste_profile(
+        db, client,
+        liked_style_keys=request.liked_style_keys,
+        preferred_occasions=request.preferred_occasions,
+        preferred_price_buckets=request.preferred_price_buckets,
+        preferred_categories=request.preferred_categories,
+    )
+    await db.commit()
+    return {
+        "client_email": cleaned,
+        "profile_id": str(profile.id),
+        "algo_version": profile.algo_version,
+    }
+
+@router.get("/account/wallet")
+async def public_wallet_pass(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the loyalty Wallet pass payload by client email.
+
+    Generic 404 on unknown email — same shape as ``/clients/lookup`` so
+    we don't expose enumeration. The payload contains the Apple
+    ``pass.json`` and the Google ``LoyaltyObject`` plus the metadata the
+    front needs to render a preview card.
+    """
+    from app.services.wallet import (
+        apple_wallet_available,
+        build_pass_by_email,
+        google_wallet_available,
+        payload_to_dict,
+    )
+
+    email_clean = email.strip().lower()
+    if "@" not in email_clean or "." not in email_clean.split("@", 1)[-1]:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+    pass_payload = await build_pass_by_email(db, email_clean)
+    if pass_payload is None:
+        raise HTTPException(status_code=404, detail="Compte introuvable")
+    out = payload_to_dict(pass_payload)
+    out["apple_signed_available"] = apple_wallet_available()
+    out["google_save_available"] = google_wallet_available()
+    return out
+
+@router.get("/account/wallet/apple")
+async def download_apple_pass(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a signed ``.pkpass`` archive (Apple Wallet).
+
+    Returns 200 with the binary when the dev certs are configured, or 503
+    with a JSON explaining how to activate it. The fallback QR endpoint
+    remains available either way.
+    """
+    from fastapi.responses import Response
+    from app.services.wallet import build_pass_by_email, build_apple_pkpass
+
+    email_clean = email.strip().lower()
+    if "@" not in email_clean:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+    pass_payload = await build_pass_by_email(db, email_clean)
+    if pass_payload is None:
+        raise HTTPException(status_code=404, detail="Compte introuvable")
+    pkpass = build_apple_pkpass(pass_payload)
+    if pkpass is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Apple Wallet pass non configuré : posez WALLET_APPLE_P12_PATH, "
+                "WALLET_APPLE_P12_PASSWORD, WALLET_APPLE_WWDR_PATH et WALLET_TEAM_IDENTIFIER. "
+                "En attendant, utilisez l'export QR via /api/crm/account/wallet/qr.png."
+            ),
+        )
+    filename = f"vintiz-{pass_payload.membership_number}.pkpass"
+    return Response(
+        content=pkpass,
+        media_type="application/vnd.apple.pkpass",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+@router.get("/account/wallet/google")
+async def download_google_pass(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Redirect the browser to the Google Wallet save URL.
+
+    Returns 503 when the Service Account JSON is not configured.
+    """
+    from fastapi.responses import RedirectResponse
+    from app.services.wallet import build_pass_by_email, build_google_save_url
+
+    email_clean = email.strip().lower()
+    if "@" not in email_clean:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+    pass_payload = await build_pass_by_email(db, email_clean)
+    if pass_payload is None:
+        raise HTTPException(status_code=404, detail="Compte introuvable")
+    save_url = build_google_save_url(pass_payload)
+    if not save_url:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Google Wallet non configuré : posez WALLET_GOOGLE_SERVICE_ACCOUNT_JSON "
+                "et WALLET_GOOGLE_ISSUER_ID."
+            ),
+        )
+    return RedirectResponse(url=save_url, status_code=302)
+
+@router.get("/account/wallet/qr.png")
+async def download_wallet_qr(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Always-on PNG fallback : QR code encoding the membership URL."""
+    from fastapi.responses import Response
+    from app.services.wallet import build_pass_by_email, build_qr_png
+
+    email_clean = email.strip().lower()
+    if "@" not in email_clean:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+    pass_payload = await build_pass_by_email(db, email_clean)
+    if pass_payload is None:
+        raise HTTPException(status_code=404, detail="Compte introuvable")
+    png = build_qr_png(pass_payload)
+    if png is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Génération QR indisponible (paquet 'qrcode' manquant)",
+        )
+    filename = f"vintiz-{pass_payload.membership_number}-qr.png"
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
