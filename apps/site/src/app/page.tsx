@@ -4,8 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, FormEvent } from "react";
 
-const INSTAGRAM_URL = "https://www.instagram.com/vintiz.vernon/";
-const FACEBOOK_URL = "https://www.facebook.com/vintiz.vernon";
+const INSTAGRAM_URL = "https://www.instagram.com/vintiz.fr/";
+const FACEBOOK_URL = "https://www.facebook.com/vintiz.fr";
 const TIKTOK_URL = "https://www.tiktok.com/@vintiz.vernon";
 
 export default function Home() {
