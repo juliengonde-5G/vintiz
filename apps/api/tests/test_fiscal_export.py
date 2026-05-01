@@ -213,13 +213,13 @@ async def test_period_filter_excludes_out_of_window(session):
 async def test_xml_export_is_well_formed_and_carries_hash_chain(session):
     await _seed_minimal(session)
     svc = FiscalExportService(session)
-    snap = await svc.build_snapshot(merchant_name="Frip & Co Vernon")
+    snap = await svc.build_snapshot(merchant_name="Vintiz Vernon")
     xml = svc.to_xml(snap)
 
     assert xml.startswith("<?xml")
     root = ET.fromstring(xml)
     assert root.tag == "FiscalExport"
-    assert root.get("merchant_name") == "Frip & Co Vernon"
+    assert root.get("merchant_name") == "Vintiz Vernon"
     assert root.get("format") == "vintiz-nf525-export"
 
     transactions = root.find("Transactions")

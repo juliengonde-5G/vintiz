@@ -653,7 +653,7 @@ async def fiscal_export(
     period_from: str | None = Query(None, alias="from"),
     period_to: str | None = Query(None, alias="to"),
     fmt: str = Query("xml", alias="format", pattern="^(xml|json)$"),
-    merchant_name: str = Query("Frip & Co Vernon"),
+    merchant_name: str = Query("Vintiz Vernon"),
     merchant_id: str = Query(""),
 ):
     """Build a NF525-compliant fiscal export over the given period.
