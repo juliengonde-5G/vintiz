@@ -6,7 +6,10 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
+import CashManagementSettingsPanel from '@/components/settings/CashManagementSettingsPanel';
+import ReceiptTemplatesPanel from '@/components/settings/ReceiptTemplatesPanel';
 import ScoringWeightsPanel from '@/components/settings/ScoringWeightsPanel';
+import SumUpTerminalsPanel from '@/components/settings/SumUpTerminalsPanel';
 import { api } from '@/lib/api';
 
 interface Category {
@@ -83,7 +86,7 @@ interface SandboxSnapshot {
 }
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'store' | 'payment' | 'communication' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
+  const [tab, setTab] = useState<'store' | 'payment' | 'caisse' | 'communication' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
   const [hardware, setHardware] = useState<HardwareConfig | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityItem[]>([]);
   const [hwSaving, setHwSaving] = useState(false);
@@ -695,6 +698,7 @@ export default function SettingsPage() {
   const tabs = [
     { key: 'store' as const, label: 'Boutique' },
     { key: 'payment' as const, label: 'Paiement' },
+    { key: 'caisse' as const, label: 'Caisse' },
     { key: 'communication' as const, label: 'Communication' },
     { key: 'cahier' as const, label: 'Cahier de travail' },
     { key: 'fidelite' as const, label: 'Fidelite' },
@@ -1138,6 +1142,15 @@ export default function SettingsPage() {
                 </div>
               )}
             </Card>
+          </div>
+        )}
+
+        {/* CAISSE TAB — Multi-terminaux SumUp + templates ticket/facture + routine */}
+        {tab === 'caisse' && (
+          <div className="space-y-6">
+            <SumUpTerminalsPanel />
+            <ReceiptTemplatesPanel />
+            <CashManagementSettingsPanel />
           </div>
         )}
 

@@ -216,6 +216,41 @@ async def list_admin_payment_attempts(
 
 
 # ---------------------------------------------------------------------------
+# Cash management config — defaults consumed by POS Open/Close modals
+# ---------------------------------------------------------------------------
+
+
+class CashManagementConfigUpdate(BaseModel):
+    allowed_discrepancy_eur: float | None = None
+    default_detail_mode: bool | None = None
+    comptable_email: str | None = None
+
+
+@router.get("/cash-management/config", dependencies=[Depends(manager_only)])
+async def get_cash_management_config():
+    """Read defaults for the POS open/close modals (tolerance, mode, email)."""
+    from app.services.app_config import get_section
+
+    return get_section("cash_management")
+
+
+@router.put("/cash-management/config", dependencies=[Depends(manager_only)])
+async def update_cash_management_config(payload: CashManagementConfigUpdate):
+    """Update cash management defaults. Empty strings clear the field."""
+    from app.services.app_config import get_section, update_section
+
+    values = payload.model_dump(exclude_none=True)
+    tol = values.get("allowed_discrepancy_eur")
+    if tol is not None and (tol < 0 or tol > 1000):
+        raise HTTPException(
+            status_code=400,
+            detail="allowed_discrepancy_eur doit être entre 0 et 1000 €",
+        )
+    update_section("cash_management", values)
+    return get_section("cash_management")
+
+
+# ---------------------------------------------------------------------------
 # Cash drawer sessions — admin overview (/admin > Sessions caisses)
 # ---------------------------------------------------------------------------
 
