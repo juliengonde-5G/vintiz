@@ -150,9 +150,9 @@ export default function AdminZReportsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-vz-bg">
+    <div className="min-h-screen bg-vz-bg">
       <Sidebar />
-      <main className="flex-1 p-6 lg:p-8">
+      <main className="md:ml-64 px-4 py-6 pt-16 md:pt-6 md:px-6 lg:p-8">
         <header className="mb-6">
           <h1 className="font-display text-3xl font-semibold text-vz-ink">
             Rapports Z
