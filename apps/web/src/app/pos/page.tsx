@@ -956,8 +956,13 @@ export default function POSPage() {
       {/* ── Main POS area ─────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden md:ml-64">
 
-        {/* ── LEFT PANEL: Order / Cart ────────────────────────────── */}
-        <div className="w-[42%] flex flex-col bg-white border-r border-gray-200 shadow-sm">
+        {/* ── LEFT PANEL: Order / Cart ──────────────────────────────
+             Width is responsive — 42% suits an iPad 10.9" (1024-1180 css
+             px), but the Lenovo Idea Tab Pro 13" caisse renders at
+             ≥1280 px in landscape and benefits from a wider cart column
+             (more lines visible without scrolling). xl: ≥1280, 2xl:
+             ≥1536 for very wide docked setups. */}
+        <div className="w-[42%] xl:w-[48%] 2xl:w-[50%] flex flex-col bg-white border-r border-gray-200 shadow-sm">
 
           {/* Connectivity strip (P1-005) — visible only when offline or with backlog */}
           {(!online || pendingCount > 0) && (

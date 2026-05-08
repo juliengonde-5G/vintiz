@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Lexend_Mega, Poppins } from "next/font/google";
 import CompanionDrawer from "@/components/ai/CompanionDrawer";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import "./globals.css";
 
 // Charte graphique Vintiz v2 : Lexend Mega (titres) + Poppins (texte).
@@ -64,6 +65,7 @@ export default function RootLayout({
       <body className="font-sans antialiased bg-background text-foreground">
         {children}
         <CompanionDrawer />
+        <ServiceWorkerRegister />
       </body>
     </html>
   );

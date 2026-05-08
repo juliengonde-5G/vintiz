@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { isAndroid, isIOS } from "@/lib/platform";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -46,6 +47,19 @@ export default function WalletCard({ email }: { email: string }) {
     };
   }, [email]);
 
+  // Pick the platform-native wallet as the primary CTA. Android Chrome
+  // can't install a .pkpass file, iOS Safari can't really save to Google
+  // Wallet ; surfacing the wrong one first leads to broken downloads.
+  // Must be called before any early return — Rules of Hooks.
+  const primaryWallet: 'apple' | 'google' | null = useMemo(() => {
+    if (!data) return null;
+    if (isIOS() && data.apple_signed_available) return 'apple';
+    if (isAndroid() && data.google_save_available) return 'google';
+    if (data.apple_signed_available) return 'apple';
+    if (data.google_save_available) return 'google';
+    return null;
+  }, [data]);
+
   if (error) {
     return (
       <p className="text-sm text-gray-400 text-center py-2">{error}</p>
@@ -61,6 +75,11 @@ export default function WalletCard({ email }: { email: string }) {
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(
     data.qr_payload,
   )}`;
+
+  const PRIMARY_CLASS =
+    'text-xs bg-white text-vz-teal-deep hover:bg-white/90 rounded-full px-3 py-1.5 font-semibold transition-colors';
+  const SECONDARY_CLASS =
+    'text-[11px] bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 font-medium transition-colors';
 
   return (
     <div
@@ -101,22 +120,47 @@ export default function WalletCard({ email }: { email: string }) {
       <p className="mt-4 text-xs opacity-90">{data.benefit_text}</p>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {data.apple_signed_available && (
+        {/* Render the platform-native wallet first with the prominent
+            "primary" style so the user installs the right one in 1 tap. */}
+        {primaryWallet === 'google' && data.google_save_available && (
+          <a
+            href={`${API_URL}/api/crm/account/wallet/google?email=${encodeURIComponent(email)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={PRIMARY_CLASS}
+            title="Ajouter à Google Wallet"
+          >
+            Ajouter à Google Wallet
+          </a>
+        )}
+        {primaryWallet === 'apple' && data.apple_signed_available && (
           <a
             href={`${API_URL}/api/crm/account/wallet/apple?email=${encodeURIComponent(email)}`}
             download
-            className="text-[11px] bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 font-medium transition-colors"
+            className={PRIMARY_CLASS}
             title="Télécharger un .pkpass signé pour Apple Wallet"
           >
             Ajouter à Apple Wallet
           </a>
         )}
-        {data.google_save_available && (
+        {/* Secondary wallet (the other platform). Hidden when both are
+            unavailable to avoid empty/duplicate buttons. */}
+        {primaryWallet !== 'apple' && data.apple_signed_available && (
+          <a
+            href={`${API_URL}/api/crm/account/wallet/apple?email=${encodeURIComponent(email)}`}
+            download
+            className={SECONDARY_CLASS}
+            title="Télécharger un .pkpass signé pour Apple Wallet"
+          >
+            Ajouter à Apple Wallet
+          </a>
+        )}
+        {primaryWallet !== 'google' && data.google_save_available && (
           <a
             href={`${API_URL}/api/crm/account/wallet/google?email=${encodeURIComponent(email)}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 font-medium transition-colors"
+            className={SECONDARY_CLASS}
             title="Ajouter à Google Wallet"
           >
             Ajouter à Google Wallet
