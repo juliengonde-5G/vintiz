@@ -825,7 +825,7 @@ export default function SettingsPage() {
                         type="number"
                         value={shopInfo.surface_m2}
                         onChange={(e) => setShopInfo({ ...shopInfo, surface_m2: parseFloat(e.target.value) || 0 })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                     <div>
@@ -835,7 +835,7 @@ export default function SettingsPage() {
                         step="0.1"
                         value={shopInfo.vat_rate_percent}
                         onChange={(e) => setShopInfo({ ...shopInfo, vat_rate_percent: parseFloat(e.target.value) || 0 })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                     <Input
@@ -937,7 +937,7 @@ export default function SettingsPage() {
                       <select
                         value={sumupForm.environment}
                         onChange={(e) => setSumupForm({ ...sumupForm, environment: e.target.value })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black"
                       >
                         <option value="">Auto-détection (selon clé)</option>
                         <option value="sandbox">Sandbox (test)</option>
@@ -955,7 +955,7 @@ export default function SettingsPage() {
                         max={120}
                         value={sumupForm.sandbox_auto_delay_sec}
                         onChange={(e) => setSumupForm({ ...sumupForm, sandbox_auto_delay_sec: e.target.value })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                       <p className="text-xs text-gray-400 mt-1">0 = approbation manuelle uniquement.</p>
                     </div>
@@ -970,7 +970,7 @@ export default function SettingsPage() {
                         onChange={(e) => setSumupForm({ ...sumupForm, api_key: e.target.value })}
                         placeholder={sumupPersisted?.api_key_masked ? 'Laisser vide pour conserver' : 'sup_sk_…'}
                         autoComplete="off"
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                     <div>
@@ -984,7 +984,7 @@ export default function SettingsPage() {
                         onChange={(e) => setSumupForm({ ...sumupForm, merchant_code: e.target.value })}
                         placeholder={sumupPersisted?.merchant_code_masked ? 'Laisser vide pour conserver' : 'M…'}
                         autoComplete="off"
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                     <div>
@@ -998,7 +998,7 @@ export default function SettingsPage() {
                         onChange={(e) => setSumupForm({ ...sumupForm, reader_id: e.target.value })}
                         placeholder={sumupPersisted?.reader_id_masked ? 'Laisser vide pour conserver' : 'reader_…'}
                         autoComplete="off"
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                       <p className="text-xs text-gray-400 mt-1">Si défini : push direct sur le TPE (le client tape, le caissier ne saisit pas).</p>
                     </div>
@@ -1178,7 +1178,7 @@ export default function SettingsPage() {
                   <select
                     value={emailForm.provider}
                     onChange={(e) => setEmailForm({ ...emailForm, provider: e.target.value })}
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black"
+                    className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black"
                   >
                     <option value="">Auto-détection (Brevo si clé, sinon SMTP, sinon simulation)</option>
                     <option value="brevo">Brevo (production)</option>
@@ -1200,7 +1200,7 @@ export default function SettingsPage() {
                     onChange={(e) => setEmailForm({ ...emailForm, brevo_api_key: e.target.value })}
                     placeholder={emailPersisted?.brevo_api_key_masked ? 'Laisser vide pour conserver' : 'xkeysib-…'}
                     autoComplete="off"
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                    className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
                   />
                 </div>
 
@@ -1240,7 +1240,7 @@ export default function SettingsPage() {
                     onChange={(e) => setEmailForm({ ...emailForm, smtp_password: e.target.value })}
                     placeholder={emailPersisted?.smtp_password_masked ? 'Laisser vide pour conserver' : '••••••••'}
                     autoComplete="off"
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                    className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
                   />
                 </div>
 
@@ -1328,7 +1328,7 @@ export default function SettingsPage() {
                 <select
                   value={newCatGender}
                   onChange={(e) => setNewCatGender(e.target.value)}
-                  className="min-h-[44px] px-4 py-2 rounded-lg border border-gray-300 bg-white text-black"
+                  className="min-h-[48px] px-4 py-2 rounded-lg border border-gray-300 bg-white text-black"
                 >
                   <option value="femme">Femme</option>
                   <option value="homme">Homme</option>
@@ -1436,7 +1436,7 @@ export default function SettingsPage() {
                     <div>
                       <label className="block text-sm font-medium text-black mb-1.5">Capacité max (articles)</label>
                       <input type="number" min={1} max={500} value={zoneForm.capacity} onChange={e => setZoneForm(f => ({...f, capacity: parseInt(e.target.value) || 20}))}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal" />
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-black mb-2">Types de produits acceptés</label>
@@ -1545,7 +1545,7 @@ export default function SettingsPage() {
                         type="number"
                         value={hardware.receipt_printer.port}
                         onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, port: parseInt(e.target.value) || 9100 } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                     <div>
@@ -1554,7 +1554,7 @@ export default function SettingsPage() {
                         type="number"
                         value={hardware.receipt_printer.width_chars}
                         onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, width_chars: parseInt(e.target.value) || 42 } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                       <p className="text-xs text-gray-400 mt-1">42 pour du 80 mm (Font A)</p>
                     </div>
@@ -1602,7 +1602,7 @@ export default function SettingsPage() {
                       <select
                         value={hardware.cash_drawer.kick_pin}
                         onChange={(e) => setHardware({ ...hardware, cash_drawer: { ...hardware.cash_drawer, kick_pin: parseInt(e.target.value) } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black"
                       >
                         <option value={0}>Pin 2 (standard)</option>
                         <option value={1}>Pin 5</option>
@@ -1638,7 +1638,7 @@ export default function SettingsPage() {
                         type="number"
                         value={hardware.label_printer.port}
                         onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, port: parseInt(e.target.value) || 9100 } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                     <div>
@@ -1647,7 +1647,7 @@ export default function SettingsPage() {
                         type="number"
                         value={hardware.label_printer.label_width_mm}
                         onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_width_mm: parseInt(e.target.value) || 50 } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                     <div>
@@ -1656,7 +1656,7 @@ export default function SettingsPage() {
                         type="number"
                         value={hardware.label_printer.label_height_mm}
                         onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_height_mm: parseInt(e.target.value) || 30 } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                   </div>
@@ -1684,7 +1684,7 @@ export default function SettingsPage() {
                         type="number"
                         value={hardware.barcode_scanner.min_length}
                         onChange={(e) => setHardware({ ...hardware, barcode_scanner: { ...hardware.barcode_scanner, min_length: parseInt(e.target.value) || 4 } })}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                   </div>
@@ -1956,7 +1956,7 @@ export default function SettingsPage() {
                         type="date"
                         value={loyaltyWindowStart}
                         onChange={(e) => setLoyaltyWindowStart(e.target.value)}
-                        className="w-full min-h-[44px] px-3 py-2 rounded-lg border border-gray-300 bg-white"
+                        className="w-full min-h-[48px] px-3 py-2 rounded-lg border border-gray-300 bg-white"
                       />
                     </div>
                     <div>
@@ -1965,7 +1965,7 @@ export default function SettingsPage() {
                         type="date"
                         value={loyaltyWindowEnd}
                         onChange={(e) => setLoyaltyWindowEnd(e.target.value)}
-                        className="w-full min-h-[44px] px-3 py-2 rounded-lg border border-gray-300 bg-white"
+                        className="w-full min-h-[48px] px-3 py-2 rounded-lg border border-gray-300 bg-white"
                       />
                     </div>
                   </div>

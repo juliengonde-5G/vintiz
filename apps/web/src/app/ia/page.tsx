@@ -545,7 +545,7 @@ export default function IAPage() {
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl min-h-[44px] whitespace-nowrap transition-colors ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl min-h-[48px] whitespace-nowrap transition-colors ${
                 tab === t.key
                   ? 'bg-vz-teal text-white font-medium shadow-vz-soft'
                   : 'bg-white text-gray-600 hover:bg-vz-teal-soft hover:text-vz-teal border border-gray-100'
@@ -557,7 +557,7 @@ export default function IAPage() {
           ))}
           <Link
             href="/ia/marketing"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl min-h-[44px] whitespace-nowrap bg-vz-teal text-white font-medium shadow-vz-soft hover:shadow-vz-soft transition-all"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl min-h-[48px] whitespace-nowrap bg-vz-teal text-white font-medium shadow-vz-soft hover:shadow-vz-soft transition-all"
           >
             <span>📣</span>
             <span>Rapport marketing</span>
@@ -631,7 +631,7 @@ export default function IAPage() {
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => loadChecklist(true)} disabled={checklistLoading}
-                  className="min-h-[44px] px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium transition-colors disabled:opacity-50">
+                  className="min-h-[48px] px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium transition-colors disabled:opacity-50">
                   {checklistLoading ? 'Régénération…' : 'Régénérer manuellement'}
                 </button>
               </div>
@@ -726,7 +726,7 @@ export default function IAPage() {
                     Régénéré automatiquement chaque lundi à 7h30 (Paris).
                   </span>
                   <button onClick={() => loadTrendsMode(true)} disabled={trendsModeLoading}
-                    className="min-h-[44px] px-4 py-2 rounded-lg border border-vz-line text-vz-ink hover:bg-white text-sm font-medium transition-colors disabled:opacity-50">
+                    className="min-h-[48px] px-4 py-2 rounded-lg border border-vz-line text-vz-ink hover:bg-white text-sm font-medium transition-colors disabled:opacity-50">
                     {trendsModeLoading ? 'Actualisation…' : 'Régénérer manuellement'}
                   </button>
                 </div>

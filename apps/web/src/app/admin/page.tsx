@@ -261,7 +261,7 @@ export default function AdminPage() {
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg min-h-[44px] whitespace-nowrap transition-colors text-sm font-medium ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg min-h-[48px] whitespace-nowrap transition-colors text-sm font-medium ${
                 tab === t.key
                   ? 'bg-vz-teal text-white'
                   : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'

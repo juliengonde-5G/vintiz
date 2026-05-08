@@ -250,7 +250,7 @@ export default function Sidebar() {
       {/* Mobile hamburger */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="fixed top-4 left-4 z-50 md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-white shadow-md"
+        className="fixed top-4 left-4 z-50 md:hidden min-h-[48px] min-w-[48px] flex items-center justify-center rounded-lg bg-white shadow-md"
         aria-label="Menu"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="2" strokeLinecap="round">
@@ -326,7 +326,7 @@ export default function Sidebar() {
                         href={item.href}
                         onClick={() => setCollapsed(false)}
                         title={desktopCollapsed ? item.label : undefined}
-                        className={`relative flex items-center gap-3 ${desktopCollapsed ? 'md:justify-center md:px-2 px-4' : 'px-4'} py-2.5 rounded-xl min-h-[44px] transition-all ${
+                        className={`relative flex items-center gap-3 ${desktopCollapsed ? 'md:justify-center md:px-2 px-4' : 'px-4'} py-2.5 rounded-xl min-h-[48px] transition-all ${
                           isActive
                             ? 'bg-vz-bg text-vz-teal font-medium shadow-sm'
                             : 'text-gray-600 hover:bg-gray-50 hover:text-black'
@@ -376,7 +376,7 @@ export default function Sidebar() {
               }
             }}
             title={desktopCollapsed ? 'Deconnexion' : undefined}
-            className={`flex items-center gap-3 ${desktopCollapsed ? 'md:justify-center md:px-2 px-4' : 'px-4'} py-2.5 rounded-xl min-h-[44px] w-full text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors`}
+            className={`flex items-center gap-3 ${desktopCollapsed ? 'md:justify-center md:px-2 px-4' : 'px-4'} py-2.5 rounded-xl min-h-[48px] w-full text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors`}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
