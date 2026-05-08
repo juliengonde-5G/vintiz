@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 
 revision = "0035"
@@ -139,13 +140,25 @@ def upgrade() -> None:
     # 2. payment_attempts
     # -----------------------------------------------------------------------
     if not _table_exists("payment_attempts"):
+        # Reuse the existing ``payment_method`` PG enum (created by a much
+        # earlier migration for ``payments.method``). Using ``sa.Enum(...,
+        # create_type=False)`` is not enough — alembic still emits CREATE
+        # TYPE via the DDL visitor and crashes with DuplicateObjectError.
+        # ``postgresql.ENUM(..., create_type=False)`` is the explicit
+        # PG-native form that reliably skips the type creation.
+        if is_pg:
+            method_type = postgresql.ENUM(
+                "cash", "card", "cheque", "transfer", "avoir",
+                name="payment_method", create_type=False,
+            )
+        else:
+            method_type = sa.String(length=40)
         op.create_table(
             "payment_attempts",
             *_audit_columns(uuid_type),
             sa.Column(
                 "method",
-                # Reuse existing payment_method enum on PG ; portable string on SQLite
-                sa.Enum("cash", "card", "cheque", "transfer", "avoir", name="payment_method", create_type=False) if is_pg else sa.String(length=40),
+                method_type,
                 nullable=False,
             ),
             sa.Column("amount", sa.Numeric(10, 2), nullable=False),
