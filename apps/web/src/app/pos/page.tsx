@@ -8,10 +8,21 @@ import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import Card from '@/components/ui/Card';
 import CashierPinModal from '@/components/cashier/CashierPinModal';
-import LoyaltyCustomerCard, { type CustomerBrief } from '@/components/pos/LoyaltyCustomerCard';
+import CashDrawerCloseModal from '@/components/pos/CashDrawerCloseModal';
+import CashDrawerOpenModal from '@/components/pos/CashDrawerOpenModal';
+import CashMovementButton from '@/components/pos/CashMovementButton';
 import ClientCompanion from '@/components/pos/ClientCompanion';
+import InvoiceClientForm, {
+  type InvoiceFields,
+  isInvoiceFormValid,
+} from '@/components/pos/InvoiceClientForm';
+import LoyaltyCustomerCard, { type CustomerBrief } from '@/components/pos/LoyaltyCustomerCard';
+import MultiStepPaymentWizard from '@/components/pos/MultiStepPaymentWizard';
+import ReceiptPreviewCard from '@/components/pos/ReceiptPreviewCard';
+import { usePosPayment } from '@/hooks/usePosPayment';
 import { api } from '@/lib/api';
 import { useConnectivity } from '@/lib/connectivity';
+import { isPosWizardEnabled } from '@/lib/feature-flags';
 import { formatCurrency } from '@/lib/format';
 import { isIOS } from '@/lib/platform';
 import {
@@ -175,6 +186,25 @@ export default function POSPage() {
   // General
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // ─── PR 6/6 — New SumUp-style wizard, gated by env flag + localStorage
+  // Falls back to the legacy inline payment modal when disabled (default).
+  const [wizardEnabled] = useState<boolean>(() => isPosWizardEnabled());
+  const [invoiceFields, setInvoiceFields] = useState<InvoiceFields>({
+    is_invoice: false,
+    client_company_name: '',
+    client_siret: '',
+    client_billing_address: '',
+  });
+  const [showWizardReceipt, setShowWizardReceipt] = useState(false);
+  const [wizardTxNumber, setWizardTxNumber] = useState<number | null>(null);
+  const [wizardInvoiceNumber, setWizardInvoiceNumber] = useState<number | null>(
+    null,
+  );
+  const posPayment = usePosPayment({
+    cashierId: cashier?.id ?? null,
+    drawerId: drawer?.drawer_id ?? null,
+  });
 
   // Which cart item has its discount strip expanded (compact layout: hide by
   // default to fit more items on iPad 1024x768).
@@ -794,6 +824,86 @@ export default function POSPage() {
     return () => { cancelled = true; };
   }, [cart, insights]);
 
+  /**
+   * PR 6/6 wizard commit path.
+   *
+   * Reuses the cart + tender mapping done in ``onCommit`` (wizard sets
+   * ``payments`` synchronously via ``setPayments`` before awaiting this).
+   * Differences vs. the legacy ``handleValidate``:
+   *  - injects the invoice block (``is_invoice``, SIRET, raison sociale,
+   *    adresse) so the API allocates a FACT-AAAA-NNNNNN number
+   *  - reuses ``posPayment.clientUuid`` for idempotence (rotated only on
+   *    success)
+   *  - opens the new ``ReceiptPreviewCard`` instead of the legacy modal
+   */
+  const handleValidateWizard = async (): Promise<void> => {
+    setSubmitting(true);
+    setError('');
+    try {
+      const tenders = payments;
+      const body: Record<string, unknown> = {
+        items: cart.map((item) => ({
+          product_id: item.product_id || undefined,
+          name: item.isManual ? item.name : undefined,
+          quantity: item.quantity,
+          unit_price: item.price,
+          discount_percent: item.discount,
+        })),
+        payments: tenders.map((p) => ({ method: p.method, amount: p.amount })),
+        redeem_loyalty_discount: redeemPoints ? loyaltyDiscount : 0,
+        client_uuid: posPayment.clientUuid,
+      };
+      if (selectedClient) body.client_id = selectedClient.id;
+      if (cashier) body.cashier_id = cashier.id;
+      if (couponApplied) body.coupon_code = couponApplied.code;
+      if (invoiceFields.is_invoice) {
+        body.is_invoice = true;
+        body.client_company_name = invoiceFields.client_company_name.trim();
+        body.client_siret = invoiceFields.client_siret.replace(/\s+/g, '');
+        body.client_billing_address = invoiceFields.client_billing_address.trim();
+      }
+
+      const res = await api.post('/api/pos/transactions', body);
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || 'Erreur lors de la création');
+      }
+      const transaction = await res.json();
+      setReceiptTxId(transaction.id);
+      setWizardTxNumber(transaction.transaction_number);
+      setWizardInvoiceNumber(transaction.invoice_number ?? null);
+
+      try {
+        const receiptRes = await api.get(
+          `/api/pos/transactions/${transaction.id}/receipt`,
+        );
+        if (receiptRes.ok) {
+          const rd = await receiptRes.json();
+          setReceiptText(rd.receipt_text || rd.text || 'Transaction validée.');
+        } else {
+          setReceiptText(
+            `Transaction #${transaction.transaction_number} validée.\nTotal: ${formatCurrency(transaction.total_ttc)}`,
+          );
+        }
+      } catch {
+        setReceiptText(
+          `Transaction #${transaction.transaction_number} validée.`,
+        );
+      }
+
+      // Rotate the idempotence key for the next sale + open the success card.
+      posPayment.rotateUuid();
+      setShowPayment(false);
+      setShowWizardReceipt(true);
+      if (tenders.some((p) => p.method === 'especes')) {
+        kickDrawer();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+    }
+    setSubmitting(false);
+  };
+
   const handleValidate = async () => {
     setSubmitting(true);
     setError('');
@@ -1066,6 +1176,16 @@ export default function POSPage() {
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="10" width="18" height="10" rx="1"/><path d="M3 10V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"/><line x1="10" y1="15" x2="14" y2="15"/></svg>
                     Ouvrir tiroir
                   </button>
+                  {wizardEnabled && (
+                    <CashMovementButton
+                      onSubmit={async (payload) => {
+                        await api.post('/api/pos/cash-movements', {
+                          ...payload,
+                          cashier_id: cashier?.id ?? undefined,
+                        });
+                      }}
+                    />
+                  )}
                   <button onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
                     className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
                     Clôturer
@@ -1362,8 +1482,22 @@ export default function POSPage() {
               </p>
             )}
 
+            {/* B2B invoice toggle (PR 6/6) — only visible with the new wizard. */}
+            {wizardEnabled && cart.length > 0 && (
+              <div className="mb-3">
+                <InvoiceClientForm
+                  value={invoiceFields}
+                  onChange={setInvoiceFields}
+                  compact
+                />
+              </div>
+            )}
+
             <button
-              disabled={cart.length === 0}
+              disabled={
+                cart.length === 0 ||
+                (wizardEnabled && !isInvoiceFormValid(invoiceFields))
+              }
               onClick={() => {
                 setPayments([]);
                 setCashGiven('');
@@ -1375,7 +1509,8 @@ export default function POSPage() {
                 setShowPayment(true);
               }}
               className={`w-full py-4 rounded-xl font-bold text-lg tracking-wide transition-colors flex items-center justify-center gap-3 ${
-                cart.length === 0
+                cart.length === 0 ||
+                (wizardEnabled && !isInvoiceFormValid(invoiceFields))
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   : 'bg-vz-teal text-white hover:bg-vz-teal-deep active:bg-vz-teal-deep shadow-lg'
               }`}
@@ -1559,9 +1694,9 @@ export default function POSPage() {
         </div>
       </Modal>
 
-      {/* ── Payment Modal ───────────────────────────────────────── */}
+      {/* ── Payment Modal (legacy, gated by !wizardEnabled) ─────── */}
       <Modal
-        open={showPayment}
+        open={showPayment && !wizardEnabled}
         onClose={() => setShowPayment(false)}
         title="Encaissement"
         actions={
@@ -1804,6 +1939,106 @@ export default function POSPage() {
         </div>
       </Modal>
 
+      {/* ── New SumUp-style wizard (PR 6/6) — gated by feature flag ─── */}
+      {wizardEnabled && (
+        <MultiStepPaymentWizard
+          open={showPayment}
+          totalTtc={cartTotalAfterLoyalty}
+          hasClient={!!selectedClient}
+          avoirBalance={selectedClient?.avoir_balance ?? undefined}
+          onClose={() => {
+            posPayment.cancel();
+            setShowPayment(false);
+          }}
+          onCardCheckout={posPayment.runCardCheckout}
+          onCommit={async (tenders) => {
+            // Map wizard tenders (cash | card | cheque | avoir) to the legacy
+            // ``payments`` shape (especes | carte | cheque | avoir).
+            const methodMap: Record<string, string> = {
+              cash: 'especes',
+              card: 'carte',
+              cheque: 'cheque',
+              avoir: 'avoir',
+            };
+            const mapped = tenders.map((t) => ({
+              method: methodMap[t.method] || t.method,
+              amount: t.amount,
+            }));
+            // Force CB to "paid" so handleValidate doesn't bail on the legacy
+            // guard — the wizard already drove the SumUp checkout via the hook.
+            if (mapped.some((m) => m.method === 'carte')) {
+              setCbStatus('paid');
+            }
+            setPayments(mapped);
+            // Wait one tick so React flushes the payments state before commit
+            await new Promise((r) => setTimeout(r, 0));
+            await handleValidateWizard();
+          }}
+        />
+      )}
+
+      {/* ── New ReceiptPreviewCard (wizard mode, replaces legacy modal) */}
+      {wizardEnabled && showWizardReceipt && (
+        <Modal
+          open={showWizardReceipt}
+          onClose={() => {
+            setShowWizardReceipt(false);
+            handleReceiptClose();
+          }}
+          title="Vente validée"
+        >
+          <ReceiptPreviewCard
+            ticketNumber={wizardTxNumber ?? 0}
+            totalTtc={cartTotalAfterLoyalty}
+            isInvoice={invoiceFields.is_invoice}
+            invoiceNumber={wizardInvoiceNumber}
+            receiptText={receiptText}
+            clientEmail={selectedClient?.email}
+            clientPhone={selectedClient?.phone}
+            onPrintEscpos={printReceiptOnPrinter}
+            onPrintAirprint={() => {
+              printReceipt(receiptText);
+              setShowWizardReceipt(false);
+              handleReceiptClose();
+            }}
+            onResend={async (channel) => {
+              if (!receiptTxId) return;
+              await api.post(`/api/pos/transactions/${receiptTxId}/resend`, {
+                channel,
+              });
+            }}
+            onDownloadInvoicePdf={async () => {
+              if (!receiptTxId) return;
+              const res = await api.get(
+                `/api/pos/transactions/${receiptTxId}/invoice.pdf`,
+              );
+              if (!res.ok) return;
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `FACT-${new Date().getFullYear()}-${String(
+                wizardInvoiceNumber ?? wizardTxNumber ?? 0,
+              ).padStart(6, '0')}.pdf`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }}
+            onNewSale={() => {
+              setShowWizardReceipt(false);
+              handleReceiptClose();
+              setInvoiceFields({
+                is_invoice: false,
+                client_company_name: '',
+                client_siret: '',
+                client_billing_address: '',
+              });
+            }}
+          />
+        </Modal>
+      )}
+
       {/* ── Receipt Modal ───────────────────────────────────────── */}
       <Modal
         open={showReceipt}
@@ -1839,23 +2074,92 @@ export default function POSPage() {
         )}
       </Modal>
 
-      {/* ── Open Drawer Modal ───────────────────────────────────── */}
-      <Modal open={showDrawerOpen} onClose={() => setShowDrawerOpen(false)} title="Initialiser la caisse"
-        actions={<Button size="lg" onClick={handleOpenDrawer} disabled={drawerSubmitting}>{drawerSubmitting ? 'En cours...' : 'Ouvrir la caisse'}</Button>}>
-        <div className="space-y-3">
-          <p className="text-sm text-gray-500">Saisissez le fonds de caisse initial (monnaie disponible).</p>
-          <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[50, 100, 150, 200]} />
-        </div>
-      </Modal>
+      {/* ── Open Drawer Modal (legacy) ────────────────────────── */}
+      {!wizardEnabled && (
+        <Modal open={showDrawerOpen} onClose={() => setShowDrawerOpen(false)} title="Initialiser la caisse"
+          actions={<Button size="lg" onClick={handleOpenDrawer} disabled={drawerSubmitting}>{drawerSubmitting ? 'En cours...' : 'Ouvrir la caisse'}</Button>}>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-500">Saisissez le fonds de caisse initial (monnaie disponible).</p>
+            <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[50, 100, 150, 200]} />
+          </div>
+        </Modal>
+      )}
 
-      {/* ── Close Drawer Modal ──────────────────────────────────── */}
-      <Modal open={showDrawerClose} onClose={() => setShowDrawerClose(false)} title="Clôturer la caisse"
-        actions={<Button size="lg" onClick={handleCloseDrawer} disabled={drawerSubmitting}>{drawerSubmitting ? 'En cours...' : 'Générer le rapport Z'}</Button>}>
-        <div className="space-y-3">
-          <p className="text-sm text-gray-500">Comptez les espèces en caisse et saisissez le montant total.</p>
-          <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[]} />
-        </div>
-      </Modal>
+      {/* ── Close Drawer Modal (legacy) ───────────────────────── */}
+      {!wizardEnabled && (
+        <Modal open={showDrawerClose} onClose={() => setShowDrawerClose(false)} title="Clôturer la caisse"
+          actions={<Button size="lg" onClick={handleCloseDrawer} disabled={drawerSubmitting}>{drawerSubmitting ? 'En cours...' : 'Générer le rapport Z'}</Button>}>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-500">Comptez les espèces en caisse et saisissez le montant total.</p>
+            <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[]} />
+          </div>
+        </Modal>
+      )}
+
+      {/* ── New drawer modals (PR 6/6 — denomination grid + 3-phase close) */}
+      {wizardEnabled && (
+        <>
+          <CashDrawerOpenModal
+            open={showDrawerOpen}
+            onClose={() => setShowDrawerOpen(false)}
+            onSubmit={async ({ opening_amount, opening_breakdown }) => {
+              setDrawerSubmitting(true);
+              try {
+                const res = await api.post('/api/pos/drawer/open', {
+                  opening_amount,
+                  opening_breakdown: opening_breakdown ?? undefined,
+                  cashier_id: cashier?.id,
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  setDrawer({
+                    open: true,
+                    drawer_id: data.drawer_id,
+                    opening_amount: data.opening_amount,
+                  });
+                  setShowDrawerOpen(false);
+                }
+              } finally {
+                setDrawerSubmitting(false);
+              }
+            }}
+          />
+          <CashDrawerCloseModal
+            open={showDrawerClose}
+            onClose={() => setShowDrawerClose(false)}
+            expectedAmount={drawer?.opening_amount ?? null}
+            defaultAllowedDiscrepancy={2}
+            onSubmit={async ({
+              closing_amount,
+              closing_breakdown,
+              closing_note,
+              allowed_discrepancy_override,
+            }) => {
+              setDrawerSubmitting(true);
+              try {
+                const res = await api.post('/api/pos/drawer/close', {
+                  closing_amount,
+                  closing_breakdown: closing_breakdown ?? undefined,
+                  closing_note: closing_note ?? undefined,
+                  allowed_discrepancy_override:
+                    allowed_discrepancy_override ?? undefined,
+                  cashier_id: cashier?.id,
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  setZReport(data);
+                  setDrawer({ open: false });
+                  setShowDrawerClose(false);
+                  return { z_report_number: data.z_report_number };
+                }
+              } finally {
+                setDrawerSubmitting(false);
+              }
+              return undefined;
+            }}
+          />
+        </>
+      )}
 
       {/* ── Z Report Modal ───────────────────────────────────────── */}
       <Modal open={!!zReport} onClose={() => setZReport(null)} title="Rapport Z — Clôture de caisse"
