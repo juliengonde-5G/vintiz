@@ -35,6 +35,187 @@ router.include_router(_sumup_terminals_module.router)
 
 
 # ---------------------------------------------------------------------------
+# Transactions / payment attempts — admin filterable history (PR 3/6)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/transactions", dependencies=[Depends(manager_only)])
+async def list_admin_transactions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    period_from: str | None = Query(None, alias="from"),
+    period_to: str | None = Query(None, alias="to"),
+    method: str | None = Query(None, description="cash | card | cheque | avoir"),
+    transaction_type: str | None = Query(
+        None, alias="type", description="sale | refund | void"
+    ),
+    cashier_id: uuid.UUID | None = None,
+    min_amount: float | None = Query(None, ge=0),
+    max_amount: float | None = Query(None, ge=0),
+    is_invoice: bool | None = None,
+    skip: int = 0,
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Filterable transaction history — admin /admin/transactions page.
+
+    Joins payments to filter by method without duplicating rows (DISTINCT).
+    Returns the date, ticket #, type (sale / refund / facture), method(s),
+    cashier, total TTC + a status flag (locked Z report ⇒ row is fiscal).
+    """
+    from sqlalchemy import distinct
+
+    from app.models.pos import (
+        Payment,
+        PaymentMethod,
+        Transaction,
+        TransactionType,
+    )
+
+    stmt = select(Transaction).order_by(Transaction.created_at.desc())
+
+    if period_from:
+        stmt = stmt.where(
+            Transaction.created_at >= _parse_iso_date(period_from, "from")
+        )
+    if period_to:
+        stmt = stmt.where(
+            Transaction.created_at <= _parse_iso_date(period_to, "to")
+        )
+    if transaction_type:
+        try:
+            stmt = stmt.where(
+                Transaction.transaction_type == TransactionType(transaction_type)
+            )
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="type must be one of sale | refund | void",
+            )
+    if cashier_id is not None:
+        stmt = stmt.where(Transaction.cashier_id == cashier_id)
+    if min_amount is not None:
+        stmt = stmt.where(Transaction.total_ttc >= min_amount)
+    if max_amount is not None:
+        stmt = stmt.where(Transaction.total_ttc <= max_amount)
+    if is_invoice is not None:
+        stmt = stmt.where(Transaction.is_invoice.is_(is_invoice))
+    if method:
+        try:
+            method_enum = PaymentMethod(method)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="method must be one of cash | card | cheque | transfer | avoir",
+            )
+        sub = (
+            select(distinct(Payment.transaction_id))
+            .where(Payment.method == method_enum)
+        )
+        stmt = stmt.where(Transaction.id.in_(sub))
+
+    stmt = stmt.offset(max(skip, 0)).limit(limit)
+    rows = (await db.execute(stmt)).scalars().all()
+
+    out: list[dict] = []
+    for t in rows:
+        methods = [p.method.value for p in (t.payments or [])]
+        out.append(
+            {
+                "id": str(t.id),
+                "transaction_number": t.transaction_number,
+                "type": t.transaction_type.value,
+                "is_invoice": bool(t.is_invoice),
+                "invoice_number": t.invoice_number,
+                "total_ttc": float(t.total_ttc),
+                "total_ht": float(t.total_ht),
+                "total_tva": float(t.total_tva),
+                "methods": methods,
+                "cashier_id": str(t.cashier_id) if t.cashier_id else None,
+                "client_id": str(t.client_id) if t.client_id else None,
+                "client_company_name": t.client_company_name,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+            }
+        )
+    return {"transactions": out, "count": len(out)}
+
+
+@router.get("/payment-attempts", dependencies=[Depends(manager_only)])
+async def list_admin_payment_attempts(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    status_filter: str | None = Query(None, alias="status"),
+    method: str | None = None,
+    period_from: str | None = Query(None, alias="from"),
+    period_to: str | None = Query(None, alias="to"),
+    cashier_id: uuid.UUID | None = None,
+    skip: int = 0,
+    limit: int = Query(100, ge=1, le=500),
+):
+    """List payment attempts — defaults to ``status=failed`` so the
+    /admin/payment-attempts page is a debug surface for declined CB.
+
+    Tip: aggregate by ``error_detail`` client-side to surface the top-N CB
+    failures (terminal offline, card rejected, network…).
+    """
+    from app.models.payment_attempt import (
+        PaymentAttempt,
+        PaymentAttemptStatus,
+    )
+    from app.models.pos import PaymentMethod
+
+    stmt = select(PaymentAttempt).order_by(PaymentAttempt.created_at.desc())
+    if status_filter:
+        try:
+            stmt = stmt.where(
+                PaymentAttempt.status == PaymentAttemptStatus(status_filter)
+            )
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="status must be pending | succeeded | failed | cancelled",
+            )
+    if method:
+        try:
+            stmt = stmt.where(PaymentAttempt.method == PaymentMethod(method))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid method")
+    if period_from:
+        stmt = stmt.where(
+            PaymentAttempt.created_at >= _parse_iso_date(period_from, "from")
+        )
+    if period_to:
+        stmt = stmt.where(
+            PaymentAttempt.created_at <= _parse_iso_date(period_to, "to")
+        )
+    if cashier_id is not None:
+        stmt = stmt.where(PaymentAttempt.cashier_id == cashier_id)
+
+    stmt = stmt.offset(max(skip, 0)).limit(limit)
+    rows = (await db.execute(stmt)).scalars().all()
+
+    return {
+        "attempts": [
+            {
+                "id": str(a.id),
+                "method": a.method.value,
+                "amount": float(a.amount),
+                "status": a.status.value,
+                "transaction_id": (
+                    str(a.transaction_id) if a.transaction_id else None
+                ),
+                "drawer_id": str(a.drawer_id) if a.drawer_id else None,
+                "cashier_id": str(a.cashier_id) if a.cashier_id else None,
+                "sumup_checkout_id": a.sumup_checkout_id,
+                "error_detail": a.error_detail,
+                "cancelled_reason": a.cancelled_reason,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+                "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+            }
+            for a in rows
+        ],
+        "count": len(rows),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Cash drawer sessions — admin overview (/admin > Sessions caisses)
 # ---------------------------------------------------------------------------
 

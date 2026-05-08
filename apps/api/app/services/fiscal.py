@@ -1,7 +1,10 @@
 import hashlib
+import logging
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +14,8 @@ from app.models.pos import (
     TransactionType,
     ZReport,
 )
+
+_log = logging.getLogger("vintiz")
 
 
 class FiscalService:
@@ -186,7 +191,176 @@ class FiscalService:
                 "transaction_count": r.transaction_count,
                 "hash": r.hash,
                 "previous_hash": r.previous_hash,
+                "is_locked": bool(r.is_locked),
+                "locked_at": r.locked_at.isoformat() if r.locked_at else None,
+                "emailed_at": r.emailed_at.isoformat() if r.emailed_at else None,
+                "emailed_to": r.emailed_to,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
             for r in reports
         ]
+
+    # ------------------------------------------------------------------
+    # NF525 intangibility — lock + email
+    # ------------------------------------------------------------------
+
+    async def lock_z_report(
+        self,
+        z_report_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID | None,
+    ) -> dict:
+        """Lock a Z report intangibly (NF525 article 88 CGI).
+
+        Idempotent — calling ``lock_z_report`` twice is safe and returns the
+        same payload. Once locked:
+
+        - ``is_locked = True`` + ``locked_at`` + ``locked_by_user_id``
+        - the rendered PDF is persisted (``pdf_content``) along with its
+          SHA-256 (``pdf_sha256``); any later regeneration produces the same
+          bytes (the function is deterministic w.r.t. the immutable rows it
+          aggregates)
+        - the hash chain is captured in the PDF footer; further UPDATEs to
+          totals are forbidden by the verify_chain_integrity check
+
+        Raises ``HTTPException(404)`` if the report doesn't exist.
+        """
+        from app.services.z_report_pdf import generate_z_report_pdf
+
+        z = (
+            await self.db.execute(
+                select(ZReport).where(ZReport.id == z_report_id)
+            )
+        ).scalar_one_or_none()
+        if z is None:
+            raise HTTPException(status_code=404, detail="Z report introuvable")
+
+        if z.is_locked and z.pdf_content and z.pdf_sha256:
+            return {
+                "id": str(z.id),
+                "report_number": z.report_number,
+                "is_locked": True,
+                "locked_at": z.locked_at.isoformat() if z.locked_at else None,
+                "locked_by_user_id": (
+                    str(z.locked_by_user_id) if z.locked_by_user_id else None
+                ),
+                "pdf_sha256": z.pdf_sha256,
+                "already_locked": True,
+            }
+
+        pdf_bytes = await generate_z_report_pdf(self.db, z)
+        sha = hashlib.sha256(pdf_bytes).hexdigest()
+
+        z.is_locked = True
+        z.locked_at = datetime.now(timezone.utc)
+        z.locked_by_user_id = user_id
+        z.pdf_content = pdf_bytes
+        z.pdf_sha256 = sha
+        await self.db.flush()
+
+        return {
+            "id": str(z.id),
+            "report_number": z.report_number,
+            "is_locked": True,
+            "locked_at": z.locked_at.isoformat(),
+            "locked_by_user_id": str(user_id) if user_id else None,
+            "pdf_sha256": sha,
+            "already_locked": False,
+        }
+
+    async def email_z_report(
+        self,
+        z_report_id: uuid.UUID,
+        *,
+        to: str | None,
+        sender_user_id: uuid.UUID | None = None,
+    ) -> dict:
+        """Email the Z-report PDF (locked snapshot or live render) to a
+        recipient. Defaults to the configured ``email.from_address`` when
+        ``to`` is omitted so a forgotten address falls back to "self-email"
+        rather than crash.
+        """
+        from app.services.app_config import get_section
+        from app.services.email_gateway import (
+            EmailDeliveryError,
+            EmailMessage,
+            send_email,
+        )
+        from app.services.z_report_pdf import generate_z_report_pdf
+
+        z = (
+            await self.db.execute(
+                select(ZReport).where(ZReport.id == z_report_id)
+            )
+        ).scalar_one_or_none()
+        if z is None:
+            raise HTTPException(status_code=404, detail="Z report introuvable")
+
+        target = (to or "").strip()
+        if not target:
+            target = (
+                (get_section("email") or {}).get("from_address")
+                or "noreply@vintiz.fr"
+            )
+
+        if z.is_locked and z.pdf_content:
+            pdf_bytes = z.pdf_content
+            sha = z.pdf_sha256 or hashlib.sha256(pdf_bytes).hexdigest()
+        else:
+            pdf_bytes = await generate_z_report_pdf(self.db, z)
+            sha = hashlib.sha256(pdf_bytes).hexdigest()
+
+        subject = f"Z report Vintiz #{z.report_number:04d}"
+        text = (
+            f"Bonjour,\n\n"
+            f"Vous trouverez en pièce jointe le rapport Z #{z.report_number:04d} "
+            f"du {(z.created_at or datetime.utcnow()).strftime('%d/%m/%Y')}.\n\n"
+            f"Total ventes : {float(z.total_sales):.2f} EUR\n"
+            f"Total remboursements : {float(z.total_refunds):.2f} EUR\n"
+            f"Net : {float(z.total_net):.2f} EUR\n"
+            f"Empreinte SHA-256 : {sha}\n\n"
+            f"Vintiz — Conforme NF525 / article 88 CGI."
+        )
+        html = (
+            f"<p>Bonjour,</p>"
+            f"<p>Le rapport Z <b>#{z.report_number:04d}</b> est en pièce jointe.</p>"
+            f"<ul>"
+            f"<li>Ventes : {float(z.total_sales):.2f} EUR</li>"
+            f"<li>Remboursements : {float(z.total_refunds):.2f} EUR</li>"
+            f"<li>Net : {float(z.total_net):.2f} EUR</li>"
+            f"<li>SHA-256 : <code>{sha}</code></li>"
+            f"</ul>"
+            f"<p>Vintiz — Conforme NF525.</p>"
+        )
+        message = EmailMessage(
+            to=target,
+            subject=subject,
+            text=text,
+            html=html,
+            attachments=[
+                {
+                    "filename": f"Z-{z.report_number:04d}.pdf",
+                    "content": pdf_bytes,
+                    "mime": "application/pdf",
+                }
+            ],
+        )
+        try:
+            outcome = send_email(message)
+        except EmailDeliveryError as exc:
+            _log.error("Z report %s email failed: %s", z.report_number, exc)
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        z.emailed_at = datetime.now(timezone.utc)
+        z.emailed_to = target
+        await self.db.flush()
+
+        return {
+            "id": str(z.id),
+            "report_number": z.report_number,
+            "emailed_to": target,
+            "emailed_at": z.emailed_at.isoformat(),
+            "backend": outcome.backend,
+            "status": outcome.status,
+            "pdf_sha256": sha,
+        }

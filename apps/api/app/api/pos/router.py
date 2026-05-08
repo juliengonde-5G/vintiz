@@ -71,14 +71,49 @@ class ValidateCouponRequest(BaseModel):
     client_id: uuid.UUID | None = None
 
 
+class Denomination(BaseModel):
+    """One row of the denomination grid (50 € × 5 = 250 €)."""
+
+    denom: float  # in EUR (5, 10, 20, 50, 100, 200, 500, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2)
+    count: int
+
+
 class OpenDrawerRequest(BaseModel):
     opening_amount: Decimal
     cashier_id: uuid.UUID | None = None
+    # Optional itemised count — when provided, rendered on the Z report
+    # and lets the cashier recover from a discrepancy alert at closing.
+    opening_breakdown: list[Denomination] | None = None
 
 
 class CloseDrawerRequest(BaseModel):
     closing_amount: Decimal
     cashier_id: uuid.UUID | None = None
+    closing_breakdown: list[Denomination] | None = None
+    closing_note: str | None = None
+    # Per-drawer override of the global allowed discrepancy (Settings).
+    allowed_discrepancy_override: Decimal | None = None
+
+
+class CashMovementRequest(BaseModel):
+    direction: str  # "in" or "out"
+    amount: Decimal
+    reason: str = "other"  # bank_deposit | supplier_payment | personal_withdrawal | float_top_up | other
+    note: str | None = None
+    cashier_id: uuid.UUID | None = None
+
+
+class PaymentAttemptRequest(BaseModel):
+    method: str  # cash | card | cheque | avoir
+    amount: Decimal
+    status: str  # pending | succeeded | failed | cancelled
+    cashier_id: uuid.UUID | None = None
+    drawer_id: uuid.UUID | None = None
+    transaction_id: uuid.UUID | None = None
+    sumup_checkout_id: str | None = None
+    error_detail: str | None = None
+    cancelled_reason: str | None = None
+    attempt_id: uuid.UUID | None = None  # supplied to update an existing attempt
 
 
 @router.post("/transactions")
@@ -216,8 +251,16 @@ async def open_drawer(
 ):
     """Open cash drawer for the day."""
     pos_service = PosService(db)
+    breakdown = (
+        [item.model_dump() for item in request.opening_breakdown]
+        if request.opening_breakdown
+        else None
+    )
     drawer = await pos_service.open_drawer(
-        current_user.id, request.opening_amount, cashier_id=request.cashier_id
+        current_user.id,
+        request.opening_amount,
+        cashier_id=request.cashier_id,
+        opening_breakdown=breakdown,
     )
 
     from app.models.events import EventSource, EventType
@@ -248,8 +291,18 @@ async def close_drawer(
     pos_service = PosService(db)
     fiscal_service = FiscalService(db)
 
+    closing_breakdown = (
+        [item.model_dump() for item in request.closing_breakdown]
+        if request.closing_breakdown
+        else None
+    )
     drawer = await pos_service.close_drawer(
-        current_user.id, request.closing_amount, cashier_id=request.cashier_id
+        current_user.id,
+        request.closing_amount,
+        cashier_id=request.cashier_id,
+        closing_breakdown=closing_breakdown,
+        closing_note=request.closing_note,
+        allowed_discrepancy_override=request.allowed_discrepancy_override,
     )
     z_report = await fiscal_service.generate_z_report(
         drawer, current_user.id, cashier_id=request.cashier_id
@@ -1164,3 +1217,308 @@ async def identify_client_pos(
         raise HTTPException(status_code=404, detail="client_not_found")
 
     return _serialize_client_for_pos(client)
+
+
+# ---------------------------------------------------------------------------
+# Cash movements (PR 3/6) — entrée/sortie cash en cours de journée
+# ---------------------------------------------------------------------------
+
+
+@router.post("/cash-movements")
+async def create_cash_movement(
+    request: CashMovementRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record a mid-day cash flow on the currently open drawer.
+
+    - ``out / bank_deposit`` — manager removes cash to deposit at the bank
+    - ``out / supplier_payment`` — supplier paid in cash
+    - ``out / personal_withdrawal`` — owner takes a withdrawal
+    - ``in  / float_top_up`` — extra change brought in from the safe
+    - ``in / out / other`` — misc, with a free-text ``note``
+
+    The Z report aggregates these into the expected total at closing so
+    a deposit doesn't appear as a discrepancy. Append-only — no PUT/DELETE.
+    """
+    from app.models.cash_movement import (
+        CashMovement,
+        CashMovementDirection,
+        CashMovementReason,
+    )
+
+    pos_service = PosService(db)
+    drawer = await pos_service.get_open_drawer()
+    if drawer is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Aucune caisse ouverte — impossible d'enregistrer un mouvement.",
+        )
+
+    try:
+        direction = CashMovementDirection(request.direction)
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="direction doit être 'in' ou 'out'."
+        )
+    try:
+        reason = CashMovementReason(request.reason)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "reason doit être l'une de : "
+                + ", ".join(r.value for r in CashMovementReason)
+            ),
+        )
+    if Decimal(str(request.amount)) <= 0:
+        raise HTTPException(status_code=400, detail="amount doit être strictement positif.")
+
+    movement = CashMovement(
+        drawer_id=drawer.id,
+        direction=direction,
+        amount=float(request.amount),
+        reason=reason,
+        note=request.note,
+        user_id=current_user.id,
+        cashier_id=request.cashier_id or drawer.cashier_id,
+    )
+    db.add(movement)
+    await db.flush()
+    await db.refresh(movement)
+    return {
+        "id": str(movement.id),
+        "drawer_id": str(movement.drawer_id),
+        "direction": movement.direction.value,
+        "amount": float(movement.amount),
+        "reason": movement.reason.value,
+        "note": movement.note,
+        "user_id": str(movement.user_id),
+        "cashier_id": str(movement.cashier_id) if movement.cashier_id else None,
+        "created_at": movement.created_at.isoformat() if movement.created_at else None,
+    }
+
+
+@router.get("/cash-movements")
+async def list_cash_movements(
+    drawer_id: uuid.UUID | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List cash movements, optionally scoped to a drawer (default: current)."""
+    from sqlalchemy import select as _select
+
+    from app.models.cash_movement import CashMovement
+
+    target_drawer_id = drawer_id
+    if target_drawer_id is None:
+        pos_service = PosService(db)
+        drawer = await pos_service.get_open_drawer()
+        if drawer is None:
+            return {"drawer_id": None, "movements": []}
+        target_drawer_id = drawer.id
+
+    rows = (
+        await db.execute(
+            _select(CashMovement)
+            .where(CashMovement.drawer_id == target_drawer_id)
+            .order_by(CashMovement.created_at.asc())
+        )
+    ).scalars().all()
+    return {
+        "drawer_id": str(target_drawer_id),
+        "movements": [
+            {
+                "id": str(m.id),
+                "direction": m.direction.value,
+                "amount": float(m.amount),
+                "reason": m.reason.value,
+                "note": m.note,
+                "cashier_id": str(m.cashier_id) if m.cashier_id else None,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            }
+            for m in rows
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Payment attempts (PR 3/6) — log centralisé de toutes les tentatives
+# ---------------------------------------------------------------------------
+
+
+@router.post("/payment-attempts")
+async def log_payment_attempt(
+    request: PaymentAttemptRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Persist (or update) a payment attempt — covers the full lifecycle:
+    pending → succeeded / failed / cancelled.
+
+    Pas de vente → pas de Transaction NF525 fiscale, mais une PaymentAttempt
+    est tracée à chaque initiation pour l'audit. La même attempt peut être
+    mise à jour en repassant son ``attempt_id``.
+    """
+    from app.models.payment_attempt import (
+        PaymentAttempt,
+        PaymentAttemptStatus,
+    )
+    from app.models.pos import PaymentMethod
+
+    try:
+        method_enum = PaymentMethod(request.method)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="method invalide (cash | card | cheque | transfer | avoir).",
+        )
+    try:
+        status_enum = PaymentAttemptStatus(request.status)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="status invalide (pending | succeeded | failed | cancelled).",
+        )
+
+    if request.attempt_id is not None:
+        existing = (
+            await db.execute(
+                select(PaymentAttempt).where(PaymentAttempt.id == request.attempt_id)
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Attempt introuvable")
+        existing.status = status_enum
+        existing.amount = float(request.amount)
+        if request.transaction_id is not None:
+            existing.transaction_id = request.transaction_id
+        if request.error_detail is not None:
+            existing.error_detail = request.error_detail
+        if request.cancelled_reason is not None:
+            existing.cancelled_reason = request.cancelled_reason
+        await db.flush()
+        attempt = existing
+    else:
+        attempt = PaymentAttempt(
+            method=method_enum,
+            amount=float(request.amount),
+            status=status_enum,
+            cashier_id=request.cashier_id,
+            drawer_id=request.drawer_id,
+            transaction_id=request.transaction_id,
+            sumup_checkout_id=request.sumup_checkout_id,
+            error_detail=request.error_detail,
+            cancelled_reason=request.cancelled_reason,
+        )
+        db.add(attempt)
+        await db.flush()
+        await db.refresh(attempt)
+
+    return {
+        "id": str(attempt.id),
+        "method": attempt.method.value,
+        "amount": float(attempt.amount),
+        "status": attempt.status.value,
+        "transaction_id": str(attempt.transaction_id) if attempt.transaction_id else None,
+        "sumup_checkout_id": attempt.sumup_checkout_id,
+        "error_detail": attempt.error_detail,
+        "cancelled_reason": attempt.cancelled_reason,
+        "created_at": attempt.created_at.isoformat() if attempt.created_at else None,
+        "updated_at": attempt.updated_at.isoformat() if attempt.updated_at else None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Z reports — PDF, email, NF525 lock (PR 3/6)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/z-reports/{z_report_id}/pdf",
+    dependencies=[Depends(manager_only)],
+)
+async def get_z_report_pdf(
+    z_report_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream the A4 Z-report PDF (manager only).
+
+    When the Z report is locked the persisted ``pdf_content`` is returned
+    byte-identical (NF525 article 88 CGI). Otherwise it's regenerated from
+    the live drawer + cash movements + transactions snapshot.
+    """
+    from fastapi.responses import Response
+
+    from app.models.pos import ZReport
+    from app.services.z_report_pdf import generate_z_report_pdf
+
+    z = (
+        await db.execute(select(ZReport).where(ZReport.id == z_report_id))
+    ).scalar_one_or_none()
+    if z is None:
+        raise HTTPException(status_code=404, detail="Z report introuvable")
+
+    if z.is_locked and z.pdf_content:
+        pdf_bytes = z.pdf_content
+        sha = z.pdf_sha256 or ""
+    else:
+        pdf_bytes = await generate_z_report_pdf(db, z)
+        import hashlib as _hl
+        sha = _hl.sha256(pdf_bytes).hexdigest()
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="Z-{z.report_number:04d}.pdf"',
+        "X-Z-Report-SHA256": sha,
+        "X-Z-Report-Locked": "1" if z.is_locked else "0",
+    }
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers=headers,
+    )
+
+
+class ZReportEmailRequest(BaseModel):
+    to: str | None = None  # default: from app_config.email.from_address
+
+
+@router.post(
+    "/z-reports/{z_report_id}/email",
+    dependencies=[Depends(manager_only)],
+)
+async def email_z_report(
+    z_report_id: uuid.UUID,
+    payload: ZReportEmailRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Email the Z-report PDF (locked or live preview) to the comptable.
+
+    When the report isn't locked yet, the live PDF is regenerated and sent —
+    handy to forward an interim copy without committing to NF525 lock.
+    """
+    fiscal_service = FiscalService(db)
+    return await fiscal_service.email_z_report(
+        z_report_id, to=payload.to, sender_user_id=current_user.id
+    )
+
+
+@router.post(
+    "/z-reports/{z_report_id}/lock",
+    dependencies=[Depends(manager_only)],
+)
+async def lock_z_report(
+    z_report_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Verrouille intangiblement un Z report (NF525 article 88 CGI).
+
+    Idempotent — un second appel renvoie le même résultat. Une fois
+    verrouillé, le ``pdf_content`` + ``pdf_sha256`` sont persistés et toute
+    régénération produit le même flux d'octets. Aucun UPDATE ultérieur
+    n'est autorisé sur ``total_sales / total_refunds / total_net``.
+    """
+    fiscal_service = FiscalService(db)
+    return await fiscal_service.lock_z_report(z_report_id, user_id=current_user.id)
