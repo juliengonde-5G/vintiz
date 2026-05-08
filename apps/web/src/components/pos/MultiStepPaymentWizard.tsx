@@ -83,9 +83,18 @@ export default function MultiStepPaymentWizard({
     onClose();
   };
 
-  const collected = tenders.reduce((sum, t) => sum + t.amount, 0);
-  // Cap each tender to remaining (cash overflow becomes change, not collected).
+  // Tenders may exceed the total when the cashier overpays in cash —
+  // the surplus becomes change to give back. We split each tender into
+  // ``cover`` (counted toward the total) and ``surplus`` (change).
+  const totalTendered = tenders.reduce((sum, t) => sum + t.amount, 0);
+  let runningCovered = 0;
+  for (const t of tenders) {
+    const stillDue = Math.max(0, totalTtc - runningCovered);
+    runningCovered += Math.min(t.amount, stillDue);
+  }
+  const collected = runningCovered;
   const remaining = Math.max(0, totalTtc - collected);
+  const change = Math.max(0, totalTendered - totalTtc);
 
   const handlePickMethod = async (method: PosPaymentMethod): Promise<void> => {
     if (method === 'card' && onCardCheckout) {
@@ -117,10 +126,21 @@ export default function MultiStepPaymentWizard({
 
   const handleAmountConfirmed = (amount: number): void => {
     if (step.kind !== 'amount') return;
-    const tendered = Math.min(amount, remaining);
+    // Cash allows overpayment (the surplus is returned as change to the
+    // client, and the receipt prints "RENDU: X €"). Other methods are
+    // capped at the remaining due — chèque / avoir don't make change.
+    const tendered =
+      step.method === 'cash' ? amount : Math.min(amount, remaining);
     const next = [...tenders, { method: step.method, amount: tendered }];
     setTenders(next);
-    if (next.reduce((s, t) => s + t.amount, 0) >= totalTtc - 0.001) {
+    // Coverage is what counts toward "remaining = 0"; for cash the surplus
+    // doesn't, but the sale is still complete since cash >= remaining.
+    let cover = 0;
+    for (const t of next) {
+      const stillDue = Math.max(0, totalTtc - cover);
+      cover += Math.min(t.amount, stillDue);
+    }
+    if (cover >= totalTtc - 0.001) {
       setStep({ kind: 'confirm' });
     } else {
       setStep({ kind: 'select' });
@@ -291,6 +311,16 @@ export default function MultiStepPaymentWizard({
                 {formatCurrency(collected)}
               </span>
             </div>
+            {change > 0 && (
+              <div className="flex items-center justify-between rounded-xl bg-vz-accent-soft px-4 py-4 ring-2 ring-vz-accent">
+                <span className="text-base font-semibold text-vz-ink">
+                  Monnaie à rendre
+                </span>
+                <span className="font-mono text-3xl font-bold tabular-nums text-vz-ink">
+                  {formatCurrency(change)}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
