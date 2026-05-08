@@ -54,6 +54,15 @@ class CreateTransactionRequest(BaseModel):
     client_uuid: uuid.UUID | None = None
     # Optional coupon code to redeem atomically with the sale (P4-008).
     coupon_code: str | None = None
+    # B2B invoice mode (PR 2/6 — POS routine SumUp). When True, the API
+    # assigns a separate ``invoice_number`` (FACT-{year}-{seq:06d}) and
+    # snapshots the buyer block + template id on the transaction so the
+    # invoice PDF reproduces the historical document byte-identical.
+    is_invoice: bool = False
+    client_siret: str | None = None
+    client_company_name: str | None = None
+    client_billing_address: str | None = None
+    template_id: uuid.UUID | None = None
 
 
 class ValidateCouponRequest(BaseModel):
@@ -89,6 +98,11 @@ async def create_transaction(
         client_id=request.client_id,
         cashier_id=request.cashier_id,
         client_uuid=request.client_uuid,
+        is_invoice=request.is_invoice,
+        client_siret=request.client_siret,
+        client_company_name=request.client_company_name,
+        client_billing_address=request.client_billing_address,
+        template_id=request.template_id,
     )
 
     # If create_transaction returned the existing row (idempotent replay
@@ -610,6 +624,76 @@ async def print_transaction_receipt(
     return response
 
 
+@router.get(
+    "/transactions/{transaction_id}/invoice.pdf",
+    dependencies=[Depends(manager_only)],
+)
+async def get_transaction_invoice_pdf(
+    transaction_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream the B2B invoice PDF for an ``is_invoice=True`` transaction.
+
+    Manager only. The template snapshot pointed by ``template_id`` is used
+    so the document reproduces the historical document — editing the
+    template afterwards never alters past invoices.
+    """
+    from fastapi.responses import Response
+
+    from app.models.pos import Transaction
+    from app.models.receipt_template import ReceiptKind, ReceiptTemplate
+    from app.services.invoice_pdf import generate_invoice_pdf
+
+    row = (
+        await db.execute(
+            select(Transaction).where(Transaction.id == transaction_id)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Transaction introuvable")
+    if not row.is_invoice:
+        raise HTTPException(
+            status_code=400,
+            detail="Cette transaction n'est pas une facture B2B.",
+        )
+
+    template = None
+    if row.template_id is not None:
+        template = (
+            await db.execute(
+                select(ReceiptTemplate).where(ReceiptTemplate.id == row.template_id)
+            )
+        ).scalar_one_or_none()
+    if template is None:
+        # Fallback to the active default invoice template
+        template = (
+            await db.execute(
+                select(ReceiptTemplate)
+                .where(
+                    ReceiptTemplate.kind == ReceiptKind.invoice,
+                    ReceiptTemplate.is_default.is_(True),
+                    ReceiptTemplate.is_active.is_(True),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    pdf_bytes = generate_invoice_pdf(row, template=template)
+    label = (
+        f"FACT-{row.created_at.year}-{row.invoice_number:06d}"
+        if row.invoice_number is not None and row.created_at
+        else f"FACT-{row.transaction_number:06d}"
+    )
+    headers = {
+        "Content-Disposition": f'attachment; filename="{label}.pdf"',
+    }
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers=headers,
+    )
+
+
 @router.get("/transactions/{transaction_id}/receipt")
 async def get_transaction_receipt(
     transaction_id: uuid.UUID,
@@ -620,6 +704,7 @@ async def get_transaction_receipt(
     from sqlalchemy import select
     from app.models.client import Client, LoyaltyTransaction, LoyaltyTxType
     from app.models.pos import Transaction
+    from app.models.receipt_template import ReceiptKind, ReceiptTemplate
     from app.services.receipt import ReceiptService
 
     result = await db.execute(
@@ -628,6 +713,34 @@ async def get_transaction_receipt(
     transaction = result.scalar_one_or_none()
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
+
+    # Resolve the template snapshot (NF525 — historical receipts must keep the
+    # template they were signed with). Fallback to the active default for the
+    # transaction's kind when ``template_id`` is unset.
+    template = None
+    target_kind = (
+        ReceiptKind.invoice if transaction.is_invoice else ReceiptKind.ticket
+    )
+    if transaction.template_id is not None:
+        template = (
+            await db.execute(
+                select(ReceiptTemplate).where(
+                    ReceiptTemplate.id == transaction.template_id
+                )
+            )
+        ).scalar_one_or_none()
+    if template is None:
+        template = (
+            await db.execute(
+                select(ReceiptTemplate)
+                .where(
+                    ReceiptTemplate.kind == target_kind,
+                    ReceiptTemplate.is_default.is_(True),
+                    ReceiptTemplate.is_active.is_(True),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
 
     # Resolve fidelity context (PR1): the footer surfaces member info or
     # a "would-have-earned" line for non-members.
@@ -657,6 +770,7 @@ async def get_transaction_receipt(
         client=client,
         loyalty_account=loyalty_account,
         points_earned_on_sale=points_earned,
+        template=template,
     )
 
     return {

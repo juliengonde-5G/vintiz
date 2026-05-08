@@ -40,6 +40,11 @@ class PosService:
         client_id: uuid.UUID | None = None,
         cashier_id: uuid.UUID | None = None,
         client_uuid: uuid.UUID | None = None,
+        is_invoice: bool = False,
+        client_siret: str | None = None,
+        client_company_name: str | None = None,
+        client_billing_address: str | None = None,
+        template_id: uuid.UUID | None = None,
     ) -> Transaction:
         """Create a sale transaction.
 
@@ -69,6 +74,24 @@ class PosService:
 
         if not items:
             raise CartEmpty()
+
+        # B2B invoice mode requires the buyer block to be filled — DGFiP
+        # mandates company name, SIRET (14 digits) and billing address on every
+        # commercial invoice.
+        if is_invoice:
+            if not (client_company_name and client_company_name.strip()):
+                raise InvalidOperation(
+                    "Facture B2B : raison sociale obligatoire"
+                )
+            siret_digits = (client_siret or "").strip()
+            if not (siret_digits.isdigit() and len(siret_digits) == 14):
+                raise InvalidOperation(
+                    "Facture B2B : SIRET invalide (14 chiffres requis)"
+                )
+            if not (client_billing_address and client_billing_address.strip()):
+                raise InvalidOperation(
+                    "Facture B2B : adresse de facturation obligatoire"
+                )
 
         total_ttc = Decimal("0")
         # (product | None, quantity, unit_price, discount_percent, item_name)
@@ -124,6 +147,22 @@ class PosService:
             )
             next_number = seq_result.scalar_one()
 
+        # B2B invoice numbering — separate sequence so tickets and invoices
+        # don't interleave (NF525 + DGFiP requirement). On SQLite tests the
+        # sequence doesn't exist so we fall back to MAX+1.
+        invoice_number: int | None = None
+        if is_invoice:
+            if dialect == "sqlite":
+                inv_result = await self.db.execute(
+                    select(func.coalesce(func.max(Transaction.invoice_number), 0))
+                )
+                invoice_number = inv_result.scalar_one() + 1
+            else:
+                inv_seq = await self.db.execute(
+                    text("SELECT nextval('invoice_number_seq')")
+                )
+                invoice_number = inv_seq.scalar_one()
+
         transaction = Transaction(
             transaction_number=next_number,
             transaction_type=TransactionType.sale,
@@ -135,6 +174,16 @@ class PosService:
             total_tva=float(total_tva),
             total_ttc=float(total_ttc),
             hash_chain="",  # will be set by FiscalService
+            is_invoice=is_invoice,
+            invoice_number=invoice_number,
+            client_siret=(client_siret.strip() if client_siret else None),
+            client_company_name=(
+                client_company_name.strip() if client_company_name else None
+            ),
+            client_billing_address=(
+                client_billing_address.strip() if client_billing_address else None
+            ),
+            template_id=template_id,
         )
         self.db.add(transaction)
         await self.db.flush()
