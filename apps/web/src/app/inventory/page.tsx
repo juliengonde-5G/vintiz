@@ -140,15 +140,32 @@ export default function InventoryPage() {
             <h1 className="text-2xl font-bold text-black">Inventaire</h1>
             <p className="text-gray-500 mt-1">{total} produit{total > 1 ? 's' : ''}</p>
           </div>
-          <Link href="/inventory/new">
-            <Button size="lg">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Ajouter un produit
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            {/* Camera scanner — primary path on the Galaxy Tab S11 Ultra
+                portable (M2 sprint). On desktop / iPad it still works via
+                getUserMedia, just less ergonomic. */}
+            <Link href="/inventory/scan">
+              <Button variant="outline" size="lg">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                  <rect x="2" y="6" width="20" height="12" rx="2"/>
+                  <line x1="6" y1="6" x2="6" y2="18"/>
+                  <line x1="18" y1="6" x2="18" y2="18"/>
+                  <line x1="10" y1="6" x2="10" y2="18"/>
+                  <line x1="14" y1="6" x2="14" y2="18"/>
+                </svg>
+                Scanner caméra
+              </Button>
+            </Link>
+            <Link href="/inventory/new">
+              <Button size="lg">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Ajouter un produit
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {error && (
