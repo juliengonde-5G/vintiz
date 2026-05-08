@@ -188,6 +188,38 @@ const navGroups: NavGroup[] = [
         ),
       },
       {
+        label: 'Transactions',
+        href: '/admin/transactions',
+        icon: (
+          <svg {...iconProps}>
+            <line x1="12" y1="1" x2="12" y2="23" />
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Tentatives CB',
+        href: '/admin/payment-attempts',
+        icon: (
+          <svg {...iconProps}>
+            <rect x="2" y="5" width="20" height="14" rx="2" />
+            <line x1="2" y1="10" x2="22" y2="10" />
+            <path d="M7 15h2" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Rapports Z',
+        href: '/admin/z-reports',
+        icon: (
+          <svg {...iconProps}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <path d="M9 13l2 2 4-4" />
+          </svg>
+        ),
+      },
+      {
         label: 'Parametres',
         href: '/settings',
         icon: (

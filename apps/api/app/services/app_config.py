@@ -78,6 +78,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "curator_note": "",
         "updated_at": "",
     },
+    # Cash management defaults (PR 5/6 — POS routine)
+    # Drives the CashDrawerOpen/Close modals: default discrepancy
+    # tolerance + whether the denomination grid is shown by default +
+    # the comptable email used by the Z-report mailer.
+    "cash_management": {
+        "allowed_discrepancy_eur": 2.0,
+        "default_detail_mode": True,
+        "comptable_email": "",
+    },
 }
 
 
