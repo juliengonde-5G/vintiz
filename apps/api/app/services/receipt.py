@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Any
 
 from app.models.client import Client, LoyaltyAccount
 from app.models.pos import Transaction, TransactionType
@@ -11,6 +12,25 @@ class ReceiptService:
     STORE_NAME = "VINTIZ"
     STORE_ADDRESS = "6 rue Saint-Jacques, 27200 Vernon"
 
+    def _resolve_header(self, template: Any | None) -> tuple[str, str]:
+        """Return ``(title, address)`` lines, preferring the template + the
+        persisted shop_info section over the hardcoded defaults."""
+        try:
+            from app.services.app_config import get_section
+
+            shop = get_section("shop_info") or {}
+        except Exception:
+            shop = {}
+        title = (template.title if template else "") or shop.get(
+            "name", self.STORE_NAME
+        )
+        addr_parts = [
+            shop.get("address_line1", ""),
+            f"{shop.get('postal_code', '')} {shop.get('city', '')}".strip(),
+        ]
+        address = ", ".join(p for p in addr_parts if p) or self.STORE_ADDRESS
+        return title.upper(), address
+
     def generate_receipt_text(
         self,
         transaction: Transaction,
@@ -18,6 +38,7 @@ class ReceiptService:
         client: Client | None = None,
         loyalty_account: LoyaltyAccount | None = None,
         points_earned_on_sale: int | None = None,
+        template: Any | None = None,
     ) -> str:
         """Dispatch to the sale or refund template based on transaction type.
 
@@ -27,12 +48,13 @@ class ReceiptService:
         offline previews where the caller doesn't have the client loaded.
         """
         if transaction.transaction_type == TransactionType.refund:
-            return self._generate_refund_text(transaction)
+            return self._generate_refund_text(transaction, template=template)
         return self._generate_sale_text(
             transaction,
             client=client,
             loyalty_account=loyalty_account,
             points_earned_on_sale=points_earned_on_sale,
+            template=template,
         )
 
     def _generate_sale_text(
@@ -42,6 +64,7 @@ class ReceiptService:
         client: Client | None = None,
         loyalty_account: LoyaltyAccount | None = None,
         points_earned_on_sale: int | None = None,
+        template: Any | None = None,
     ) -> str:
         """Create a formatted plain-text sale receipt.
 
@@ -53,14 +76,29 @@ class ReceiptService:
         lines: list[str] = []
         width = 42
 
-        # Header
-        lines.append(self.STORE_NAME.center(width))
-        lines.append(self.STORE_ADDRESS.center(width))
+        # Header — prefer template title + persisted shop_info.
+        title, address = self._resolve_header(template)
+        lines.append(title.center(width))
+        lines.append(address.center(width))
         lines.append("=" * width)
 
         # Transaction info
         dt = transaction.created_at or datetime.now(timezone.utc)
-        lines.append(f"Ticket #{transaction.transaction_number}")
+        is_invoice_flag = (
+            getattr(transaction, "is_invoice", False) is True
+        )
+        invoice_no = getattr(transaction, "invoice_number", None)
+        ticket_label = "Facture" if is_invoice_flag else "Ticket"
+        lines.append(f"{ticket_label} #{transaction.transaction_number}")
+        if is_invoice_flag and isinstance(invoice_no, int):
+            lines.append(f"FACT-{dt.year}-{invoice_no:06d}")
+            company = getattr(transaction, "client_company_name", None)
+            siret = getattr(transaction, "client_siret", None)
+            if isinstance(company, str) and company:
+                buyer = company[: width - 1] if len(company) > width else company
+                lines.append(buyer)
+            if isinstance(siret, str) and siret:
+                lines.append(f"SIRET : {siret}")
         lines.append(f"Date: {dt.strftime('%d/%m/%Y %H:%M')}")
         lines.append("-" * width)
 
@@ -110,43 +148,64 @@ class ReceiptService:
         hash_display = transaction.hash_chain[:16] if transaction.hash_chain else ""
         lines.append(f"Hash: {hash_display}")
 
-        # ---- Fidelity footer ---------------------------------------------------
-        lines.append("")
-        lines.append("--- Fidelite Vintiz ---".center(width))
-        if client is not None and loyalty_account is not None:
-            holder = f"{client.first_name} {client.last_name}".strip() or "Membre"
-            if len(holder) > width:
-                holder = holder[: width - 1]
-            lines.append(f"Membre : {holder}")
-            lines.append(f"N {loyalty_account.membership_number}")
-            balance = int(loyalty_account.points or 0)
-            earned = int(points_earned_on_sale or 0)
-            balance_line = f"Solde : {balance} pts"
-            if earned > 0:
-                balance_line += f" (+{earned} sur cet achat)"
-            lines.append(balance_line)
-        else:
-            would_earn = points_earned_on_sale
-            if would_earn is None:
-                would_earn = points_to_credit(float(total_ttc))
-            if would_earn > 0:
-                lines.append(f"Vous auriez gagne {would_earn} pts.")
-            lines.append("Adherez gratuitement a votre prochain passage")
-            lines.append("Carte digitale Apple/Google Wallet")
+        # ---- Fidelity footer (gated by template) ------------------------------
+        show_loyalty = template is None or bool(
+            getattr(template, "show_loyalty_footer", True)
+        )
+        if show_loyalty:
+            lines.append("")
+            lines.append("--- Fidelite Vintiz ---".center(width))
+            if client is not None and loyalty_account is not None:
+                holder = (
+                    f"{client.first_name} {client.last_name}".strip() or "Membre"
+                )
+                if len(holder) > width:
+                    holder = holder[: width - 1]
+                lines.append(f"Membre : {holder}")
+                lines.append(f"N {loyalty_account.membership_number}")
+                balance = int(loyalty_account.points or 0)
+                earned = int(points_earned_on_sale or 0)
+                balance_line = f"Solde : {balance} pts"
+                if earned > 0:
+                    balance_line += f" (+{earned} sur cet achat)"
+                lines.append(balance_line)
+            else:
+                would_earn = points_earned_on_sale
+                if would_earn is None:
+                    would_earn = points_to_credit(float(total_ttc))
+                if would_earn > 0:
+                    lines.append(f"Vous auriez gagne {would_earn} pts.")
+                lines.append("Adherez gratuitement a votre prochain passage")
+                lines.append("Carte digitale Apple/Google Wallet")
 
         lines.append("")
-        lines.append("Merci de votre visite !".center(width))
+        custom_footer = (template.footer if template else "") or ""
+        if custom_footer.strip():
+            for line in custom_footer.splitlines():
+                stripped = line.strip()
+                if not stripped:
+                    lines.append("")
+                else:
+                    lines.append(stripped[:width].center(width))
+        else:
+            lines.append("Merci de votre visite !".center(width))
         lines.append("")
 
         return "\n".join(lines)
 
-    def _generate_refund_text(self, transaction: Transaction) -> str:
+    def _generate_refund_text(
+        self,
+        transaction: Transaction,
+        *,
+        template: Any | None = None,
+    ) -> str:
         """Refund receipt — visually distinct, references the original sale."""
         lines: list[str] = []
         width = 42
 
-        lines.append(self.STORE_NAME.center(width))
-        lines.append(self.STORE_ADDRESS.center(width))
+        title, address = self._resolve_header(template)
+        lines.append(title.center(width))
+        lines.append(address.center(width))
         lines.append("=" * width)
         lines.append("** TICKET DE RETOUR **".center(width))
         lines.append("=" * width)
