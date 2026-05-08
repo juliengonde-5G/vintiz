@@ -357,8 +357,15 @@ class PosService:
         user_id: uuid.UUID,
         opening_amount: Decimal,
         cashier_id: uuid.UUID | None = None,
+        opening_breakdown: list[dict] | None = None,
     ) -> CashDrawer:
-        """Open a new cash drawer. Raises if one is already open."""
+        """Open a new cash drawer. Raises if one is already open.
+
+        ``opening_breakdown`` is the optional itemised count
+        ``[{"denom": 50, "count": 5}, {"denom": 20, "count": 10}, ...]`` —
+        rendered on the Z report and printed at closing to help the cashier
+        reconcile any discrepancy.
+        """
         existing = await self.get_open_drawer()
         if existing:
             raise InvalidOperation("A cash drawer is already open")
@@ -367,6 +374,7 @@ class PosService:
             cashier_id=cashier_id,
             opened_at=datetime.now(timezone.utc),
             opening_amount=float(opening_amount),
+            opening_breakdown=opening_breakdown,
             is_open=True,
         )
         self.db.add(drawer)
@@ -379,18 +387,39 @@ class PosService:
         user_id: uuid.UUID,
         closing_amount: Decimal,
         cashier_id: uuid.UUID | None = None,
+        closing_breakdown: list[dict] | None = None,
+        closing_note: str | None = None,
+        allowed_discrepancy_override: Decimal | None = None,
     ) -> CashDrawer:
         """Close the currently open drawer.
 
-        Computes *expected_amount* as opening_amount + sum of cash payments
-        made while the drawer was open. If a cashier_id is supplied, it
-        replaces the one set at opening (e.g. shift handover).
+        The expected amount now includes cash payments PLUS the running
+        balance of cash movements (deposits / withdrawals during the day),
+        not just the opening float — otherwise a bank deposit looks like a
+        discrepancy at closing.
+
+        ``closing_breakdown`` mirrors ``opening_breakdown`` and is rendered on
+        the Z report. ``closing_note`` is mandatory client-side when the
+        discrepancy exceeds ``allowed_discrepancy``; the API accepts whatever
+        the UI sends but the Z report flags the case in red.
+        ``allowed_discrepancy_override`` lets a manager raise the per-drawer
+        threshold without touching global settings.
         """
+        from app.models.cash_movement import CashMovement, CashMovementDirection
+
         drawer = await self.get_open_drawer()
         if not drawer:
             raise ResourceNotFound("CashDrawer")
         if cashier_id is not None:
             drawer.cashier_id = cashier_id
+
+        # Use a small tolerance window when comparing drawer.opened_at to
+        # transaction timestamps. SQLite's TEXT-based DateTime storage can
+        # serialize the drawer's timezone-aware ``datetime.now(timezone.utc)``
+        # with microseconds while ``func.now()`` (transactions) produces a
+        # second-precision string — straight ``>=`` would then exclude sales
+        # recorded in the same wall-clock second as the open call.
+        period_start = drawer.opened_at - timedelta(seconds=1)
 
         # Sum cash payments during the drawer period
         cash_sum_result = await self.db.execute(
@@ -398,15 +427,53 @@ class PosService:
             .join(Transaction, Payment.transaction_id == Transaction.id)
             .where(
                 Payment.method == PaymentMethod.cash,
-                Transaction.created_at >= drawer.opened_at,
+                Transaction.created_at >= period_start,
             )
         )
         cash_total = Decimal(str(cash_sum_result.scalar_one()))
 
+        # Net cash refunds during the drawer period subtract from the till
+        refund_sum_result = await self.db.execute(
+            select(func.coalesce(func.sum(Payment.amount), 0))
+            .join(Transaction, Payment.transaction_id == Transaction.id)
+            .where(
+                Payment.method == PaymentMethod.cash,
+                Transaction.created_at >= period_start,
+                Transaction.transaction_type == TransactionType.refund,
+            )
+        )
+        cash_refund_total = Decimal(str(refund_sum_result.scalar_one()))
+
+        # Cash movements (deposits in / withdrawals out) during the day
+        in_sum = await self.db.execute(
+            select(func.coalesce(func.sum(CashMovement.amount), 0))
+            .where(
+                CashMovement.drawer_id == drawer.id,
+                CashMovement.direction == CashMovementDirection.inflow,
+            )
+        )
+        out_sum = await self.db.execute(
+            select(func.coalesce(func.sum(CashMovement.amount), 0))
+            .where(
+                CashMovement.drawer_id == drawer.id,
+                CashMovement.direction == CashMovementDirection.outflow,
+            )
+        )
+        cash_in = Decimal(str(in_sum.scalar_one()))
+        cash_out = Decimal(str(out_sum.scalar_one()))
+
         drawer.closing_amount = float(closing_amount)
         drawer.expected_amount = float(
-            Decimal(str(drawer.opening_amount)) + cash_total
+            Decimal(str(drawer.opening_amount))
+            + cash_total
+            - cash_refund_total
+            + cash_in
+            - cash_out
         )
+        drawer.closing_breakdown = closing_breakdown
+        drawer.closing_note = closing_note
+        if allowed_discrepancy_override is not None:
+            drawer.allowed_discrepancy = float(allowed_discrepancy_override)
         drawer.closed_at = datetime.now(timezone.utc)
         drawer.is_open = False
 

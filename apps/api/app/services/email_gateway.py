@@ -53,6 +53,10 @@ class EmailMessage:
     to_name: str | None = None
     text: str | None = None  # plain text fallback; computed from HTML if missing
     reply_to: str | None = None
+    # Optional binary attachments. Each entry is
+    # ``{"filename": str, "content": bytes, "mime": str}``.
+    # Used by the Z-report mailer (PDF). Ignored by the simulation backend.
+    attachments: list[dict] | None = None
 
 
 @dataclass
@@ -146,6 +150,18 @@ def _send_via_brevo(message: EmailMessage) -> EmailResult:
     }
     if message.reply_to:
         payload["replyTo"] = {"email": message.reply_to}
+    if message.attachments:
+        import base64
+
+        payload["attachment"] = [
+            {
+                "name": a.get("filename", "attachment.bin"),
+                "content": base64.b64encode(a.get("content") or b"").decode(
+                    "ascii"
+                ),
+            }
+            for a in message.attachments
+        ]
 
     body = json.dumps(payload).encode("utf-8")
     req = Request(
@@ -186,14 +202,43 @@ def _send_via_smtp(message: EmailMessage) -> EmailResult:
     port = int(_from_env("SMTP_PORT", "587"))
     sender = _from_env("SMTP_FROM", _from_env("EMAIL_FROM_ADDRESS", user))
 
-    msg = MIMEMultipart("alternative")
+    # When the caller ships attachments, wrap the alternative bodies inside
+    # a ``multipart/mixed`` envelope — most clients (Gmail, Outlook, Mail.app)
+    # require the binary parts at the same level as the body.
+    if message.attachments:
+        msg = MIMEMultipart("mixed")
+        body = MIMEMultipart("alternative")
+        body.attach(
+            MIMEText(message.text or _strip_html(message.html), "plain", "utf-8")
+        )
+        body.attach(MIMEText(message.html, "html", "utf-8"))
+        msg.attach(body)
+        from email.mime.application import MIMEApplication
+
+        for att in message.attachments:
+            part = MIMEApplication(
+                att.get("content") or b"",
+                _subtype=(att.get("mime") or "application/octet-stream").split(
+                    "/"
+                )[-1],
+            )
+            part.add_header(
+                "Content-Disposition",
+                "attachment",
+                filename=att.get("filename", "attachment.bin"),
+            )
+            msg.attach(part)
+    else:
+        msg = MIMEMultipart("alternative")
+        msg.attach(
+            MIMEText(message.text or _strip_html(message.html), "plain", "utf-8")
+        )
+        msg.attach(MIMEText(message.html, "html", "utf-8"))
     msg["Subject"] = message.subject
     msg["From"] = sender
     msg["To"] = message.to
     if message.reply_to:
         msg["Reply-To"] = message.reply_to
-    msg.attach(MIMEText(message.text or _strip_html(message.html), "plain", "utf-8"))
-    msg.attach(MIMEText(message.html, "html", "utf-8"))
 
     try:
         with smtplib.SMTP(host, port, timeout=15) as server:
