@@ -52,6 +52,14 @@ from app.models.local_calendar import (
     LocalEvent,
 )
 from app.models.auth import MagicLinkToken
+from app.models.receipt_template import ReceiptKind, ReceiptTemplate
+from app.models.payment_attempt import PaymentAttempt, PaymentAttemptStatus
+from app.models.cash_movement import (
+    CashMovement,
+    CashMovementDirection,
+    CashMovementReason,
+)
+from app.models.sumup_terminal import SumUpTerminal, SumUpTerminalStatus
 
 __all__ = [
     "Base",
@@ -81,4 +89,8 @@ __all__ = [
     "WindowDecor",
     "LocalEvent", "CommercialOperation", "CahierDayArchive",
     "MagicLinkToken",
+    "ReceiptKind", "ReceiptTemplate",
+    "PaymentAttempt", "PaymentAttemptStatus",
+    "CashMovement", "CashMovementDirection", "CashMovementReason",
+    "SumUpTerminal", "SumUpTerminalStatus",
 ]
