@@ -91,31 +91,21 @@ async def list_recent_snapshots(
 # ---------------------------------------------------------------------------
 
 
-_PROMPT_CACHE: str | None = None
+# Prompt source : apps/api/prompts/v1/social_posts.md (T2 audit tech debt).
+_SOCIAL_POSTS_FALLBACK = (
+    "Tu es community manager de Vintiz Vernon. Génère 4 posts "
+    "(produit_star, valeurs, témoignage, actu_locale) au format JSON. "
+    "Référence le site vintiz.fr dans les captions, pas @vintiz.vernon."
+)
 
 
 def _system_prompt() -> str:
-    global _PROMPT_CACHE
-    if _PROMPT_CACHE is not None:
-        return _PROMPT_CACHE
-    candidate = (
-        Path(__file__).resolve().parents[2]
-        / "prompts"
-        / "v1"
-        / "social_posts.md"
+    from app.core.prompts import load_prompt
+
+    return load_prompt(
+        "social_posts",
+        fallback=_SOCIAL_POSTS_FALLBACK,
     )
-    try:
-        text = candidate.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        text = (
-            "Tu es community manager de Vintiz Vernon. Génère 4 posts "
-            "(produit_star, valeurs, témoignage, actu_locale) au format JSON. "
-            "Référence le site vintiz.fr dans les captions, pas @vintiz.vernon."
-        )
-    if "## System" in text and "## Cost control" in text:
-        text = text.split("## System", 1)[1].split("## Cost control", 1)[0].strip()
-    _PROMPT_CACHE = text
-    return text
 
 
 def _generate_fallback_posts() -> list[dict]:

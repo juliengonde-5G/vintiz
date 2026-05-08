@@ -1,9 +1,12 @@
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger("vintiz")
 
 from app.core.exceptions import (
     CartEmpty, InsufficientBalance, InvalidOperation, PaymentShortfall,
@@ -500,9 +503,6 @@ class PosService:
         Called from the router after FiscalService.sign_transaction(). Failures in
         any step are logged and swallowed — they never roll back the signed sale.
         """
-        import logging as _logging
-        _log = _logging.getLogger("vintiz")
-
         # Coupon redemption
         if coupon_code:
             from app.services.coupon import CouponError, redeem_coupon, validate_coupon
@@ -515,7 +515,7 @@ class PosService:
                 )
                 await redeem_coupon(self.db, preview.coupon_id, transaction.id)
             except CouponError as exc:
-                _log.warning(
+                logger.warning(
                     "Coupon redemption failed for tx=%s code=%s reason=%s",
                     transaction.id, coupon_code, exc,
                 )
@@ -525,7 +525,7 @@ class PosService:
             try:
                 await self._credit_loyalty_and_emit_milestones(transaction)
             except Exception as exc:  # noqa: BLE001
-                _log.warning(
+                logger.warning(
                     "Loyalty milestone hook failed for tx=%s: %s",
                     transaction.id, exc,
                 )

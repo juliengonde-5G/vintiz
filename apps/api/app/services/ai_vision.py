@@ -2,6 +2,10 @@
 
 Detects clothing type, color, size estimate, brand clues, condition,
 and suggests category + price range.
+
+The system prompt lives in ``apps/api/prompts/v1/ai_vision.md`` and is
+loaded by ``app.core.prompts.load_prompt`` (see T2 audit tech debt —
+unification des prompts dispersés).
 """
 
 import base64
@@ -10,48 +14,22 @@ import logging
 import anthropic
 
 from app.core.config import settings
+from app.core.prompts import load_prompt
 
 logger = logging.getLogger("vintiz.ai.vision")
 
-SYSTEM_PROMPT = """Tu es un assistant expert en mode feminine seconde main premium.
-Tu analyses des photos de vetements pour une boutique de seconde main haut de gamme.
 
-A partir de la photo, tu dois identifier :
-1. **type** : le type de vetement (robe, pantalon, veste, manteau, pull, chemise, jupe, top, accessoire, chaussures, sac, etc.)
-2. **couleur** : la couleur principale et eventuellement secondaire
-3. **matiere** : la matiere estimee (coton, laine, soie, polyester, cuir, jean/denim, lin, etc.)
-4. **marque** : si une etiquette ou un logo est visible, identifier la marque. Sinon "non identifiee"
-5. **taille** : si une etiquette de taille est visible, la lire. Sinon estimer (XS, S, M, L, XL, ou taille numerique)
-6. **etat** : excellent, tres bon, bon, correct (pour de la seconde main premium, on attend minimum "bon")
-7. **saison** : ete, hiver, mi-saison, toute saison
-8. **style** : un seul mot parmi minimaliste, vintage, boheme, chic, sport, rock, romantique, casual, business
-9. **occasion** : un ou deux mots cles parmi quotidien, bureau, soiree, weekend, ceremonie, ete, festival
-10. **motif** : uni, raye, fleuri, carreaux, pois, animal, geometrique, autre
-11. **coupe** : slim, droit, oversize, cintre, fluide, ample, ajuste
-12. **defauts** : liste eventuelle de defauts visibles (taches, trous, decoloration, peluches, fermeture cassee, bouton manquant). Vide si aucun.
-13. **description** : une description courte (1-2 phrases) pour l'etiquette/fiche produit
-14. **gamme_estimee** : entree, moyenne, premium (basee sur la qualite apparente, la marque, la matiere)
-15. **confiance** : 0.0-1.0 — ton niveau de certitude global (faible si la photo est floue ou partielle)
+_AI_VISION_FALLBACK = (
+    "Tu es un assistant expert en mode feminine seconde main premium. "
+    "Analyse la photo et renvoie un JSON avec : type, couleur, matiere, "
+    "marque, taille, etat, saison, style, occasion, motif, coupe, "
+    "defauts, description, gamme_estimee, confiance. Repondez UNIQUEMENT "
+    "en JSON valide."
+)
 
-Reponds UNIQUEMENT en JSON valide, sans texte autour. Format :
-{
-  "type": "...",
-  "couleur": "...",
-  "couleur_secondaire": "..." ou null,
-  "matiere": "...",
-  "marque": "..." ou "non identifiee",
-  "taille": "...",
-  "etat": "excellent|tres bon|bon|correct",
-  "saison": "ete|hiver|mi-saison|toute saison",
-  "style": "minimaliste|vintage|boheme|chic|sport|rock|romantique|casual|business",
-  "occasion": ["quotidien"|"bureau"|"soiree"|"weekend"|"ceremonie"|"ete"|"festival"],
-  "motif": "uni|raye|fleuri|carreaux|pois|animal|geometrique|autre",
-  "coupe": "slim|droit|oversize|cintre|fluide|ample|ajuste",
-  "defauts": ["..."],
-  "description": "...",
-  "gamme_estimee": "entree|moyenne|premium",
-  "confiance": 0.0-1.0
-}"""
+
+def _system_prompt() -> str:
+    return load_prompt("ai_vision", fallback=_AI_VISION_FALLBACK)
 
 
 # Allowed values per enriched field (P2-013). Validators below enforce
@@ -158,7 +136,7 @@ async def analyze_product_photo(
     message = await client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=1024,
-        system=SYSTEM_PROMPT,
+        system=_system_prompt(),
         messages=[
             {
                 "role": "user",
@@ -208,7 +186,7 @@ async def analyze_photo_from_url(photo_url: str) -> dict:
     message = await client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=1024,
-        system=SYSTEM_PROMPT,
+        system=_system_prompt(),
         messages=[
             {
                 "role": "user",

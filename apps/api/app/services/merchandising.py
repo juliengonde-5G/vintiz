@@ -13,6 +13,7 @@ and offline-friendly; a follow-up will optionally chain Claude on top
 
 from __future__ import annotations
 
+import logging
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass
@@ -25,6 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.merchandising import WindowDisplayProposal
 from app.models.product import Category, Product, ProductStatus
 from app.models.store import StoreZone
+
+logger = logging.getLogger("vintiz")
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +185,10 @@ class MerchandisingService:
         )
         zones = zones_result.scalars().all()
         if not zones:
+            logger.warning(
+                "suggest_zone: aucune zone configurée — product_id=%s, fallback rationale renvoyé",
+                product.id,
+            )
             return ZoneSuggestion(
                 primary_zone_id=None, primary_zone_name=None,
                 alternative_zone_id=None, alternative_zone_name=None,

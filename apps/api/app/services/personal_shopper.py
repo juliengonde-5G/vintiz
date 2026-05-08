@@ -120,40 +120,22 @@ def _build_user_prompt(
     )
 
 
-# Loaded lazily so the test runner doesn't need the prompts/ tree on disk.
-_SYSTEM_PROMPT_CACHE: str | None = None
+# Loaded via the centralized prompts loader (T2 audit tech debt).
+# Le fichier source vit dans apps/api/prompts/v1/personal_shopper.md.
+_PERSONAL_SHOPPER_FALLBACK = (
+    "Tu es la Personal Shopper de Vintiz Vernon. Présente 3-5 pièces "
+    "à la cliente, ton chaleureux, vouvoiement, 4-6 phrases, références "
+    "à ses achats passés, jamais de pièce hors stock."
+)
 
 
 def _system_prompt() -> str:
-    global _SYSTEM_PROMPT_CACHE
-    if _SYSTEM_PROMPT_CACHE is not None:
-        return _SYSTEM_PROMPT_CACHE
-    from pathlib import Path
+    from app.core.prompts import load_prompt
 
-    candidate = (
-        Path(__file__).resolve().parents[2]
-        / "prompts"
-        / "v1"
-        / "personal_shopper.md"
+    return load_prompt(
+        "personal_shopper",
+        fallback=_PERSONAL_SHOPPER_FALLBACK,
     )
-    try:
-        text = candidate.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        # Defensive: fall back to a minimal inline prompt so the service
-        # keeps working even if the prompts/ tree was stripped from a
-        # container image.
-        text = (
-            "Tu es la Personal Shopper de Vintiz Vernon. Présente 3-5 pièces "
-            "à la cliente, ton chaleureux, vouvoiement, 4-6 phrases, références "
-            "à ses achats passés, jamais de pièce hors stock."
-        )
-    # Extract the body between "## System" and "## User template" if the
-    # full markdown was loaded.
-    if "## System" in text and "## User template" in text:
-        block = text.split("## System", 1)[1].split("## User template", 1)[0]
-        text = block.strip()
-    _SYSTEM_PROMPT_CACHE = text
-    return text
 
 
 class PersonalShopperService:

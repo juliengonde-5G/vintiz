@@ -271,6 +271,38 @@ docker compose -f docker/docker-compose.prod.yml restart api
 gunzip -c /opt/vintiz/backups/vintiz_XXXXXXXX.sql.gz | docker exec -i vintiz-db psql -U vintiz vintiz
 ```
 
+### Rotation SECRET_KEY (annuelle ou sur incident)
+
+`SECRET_KEY` signe les JWT manager + magic-link client. La faire tourner
+invalide tous les JWT en circulation — chaque utilisateur devra se
+reconnecter. Procédure :
+
+```bash
+# 1. Générer une nouvelle clé (32 bytes hex)
+NEW_SECRET=$(openssl rand -hex 32)
+
+# 2. Sauvegarder l'ancienne clé en variable secondaire si besoin de
+#    grace period courte (sinon ignorer cette étape)
+ssh vintiz "grep ^SECRET_KEY= /opt/vintiz/.env"
+
+# 3. Mettre à jour /opt/vintiz/.env (sur le VPS)
+ssh vintiz "sed -i \"s|^SECRET_KEY=.*|SECRET_KEY=$NEW_SECRET|\" /opt/vintiz/.env"
+
+# 4. Restart de l'API (les sessions existantes deviennent invalides)
+ssh vintiz "cd /opt/vintiz && docker compose -f docker/docker-compose.prod.yml restart api"
+
+# 5. Vérifier que le boot a réussi (refus de boot si SECRET_KEY vide)
+ssh vintiz "docker logs vintiz-api --tail 20"
+```
+
+**Quand la faire tourner** :
+- annuelle préventive (calendrier sécurité)
+- immédiate si fuite suspectée (push accidentel sur Git, machine compromise)
+- après le départ d'un dev ayant eu accès au VPS
+
+`ADMIN_BOOTSTRAP_KEY` (utilisée seulement par `/admin/create-tables`)
+peut être tournée indépendamment et ne casse aucune session active.
+
 ## Pieges connus migrations / build
 
 - **Numerotation des revisions Alembic** : si deux PR ajoutent en parallele
