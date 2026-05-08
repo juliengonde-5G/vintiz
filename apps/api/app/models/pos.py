@@ -128,6 +128,13 @@ class TransactionItem(Base):
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     discount_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     line_total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    # Taux de TVA effectivement appliqué à cette ligne — figé au moment
+    # de la vente même si le taux du Product change ensuite. Permet de
+    # justifier le calcul HT/TVA/TTC lors d'un contrôle DGFiP, et de
+    # produire des tickets / factures conformes (CGI art. 286).
+    tva_rate: Mapped[float] = mapped_column(
+        Numeric(4, 2), nullable=False, default=20.00
+    )
 
     transaction: Mapped["Transaction"] = relationship(
         "Transaction", back_populates="items", lazy="selectin"

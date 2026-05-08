@@ -18,7 +18,12 @@ Design notes:
 
 from __future__ import annotations
 
+import enum
+import hashlib
+import re
 import uuid
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Iterable
 
 from sqlalchemy import event, inspect
@@ -73,6 +78,16 @@ def _entity_id(instance: Any) -> uuid.UUID | None:
     return None
 
 
+_HASH_PREFIX = "sha256:"
+_HASH_TRUNC = 12  # 48 bits — assez pour corréler 2 entrées audit, trop peu pour rainbow attack
+_PHONE_DIGITS_RE = re.compile(r"\D+")
+
+
+def _hash_pii(normalized: str) -> str:
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return f"{_HASH_PREFIX}{digest[:_HASH_TRUNC]}"
+
+
 def _redact(field: str, value: Any) -> Any:
     """Hide secret values + JSON-safe coercion before storage in audit data.
 
@@ -80,15 +95,25 @@ def _redact(field: str, value: Any) -> Any:
     Decimal, Enum, datetime and UUID natively. We coerce those to JSON-
     friendly primitives here so a misbehaved caller never crashes the
     flush (which would deny-list the whole transaction).
-    """
-    import enum
-    from datetime import date, datetime
-    from decimal import Decimal
 
+    Conformité RGPD (minimisation, art. 5-1-c) + NF525 (rétention 6 ans) :
+    les champs PII directement identifiants (`email`, `phone`) sont
+    hashés en SHA-256 tronqué 12 caractères avant persistance. Le hash
+    reste **déterministe** (même e-mail → même hash) pour permettre la
+    corrélation entre deux entrées d'audit, mais non-réversible.
+    Les champs `first_name` / `last_name` restent en clair pour la
+    traçabilité d'audit ; ils ne sont identifiants qu'en combinaison.
+    """
     if field in {"pin_hash", "password_hash"}:
         return "<set>" if value else "<empty>"
     if value is None:
         return None
+    if field == "email":
+        normalized = str(value).strip().lower()
+        return _hash_pii(normalized) if normalized else None
+    if field == "phone":
+        digits = _PHONE_DIGITS_RE.sub("", str(value))
+        return _hash_pii(digits) if digits else None
     if isinstance(value, uuid.UUID):
         return str(value)
     if isinstance(value, Decimal):

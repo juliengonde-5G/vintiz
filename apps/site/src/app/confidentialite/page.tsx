@@ -226,8 +226,11 @@ export default function ConfidentialitePage() {
             SHA-256 conformément à la norme NF525.
           </p>
 
-          <h2 className="font-display text-xl text-black mt-8 mb-3">
-            Profilage et décisions automatisées
+          <h2
+            id="personal-shopper"
+            className="font-display text-xl text-black mt-8 mb-3 scroll-mt-24"
+          >
+            Profilage, Personal Shopper IA et décisions automatisées
           </h2>
           <p className="text-black/70 leading-relaxed">
             Le Personal Shopper IA et les recommandations de produits utilisent
@@ -242,6 +245,45 @@ export default function ConfidentialitePage() {
               espace de gestion des données
             </Link>
             .
+          </p>
+
+          <p className="text-black/70 leading-relaxed mt-4">
+            <strong>Conformité AI Act (UE 2024/1689, art. 50)</strong>
+            &nbsp;— le Personal Shopper IA est un système d&apos;intelligence
+            artificielle à risque limité au sens du règlement européen. À ce
+            titre&nbsp;:
+          </p>
+          <ul className="mt-3 space-y-2 text-black/70 leading-relaxed list-disc list-inside">
+            <li>
+              vous êtes informée de manière permanente, dans l&apos;interface
+              de votre espace client, que vous interagissez avec une IA&nbsp;;
+            </li>
+            <li>
+              chaque recommandation produite par l&apos;IA est marquée comme
+              telle (badge visible «&nbsp;IA&nbsp;» et marquage HTML
+              <code className="text-xs bg-black/5 px-1 py-0.5 rounded mx-1">
+                data-ai-generated=&quot;true&quot;
+              </code>
+              lisible par les outils d&apos;assistance et de transparence)&nbsp;;
+            </li>
+            <li>
+              vous pouvez à tout moment demander l&apos;intervention d&apos;un
+              humain Vintiz pour réviser une recommandation, en écrivant à
+              {" "}
+              <a
+                href="mailto:dpo@solidarite-textiles.fr"
+                className="text-vz-teal underline"
+              >
+                dpo@solidarite-textiles.fr
+              </a>
+              .
+            </li>
+          </ul>
+          <p className="text-black/70 leading-relaxed mt-4">
+            Le modèle utilisé est Claude Haiku 4.5 (Anthropic Ireland Limited,
+            hébergement AWS Union européenne). Les données envoyées au modèle
+            sont strictement nécessaires à la recommandation et ne sont pas
+            conservées par Anthropic après inférence.
           </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">

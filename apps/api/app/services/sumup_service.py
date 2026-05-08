@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -32,6 +33,65 @@ _log = logging.getLogger("vintiz")
 SUMUP_API_BASE = "https://api.sumup.com/v0.1"
 
 SandboxStatus = Literal["PENDING", "PAID", "FAILED", "CANCELLED"]
+
+
+# ---------------------------------------------------------------------------
+# PII redaction for persisted SumUp error payloads
+# ---------------------------------------------------------------------------
+
+# PAN (Primary Account Number) : 13 à 19 chiffres consécutifs.
+# Visa 16, Mastercard 16, Amex 15, Maestro 12-19, Discover 16-19.
+# On garde les non-digits autour pour éviter de matcher des timestamps,
+# mais on traite les espaces/dashes typiques de PAN affichés (4-4-4-4).
+_PAN_RE = re.compile(
+    r"(?<!\d)(?:\d[\s\-]?){13,19}(?!\d)"
+)
+# CVV / CVC / CVV2 / CSC : 3 ou 4 chiffres précédés d'un libellé connu.
+_CVV_RE = re.compile(
+    r"(?i)\b(cvv2?|cvc2?|csc|card_security_code|security_code)\b\s*[:=]?\s*\d{3,4}"
+)
+# Authorization headers et Bearer tokens.
+_BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{8,}")
+_AUTH_HEADER_RE = re.compile(
+    r"(?i)\bauthorization\b\s*[:=]\s*[A-Za-z0-9._\-+/=\s]{8,}"
+)
+# API keys SumUp / Stripe / Anthropic / etc. (préfixes connus suivis de
+# 24+ caractères de payload).
+_API_KEY_RE = re.compile(
+    r"\b(sup_sk_|sk_live_|pk_live_|sk_test_|pk_test_|sk-ant-)[A-Za-z0-9_\-]{20,}"
+)
+# JWT (3 segments base64 séparés par des points).
+_JWT_RE = re.compile(
+    r"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}"
+)
+
+
+def redact_sumup_error(text: str | None, max_len: int = 300) -> str:
+    """Nettoie un payload d'erreur SumUp avant persistance ou logging.
+
+    Si SumUp ou la stack HTTP renvoie une erreur contenant un PAN partiel,
+    un CVV, un Bearer token ou une clé API, on les remplace par un
+    marqueur ``<…_REDACTED>`` avant de tronquer à ``max_len`` caractères.
+
+    Conforme à PCI-DSS req. 3 (interdiction de stocker du PAN/CVV en clair)
+    et au principe RGPD de minimisation.
+    """
+    if not text:
+        return ""
+    safe = str(text)
+    safe = _PAN_RE.sub("<PAN_REDACTED>", safe)
+    safe = _CVV_RE.sub(
+        lambda m: f"{m.group(1)} <CVV_REDACTED>", safe
+    )
+    safe = _BEARER_RE.sub("Bearer <TOKEN_REDACTED>", safe)
+    safe = _AUTH_HEADER_RE.sub("Authorization: <REDACTED>", safe)
+    safe = _API_KEY_RE.sub(
+        lambda m: f"{m.group(1)}<API_KEY_REDACTED>", safe
+    )
+    safe = _JWT_RE.sub("<JWT_REDACTED>", safe)
+    if len(safe) > max_len:
+        safe = safe[:max_len].rstrip() + "…"
+    return safe
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +363,7 @@ class SumUpService:
                 "environment": "production",
                 "simulated": False,
                 "http_status": resp.status_code,
-                "error_detail": resp.text[:300],
+                "error_detail": redact_sumup_error(resp.text),
             }
         except Exception as e:
             return {
@@ -314,7 +374,7 @@ class SumUpService:
                 "status": "FAILED",
                 "environment": "production",
                 "simulated": False,
-                "error_detail": f"network error: {e}",
+                "error_detail": redact_sumup_error(f"network error: {e}"),
             }
 
     async def _push_to_reader(
@@ -371,7 +431,7 @@ class SumUpService:
                 "simulated": False,
                 "mode": "reader",
                 "http_status": resp.status_code,
-                "error_detail": resp.text[:300],
+                "error_detail": redact_sumup_error(resp.text),
             }
         except Exception:
             return None
@@ -464,7 +524,11 @@ class SumUpService:
                 "http_status": resp.status_code,
             }
         except Exception as e:
-            return {"checkout_id": checkout_id, "status": "FAILED", "error": str(e)}
+            return {
+                "checkout_id": checkout_id,
+                "status": "FAILED",
+                "error": redact_sumup_error(str(e)),
+            }
 
     def _sandbox_status(self, checkout_id: str) -> dict:
         co = self.store.get(checkout_id)

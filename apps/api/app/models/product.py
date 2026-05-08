@@ -89,6 +89,14 @@ class Product(Base):
     sale_price: Mapped[float] = mapped_column(
         Numeric(10, 2), nullable=False, default=0
     )
+    # Taux de TVA appliqué à ce produit en régime normal. Default 20 %
+    # (taux normal vêtements adultes France). Override possible pour les
+    # catégories à taux réduit (livres 5.5, chaussures enfant ≤ certains
+    # seuils). Stocké au niveau produit + copié sur la ligne de
+    # transaction au moment de la vente, pour audit DGFiP.
+    tva_rate: Mapped[float] = mapped_column(
+        Numeric(4, 2), nullable=False, default=20.00
+    )
     status: Mapped[ProductStatus] = mapped_column(
         Enum(ProductStatus, name="product_status"),
         nullable=False,

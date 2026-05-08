@@ -45,6 +45,15 @@ class AccountActionRequest(BaseModel):
 class PersonalShopperToggleRequest(BaseModel):
     email: str
     enabled: bool
+    # Trace explicite du contexte du consentement RGPD (art. 7-1 RGPD :
+    # le responsable de traitement doit pouvoir démontrer que le
+    # consentement a été donné). `source` est journalisé tel quel dans
+    # `consents.source`. Valeurs typiques :
+    #   - "site_ps_consent_screen_grant"   (écran consent /account/shopper, accepté)
+    #   - "site_ps_consent_screen_decline" (écran consent /account/shopper, refusé)
+    #   - "site_account_settings"          (toggle depuis /account/rgpd)
+    #   - "account_self_service"           (legacy, valeur par défaut)
+    source: str | None = None
 
 class PersonalShopperSearchRequest(BaseModel):
     email: str
@@ -88,7 +97,11 @@ async def _resolve_public_client(db: AsyncSession, email: str) -> Client:
     return client
 
 async def _record_consent_toggle(
-    db: AsyncSession, client: Client, purpose: ConsentPurpose, granted: bool
+    db: AsyncSession,
+    client: Client,
+    purpose: ConsentPurpose,
+    granted: bool,
+    source: str | None = None,
 ) -> None:
     db.add(
         Consent(
@@ -96,7 +109,7 @@ async def _record_consent_toggle(
             purpose=purpose,
             granted=granted,
             policy_version="v2-2026-04",
-            source="account_self_service",
+            source=source or "account_self_service",
         )
     )
     await db.flush()
@@ -192,7 +205,11 @@ async def toggle_personal_shopper(
 
     client = await _resolve_public_client(db, payload.email)
     await _record_consent_toggle(
-        db, client, ConsentPurpose.profiling, payload.enabled
+        db,
+        client,
+        ConsentPurpose.profiling,
+        payload.enabled,
+        source=payload.source,
     )
     await db.commit()
     return Response(status_code=204)
@@ -207,7 +224,11 @@ async def toggle_trend_alerts(
 
     client = await _resolve_public_client(db, payload.email)
     await _record_consent_toggle(
-        db, client, ConsentPurpose.trend_alerts, payload.enabled
+        db,
+        client,
+        ConsentPurpose.trend_alerts,
+        payload.enabled,
+        source=payload.source,
     )
     await db.commit()
     return Response(status_code=204)

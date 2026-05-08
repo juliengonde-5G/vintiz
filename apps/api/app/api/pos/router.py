@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import RoleChecker, get_current_user
-from app.models.user import User
+from app.models.audit import AuditLog
+from app.models.user import User, UserRole
 from app.schemas.user import (
     CashierPinClearRequest,
     CashierPinLoginRequest,
@@ -18,11 +19,15 @@ from app.schemas.user import (
     CashierResponse,
     CashierWithPinStatusResponse,
 )
+from app.services.cash_payment_validator import (
+    validate as validate_cash_payments,
+)
 from app.services.cashier import CashierService
 from app.services.events import EventService
 from app.services.fiscal import FiscalService
 from app.services.pos import PosService
 from app.services.refund import RefundLineInput, RefundService
+from app.services.sumup_service import redact_sumup_error
 
 manager_only = RoleChecker(["manager"])
 
@@ -63,6 +68,14 @@ class CreateTransactionRequest(BaseModel):
     client_company_name: str | None = None
     client_billing_address: str | None = None
     template_id: uuid.UUID | None = None
+    # Plafond espèces (CMF art. L.112-6, décret 2015-741). 1 000 € pour
+    # un résident fiscal FR, 15 000 € pour un touriste non-résident.
+    # ``customer_is_tourist`` doit être attesté par un justificatif
+    # d'identité étranger vérifié en boutique.
+    customer_is_tourist: bool = False
+    # Override manager du plafond espèces : motif obligatoire, manager
+    # uniquement, tracé en audit log.
+    cash_override_reason: str | None = None
 
 
 class ValidateCouponRequest(BaseModel):
@@ -125,6 +138,80 @@ async def create_transaction(
     """Create a new sale transaction with payments."""
     pos_service = PosService(db)
     fiscal_service = FiscalService(db)
+
+    # Plafond légal espèces (CMF art. L.112-6) — 1 000 € résident /
+    # 15 000 € non-résident. Bloque par défaut, override manager possible
+    # avec motif tracé en audit log.
+    cash_check = validate_cash_payments(
+        request.payments,
+        is_tourist=request.customer_is_tourist,
+    )
+    if cash_check.over_cap:
+        if not request.cash_override_reason:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "cash_cap_exceeded",
+                    "cash_total_eur": float(cash_check.cash_total_eur),
+                    "cap_eur": float(cash_check.cap_eur),
+                    "is_tourist": cash_check.is_tourist,
+                    "message": cash_check.reason,
+                    "override_required": True,
+                },
+            )
+        if current_user.role != UserRole.manager:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "cash_cap_override_manager_only",
+                    "message": (
+                        "Le dépassement du plafond espèces nécessite "
+                        "l'autorisation d'un manager."
+                    ),
+                },
+            )
+        reason = request.cash_override_reason.strip()
+        if len(reason) < 10:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "cash_override_reason_too_short",
+                    "message": (
+                        "Le motif d'override doit faire au moins "
+                        "10 caractères et être circonstancié "
+                        "(ex. n° passeport, nom client, justificatif)."
+                    ),
+                },
+            )
+        # Audit log immédiat — la transaction n'est pas encore créée,
+        # donc entity_id reste NULL ; le hash chain de la transaction
+        # tracera ensuite la liaison via timestamp + user_id.
+        db.add(
+            AuditLog(
+                user_id=current_user.id,
+                action="cash_cap_override",
+                entity="transaction",
+                entity_id=None,
+                data={
+                    "cash_total_eur": float(cash_check.cash_total_eur),
+                    "cap_eur": float(cash_check.cap_eur),
+                    "is_tourist": cash_check.is_tourist,
+                    "reason": reason,
+                    "client_uuid": (
+                        str(request.client_uuid)
+                        if request.client_uuid
+                        else None
+                    ),
+                },
+            )
+        )
+        logger.warning(
+            "cash_cap_override by user=%s total=%.2f€ cap=%.2f€ is_tourist=%s",
+            current_user.id,
+            cash_check.cash_total_eur,
+            cash_check.cap_eur,
+            cash_check.is_tourist,
+        )
 
     transaction = await pos_service.create_transaction(
         user_id=current_user.id,
@@ -1394,7 +1481,10 @@ async def log_payment_attempt(
         if request.transaction_id is not None:
             existing.transaction_id = request.transaction_id
         if request.error_detail is not None:
-            existing.error_detail = request.error_detail
+            # Defense in depth — un client compromis ou un POS non
+            # patché pourrait pousser un payload SumUp brut. Re-redact
+            # à la frontière API avant persistance.
+            existing.error_detail = redact_sumup_error(request.error_detail)
         if request.cancelled_reason is not None:
             existing.cancelled_reason = request.cancelled_reason
         await db.flush()
@@ -1408,7 +1498,9 @@ async def log_payment_attempt(
             drawer_id=request.drawer_id,
             transaction_id=request.transaction_id,
             sumup_checkout_id=request.sumup_checkout_id,
-            error_detail=request.error_detail,
+            error_detail=redact_sumup_error(request.error_detail)
+            if request.error_detail is not None
+            else None,
             cancelled_reason=request.cancelled_reason,
         )
         db.add(attempt)

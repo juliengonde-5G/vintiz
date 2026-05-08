@@ -2,7 +2,10 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AccountShell from "@/components/account/AccountShell";
+import AiBadge from "@/components/AiBadge";
+import AiDisclaimer from "@/components/AiDisclaimer";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -31,6 +34,7 @@ function formatPrice(cents: number): string {
 }
 
 export default function AccountShopperPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [emailLocked, setEmailLocked] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -84,19 +88,50 @@ export default function AccountShopperPage() {
     setLoading(false);
   };
 
-  const enableProfiling = async () => {
+  /**
+   * Consentement explicite RGPD (art. 6-1-a + art. 7) au profilage IA.
+   * Posté avec une `source` distincte selon la décision de la cliente —
+   * critique pour démontrer le consentement en cas de contrôle CNIL.
+   */
+  const recordProfilingDecision = async (granted: boolean) => {
     setToggleBusy(true);
     setError("");
     try {
       const res = await fetch(`${API_URL}/api/crm/account/personal-shopper/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, enabled: true }),
+        body: JSON.stringify({
+          email,
+          enabled: granted,
+          source: granted
+            ? "site_ps_consent_screen_grant"
+            : "site_ps_consent_screen_decline",
+        }),
       });
-      if (res.ok) {
+      if (!res.ok) {
+        setError(
+          granted
+            ? "Activation impossible. Réessayez."
+            : "Enregistrement impossible. Réessayez.",
+        );
+        setToggleBusy(false);
+        return;
+      }
+      if (granted) {
         await loadFeed();
       } else {
-        setError("Activation impossible. Réessayez.");
+        // Refus poli : on enregistre Consent(granted=False) côté serveur,
+        // puis on ramène la cliente sur son espace avec un message
+        // expliquant comment réactiver à tout moment.
+        try {
+          window.sessionStorage.setItem(
+            "vintiz_account_flash",
+            "Personal Shopper non activé. Vous pouvez l'activer à tout moment depuis cette page.",
+          );
+        } catch {
+          /* sessionStorage indispo en mode privé — pas grave */
+        }
+        router.push("/account");
       }
     } catch {
       setError("Erreur réseau.");
@@ -139,6 +174,9 @@ export default function AccountShopperPage() {
       intro="Une sélection en temps réel des pièces disponibles à Vernon, choisies en fonction de vos goûts. Réservé aux membres du programme fidélité Vintiz, avec votre consentement explicite."
     >
       <>
+        {/* AI Act art. 50 — disclaimer permanent visible avant toute interaction. */}
+        <AiDisclaimer variant="inline" className="mb-6" />
+
         {!emailLocked && (
           <form onSubmit={loadFeed} className="bg-white rounded-2xl shadow-sm p-6 mb-8 max-w-md">
             <label className="block text-sm font-medium text-black mb-1" htmlFor="account-email">
@@ -187,30 +225,141 @@ export default function AccountShopperPage() {
         )}
 
         {gate === "profiling_consent_required" && (
-          <div className="bg-vz-bg border border-vz-teal/30 rounded-2xl p-6 max-w-2xl">
-            <h2 className="text-xl font-display font-semibold text-black mb-2">
-              Activez votre Personal Shopper
-            </h2>
-            <p className="text-gray-700 mb-4">
-              Pour vous proposer des pièces compatibles avec votre style et votre
-              historique, nous avons besoin de votre accord pour exploiter votre
-              profil de goûts (consentement RGPD «&nbsp;profilage&nbsp;»). Vous
-              pouvez le désactiver à tout moment.
+          <section
+            aria-labelledby="ps-consent-title"
+            className="bg-vz-surface border border-vz-teal/20 rounded-2xl p-6 sm:p-8 max-w-3xl shadow-sm"
+          >
+            <p className="text-xs uppercase tracking-[0.18em] text-vz-teal font-medium mb-3">
+              Consentement explicite — RGPD article 6-1-a
             </p>
-            <button
-              onClick={enableProfiling}
-              disabled={toggleBusy}
-              className="bg-vz-teal text-white px-5 py-2 rounded-lg font-medium disabled:opacity-50"
+            <h2
+              id="ps-consent-title"
+              className="text-2xl font-display font-semibold text-vz-ink mb-3 leading-tight"
             >
-              {toggleBusy ? "Activation…" : "Activer mon Personal Shopper"}
-            </button>
-          </div>
+              Activez votre Personal Shopper IA
+            </h2>
+            <p className="text-vz-ink-soft leading-relaxed mb-6">
+              Pour vous proposer des pièces qui correspondent vraiment à votre
+              style, nous analysons vos préférences via une intelligence
+              artificielle. Avant d&apos;activer le service, voici exactement
+              ce que nous faisons et ce que vous contrôlez.
+            </p>
+
+            <div className="grid sm:grid-cols-2 gap-5 mb-6">
+              <div className="rounded-xl bg-vz-bg-alt/60 p-4">
+                <h3 className="font-display text-base text-vz-ink mb-2">
+                  Données analysées
+                </h3>
+                <ul className="text-sm text-vz-ink-soft space-y-1.5">
+                  <li className="flex gap-1.5">
+                    <span className="text-vz-teal">•</span>
+                    <span>Historique d&apos;achats (3 derniers en priorité)</span>
+                  </li>
+                  <li className="flex gap-1.5">
+                    <span className="text-vz-teal">•</span>
+                    <span>Préférences déclarées (tailles, couleurs, marques)</span>
+                  </li>
+                  <li className="flex gap-1.5">
+                    <span className="text-vz-teal">•</span>
+                    <span>Clics sur les recommandations précédentes</span>
+                  </li>
+                  <li className="flex gap-1.5">
+                    <span className="text-vz-teal">•</span>
+                    <span>Contexte de visite (saison, météo Vernon)</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="rounded-xl bg-vz-bg-alt/60 p-4">
+                <h3 className="font-display text-base text-vz-ink mb-2">
+                  Vos droits, à tout moment
+                </h3>
+                <ul className="text-sm text-vz-ink-soft space-y-1.5">
+                  <li className="flex gap-1.5">
+                    <span className="text-vz-teal">→</span>
+                    <span>Désactiver le service en un clic</span>
+                  </li>
+                  <li className="flex gap-1.5">
+                    <span className="text-vz-teal">→</span>
+                    <span>Exporter vos données (article&nbsp;20 RGPD)</span>
+                  </li>
+                  <li className="flex gap-1.5">
+                    <span className="text-vz-teal">→</span>
+                    <span>Demander la suppression du profil</span>
+                  </li>
+                  <li className="flex gap-1.5">
+                    <span className="text-vz-teal">→</span>
+                    <span>Demander l&apos;intervention d&apos;un humain</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-vz-teal-soft/40 border border-vz-teal/20 p-4 text-sm text-vz-ink-soft leading-relaxed mb-6">
+              <p>
+                <strong className="text-vz-ink">L&apos;IA utilisée :</strong>{" "}
+                Claude Haiku 4.5 (Anthropic Ireland, hébergement UE).
+                Anthropic ne réutilise pas vos données pour entraîner ses
+                modèles.
+              </p>
+              <p className="mt-2">
+                <strong className="text-vz-ink">Conservation :</strong>{" "}
+                profil supprimé après 24&nbsp;mois sans activité ; logs de
+                scoring conservés 6&nbsp;mois ; historique d&apos;achats 10&nbsp;ans
+                (obligation comptable).
+              </p>
+              <p className="mt-2">
+                <strong className="text-vz-ink">Pas d&apos;activation = pas de PS.</strong>{" "}
+                Vous gardez l&apos;accès à votre fidélité, vos offres, votre
+                historique et votre wallet&nbsp;— le Personal Shopper est un
+                service distinct, optionnel et désactivable.{" "}
+                <Link
+                  href="/confidentialite#personal-shopper"
+                  className="underline underline-offset-2 hover:text-vz-teal"
+                >
+                  Politique complète
+                </Link>
+                .
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => recordProfilingDecision(true)}
+                disabled={toggleBusy}
+                className="inline-flex items-center justify-center rounded-full bg-vz-teal text-white px-7 py-3 text-sm font-medium hover:bg-vz-teal-deep disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {toggleBusy ? "Enregistrement…" : "J'accepte et j'active mon Personal Shopper"}
+              </button>
+              <button
+                onClick={() => recordProfilingDecision(false)}
+                disabled={toggleBusy}
+                className="inline-flex items-center justify-center rounded-full border border-vz-ink/20 text-vz-ink px-7 py-3 text-sm font-medium hover:bg-vz-ink hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Continuer sans Personal Shopper
+              </button>
+            </div>
+
+            <p className="mt-4 text-xs text-vz-ink-mute">
+              Votre choix est tracé dans nos registres avec horodatage et version
+              de politique en cours, conformément à l&apos;article&nbsp;7-1 RGPD.
+              Vous pouvez le modifier à tout moment depuis votre espace client.
+            </p>
+          </section>
         )}
 
         {emailLocked && !gate && (
           <>
-            <form onSubmit={submitSearch} className="mb-8 flex flex-col sm:flex-row gap-2">
+            <form
+              onSubmit={submitSearch}
+              className="mb-3 flex flex-col sm:flex-row gap-2"
+              aria-describedby="shopper-search-hint"
+            >
+              <label htmlFor="shopper-search" className="sr-only">
+                Recherche libre, interprétée par notre IA
+              </label>
               <input
+                id="shopper-search"
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -225,6 +374,13 @@ export default function AccountShopperPage() {
                 {searchBusy ? "…" : "Rechercher"}
               </button>
             </form>
+            <p
+              id="shopper-search-hint"
+              className="text-xs text-vz-ink-mute mb-8"
+            >
+              Votre requête est interprétée par notre IA pour extraire taille,
+              couleur et marque, puis croisée avec le stock réel de la boutique.
+            </p>
 
             <ProductGrid
               items={searchResults ?? items}
@@ -263,13 +419,25 @@ function ProductGrid({
       {cacheHit && (
         <p className="text-xs text-gray-400 mb-3">Résultat servi depuis le cache (24 h)</p>
       )}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/*
+        AI Act art. 50-2 — marquage machine-readable des sorties IA :
+        data-ai-generated="true" + role="region" + aria-label sur le
+        conteneur, badge IA sur chaque card.
+      */}
+      <section
+        aria-label="Recommandations générées par intelligence artificielle"
+        data-ai-generated="true"
+        data-ai-source="claude-haiku-4-5"
+        className="grid grid-cols-2 md:grid-cols-4 gap-4"
+      >
         {items.map((item) => (
           <article
             key={item.product_id}
-            className="bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col"
+            data-ai-generated="true"
+            aria-label={`Recommandation IA : ${item.name}`}
+            className="relative bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col"
           >
-            <div className="aspect-square bg-gray-100">
+            <div className="aspect-square bg-gray-100 relative">
               {item.photo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={item.photo_url} alt={item.name} className="w-full h-full object-cover" />
@@ -278,6 +446,7 @@ function ProductGrid({
                   👗
                 </div>
               )}
+              <AiBadge className="absolute top-2 left-2 shadow-sm" />
             </div>
             <div className="p-3 flex-1 flex flex-col gap-1">
               <h3 className="text-sm font-medium text-black line-clamp-2">{item.name}</h3>
@@ -289,7 +458,7 @@ function ProductGrid({
             </div>
           </article>
         ))}
-      </div>
+      </section>
     </>
   );
 }
