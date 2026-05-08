@@ -92,9 +92,21 @@ export const metadata: Metadata = {
   verification: {
     google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
   },
+  manifest: "/manifest.webmanifest",
+  applicationName: "Vintiz",
+  appleWebApp: {
+    capable: true,
+    title: "Vintiz",
+    statusBarStyle: "default",
+  },
   icons: {
-    icon: "/logo-teal.png",
-    apple: "/logo-teal.png",
+    icon: [
+      { url: "/logo-teal.png", type: "image/png", sizes: "192x192" },
+      { url: "/logo-teal.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [
+      { url: "/logo-teal.png", sizes: "180x180", type: "image/png" },
+    ],
     shortcut: "/logo-teal.png",
   },
 };
@@ -145,9 +157,9 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`${lexendMega.variable} ${poppins.variable}`}>
       <head>
-        <link rel="icon" href="/logo-teal.png" type="image/png" />
-        <link rel="apple-touch-icon" href="/logo-teal.png" />
-        <link rel="canonical" href={SITE_URL} />
+        {/* icon, apple-touch-icon, manifest et canonical sont émis par
+            Next.js depuis `metadata` ci-dessus — pas de balises manuelles
+            ici pour éviter les doublons (W-06 audit SEO). */}
         <meta name="geo.region" content="FR-27" />
         <meta name="geo.placename" content="Vernon" />
         <meta name="geo.position" content="49.0926;1.4773" />
