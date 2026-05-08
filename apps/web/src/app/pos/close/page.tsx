@@ -131,7 +131,7 @@ export default function CashClosePage() {
         <div className="mb-6">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-gray-500 hover:text-black min-h-[44px] transition-colors mb-4"
+            className="flex items-center gap-2 text-gray-500 hover:text-black min-h-[48px] transition-colors mb-4"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="19" y1="12" x2="5" y2="12" />
@@ -242,7 +242,7 @@ export default function CashClosePage() {
                     <label className="block text-sm font-medium text-black mb-1.5">
                       Montant d&apos;ouverture
                     </label>
-                    <div className="min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-black font-medium">
+                    <div className="min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-black font-medium">
                       {formatCurrency(drawer.opening_amount)}
                     </div>
                   </div>
@@ -251,7 +251,7 @@ export default function CashClosePage() {
                     <label className="block text-sm font-medium text-black mb-1.5">
                       Montant attendu (calcule)
                     </label>
-                    <div className="min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-black font-medium">
+                    <div className="min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-black font-medium">
                       {formatCurrency(expectedAmount)}
                     </div>
                   </div>

@@ -5,6 +5,7 @@ import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
+import { isIOS } from '@/lib/platform';
 
 interface TransactionItem {
   id: string;
@@ -138,8 +139,9 @@ export default function RefundModal({
       const text: string = data.receipt_text || data.text || '';
       const w = window.open('', '_blank', 'width=400,height=700');
       if (!w) {
+        const browser = isIOS() ? 'Safari' : 'Chrome';
         alert(
-          "Impossible d'ouvrir la fenêtre d'impression. Autorisez les pop-ups pour ce site.",
+          `Impossible d'ouvrir la fenêtre d'impression. Autorisez les pop-ups pour ce site dans les réglages ${browser}.`,
         );
         setPrinting(false);
         return;

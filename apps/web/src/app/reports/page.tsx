@@ -186,7 +186,7 @@ export default function ReportsPage() {
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium min-h-[44px] transition-colors ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium min-h-[48px] transition-colors ${
                 tab === t.key
                   ? 'bg-white text-vz-teal shadow-sm'
                   : 'text-gray-500 hover:text-black'

@@ -49,8 +49,17 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`${lexendMega.variable} ${poppins.variable}`}>
       <head>
+        {/* Web app manifest — drives Add-to-Home-Screen on both iOS and Android. */}
+        <link rel="manifest" href="/manifest.json" />
+        {/* Status bar color — Chrome Android tints it teal on PWA install. */}
+        <meta name="theme-color" content="#0B7A6A" />
+        {/* iOS home-screen icon + standalone hint (kept for backward compat with
+            existing iPad installs ; no-op on Android). */}
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        {/* Generic Android equivalent — Chrome reads this on PWA install. */}
+        <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className="font-sans antialiased bg-background text-foreground">
         {children}

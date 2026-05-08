@@ -222,7 +222,7 @@ export default function ProductDetailPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
-            <button onClick={() => router.push('/inventory')} className="min-h-[44px] flex items-center gap-2 text-gray-500 hover:text-black transition-colors">
+            <button onClick={() => router.push('/inventory')} className="min-h-[48px] flex items-center gap-2 text-gray-500 hover:text-black transition-colors">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
               </svg>
@@ -295,7 +295,7 @@ export default function ProductDetailPage() {
                     <div>
                       <label className="block text-sm font-medium text-black mb-1.5">Statut</label>
                       <select value={editing.status || 'stock'} onChange={e => setEditing(p => ({...p, status: e.target.value}))}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal">
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal">
                         {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>

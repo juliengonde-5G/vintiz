@@ -189,7 +189,7 @@ export default function NewProductPage() {
         <div className="mb-6">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-gray-500 hover:text-black min-h-[44px] transition-colors mb-4"
+            className="flex items-center gap-2 text-gray-500 hover:text-black min-h-[48px] transition-colors mb-4"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="19" y1="12" x2="5" y2="12" />
@@ -355,7 +355,7 @@ export default function NewProductPage() {
                   <select
                     value={form.category_id}
                     onChange={(e) => handleChange('category_id', e.target.value)}
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
+                    className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
                     required
                   >
                     <option value="">Choisir une categorie</option>
@@ -419,7 +419,7 @@ export default function NewProductPage() {
                   <select
                     value={form.status}
                     onChange={(e) => handleChange('status', e.target.value)}
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
+                    className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
                   >
                     <option value="stock">En stock</option>
                     <option value="display">En vitrine</option>

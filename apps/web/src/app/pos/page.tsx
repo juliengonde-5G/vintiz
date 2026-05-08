@@ -13,6 +13,7 @@ import ClientCompanion from '@/components/pos/ClientCompanion';
 import { api } from '@/lib/api';
 import { useConnectivity } from '@/lib/connectivity';
 import { formatCurrency } from '@/lib/format';
+import { isIOS } from '@/lib/platform';
 import {
   count as queueCount,
   drain as drainQueue,
@@ -450,18 +451,20 @@ export default function POSPage() {
     handleBarcodeScan(q);
   };
 
-  // Open the receipt in a print-sized window and trigger the browser print
-  // dialog (AirPrint on iPad). Most thermal printers fire the cash-drawer
-  // kick pulse (RJ11) when a ticket prints — no extra trigger needed.
-  // The logo (public/receipt-logo.png) is rendered at the top of the ticket,
-  // forced to pure black via grayscale+contrast filters so it reads cleanly
-  // on 80 mm thermal paper.
+  // Browser-print fallback: opens a print-sized window and triggers the
+  // browser's print dialog. On iPad this hits AirPrint and the thermal
+  // printer fires the cash-drawer kick (RJ11) on print. On Android Chrome
+  // it just dumps a PDF — we only expose this button on iOS now (M1
+  // hardware migration). The logo is forced to pure black via CSS filter
+  // so it reads cleanly on 80 mm thermal paper.
   const printReceipt = useCallback((text: string) => {
     const w = window.open('', '_blank', 'width=400,height=700');
     if (!w) {
       setPrintMsg(
         "Impossible d'ouvrir la fenêtre d'impression. " +
-        "Autorisez les pop-ups pour ce site dans les réglages Safari.",
+        (isIOS()
+          ? "Autorisez les pop-ups pour ce site dans les réglages Safari."
+          : "Autorisez les pop-ups pour ce site dans les réglages Chrome."),
       );
       return;
     }
@@ -1689,13 +1692,13 @@ export default function POSPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={confirmCBManually}
-                    className="flex-1 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors min-h-[44px]"
+                    className="flex-1 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors min-h-[48px]"
                   >
                     Confirmer manuellement
                   </button>
                   <button
                     onClick={cancelCBPayment}
-                    className="px-4 py-2 bg-white text-red-600 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[44px]"
+                    className="px-4 py-2 bg-white text-red-600 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[48px]"
                   >
                     Annuler
                   </button>
@@ -1705,13 +1708,13 @@ export default function POSPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={confirmCBManually}
-                    className="flex-1 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors min-h-[44px]"
+                    className="flex-1 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors min-h-[48px]"
                   >
                     Le TPE dit accepté — confirmer
                   </button>
                   <button
                     onClick={cancelCBPayment}
-                    className="px-4 py-2 bg-white text-red-700 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[44px]"
+                    className="px-4 py-2 bg-white text-red-700 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[48px]"
                   >
                     Annuler / réessayer
                   </button>
@@ -1720,7 +1723,7 @@ export default function POSPage() {
               {cbStatus === 'failed' && (
                 <button
                   onClick={cancelCBPayment}
-                  className="w-full py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 min-h-[44px]"
+                  className="w-full py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 min-h-[48px]"
                 >
                   Réessayer
                 </button>
@@ -1736,7 +1739,7 @@ export default function POSPage() {
                 <button
                   type="button"
                   onClick={() => setNumpadTarget({ type: payment.method === 'especes' ? 'cash' : 'payment', index })}
-                  className={`px-4 py-2.5 rounded-xl font-bold text-base transition-colors min-h-[44px] ${
+                  className={`px-4 py-2.5 rounded-xl font-bold text-base transition-colors min-h-[48px] ${
                     numpadTarget?.index === index
                       ? 'bg-vz-teal text-white'
                       : 'bg-white border border-gray-200 text-black hover:bg-gray-100'
@@ -1809,10 +1812,17 @@ export default function POSPage() {
             <Button onClick={printReceiptOnPrinter} disabled={printing || !receiptTxId} variant="secondary">
               {printing ? 'Impression...' : 'Imprimer (MUNBYN)'}
             </Button>
-            <Button onClick={() => { printReceipt(receiptText); handleReceiptClose(); }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-              Imprimer (AirPrint)
-            </Button>
+            {/* AirPrint fallback — visible on iOS only. On Android Chrome the
+                browser print path doesn't drive the thermal printer (no RJ11
+                kick), so the button would just dump a PDF. The MUNBYN ESC/POS
+                path above is the canonical receipt route on the Lenovo Idea
+                Tab Pro 13" caisse. */}
+            {isIOS() && (
+              <Button onClick={() => { printReceipt(receiptText); handleReceiptClose(); }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                Imprimer (AirPrint)
+              </Button>
+            )}
           </div>
         }
       >
