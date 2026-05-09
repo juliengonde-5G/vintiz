@@ -115,6 +115,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.7,
     },
+    {
+      url: `${SITE_URL}/en/contact`,
+      lastModified: newPagesLastModified,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
     ...brandEntries,
     ...capsuleEntries,
     ...journalEntries,

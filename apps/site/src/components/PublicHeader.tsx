@@ -18,17 +18,19 @@ const NAV_EN = [
   { href: "/produits/made-in-france", label: "Shop" },
   { href: "/en/a-propos", label: "About" },
   { href: "/en/personal-shopper", label: "AI Personal Shopper" },
-  { href: "/contact", label: "Contact" },
+  { href: "/en/contact", label: "Visit us" },
 ];
 
 const EN_TO_FR: Record<string, string> = {
   "/en/personal-shopper": "/personal-shopper",
   "/en/a-propos": "/a-propos",
+  "/en/contact": "/contact",
 };
 
 const FR_TO_EN: Record<string, string> = {
   "/personal-shopper": "/en/personal-shopper",
   "/a-propos": "/en/a-propos",
+  "/contact": "/en/contact",
 };
 
 /**
