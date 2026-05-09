@@ -133,12 +133,12 @@ export default function HomeEnPage() {
               </div>
               <div className="rounded-2xl bg-vz-surface border border-black/5 p-8">
                 <h3 className="font-display text-xl text-vz-ink mb-3">
-                  Tax-free shopping
+                  Authenticated by hand
                 </h3>
                 <p className="text-vz-ink-soft leading-relaxed">
-                  Non-EU residents are eligible for VAT refund (20% on most
-                  items). Just ask at the counter — we handle the paperwork
-                  on the spot.
+                  Every piece passes our 4-point check before reaching the
+                  rack — leather, stitching, hardware, brand markings.
+                  Premium second-hand, never bulk-sorted.
                 </p>
               </div>
             </div>

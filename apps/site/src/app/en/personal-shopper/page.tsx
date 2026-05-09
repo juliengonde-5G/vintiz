@@ -154,8 +154,7 @@ export default function PersonalShopperEnPage() {
             Open Tuesday to Saturday, 10:30 AM — 7:00 PM.
           </p>
           <p className="mt-3 text-sm text-vz-ink-mute">
-            10 min from Giverny · 50 min by train from Paris Saint-Lazare ·
-            Tax-free shopping for non-EU residents.
+            10 min from Giverny · 50 min by train from Paris Saint-Lazare.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <Link

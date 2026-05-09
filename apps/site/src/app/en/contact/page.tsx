@@ -187,10 +187,6 @@ export default function ContactEnPage() {
                     ~1h15 by car
                   </li>
                 </ul>
-                <p className="mt-3 text-sm text-vz-ink-mute italic">
-                  Tax-free shopping available for non-EU residents (ask at
-                  the counter).
-                </p>
               </section>
 
               <section>
@@ -252,7 +248,7 @@ export default function ContactEnPage() {
                   <li className="flex gap-3">
                     <span className="text-vz-teal">→</span>
                     <span>
-                      Tax-free shopping for non-EU residents
+                      24-48h reservation before your visit
                     </span>
                   </li>
                 </ul>

@@ -210,7 +210,7 @@ Les 4 audits convergent sur le même diagnostic : **Vintiz est mature techniquem
 | TI3 | **Flyers « Day trip Vernon-Giverny »** distribués hôtels + OT | 2 j |
 | TI4 | **Sélection « Made in France iconic »** mise en avant pour touristes (Sandro / Maje / Sézane / Polène / Le Tanneur) | 1-2 j |
 | TI5 | **Trip Advisor** + Google Maps photos premium boutique | 1 j |
-| TI6 | **Détaxe touristes hors UE** validée avec EC (Vintiz est en régime normal TVA → éligible) | 1-2 j |
+| ~~TI6~~ | **Pas de détaxe** — décision Julien 2026-05-09 : Vintiz reste éligible (régime normal TVA) mais n'adhère pas à un opérateur de détaxe (Global Blue, Planet…). Toute mention « tax-free » a été retirée du site EN. | — |
 | TI7 | **Co-marketing boutique Giverny** (galerie d'art, salon de thé) — passport touriste 10 % chez chaque partenaire | 2-3 j |
 
 #### 3.2 SEO Phase 3
@@ -384,5 +384,6 @@ Ces 2 choix structurants ont été pris pendant les audits et sont à respecter 
 
 1. **Régime normal de TVA à 20 %** (pas le régime de la marge sur biens d'occasion)
 2. **Achat ferme uniquement** (pas de dépôt-vente)
+3. **Pas d'adhésion à un opérateur de détaxe** (Global Blue, Planet…) — Vintiz est *éligible* à la détaxe via son régime normal TVA, mais ne la propose pas opérationnellement (décision 2026-05-09). Le site EN ne mentionne donc pas de tax-free shopping.
 
 Ces choix sont consignés dans la mémoire projet `vintiz_business_model.md` et déterminent : la com', le code POS, les keywords SEO, le positionnement marketing.
