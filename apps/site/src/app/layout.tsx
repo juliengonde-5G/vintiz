@@ -175,6 +175,27 @@ const jsonLd = {
   ...(aggregateRating ? { aggregateRating } : {}),
 };
 
+// WebSite + SearchAction → permet à Google d'afficher la sitelinks
+// searchbox dans la SERP sur la requête « vintiz vernon ». Le target
+// pointe vers l'URL de recherche réelle quand elle existe ; en attendant
+// on lance la requête contre `/produits?q=` (le filtre stock-driven
+// arrive en Phase 3, voir audit S16).
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Vintiz",
+  url: SITE_URL,
+  inLanguage: ["fr-FR", "en-US"],
+  potentialAction: {
+    "@type": "SearchAction",
+    target: {
+      "@type": "EntryPoint",
+      urlTemplate: `${SITE_URL}/produits?q={search_term_string}`,
+    },
+    "query-input": "required name=search_term_string",
+  },
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -193,6 +214,10 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
         />
         {GA_ID && (
           <Script
