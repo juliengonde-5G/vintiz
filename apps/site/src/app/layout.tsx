@@ -111,6 +111,29 @@ export const metadata: Metadata = {
   },
 };
 
+// AggregateRating optionnel — activé via env vars dès qu'un seuil
+// d'avis Google Business est atteint (cf. audit S14). Tant que les
+// vars sont vides, on n'émet pas la propriété (Google ignore plutôt
+// que de ranker négativement une note artificielle).
+const RATING_VALUE = process.env.NEXT_PUBLIC_AGGREGATE_RATING_VALUE;
+const RATING_COUNT = process.env.NEXT_PUBLIC_AGGREGATE_RATING_COUNT;
+const aggregateRating =
+  RATING_VALUE && RATING_COUNT
+    ? {
+        "@type": "AggregateRating",
+        ratingValue: Number(RATING_VALUE),
+        reviewCount: Number(RATING_COUNT),
+        bestRating: 5,
+        worstRating: 1,
+      }
+    : undefined;
+
+// Note S13 audit SEO : idéalement le ClothingStore complet vit
+// uniquement sur la home + /contact, et les autres pages se contentent
+// d'un Organization light. Pour l'instant on le garde au niveau layout
+// (commun à toutes les pages) — la migration vers un scope par page
+// nécessiterait de modifier la landing provisoire, ce qu'on évite.
+// À refactorer post-ouverture dès que la home est repensée.
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "ClothingStore",
@@ -121,6 +144,8 @@ const jsonLd = {
   logo: `${SITE_URL}/logo-teal.png`,
   image: `${SITE_URL}/logo-teal.png`,
   priceRange: "€€",
+  currenciesAccepted: "EUR",
+  paymentAccepted: "Cash, Credit Card",
   address: {
     "@type": "PostalAddress",
     streetAddress: "6 rue Saint-Jacques",
@@ -138,7 +163,7 @@ const jsonLd = {
     {
       "@type": "OpeningHoursSpecification",
       dayOfWeek: ["Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-      opens: "10:00",
+      opens: "10:30",
       closes: "19:00",
     },
   ],
@@ -147,6 +172,7 @@ const jsonLd = {
     "https://www.facebook.com/vintiz.fr",
     "https://www.tiktok.com/@vintiz.fr",
   ],
+  ...(aggregateRating ? { aggregateRating } : {}),
 };
 
 export default function RootLayout({

@@ -1,5 +1,10 @@
 import type { MetadataRoute } from 'next';
-import { PRODUCTS } from '@/data/vitrine-products';
+import { CAPSULES } from '@/data/capsules';
+import {
+  brandSlug,
+  listAvailableBrands,
+  PRODUCTS,
+} from '@/data/vitrine-products';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://vintiz.fr';
 
@@ -25,6 +30,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.6,
   }));
 
+  const brandEntries: MetadataRoute.Sitemap = listAvailableBrands().map(
+    (brand) => ({
+      url: `${SITE_URL}/produits/marque/${brandSlug(brand)}`,
+      lastModified: productsLastModified,
+      changeFrequency: 'weekly',
+      priority: 0.7,
+    }),
+  );
+
+  const capsuleEntries: MetadataRoute.Sitemap = CAPSULES.map((c) => ({
+    url: `${SITE_URL}/capsules/${c.slug}`,
+    lastModified: new Date(c.published_at),
+    changeFrequency: 'monthly',
+    priority: 0.7,
+  }));
+
   return [
     {
       url: `${SITE_URL}/`,
@@ -37,6 +58,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: productsLastModified,
       changeFrequency: 'weekly',
       priority: 0.9,
+    },
+    {
+      url: `${SITE_URL}/produits/made-in-france`,
+      lastModified: productsLastModified,
+      changeFrequency: 'weekly',
+      priority: 0.85,
     },
     {
       url: `${SITE_URL}/personal-shopper`,
@@ -56,6 +83,26 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.7,
     },
+    {
+      url: `${SITE_URL}/capsules`,
+      lastModified: newPagesLastModified,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
+      url: `${SITE_URL}/en/personal-shopper`,
+      lastModified: newPagesLastModified,
+      changeFrequency: 'monthly',
+      priority: 0.8,
+    },
+    {
+      url: `${SITE_URL}/en/a-propos`,
+      lastModified: newPagesLastModified,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    ...brandEntries,
+    ...capsuleEntries,
     ...productEntries,
   ];
 }

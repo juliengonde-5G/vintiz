@@ -5,12 +5,30 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
-const NAV = [
+const NAV_FR = [
   { href: "/produits", label: "Boutique" },
+  { href: "/capsules", label: "Capsules" },
   { href: "/a-propos", label: "À propos" },
   { href: "/personal-shopper", label: "Personal Shopper" },
   { href: "/contact", label: "Contact" },
 ];
+
+const NAV_EN = [
+  { href: "/produits/made-in-france", label: "Shop" },
+  { href: "/en/a-propos", label: "About" },
+  { href: "/en/personal-shopper", label: "AI Personal Shopper" },
+  { href: "/contact", label: "Contact" },
+];
+
+const EN_TO_FR: Record<string, string> = {
+  "/en/personal-shopper": "/personal-shopper",
+  "/en/a-propos": "/a-propos",
+};
+
+const FR_TO_EN: Record<string, string> = {
+  "/personal-shopper": "/en/personal-shopper",
+  "/a-propos": "/en/a-propos",
+};
 
 /**
  * Header de navigation pour les pages publiques (hors landing `/`).
@@ -20,6 +38,13 @@ const NAV = [
 export default function PublicHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+
+  const isEn = pathname?.startsWith("/en") ?? false;
+  const NAV = isEn ? NAV_EN : NAV_FR;
+  const switchHref = isEn
+    ? EN_TO_FR[pathname ?? ""] ?? "/"
+    : FR_TO_EN[pathname ?? ""] ?? "/en/personal-shopper";
+  const switchLabel = isEn ? "FR" : "EN";
 
   return (
     <header className="sticky top-0 z-50 bg-vz-bg/95 backdrop-blur-md border-b border-black/5">
@@ -53,10 +78,17 @@ export default function PublicHeader() {
 
         <div className="flex items-center gap-2">
           <Link
+            href={switchHref}
+            aria-label={isEn ? "Lire en français" : "Read in English"}
+            className="hidden sm:inline-flex items-center rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-vz-ink-soft hover:border-vz-teal/40 hover:text-vz-teal transition-colors"
+          >
+            {switchLabel}
+          </Link>
+          <Link
             href="/account/login"
             className="hidden sm:inline-flex items-center rounded-full bg-vz-teal text-white px-5 py-2 text-sm font-medium hover:bg-vz-teal-deep transition-colors"
           >
-            Mon espace
+            {isEn ? "My account" : "Mon espace"}
           </Link>
           <button
             type="button"
@@ -115,7 +147,14 @@ export default function PublicHeader() {
               onClick={() => setOpen(false)}
               className="mt-2 inline-flex items-center justify-center rounded-full bg-vz-teal text-white px-5 py-2.5 text-sm font-medium"
             >
-              Mon espace
+              {isEn ? "My account" : "Mon espace"}
+            </Link>
+            <Link
+              href={switchHref}
+              onClick={() => setOpen(false)}
+              className="mt-1 inline-flex items-center justify-center rounded-full border border-black/10 px-4 py-2 text-xs font-medium text-vz-ink-soft"
+            >
+              {isEn ? "Lire en français" : "Read in English"}
             </Link>
           </nav>
         </div>

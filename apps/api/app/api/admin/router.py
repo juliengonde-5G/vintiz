@@ -255,6 +255,39 @@ async def update_cash_management_config(payload: CashManagementConfigUpdate):
 # ---------------------------------------------------------------------------
 
 
+@router.get("/cash-reporting/monthly", dependencies=[Depends(manager_only)])
+async def cash_reporting_monthly(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    year: int = Query(..., ge=2024, le=2100),
+    month: int = Query(..., ge=1, le=12),
+):
+    """Agrégat mensuel des flux espèces — anticipation COSI TRACFIN.
+
+    Retourne sales/refunds/deposits/inflow/net + alerte si dépassement
+    du seuil 10 000 € (CMF L.561-15-1, déclaration banque automatique).
+
+    Audit C11 — pré-requis dossier permanent banque + traçabilité Vintiz.
+    """
+    from app.services.cash_reporting import cash_volume_for_month
+
+    return await cash_volume_for_month(db, year=year, month=month)
+
+
+@router.get("/cash-reporting/last-12", dependencies=[Depends(manager_only)])
+async def cash_reporting_last_12_months(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    n_months: int = Query(12, ge=1, le=36),
+):
+    """12 derniers mois (ou n_months) — pour graphique évolution.
+
+    Utile pour repérer la saisonnalité et anticiper les mois à risque
+    de dépassement COSI.
+    """
+    from app.services.cash_reporting import cash_volume_last_n_months
+
+    return await cash_volume_last_n_months(db, n_months=n_months)
+
+
 @router.get("/cash-drawers", dependencies=[Depends(manager_only)])
 async def list_cash_drawer_sessions(
     db: Annotated[AsyncSession, Depends(get_db)],

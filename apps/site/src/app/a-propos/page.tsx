@@ -9,7 +9,13 @@ export const metadata: Metadata = {
   title: "À propos",
   description:
     "Vintiz, boutique seconde main premium à Vernon. Notre histoire, notre sélection, notre partenariat avec Solidarité Textiles pour une mode circulaire et solidaire.",
-  alternates: { canonical: `${SITE_URL}/a-propos` },
+  alternates: {
+    canonical: `${SITE_URL}/a-propos`,
+    languages: {
+      "fr-FR": `${SITE_URL}/a-propos`,
+      "en-US": `${SITE_URL}/en/a-propos`,
+    },
+  },
   openGraph: {
     title: "À propos | Vintiz",
     description:

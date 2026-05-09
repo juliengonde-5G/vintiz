@@ -1,9 +1,29 @@
+import os
 from datetime import datetime, timezone
 from typing import Any
 
 from app.models.client import Client, LoyaltyAccount
 from app.models.pos import Transaction, TransactionType
 from app.services.offers_engine import points_to_credit
+
+
+def _wrap_for_print(text: str, width: int) -> list[str]:
+    """Coupe une chaîne en chunks de longueur ≤ width, sans casser de mot."""
+    if len(text) <= width:
+        return [text]
+    chunks: list[str] = []
+    current = ""
+    for word in text.split():
+        if not current:
+            current = word
+        elif len(current) + 1 + len(word) <= width:
+            current += " " + word
+        else:
+            chunks.append(current)
+            current = word
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 class ReceiptService:
@@ -189,6 +209,20 @@ class ReceiptService:
                     lines.append(stripped[:width].center(width))
         else:
             lines.append("Merci de votre visite !".center(width))
+
+        # Avis Google — invitation post-achat (audit O5).
+        # L'URL `https://g.page/r/{place_id}/review` redirige directement
+        # vers le formulaire d'avis. Configurée via env GOOGLE_REVIEW_URL,
+        # affichée seulement si le template ne l'a pas déjà incluse dans
+        # son footer custom.
+        review_url = os.getenv("GOOGLE_REVIEW_URL", "").strip()
+        if review_url:
+            lines.append("")
+            lines.append("Votre avis compte beaucoup !".center(width))
+            lines.append("Notez-nous sur Google :".center(width))
+            # On scinde l'URL pour éviter une coupe au milieu sur 42 col.
+            for chunk in _wrap_for_print(review_url, width):
+                lines.append(chunk.center(width))
         lines.append("")
 
         return "\n".join(lines)

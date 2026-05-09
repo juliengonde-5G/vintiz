@@ -34,6 +34,7 @@ from app.models.client import (
     LoyaltyAccount,
     LoyaltyTransaction,
 )
+from app.models.embeddings import CustomerTasteProfile
 from app.models.pos import Transaction
 
 
@@ -276,6 +277,16 @@ class RgpdService:
             delete(Consent).where(Consent.client_id == client_id)
         )
 
+        # Profil de goûts (embeddings IA) — appartient au client, doit
+        # disparaître avec lui (RGPD art. 17 + art. 5-1-c minimisation +
+        # audit conformité C12). Les embeddings produits restent intacts —
+        # ils ne sont pas personnels.
+        embeddings_deleted = await self.db.execute(
+            delete(CustomerTasteProfile).where(
+                CustomerTasteProfile.customer_id == client_id
+            )
+        )
+
         # AuditLog rows reference user_id; they reference entity_id by UUID
         # so dropping the client implicitly leaves entity_id = old id (which
         # is no longer resolvable). Acceptable for audit purposes.
@@ -283,7 +294,10 @@ class RgpdService:
         await self.db.delete(client)
         await self.db.flush()
 
-        return {"deleted_client_id": str(client_id)}
+        return {
+            "deleted_client_id": str(client_id),
+            "taste_profile_deleted": bool(embeddings_deleted.rowcount or 0),
+        }
 
     async def purge_pending_deletions(self, now: datetime | None = None) -> dict:
         """Find clients whose grace period has elapsed and hard-delete them.

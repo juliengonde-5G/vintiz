@@ -40,6 +40,31 @@ export interface VitrineProduct {
   available: boolean;
 }
 
+/**
+ * Marques françaises iconiques (audit TI4) — utilisées pour la
+ * sélection touriste English-friendly + corner hôtels Giverny. La
+ * propriété est dérivée du `brand` au runtime via `isFrenchIconic()`.
+ */
+export const FRENCH_ICONIC_BRANDS: ReadonlySet<string> = new Set([
+  "Sandro",
+  "Maje",
+  "Sézane",
+  "Ba&sh",
+  "IRO",
+  "Polène",
+  "The Kooples",
+  "Vanessa Bruno",
+  "Isabel Marant",
+  "Isabel Marant Étoile",
+  "Le Tanneur",
+  "A.P.C.",
+  "Roseanna",
+]);
+
+export function isFrenchIconic(p: VitrineProduct): boolean {
+  return FRENCH_ICONIC_BRANDS.has(p.brand);
+}
+
 export const CONDITION_LABEL: Record<ProductCondition, string> = {
   excellent: "Excellent état",
   "tres-bon": "Très bon état",
@@ -290,4 +315,42 @@ export function relatedProducts(
 export function discountPercent(p: VitrineProduct): number | null {
   if (!p.retail_price_eur || p.retail_price_eur <= p.price_eur) return null;
   return Math.round((1 - p.price_eur / p.retail_price_eur) * 100);
+}
+
+/**
+ * Slug URL-safe à partir d'un nom de marque ("Ba&sh" → "ba-sh").
+ * Utilisé par les pages `/produits/marque/[brand]` (audit S16).
+ */
+export function brandSlug(brand: string): string {
+  return brand
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[&]/g, " ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function findBrandBySlug(slug: string): string | undefined {
+  const wanted = slug.toLowerCase();
+  for (const p of PRODUCTS) {
+    if (brandSlug(p.brand) === wanted) return p.brand;
+  }
+  return undefined;
+}
+
+export function listAvailableBrands(): string[] {
+  const seen = new Set<string>();
+  for (const p of PRODUCTS) {
+    if (p.available) seen.add(p.brand);
+  }
+  return Array.from(seen).sort((a, b) => a.localeCompare(b));
+}
+
+export function productsByBrand(brand: string): VitrineProduct[] {
+  return PRODUCTS.filter((p) => p.brand === brand);
+}
+
+export function frenchIconicProducts(): VitrineProduct[] {
+  return PRODUCTS.filter(isFrenchIconic);
 }

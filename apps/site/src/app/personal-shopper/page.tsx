@@ -9,7 +9,13 @@ export const metadata: Metadata = {
   title: "Personal Shopper IA",
   description:
     "Le Personal Shopper IA Vintiz : une sélection sur-mesure de pièces seconde main premium à Vernon, dictée par vos goûts. Réservation, retrait, désactivation libre.",
-  alternates: { canonical: `${SITE_URL}/personal-shopper` },
+  alternates: {
+    canonical: `${SITE_URL}/personal-shopper`,
+    languages: {
+      "fr-FR": `${SITE_URL}/personal-shopper`,
+      "en-US": `${SITE_URL}/en/personal-shopper`,
+    },
+  },
   openGraph: {
     title: "Personal Shopper IA | Vintiz Vernon",
     description:

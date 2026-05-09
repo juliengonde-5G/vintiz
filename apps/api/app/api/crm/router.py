@@ -1029,6 +1029,123 @@ async def public_personal_shopper_v2(
     return result
 
 # ---------------------------------------------------------------------------
+# Personal Shopper — manager override / human review (audit C10)
+# ---------------------------------------------------------------------------
+
+
+class PersonalShopperOverrideRequest(BaseModel):
+    """Décision humaine d'un manager Vintiz suite à une contestation
+    cliente d'une recommandation IA. Conformité RGPD art. 22-3 + AI Act
+    art. 50 (intervention humaine substantielle).
+    """
+
+    recommendation_set_id: uuid.UUID
+    customer_email: str | None = None
+    customer_id: uuid.UUID | None = None
+    decision: str  # "revised" | "removed" | "confirmed_after_review"
+    note: str  # motif libre, ≥ 10 caractères, tracé en audit log
+    replacement_product_ids: list[uuid.UUID] | None = None
+
+
+@router.post(
+    "/personal-shopper/override",
+    dependencies=[Depends(RoleChecker(["manager"]))],
+)
+async def personal_shopper_override(
+    request: PersonalShopperOverrideRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Override humain d'une recommandation Personal Shopper IA.
+
+    Endpoint réservé manager. Trace la décision dans `audit_logs`
+    (action="ps_human_override") avec :
+    - recommendation_set_id concerné
+    - decision (revised/removed/confirmed)
+    - note du manager
+    - éventuels produits de remplacement choisis manuellement
+    - email/id de la cliente concernée
+
+    Conformité :
+    - RGPD art. 22-3 : droit à l'intervention humaine sur décision auto
+    - AI Act art. 50 : transparence + traçabilité de l'intervention
+    - Vintiz : engagement public d'intervention sous 30 jours
+    """
+    from app.models.audit import AuditLog
+
+    note = (request.note or "").strip()
+    if len(note) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "override_note_too_short",
+                "message": (
+                    "Le motif d'override doit faire au moins 10 caractères "
+                    "et expliquer la révision (contestation, erreur stock, "
+                    "préférence cliente exprimée, etc.)."
+                ),
+            },
+        )
+    valid_decisions = {"revised", "removed", "confirmed_after_review"}
+    if request.decision not in valid_decisions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"decision must be one of {sorted(valid_decisions)}",
+        )
+
+    # Résoudre l'email si seulement l'id est fourni — pour le hash audit
+    customer_email_hash = None
+    customer_id_resolved = request.customer_id
+    if request.customer_email:
+        from app.api.crm.account import _normalize_email
+        cleaned = _normalize_email(request.customer_email)
+        row = await db.execute(select(Client).where(Client.email == cleaned))
+        client_row = row.scalar_one_or_none()
+        if client_row is not None:
+            customer_id_resolved = client_row.id
+        # On ne stocke pas l'email en clair dans l'audit log ; le _redact
+        # de audit.py ne s'applique qu'aux changements de Client. Ici on
+        # log via AuditLog manuel : on hash explicitement pour cohérence
+        # avec C7.
+        import hashlib
+        customer_email_hash = (
+            "sha256:"
+            + hashlib.sha256(cleaned.encode("utf-8")).hexdigest()[:12]
+        )
+
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            action="ps_human_override",
+            entity="personal_shopper_recommendation",
+            entity_id=request.recommendation_set_id,
+            data={
+                "decision": request.decision,
+                "note": note,
+                "customer_id": (
+                    str(customer_id_resolved)
+                    if customer_id_resolved
+                    else None
+                ),
+                "customer_email_hash": customer_email_hash,
+                "replacement_product_ids": [
+                    str(pid) for pid in (request.replacement_product_ids or [])
+                ],
+                "policy_version": "v1.0-2026-04",
+            },
+        )
+    )
+    await db.commit()
+
+    return {
+        "recommendation_set_id": str(request.recommendation_set_id),
+        "decision": request.decision,
+        "logged": True,
+        "intervention_window_days": 30,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Personal Shopper public toggles + free-text search (PR2)
 # ---------------------------------------------------------------------------
 
