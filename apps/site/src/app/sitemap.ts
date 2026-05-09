@@ -127,6 +127,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.7,
     },
+    {
+      url: `${SITE_URL}/en/produits`,
+      lastModified: productsLastModified,
+      changeFrequency: 'weekly',
+      priority: 0.85,
+    },
     ...brandEntries,
     ...capsuleEntries,
     ...journalEntries,
