@@ -402,6 +402,34 @@ async def run_weekly_checklist() -> None:
         logger.exception("Weekly checklist cron failed: %s", exc)
 
 
+async def run_monthly_embeddings_cleanup() -> None:
+    """Purge inactive + orphan customer taste profiles (C12).
+
+    Runs on the 2nd of each month at 02:30 Paris (after the daily RGPD purge
+    has settled). RGPD minimisation (Art. 5-1-c) : un profil de goûts
+    n'a plus d'utilité pour une cliente inactive depuis 2 ans.
+    """
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.embeddings_cleanup import (
+            purge_inactive_taste_profiles,
+            purge_orphan_taste_profiles,
+        )
+
+        async with AsyncSession(engine) as db:
+            inactive = await purge_inactive_taste_profiles(db, dry_run=False)
+            orphans = await purge_orphan_taste_profiles(db)
+            await db.commit()
+            logger.info(
+                "Embeddings cleanup: %d inactive purged, %d orphans purged",
+                inactive["deleted_count"],
+                orphans,
+            )
+    except Exception as exc:
+        logger.exception("Embeddings cleanup cron failed: %s", exc)
+
+
 async def run_daily_trend_alerts() -> None:
     """Send trend product alerts to opt-in clients (PR2). 11:00 Paris."""
     try:
@@ -510,6 +538,12 @@ def register_all_jobs(scheduler) -> None:
         run_daily_trend_alerts,
         CronTrigger(hour=11, minute=0),
         id="daily_trend_alerts",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_monthly_embeddings_cleanup,
+        CronTrigger(day="2", hour=2, minute=30),
+        id="monthly_embeddings_cleanup",
         replace_existing=True,
     )
     # Weekly editorial briefs — Monday morning, before opening.

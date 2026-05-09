@@ -8,6 +8,7 @@ import { useState } from "react";
 const NAV_FR = [
   { href: "/produits", label: "Boutique" },
   { href: "/capsules", label: "Capsules" },
+  { href: "/journal", label: "Journal" },
   { href: "/a-propos", label: "À propos" },
   { href: "/personal-shopper", label: "Personal Shopper" },
   { href: "/contact", label: "Contact" },

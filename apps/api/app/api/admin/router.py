@@ -288,6 +288,41 @@ async def cash_reporting_last_12_months(
     return await cash_volume_last_n_months(db, n_months=n_months)
 
 
+@router.get("/embeddings/cleanup/preview", dependencies=[Depends(manager_only)])
+async def embeddings_cleanup_preview(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Dry-run cleanup des taste profiles inactifs ≥ 24 mois (audit C12).
+
+    Retourne candidate_count + cutoff sans rien supprimer — permet de
+    contrôler avant un trigger manuel hors-cron.
+    """
+    from app.services.embeddings_cleanup import purge_inactive_taste_profiles
+
+    return await purge_inactive_taste_profiles(db, dry_run=True)
+
+
+@router.post("/embeddings/cleanup/run", dependencies=[Depends(manager_only)])
+async def embeddings_cleanup_run(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Trigger manuel du cron mensuel de purge taste profiles (audit C12).
+
+    Le cron tourne le 2 de chaque mois à 02:30 ; cet endpoint est utile
+    pour un cleanup ponctuel après un afflux exceptionnel d'inactifs
+    (migration, opération marketing).
+    """
+    from app.services.embeddings_cleanup import (
+        purge_inactive_taste_profiles,
+        purge_orphan_taste_profiles,
+    )
+
+    inactive = await purge_inactive_taste_profiles(db, dry_run=False)
+    orphans = await purge_orphan_taste_profiles(db)
+    await db.commit()
+    return {**inactive, "orphans_deleted": orphans}
+
+
 @router.get("/cash-drawers", dependencies=[Depends(manager_only)])
 async def list_cash_drawer_sessions(
     db: Annotated[AsyncSession, Depends(get_db)],

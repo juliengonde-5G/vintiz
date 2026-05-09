@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { CAPSULES } from '@/data/capsules';
+import { JOURNAL_ARTICLES } from '@/data/journal-articles';
 import {
   brandSlug,
   listAvailableBrands,
@@ -46,6 +47,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.7,
   }));
 
+  const journalEntries: MetadataRoute.Sitemap = JOURNAL_ARTICLES.map((a) => ({
+    url: `${SITE_URL}/journal/${a.slug}`,
+    lastModified: new Date(a.published_at),
+    changeFrequency: 'monthly',
+    priority: 0.65,
+  }));
+
   return [
     {
       url: `${SITE_URL}/`,
@@ -90,6 +98,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.7,
     },
     {
+      url: `${SITE_URL}/journal`,
+      lastModified: newPagesLastModified,
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    },
+    {
       url: `${SITE_URL}/en/personal-shopper`,
       lastModified: newPagesLastModified,
       changeFrequency: 'monthly',
@@ -103,6 +117,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     ...brandEntries,
     ...capsuleEntries,
+    ...journalEntries,
     ...productEntries,
   ];
 }
