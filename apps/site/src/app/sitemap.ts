@@ -104,6 +104,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.75,
     },
     {
+      url: `${SITE_URL}/en`,
+      lastModified: newPagesLastModified,
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    },
+    {
       url: `${SITE_URL}/en/personal-shopper`,
       lastModified: newPagesLastModified,
       changeFrequency: 'monthly',

@@ -22,12 +22,14 @@ const NAV_EN = [
 ];
 
 const EN_TO_FR: Record<string, string> = {
+  "/en": "/",
   "/en/personal-shopper": "/personal-shopper",
   "/en/a-propos": "/a-propos",
   "/en/contact": "/contact",
 };
 
 const FR_TO_EN: Record<string, string> = {
+  "/": "/en",
   "/personal-shopper": "/en/personal-shopper",
   "/a-propos": "/en/a-propos",
   "/contact": "/en/contact",

@@ -30,6 +30,83 @@ export interface JournalArticle {
 
 export const JOURNAL_ARTICLES: JournalArticle[] = [
   {
+    slug: "solidarite-textiles-le-tri-derriere-vintiz",
+    title:
+      "Solidarité Textiles : ce qui se passe avant qu'une pièce arrive chez Vintiz",
+    excerpt:
+      "Avant chaque robe, chaque veste, chaque sac que nous proposons, il y a un centre de tri en Normandie, des salariés en parcours d'insertion, et une économie circulaire concrète. Coulisses.",
+    published_at: "2026-05-09T08:00:00Z",
+    author: "Équipe Vintiz",
+    reading_minutes: 6,
+    tags: ["solidarité textiles", "ESS", "économie circulaire"],
+    body: `## Pourquoi nous parlons de Solidarité Textiles dès la première pièce
+
+Quand une cliente nous demande d'où viennent nos vêtements, nous lui répondons toujours la même chose : *« d'un centre de tri en Normandie, où des salariés en parcours d'insertion les ont triés à la main avant que notre équipe les sélectionne »*. Ce centre s'appelle Solidarité Textiles, et c'est notre partenaire depuis le premier jour.
+
+Cette page est notre manière de raconter ce qui se passe en amont. Parce que la « seconde main » a souvent un imaginaire flou, et qu'on a envie d'être précis sur ce qui rend Vintiz cohérent avec son projet.
+
+## Étape 1 — La collecte
+
+Solidarité Textiles gère un réseau de bornes de collecte réparties sur la Métropole Rouen Normandie. Vous en avez sûrement déjà croisé : des conteneurs métalliques verts au coin d'une rue, devant un parking de supermarché, près d'une déchèterie. Chacun récupère plusieurs centaines de kilos de textiles par mois.
+
+Tous ces textiles partent dans le même camion vers le centre de tri. À ce stade, c'est tout en vrac : pulls, chaussures, vêtements de bébé, jeans, draps, vêtements abîmés, vêtements neufs encore avec étiquette, marques de luxe, marques discount. Le tri sépare tout cela.
+
+## Étape 2 — Le tri à la main
+
+Au centre, des salariés en parcours d'insertion (souvent éloignés de l'emploi depuis longtemps) trient manuellement chaque pièce. Ils regardent : est-ce que c'est portable ? Est-ce que c'est lavable ? Est-ce que c'est une marque qui peut intéresser un acheteur ? Est-ce qu'il y a une déchirure, un trou, une tache visible ?
+
+Selon les flux, ils répartissent en plusieurs **catégories** :
+
+- **Pièces réutilisables, qualité « premium »** — bonne marque, bon état, taille standard. C'est ce qui peut nous intéresser chez Vintiz.
+- **Pièces réutilisables, qualité « standard »** — vendables en friperie classique ou export.
+- **Pièces utilisables comme matière première** — chiffons d'essuyage industriel, isolants thermiques.
+- **Pièces non valorisables** — recyclées en filière agréée, jamais incinérées tant qu'une voie reste possible.
+
+Cette segmentation est la clé. C'est ce qui permet à Vintiz de ne récupérer que ce qui correspond à notre niveau de curation, sans avoir à trier nous-mêmes des dizaines de tonnes pour trouver les pépites.
+
+## Étape 3 — Notre passage chez Vintiz
+
+Une à deux fois par semaine, notre équipe passe au centre de tri. On y va avec une grille mentale précise : quelles tailles nous manquent en boutique ? Quelles marques tournent vite cette saison ? Quelle gamme de prix correspond à notre clientèle Vernon-Giverny ?
+
+On repart avec des pièces qu'on rapporte en boutique pour la deuxième couche de contrôle :
+
+- **Lavage / pressing** systématique avant mise en rayon.
+- **Authentification** quand la marque le justifie (sacs, pièces de cuir, marques iconiques).
+- **Fixation du prix juste** — ni trop cher ni trop bas, calé sur le marché Vinted / Vestiaire au moment de la mise en rayon.
+- **Étiquetage** avec un code-barres unique, photographie, fiche produit complète.
+
+Une pièce qui ne passe pas l'un de ces filtres repart en filière standard chez Solidarité Textiles. C'est souvent 30 à 40 % du volume initial. Pas une perte — juste une recanalisation vers le bon marché.
+
+## Étape 4 — Ce que ça produit, concrètement
+
+Cette chaîne courte produit trois choses qui nous tiennent à cœur :
+
+1. **Des emplois locaux soutenus** — chaque pièce achetée chez nous contribue à financer le modèle économique de Solidarité Textiles, et donc les parcours d'insertion qu'ils portent.
+2. **Une traçabilité totale** — on sait précisément d'où vient chaque pièce, ce qu'elle a vécu en amont, à quel moment elle a rejoint nos rayons. C'est rare en seconde main et c'est un engagement qu'on tient.
+3. **Une économie circulaire qui ne fait pas semblant** — pas de greenwashing, pas de rêverie sur « la mode durable ». Juste : un textile qui aurait pu finir en décharge, qui revit dans un dressing à 50 km de son origine, et qui finance des emplois en parcours d'insertion à 30 km de la boutique.
+
+## Et le rapport d'impact ?
+
+À partir de 2027, nous publierons chaque année un rapport d'impact public qui détaillera :
+
+- les **kilos** revalorisés via Vintiz dans l'année
+- le **taux de réemploi** (pièces vendues / pièces récupérées)
+- le **CA reversé** à Solidarité Textiles
+- l'**évolution des parcours d'insertion** soutenus indirectement par cette filière
+
+C'est notre manière de tenir la promesse au-delà du discours. La transparence sur ce sujet, c'est la moindre des choses quand on revend du second-hand premium en France en 2026.
+
+## En attendant
+
+Si vous voulez voir concrètement ce qu'on en tire, deux entrées :
+
+- [Notre sélection « Made in France iconic »](/produits/made-in-france) — les marques françaises curées spécifiquement pour notre boutique.
+- [Notre page À propos](/a-propos) — pour le projet d'ensemble, sans le détail du tri.
+
+Et si vous passez en boutique au 6 rue Saint-Jacques, demandez-nous de vous raconter une pièce en particulier. Souvent, il y a une histoire — un parcours, une marque, une cliente qui l'a aimée puis cédée. C'est ce qui fait la différence avec un rayon Zara.
+`,
+  },
+  {
     slug: "comment-authentifier-sac-polene",
     title: "Comment authentifier un sac Polène d'occasion",
     excerpt:
