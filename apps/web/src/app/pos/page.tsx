@@ -1793,250 +1793,369 @@ export default function POSPage() {
         </div>
       </Modal>
 
-      {/* ── Payment Modal (legacy, gated by !wizardEnabled) ─────── */}
-      <Modal
-        open={showPayment && !wizardEnabled}
-        onClose={() => setShowPayment(false)}
-        title="Encaissement"
-        actions={
-          <Button
-            size="lg"
-            disabled={remaining > 0.01 || submitting}
-            onClick={handleValidate}
-          >
-            {submitting ? 'Traitement...' : 'Valider le paiement'}
-          </Button>
-        }
-      >
-        <div className="space-y-5">
-          {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
-
-          {/* Loyalty redemption toggle */}
-          {selectedClient?.loyalty && loyaltyPoints > 0 && (
-            <div className="p-3 bg-purple-50 rounded-lg flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-purple-800">Utiliser les points fidélité</p>
-                <p className="text-xs text-purple-600">{loyaltyPoints} pts disponibles = {(loyaltyPoints * 0.10).toFixed(2)} €</p>
-              </div>
-              <button
-                onClick={() => setRedeemPoints(prev => !prev)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${redeemPoints ? 'bg-purple-600' : 'bg-gray-300'}`}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${redeemPoints ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-            </div>
-          )}
-
-          {/* Total */}
-          <div className="text-center p-4 bg-vz-teal-soft rounded-lg">
-            <p className="text-sm text-gray-500">Total a encaisser</p>
-            {redeemPoints && loyaltyDiscount > 0 && (
-              <p className="text-sm text-gray-400 line-through">{formatCurrency(cartTotal)}</p>
-            )}
-            <p className="text-3xl font-bold text-vz-teal">{formatCurrency(cartTotalAfterLoyalty)}</p>
-            {redeemPoints && loyaltyDiscount > 0 && (
-              <p className="text-xs text-purple-600 mt-1">-{formatCurrency(loyaltyDiscount)} fidélité déduit</p>
-            )}
+      {/* ── Payment Screen (legacy fullscreen, gated by !wizardEnabled) ──
+           Odoo 17 POS pattern : plein écran, panneau gauche = récap
+           panier + lignes de paiement + reste à payer, panneau droit =
+           méthodes + statut CB + numpad. Validation barre du bas. */}
+      {showPayment && !wizardEnabled && (
+        <div className="fixed inset-0 z-[55] bg-vz-bg flex flex-col">
+          {/* Header */}
+          <header className="flex-shrink-0 h-14 bg-vz-teal-deep text-white flex items-center px-3 gap-3 shadow-lg">
+            <button
+              onClick={() => setShowPayment(false)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-colors min-h-[44px]"
+              aria-label="Retour au ticket"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+              <span className="text-sm font-medium">Retour au ticket</span>
+            </button>
+            <div className="h-7 w-px bg-white/15" />
+            <h1 className="font-display text-lg">Encaissement</h1>
             {selectedClient && (
-              <p className="text-xs text-gray-500 mt-1">Client : {selectedClient.first_name} {selectedClient.last_name}</p>
-            )}
-          </div>
-
-          {/* Payment methods */}
-          <div>
-            <p className="text-sm font-medium text-black mb-2">
-              Moyen de paiement{' '}
-              <span className="text-xs font-normal text-gray-500">
-                (cumulables — paiement mixte)
+              <span className="hidden md:inline text-xs opacity-70 px-2 py-1 rounded bg-white/10">
+                {selectedClient.first_name} {selectedClient.last_name}
+                {selectedClient.loyalty && ` · ${selectedClient.loyalty.points} pts`}
               </span>
-            </p>
-            <div className="flex gap-3 flex-wrap">
-              <Button variant="outline" size="sm" onClick={() => addPayment('especes')}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-1.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-                Espèces
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => addPayment('carte')}
-                disabled={cbStatus === 'pending' || cbStatus === 'paid'}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                Carte (CB)
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => addPayment('cheque')}>Chèque</Button>
-              {(selectedClient?.avoir_balance || 0) > 0 && !payments.some(p => p.method === 'avoir') && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => addPayment('avoir')}
-                  title={`Solde avoir : ${formatCurrency(selectedClient?.avoir_balance || 0)}`}
-                >
-                  Avoir ({formatCurrency(selectedClient?.avoir_balance || 0)})
-                </Button>
+            )}
+            <div className="flex-1" />
+            <div className="flex flex-col items-end leading-tight">
+              <span className="text-[10px] opacity-70 uppercase tracking-wider">Total TTC</span>
+              <span className="font-display text-2xl font-bold">{formatCurrency(cartTotalAfterLoyalty)}</span>
+            </div>
+          </header>
+
+          {/* Body : 2 colonnes */}
+          <div className="flex flex-1 overflow-hidden">
+            {/* LEFT : récap commande + lignes de paiement + reste */}
+            <div className="flex-1 flex flex-col bg-vz-bg overflow-y-auto p-4 md:p-6 gap-4">
+              {error && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm flex items-start justify-between gap-3">
+                  <span className="flex-1">{error}</span>
+                  <button onClick={() => setError('')} className="font-bold">×</button>
+                </div>
+              )}
+
+              {/* Loyalty redemption toggle */}
+              {selectedClient?.loyalty && loyaltyPoints > 0 && (
+                <div className="p-3 bg-vz-accent-soft rounded-xl flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-vz-ink">Utiliser les points fidélité</p>
+                    <p className="text-xs text-vz-ink-soft">{loyaltyPoints} pts = {(loyaltyPoints * 0.10).toFixed(2)} €</p>
+                  </div>
+                  <button
+                    onClick={() => setRedeemPoints(prev => !prev)}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${redeemPoints ? 'bg-vz-accent' : 'bg-vz-line'}`}
+                    aria-label="Activer fidélité"
+                  >
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${redeemPoints ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              )}
+
+              {/* Récap commande */}
+              <section className="bg-white rounded-2xl border border-vz-line p-4">
+                <header className="flex items-center justify-between mb-3">
+                  <h2 className="font-display text-base text-vz-ink">Récap commande</h2>
+                  <span className="text-xs text-vz-ink-mute">{cart.length} article{cart.length > 1 ? 's' : ''}</span>
+                </header>
+                <ul className="space-y-1.5 max-h-[40vh] overflow-y-auto pr-1">
+                  {cart.map((item, idx) => {
+                    const linePrice = item.price * item.quantity;
+                    const afterDiscount = linePrice * (1 - item.discount / 100);
+                    return (
+                      <li key={idx} className="flex items-center justify-between text-sm border-b border-vz-line/40 last:border-0 pb-1.5 last:pb-0">
+                        <div className="min-w-0 flex-1 pr-3">
+                          <p className="font-medium text-vz-ink truncate">{item.name}</p>
+                          <p className="text-[11px] text-vz-ink-mute">
+                            {item.quantity} × {formatCurrency(item.price)}
+                            {item.discount > 0 && <span className="ml-1.5 text-vz-accent font-semibold">−{item.discount}%</span>}
+                          </p>
+                        </div>
+                        <span className="font-mono font-medium text-vz-ink">{formatCurrency(afterDiscount)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {(loyaltyDiscount > 0 || couponDiscount > 0) && (
+                  <div className="mt-2 pt-2 border-t border-vz-line space-y-1 text-xs">
+                    {couponDiscount > 0 && (
+                      <div className="flex justify-between text-vz-accent">
+                        <span>Coupon {couponApplied?.code}</span>
+                        <span>−{formatCurrency(couponDiscount)}</span>
+                      </div>
+                    )}
+                    {loyaltyDiscount > 0 && (
+                      <div className="flex justify-between text-vz-accent">
+                        <span>Fidélité ({redeemPoints ? loyaltyPoints : 0} pts)</span>
+                        <span>−{formatCurrency(loyaltyDiscount)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="mt-3 pt-3 border-t border-vz-line flex items-baseline justify-between">
+                  <span className="text-sm font-semibold text-vz-ink-soft">Total TTC</span>
+                  <span className="font-display text-2xl font-bold text-vz-teal">{formatCurrency(cartTotalAfterLoyalty)}</span>
+                </div>
+              </section>
+
+              {/* Lignes de paiement */}
+              {payments.length > 0 && (
+                <section className="bg-white rounded-2xl border border-vz-line p-4">
+                  <h2 className="font-display text-base text-vz-ink mb-3">Lignes de paiement</h2>
+                  <div className="space-y-2">
+                    {payments.map((payment, index) => (
+                      <div key={index} className="flex items-center gap-3 p-2.5 bg-vz-bg-alt rounded-xl">
+                        <span className="flex-1 font-medium text-vz-ink text-sm">{methodLabels[payment.method]}</span>
+                        {payment.method !== 'carte' ? (
+                          <button
+                            type="button"
+                            onClick={() => setNumpadTarget({ type: payment.method === 'especes' ? 'cash' : 'payment', index })}
+                            className={`px-4 py-2 rounded-lg font-bold text-base font-mono transition-colors min-h-[44px] ${
+                              numpadTarget?.index === index
+                                ? 'bg-vz-teal text-white shadow-md'
+                                : 'bg-white border border-vz-line text-vz-ink hover:bg-vz-bg-alt'
+                            }`}
+                          >
+                            {payment.amount.toFixed(2)} €
+                          </button>
+                        ) : (
+                          <span className="text-sm font-mono font-semibold text-vz-ink px-3">{payment.amount.toFixed(2)} € CB</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            removePayment(index);
+                            if (payment.method === 'carte') cancelCBPayment();
+                            if (numpadTarget?.index === index) setNumpadTarget(null);
+                          }}
+                          className="w-10 h-10 flex items-center justify-center text-vz-ink-mute hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                          aria-label="Retirer cette ligne"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Reste à payer */}
+                  <div className={`mt-3 p-3 rounded-xl flex items-center justify-between ${remaining <= 0.01 ? 'bg-green-50 border border-green-200' : 'bg-vz-accent-soft border border-vz-accent/30'}`}>
+                    <span className="text-sm font-semibold">
+                      {remaining <= 0.01 ? 'Solde atteint' : 'Reste à payer'}
+                    </span>
+                    <span className={`font-mono text-xl font-bold ${remaining <= 0.01 ? 'text-green-600' : 'text-vz-accent'}`}>
+                      {formatCurrency(Math.max(0, remaining))}
+                    </span>
+                  </div>
+
+                  {/* Monnaie à rendre */}
+                  {numpadTarget?.type === 'cash' && parseFloat(cashGiven) > 0 && payments[numpadTarget.index] && (
+                    <div className="mt-2 flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-200">
+                      <span className="text-sm font-semibold text-green-800">Monnaie à rendre</span>
+                      <span className="font-mono text-xl font-bold text-green-700">
+                        {formatCurrency(Math.max(0, parseFloat(cashGiven) - payments[numpadTarget.index].amount))}
+                      </span>
+                    </div>
+                  )}
+                </section>
               )}
             </div>
-            {selectedClient?.avoir_balance != null && selectedClient.avoir_balance > 0 && (
-              <p className="text-xs text-gray-500 mt-1">
-                {selectedClient.first_name} dispose d&apos;un avoir de{' '}
-                <strong>{formatCurrency(selectedClient.avoir_balance)}</strong>.
-              </p>
-            )}
-          </div>
 
-          {/* CB Status display */}
-          {cbStatus !== 'idle' && (
-            <div className={`p-4 rounded-xl border-2 ${
-              cbStatus === 'paid' ? 'border-green-400 bg-green-50' :
-              cbStatus === 'failed' ? 'border-red-400 bg-red-50' :
-              cbStatus === 'timeout' ? 'border-amber-400 bg-amber-50' :
-              'border-blue-300 bg-blue-50'
-            }`}>
-              <div className="flex items-center gap-3 mb-3">
-                {cbStatus === 'pending' && (
-                  <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
-                )}
-                {cbStatus === 'paid' && (
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" className="shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
-                )}
-                {cbStatus === 'failed' && (
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" className="shrink-0"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                )}
-                {cbStatus === 'timeout' && (
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" className="shrink-0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                )}
-                <div>
-                  <p className={`font-semibold text-sm ${
-                    cbStatus === 'paid' ? 'text-green-700' :
-                    cbStatus === 'failed' ? 'text-red-700' :
-                    cbStatus === 'timeout' ? 'text-amber-700' :
-                    'text-blue-700'
-                  }`}>
-                    {cbStatus === 'pending' ? 'En attente de confirmation TPE...' :
-                     cbStatus === 'paid' ? 'Paiement CB confirmé' :
-                     cbStatus === 'timeout' ? 'TPE pas de réponse — vérifie l\'écran du Solo' :
-                     'Paiement CB échoué'}
-                  </p>
+            {/* RIGHT : méthodes + CB status + numpad */}
+            <div className="w-[420px] xl:w-[460px] 2xl:w-[500px] flex flex-col bg-white border-l border-vz-line overflow-y-auto p-4 md:p-5 gap-4">
+              {/* Méthodes */}
+              <section>
+                <h2 className="font-display text-base text-vz-ink mb-2">Moyen de paiement</h2>
+                <p className="text-xs text-vz-ink-mute mb-3">Cumulables — paiement mixte possible.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => addPayment('especes')}
+                    className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-vz-teal">
+                      <rect x="1" y="4" width="22" height="16" rx="2"/>
+                      <line x1="1" y1="10" x2="23" y2="10"/>
+                    </svg>
+                    <span className="text-sm font-semibold">Espèces</span>
+                  </button>
+                  <button
+                    onClick={() => addPayment('carte')}
+                    disabled={cbStatus === 'pending' || cbStatus === 'paid'}
+                    className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-vz-teal">
+                      <rect x="2" y="5" width="20" height="14" rx="2"/>
+                      <line x1="2" y1="10" x2="22" y2="10"/>
+                    </svg>
+                    <span className="text-sm font-semibold">Carte CB</span>
+                  </button>
+                  <button
+                    onClick={() => addPayment('cheque')}
+                    className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-vz-teal">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span className="text-sm font-semibold">Chèque</span>
+                  </button>
+                  <button
+                    onClick={() => addPayment('avoir')}
+                    disabled={!((selectedClient?.avoir_balance || 0) > 0) || payments.some(p => p.method === 'avoir')}
+                    title={selectedClient?.avoir_balance ? `Solde avoir : ${formatCurrency(selectedClient.avoir_balance)}` : 'Pas d\'avoir disponible'}
+                    className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-accent hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-vz-accent">
+                      <polyline points="20 12 20 22 4 22 4 12"/>
+                      <rect x="2" y="7" width="20" height="5"/>
+                      <line x1="12" y1="22" x2="12" y2="7"/>
+                      <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                    </svg>
+                    <span className="text-sm font-semibold">
+                      Avoir{selectedClient?.avoir_balance ? ` (${formatCurrency(selectedClient.avoir_balance)})` : ''}
+                    </span>
+                  </button>
+                </div>
+              </section>
+
+              {/* CB Status display */}
+              {cbStatus !== 'idle' && (
+                <section className={`p-4 rounded-xl border-2 ${
+                  cbStatus === 'paid' ? 'border-green-400 bg-green-50' :
+                  cbStatus === 'failed' ? 'border-red-400 bg-red-50' :
+                  cbStatus === 'timeout' ? 'border-amber-400 bg-amber-50' :
+                  'border-blue-300 bg-blue-50'
+                }`}>
+                  <div className="flex items-center gap-3 mb-3">
+                    {cbStatus === 'pending' && (
+                      <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                    )}
+                    {cbStatus === 'paid' && (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" className="shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
+                    )}
+                    {cbStatus === 'failed' && (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" className="shrink-0"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    )}
+                    {cbStatus === 'timeout' && (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" className="shrink-0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    )}
+                    <div>
+                      <p className={`font-semibold text-sm ${
+                        cbStatus === 'paid' ? 'text-green-700' :
+                        cbStatus === 'failed' ? 'text-red-700' :
+                        cbStatus === 'timeout' ? 'text-amber-700' :
+                        'text-blue-700'
+                      }`}>
+                        {cbStatus === 'pending' ? 'En attente de confirmation TPE…' :
+                         cbStatus === 'paid' ? 'Paiement CB confirmé' :
+                         cbStatus === 'timeout' ? 'TPE pas de réponse — vérifie l\'écran du Solo' :
+                         'Paiement CB échoué'}
+                      </p>
+                      {cbStatus === 'pending' && (
+                        <p className="text-xs text-blue-500">Présentez la carte sur le lecteur</p>
+                      )}
+                      {cbStatus === 'timeout' && (
+                        <p className="text-xs text-amber-700">
+                          Confirme uniquement si le TPE indique &laquo;&nbsp;Paiement accepté&nbsp;&raquo;.
+                        </p>
+                      )}
+                    </div>
+                  </div>
                   {cbStatus === 'pending' && (
-                    <p className="text-xs text-blue-500">Présentez la carte sur le lecteur</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={confirmCBManually}
+                        className="flex-1 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors min-h-[44px]"
+                      >
+                        Confirmer manuellement
+                      </button>
+                      <button
+                        onClick={cancelCBPayment}
+                        className="px-4 py-2.5 bg-white text-red-600 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[44px]"
+                      >
+                        Annuler
+                      </button>
+                    </div>
                   )}
                   {cbStatus === 'timeout' && (
-                    <p className="text-xs text-amber-700">
-                      Confirme uniquement si le TPE indique &laquo;&nbsp;Paiement accepté&nbsp;&raquo;.
-                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={confirmCBManually}
+                        className="flex-1 py-2.5 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors min-h-[44px]"
+                      >
+                        Le TPE dit accepté — confirmer
+                      </button>
+                      <button
+                        onClick={cancelCBPayment}
+                        className="px-4 py-2.5 bg-white text-red-700 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[44px]"
+                      >
+                        Annuler
+                      </button>
+                    </div>
                   )}
-                </div>
-              </div>
-              {cbStatus === 'pending' && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={confirmCBManually}
-                    className="flex-1 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors min-h-[48px]"
-                  >
-                    Confirmer manuellement
-                  </button>
-                  <button
-                    onClick={cancelCBPayment}
-                    className="px-4 py-2 bg-white text-red-600 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[48px]"
-                  >
-                    Annuler
-                  </button>
-                </div>
+                  {cbStatus === 'failed' && (
+                    <button
+                      onClick={cancelCBPayment}
+                      className="w-full py-2.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 min-h-[44px]"
+                    >
+                      Réessayer
+                    </button>
+                  )}
+                </section>
               )}
-              {cbStatus === 'timeout' && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={confirmCBManually}
-                    className="flex-1 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors min-h-[48px]"
-                  >
-                    Le TPE dit accepté — confirmer
-                  </button>
-                  <button
-                    onClick={cancelCBPayment}
-                    className="px-4 py-2 bg-white text-red-700 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[48px]"
-                  >
-                    Annuler / réessayer
-                  </button>
-                </div>
-              )}
-              {cbStatus === 'failed' && (
-                <button
-                  onClick={cancelCBPayment}
-                  className="w-full py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 min-h-[48px]"
-                >
-                  Réessayer
-                </button>
+
+              {/* Numpad for active payment */}
+              {numpadTarget && (
+                <section className="border-t border-vz-line pt-3">
+                  <p className="text-xs font-semibold text-vz-ink-mute uppercase tracking-wider mb-2">
+                    {numpadTarget.type === 'cash' ? 'Montant remis par le client' : 'Montant à encaisser'}
+                  </p>
+                  <NumPad
+                    value={numpadTarget.type === 'cash' ? parseFloat(cashGiven) || 0 : payments[numpadTarget.index]?.amount || 0}
+                    onChange={handleNumpadChange}
+                    presets={getNumpadPresets()}
+                  />
+                </section>
               )}
             </div>
-          )}
+          </div>
 
-          {/* Payment lines */}
-          {payments.map((payment, index) => (
-            <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-              <span className="flex-1 font-semibold text-black text-sm">{methodLabels[payment.method]}</span>
-              {payment.method !== 'carte' ? (
-                <button
-                  type="button"
-                  onClick={() => setNumpadTarget({ type: payment.method === 'especes' ? 'cash' : 'payment', index })}
-                  className={`px-4 py-2.5 rounded-xl font-bold text-base transition-colors min-h-[48px] ${
-                    numpadTarget?.index === index
-                      ? 'bg-vz-teal text-white'
-                      : 'bg-white border border-gray-200 text-black hover:bg-gray-100'
-                  }`}
-                >
-                  {payment.amount.toFixed(2)} €
-                </button>
+          {/* Bottom action bar — Odoo 17 style big Validate button */}
+          <footer className="flex-shrink-0 bg-white border-t border-vz-line px-4 md:px-6 py-3 flex items-center gap-3 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
+            <button
+              onClick={() => setShowPayment(false)}
+              className="px-5 py-3 rounded-xl text-sm font-medium text-vz-ink-soft bg-vz-bg-alt hover:bg-vz-line transition-colors min-h-[52px]"
+            >
+              Annuler
+            </button>
+            <button
+              disabled={remaining > 0.01 || submitting}
+              onClick={handleValidate}
+              className={`flex-1 py-3 rounded-xl text-lg font-bold transition-colors min-h-[52px] flex items-center justify-center gap-3 ${
+                remaining > 0.01 || submitting
+                  ? 'bg-vz-line text-vz-ink-mute cursor-not-allowed'
+                  : 'bg-vz-teal text-white hover:bg-vz-teal-deep active:bg-vz-teal-deep shadow-lg'
+              }`}
+            >
+              {submitting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Traitement…
+                </>
               ) : (
-                <span className="text-sm font-medium text-gray-500">{payment.amount.toFixed(2)} € CB</span>
+                <>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Valider — {formatCurrency(cartTotalAfterLoyalty)}
+                </>
               )}
-              <button
-                type="button"
-                onClick={() => {
-                  removePayment(index);
-                  if (payment.method === 'carte') cancelCBPayment();
-                  if (numpadTarget?.index === index) setNumpadTarget(null);
-                }}
-                className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-red-600 rounded-xl hover:bg-red-50"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-          ))}
-
-          {/* Numpad for active payment */}
-          {numpadTarget && (
-            <div className="space-y-2 border-t border-gray-100 pt-3">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                {numpadTarget.type === 'cash' ? 'Montant remis par le client' : 'Montant à encaisser'}
-              </p>
-              <NumPad
-                value={numpadTarget.type === 'cash' ? parseFloat(cashGiven) || 0 : payments[numpadTarget.index]?.amount || 0}
-                onChange={handleNumpadChange}
-                presets={getNumpadPresets()}
-              />
-              {numpadTarget.type === 'cash' && parseFloat(cashGiven) > 0 && payments[numpadTarget.index] && (
-                <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-200">
-                  <span className="text-sm font-semibold text-green-800">Monnaie à rendre</span>
-                  <span className="text-xl font-bold text-green-700">
-                    {formatCurrency(Math.max(0, parseFloat(cashGiven) - payments[numpadTarget.index].amount))}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
-
-          {/* Remaining */}
-          {payments.length > 0 && (
-            <div className="flex items-center justify-between p-3 bg-vz-accent-soft rounded-lg">
-              <span className="text-sm font-medium">Reste a payer</span>
-              <span className={`font-bold ${remaining <= 0.01 ? 'text-green-600' : 'text-red-600'}`}>
-                {formatCurrency(Math.max(0, remaining))}
-              </span>
-            </div>
-          )}
+            </button>
+          </footer>
         </div>
-      </Modal>
+      )}
 
       {/* ── New SumUp-style wizard (PR 6/6) — gated by feature flag ─── */}
       {wizardEnabled && (
