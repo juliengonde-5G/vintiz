@@ -61,6 +61,19 @@ const navGroups: NavGroup[] = [
           </svg>
         ),
       },
+      {
+        label: 'Workflows',
+        href: '/dashboard/workflows',
+        icon: (
+          <svg {...iconProps}>
+            <circle cx="5" cy="6" r="2" />
+            <circle cx="5" cy="18" r="2" />
+            <circle cx="19" cy="12" r="2" />
+            <path d="M7 6h6a4 4 0 0 1 4 4v0" />
+            <path d="M7 18h6a4 4 0 0 0 4-4v0" />
+          </svg>
+        ),
+      },
     ],
   },
   {
