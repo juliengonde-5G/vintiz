@@ -2292,26 +2292,151 @@ export default function POSPage() {
         )}
       </Modal>
 
-      {/* ── Open Drawer Modal (legacy) ────────────────────────── */}
-      {!wizardEnabled && (
-        <Modal open={showDrawerOpen} onClose={() => setShowDrawerOpen(false)} title="Initialiser la caisse"
-          actions={<Button size="lg" onClick={handleOpenDrawer} disabled={drawerSubmitting}>{drawerSubmitting ? 'En cours...' : 'Ouvrir la caisse'}</Button>}>
-          <div className="space-y-3">
-            <p className="text-sm text-gray-500">Saisissez le fonds de caisse initial (monnaie disponible).</p>
-            <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[50, 100, 150, 200]} />
+      {/* ── Open Drawer (legacy fullscreen, Odoo 17 style) ────── */}
+      {!wizardEnabled && showDrawerOpen && (
+        <div className="fixed inset-0 z-[58] bg-vz-bg flex flex-col">
+          <header className="flex-shrink-0 h-14 bg-vz-teal-deep text-white flex items-center px-3 gap-3 shadow-lg">
+            <button
+              onClick={() => setShowDrawerOpen(false)}
+              disabled={drawerSubmitting}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-colors min-h-[44px] disabled:opacity-50"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+              <span className="text-sm font-medium">Annuler</span>
+            </button>
+            <div className="h-7 w-px bg-white/15" />
+            <h1 className="font-display text-lg">Ouverture de caisse</h1>
+            <div className="flex-1" />
+            <div className="flex flex-col items-end leading-tight">
+              <span className="text-[10px] opacity-70 uppercase tracking-wider">Fond de caisse</span>
+              <span className="font-display text-2xl font-bold font-mono">{formatCurrency(drawerAmount)}</span>
+            </div>
+          </header>
+
+          <div className="flex-1 overflow-y-auto bg-vz-bg p-5 md:p-8">
+            <div className="max-w-md mx-auto space-y-5">
+              <p className="text-sm text-vz-ink-soft text-center">
+                Saisissez le fonds de caisse initial (monnaie disponible).
+              </p>
+              <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[50, 100, 150, 200]} />
+            </div>
           </div>
-        </Modal>
+
+          <footer className="flex-shrink-0 bg-white border-t border-vz-line px-4 md:px-6 py-3 flex items-center gap-3 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
+            <button
+              onClick={() => setShowDrawerOpen(false)}
+              disabled={drawerSubmitting}
+              className="px-5 py-3 rounded-xl text-sm font-medium text-vz-ink-soft bg-vz-bg-alt hover:bg-vz-line transition-colors min-h-[52px] disabled:opacity-50"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleOpenDrawer}
+              disabled={drawerSubmitting || drawerAmount <= 0}
+              className={`flex-1 py-3 rounded-xl text-lg font-bold transition-colors min-h-[52px] flex items-center justify-center gap-3 ${
+                drawerSubmitting || drawerAmount <= 0
+                  ? 'bg-vz-line text-vz-ink-mute cursor-not-allowed'
+                  : 'bg-vz-teal text-white hover:bg-vz-teal-deep shadow-lg'
+              }`}
+            >
+              {drawerSubmitting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Ouverture…
+                </>
+              ) : (
+                <>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="10" width="18" height="10" rx="1" />
+                    <path d="M3 10V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4" />
+                    <line x1="10" y1="15" x2="14" y2="15" />
+                  </svg>
+                  Ouvrir la caisse — {formatCurrency(drawerAmount)}
+                </>
+              )}
+            </button>
+          </footer>
+        </div>
       )}
 
-      {/* ── Close Drawer Modal (legacy) ───────────────────────── */}
-      {!wizardEnabled && (
-        <Modal open={showDrawerClose} onClose={() => setShowDrawerClose(false)} title="Clôturer la caisse"
-          actions={<Button size="lg" onClick={handleCloseDrawer} disabled={drawerSubmitting}>{drawerSubmitting ? 'En cours...' : 'Générer le rapport Z'}</Button>}>
-          <div className="space-y-3">
-            <p className="text-sm text-gray-500">Comptez les espèces en caisse et saisissez le montant total.</p>
-            <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[]} />
+      {/* ── Close Drawer (legacy fullscreen, Odoo 17 style) ───── */}
+      {!wizardEnabled && showDrawerClose && (
+        <div className="fixed inset-0 z-[58] bg-vz-bg flex flex-col">
+          <header className="flex-shrink-0 h-14 bg-vz-teal-deep text-white flex items-center px-3 gap-3 shadow-lg">
+            <button
+              onClick={() => setShowDrawerClose(false)}
+              disabled={drawerSubmitting}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-colors min-h-[44px] disabled:opacity-50"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+              <span className="text-sm font-medium">Annuler</span>
+            </button>
+            <div className="h-7 w-px bg-white/15" />
+            <h1 className="font-display text-lg">Clôture de caisse</h1>
+            <div className="flex-1" />
+            <div className="flex flex-col items-end leading-tight">
+              <span className="text-[10px] opacity-70 uppercase tracking-wider">Compté</span>
+              <span className="font-display text-2xl font-bold font-mono">{formatCurrency(drawerAmount)}</span>
+            </div>
+          </header>
+
+          <div className="flex-1 overflow-y-auto bg-vz-bg p-5 md:p-8">
+            <div className="max-w-md mx-auto space-y-5">
+              <p className="text-sm text-vz-ink-soft text-center">
+                Comptez les espèces en caisse et saisissez le total compté.
+                Le rapport Z (NF525) sera généré à la validation.
+              </p>
+              <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[]} />
+              {drawer?.opening_amount != null && (
+                <div className="p-3 bg-vz-bg-alt rounded-xl flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-wider text-vz-ink-mute">Fond ouverture</span>
+                  <span className="font-mono text-base font-semibold text-vz-ink tabular-nums">
+                    {formatCurrency(drawer.opening_amount)}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
-        </Modal>
+
+          <footer className="flex-shrink-0 bg-white border-t border-vz-line px-4 md:px-6 py-3 flex items-center gap-3 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
+            <button
+              onClick={() => setShowDrawerClose(false)}
+              disabled={drawerSubmitting}
+              className="px-5 py-3 rounded-xl text-sm font-medium text-vz-ink-soft bg-vz-bg-alt hover:bg-vz-line transition-colors min-h-[52px] disabled:opacity-50"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleCloseDrawer}
+              disabled={drawerSubmitting || drawerAmount <= 0}
+              className={`flex-1 py-3 rounded-xl text-lg font-bold transition-colors min-h-[52px] flex items-center justify-center gap-3 ${
+                drawerSubmitting || drawerAmount <= 0
+                  ? 'bg-vz-line text-vz-ink-mute cursor-not-allowed'
+                  : 'bg-vz-teal text-white hover:bg-vz-teal-deep shadow-lg'
+              }`}
+            >
+              {drawerSubmitting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Clôture…
+                </>
+              ) : (
+                <>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Générer le rapport Z — {formatCurrency(drawerAmount)}
+                </>
+              )}
+            </button>
+          </footer>
+        </div>
       )}
 
       {/* ── New drawer modals (PR 6/6 — denomination grid + 3-phase close) */}
