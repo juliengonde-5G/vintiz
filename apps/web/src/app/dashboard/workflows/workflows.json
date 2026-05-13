@@ -1,0 +1,1384 @@
+{
+  "$schema": "Vintiz workflow documentation — driven entirely by this JSON. See page.tsx for the visualisation logic.",
+  "packages": [
+    {
+      "id": "tablet",
+      "name": "Tablette POS",
+      "subtitle": "Lenovo Idea Tab Pro Gen 2 Chrome",
+      "category": "client",
+      "description": "Interface tactile 1024×768, scanner USB-HID en focus, autorisation pop-ups requise pour kick tiroir automatique.",
+      "x": 60,
+      "y": 60
+    },
+    {
+      "id": "browser-mgr",
+      "name": "Navigateur Manager",
+      "subtitle": "Desktop / Lenovo back-office",
+      "category": "client",
+      "description": "Session manager JWT, accès /dashboard, /reports, /admin, /settings.",
+      "x": 60,
+      "y": 150
+    },
+    {
+      "id": "browser-customer",
+      "name": "Navigateur Cliente",
+      "subtitle": "Mobile / desktop public",
+      "category": "client",
+      "description": "Session magic-link JWT 1h, accès /account, /produits, /fidelite.",
+      "x": 60,
+      "y": 240
+    },
+    {
+      "id": "scanner",
+      "name": "Douchette",
+      "subtitle": "Inateck BCST-35 / 160B",
+      "category": "hardware",
+      "description": "USB HID — émule un clavier. Tape le code-barres puis Entrée dans le champ POS auto-focus.",
+      "x": 60,
+      "y": 340
+    },
+    {
+      "id": "printer-receipt",
+      "name": "Imprimante ticket",
+      "subtitle": "MUNBYN 047P-WiFi ESC/POS 80 mm",
+      "category": "hardware",
+      "description": "Imprimante réseau port 9100. Kické le tiroir RJ-12 via impulsion ESC p m.",
+      "x": 60,
+      "y": 430
+    },
+    {
+      "id": "printer-label",
+      "name": "Imprimante étiquettes",
+      "subtitle": "SATO CT4-LX SBPL 4″",
+      "category": "hardware",
+      "description": "Imprimante réseau port 9100 — étiquettes thermiques produits.",
+      "x": 60,
+      "y": 520
+    },
+    {
+      "id": "drawer",
+      "name": "Tiroir-caisse",
+      "subtitle": "Safescan SD-4141 RJ-12",
+      "category": "hardware",
+      "description": "Branché sur l'imprimante MUNBYN. Ouverture par impulsion ESC p m via la connexion réseau de l'imprimante.",
+      "x": 60,
+      "y": 610
+    },
+    {
+      "id": "tpe-sumup",
+      "name": "TPE",
+      "subtitle": "SumUp Solo Wi-Fi",
+      "category": "hardware",
+      "description": "Terminal de paiement carte. Si SUMUP_READER_ID configuré, l'API push directement le montant sur le TPE (pas de saisie manuelle).",
+      "x": 60,
+      "y": 700
+    },
+    {
+      "id": "web",
+      "name": "apps/web",
+      "subtitle": "Next.js 14 App Router (admin)",
+      "category": "frontend",
+      "description": "Back-office manager — port 3000. Pages /dashboard, /pos, /inventory, /clients, /settings, /seo, /admin/*, /reports.",
+      "x": 290,
+      "y": 100
+    },
+    {
+      "id": "site",
+      "name": "apps/site",
+      "subtitle": "Next.js 14 (public)",
+      "category": "frontend",
+      "description": "Site vitrine + espace client — port 3001. Pages /, /produits, /account/*, /fidelite, /desinscription, sitemap.xml, robots.txt.",
+      "x": 290,
+      "y": 220
+    },
+    {
+      "id": "api",
+      "name": "apps/api",
+      "subtitle": "FastAPI 0.x (Python 3.11)",
+      "category": "backend",
+      "description": "Cœur applicatif — port 8000. SQLAlchemy async, JWT, rate-limit Redis, services IA et hardware, APScheduler embarqué.",
+      "x": 530,
+      "y": 100
+    },
+    {
+      "id": "scheduler",
+      "name": "APScheduler",
+      "subtitle": "Cron in-process (apps/api)",
+      "category": "scheduler",
+      "description": "19 jobs récurrents enregistrés dans app/jobs.py au démarrage de l'API. Triggers cron (jour/heure Paris).",
+      "x": 530,
+      "y": 280
+    },
+    {
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "subtitle": "Base relationnelle (asyncpg)",
+      "category": "data",
+      "description": "Stocke produits, clients, transactions, consents RGPD, scoring, embeddings (JSONB), audit_logs, events_log, settings clé/valeur.",
+      "x": 760,
+      "y": 100
+    },
+    {
+      "id": "redis",
+      "name": "Redis 7",
+      "subtitle": "Cache + rate-limit",
+      "category": "data",
+      "description": "Cache requêtes IA (24h), buckets rate-limit /auth/login, magic-link OTP, briefing dashboard.",
+      "x": 760,
+      "y": 220
+    },
+    {
+      "id": "claude",
+      "name": "Anthropic Claude",
+      "subtitle": "claude-haiku-4-5",
+      "category": "external",
+      "description": "API IA — Vision photo produit, Fashion Book, recherche sémantique, scoring, personas marketing/juridique, suggestions vitrine.",
+      "x": 990,
+      "y": 60
+    },
+    {
+      "id": "sumup-api",
+      "name": "SumUp API",
+      "subtitle": "api.sumup.com",
+      "category": "external",
+      "description": "Création checkout, push reader, statut paiement. Mode production uniquement (sandbox/simulation retiré).",
+      "x": 990,
+      "y": 150
+    },
+    {
+      "id": "weather-api",
+      "name": "OpenWeather",
+      "subtitle": "api.openweathermap.org",
+      "category": "external",
+      "description": "Météo Vernon — alimente le widget dashboard et le moteur prédictif (poids journaliers de la répartition CA).",
+      "x": 990,
+      "y": 240
+    },
+    {
+      "id": "brevo",
+      "name": "Brevo / SMTP",
+      "subtitle": "Gateway email unifié",
+      "category": "external",
+      "description": "Envoi emails transactionnels. Priorité Brevo si BREVO_API_KEY, sinon fallback SMTP, sinon simulation logs.",
+      "x": 990,
+      "y": 330
+    },
+    {
+      "id": "twilio",
+      "name": "Twilio",
+      "subtitle": "SMS",
+      "category": "external",
+      "description": "Envoi SMS (renvoi ticket, magic-link option future). Simulation logs si TWILIO_* manquant.",
+      "x": 990,
+      "y": 420
+    },
+    {
+      "id": "wallet",
+      "name": "Apple / Google Wallet",
+      "subtitle": "Pass fidélité",
+      "category": "external",
+      "description": "Génération payload .pkpass + Google Wallet class — carte fidélité V###### virtuelle. Signing à plugger côté ops.",
+      "x": 990,
+      "y": 510
+    },
+    {
+      "id": "ga4",
+      "name": "GA4 / Search Console",
+      "subtitle": "Analytics + SEO",
+      "category": "external",
+      "description": "GA4 injecté côté client du site public via GA_MEASUREMENT_ID. Search Console pour suivi indexation + sitemap.",
+      "x": 990,
+      "y": 600
+    },
+    {
+      "id": "github",
+      "name": "GitHub Actions",
+      "subtitle": "Deploy Production",
+      "category": "external",
+      "description": "Workflow .github/workflows/deploy.yml — SSH sur VPS au push main, lance scripts/deploy.sh.",
+      "x": 990,
+      "y": 690
+    }
+  ],
+  "workflows": [
+    {
+      "id": "pos-cash-sale",
+      "category": "metier",
+      "group": "POS",
+      "title": "Vente espèces avec ticket et tiroir-caisse",
+      "description": "Le manager scanne 1 à N produits, choisit Espèces, saisit le montant reçu, valide. Le tiroir s'ouvre tout seul puis la tablette affiche la modale ticket.",
+      "trigger": "Manager clique « Encaisser » avec mode = Espèces",
+      "steps": [
+        { "from": "scanner", "to": "tablet", "label": "Scan code-barres → Entrée", "detail": "Le scanner émule un clavier USB-HID, le champ recherche POS est auto-focus.", "protocol": "USB-HID" },
+        { "from": "tablet", "to": "web", "label": "GET /api/inventory/products/search?q={barcode}", "detail": "Résolution exact match sur Product.barcode, fallback 1 résultat. Filtre stock+display par défaut.", "protocol": "HTTP" },
+        { "from": "web", "to": "api", "label": "Proxy fetch FastAPI", "detail": "JWT Bearer manager dans Authorization, request_id propagé.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "SELECT Product WHERE barcode = …", "detail": "SQLAlchemy async — JSONB photos, score, audit_logs déjà chargés.", "protocol": "SQL" },
+        { "from": "tablet", "to": "api", "label": "POST /api/pos/transactions", "detail": "Body : items[], payment_method=cash, amount_received, client_uuid (idempotence), cashier_id, client_id?, coupon_code?, redeem_loyalty_points?.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "INSERT Transaction + items + AuditLog", "detail": "Création transaction NF525 (hash chaîné), update Product.status=sold, mise à jour solde fidélité, événement events_log.", "protocol": "SQL" },
+        { "from": "api", "to": "printer-receipt", "label": "ESC/POS RAW → printer:9100", "detail": "Impulsion ESC p m vers le tiroir branché en RJ-12 sur l'imprimante. Pas d'impression à ce stade — juste le kick.", "protocol": "TCP:9100" },
+        { "from": "printer-receipt", "to": "drawer", "label": "Impulsion RJ-12", "detail": "Le tiroir s'ouvre physiquement, le manager rend la monnaie.", "protocol": "RJ-12" },
+        { "from": "tablet", "to": "api", "label": "GET /api/pos/transactions/{id}/receipt", "detail": "Texte 80 mm — header boutique, items avec remises, totaux TTC/HT, points fidélité, mentions NF525.", "protocol": "HTTP" },
+        { "from": "tablet", "to": "printer-receipt", "label": "Impression ticket MUNBYN", "detail": "POST /api/pos/transactions/{id}/print côté API → ESC/POS direct vers la MUNBYN port 9100. Modale « Imprimer / Fermer sans ticket ».", "protocol": "TCP:9100" }
+      ]
+    },
+    {
+      "id": "pos-cb-reader-push",
+      "category": "metier",
+      "group": "POS",
+      "title": "Paiement CB poussé sur TPE SumUp Solo",
+      "description": "Manager choisit CB. Si SUMUP_READER_ID est configuré, le montant est poussé directement sur le TPE — la cliente tape simplement sa carte, pas de saisie sur le TPE.",
+      "trigger": "Manager clique « Encaisser » avec mode = CB et SUMUP_READER_ID défini",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "POST /api/pos/payments/cb/initiate", "detail": "Body : amount_cents, currency=EUR, transaction_draft_id, reader_id (depuis settings).", "protocol": "HTTP" },
+        { "from": "api", "to": "sumup-api", "label": "POST /v0.1/merchants/{code}/readers/{id}/checkout", "detail": "Bearer SUMUP_API_KEY. Mode production uniquement.", "protocol": "HTTPS" },
+        { "from": "sumup-api", "to": "tpe-sumup", "label": "Push montant sur le TPE", "detail": "Le Solo sonne, affiche le total, attend insertion / NFC / saisie code.", "protocol": "Wi-Fi" },
+        { "from": "tpe-sumup", "to": "sumup-api", "label": "Capture transaction CB", "detail": "Réseau bancaire EMV + 3DS, statut PAID ou DECLINED.", "protocol": "Wi-Fi" },
+        { "from": "tablet", "to": "api", "label": "GET /api/pos/payments/cb/{id}/status (polling 1s)", "detail": "L'interface POS poll le statut côté serveur pour réagir à la décision.", "protocol": "HTTP" },
+        { "from": "api", "to": "sumup-api", "label": "GET /v0.1/checkouts/{id}", "detail": "Statut PENDING → PAID → côté API on commite Transaction + PaymentAttempt.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "INSERT Transaction + PaymentAttempt", "detail": "Audit complet — request_id, payment_id SumUp, amount, statut.", "protocol": "SQL" },
+        { "from": "tablet", "to": "printer-receipt", "label": "Impression ticket MUNBYN", "detail": "Confirmé sur le ticket NF525 + impression ESC/POS via la MUNBYN port 9100.", "protocol": "TCP:9100" }
+      ]
+    },
+    {
+      "id": "pos-cb-checkout-manual",
+      "category": "metier",
+      "group": "POS",
+      "title": "Paiement CB avec saisie manuelle sur TPE",
+      "description": "Pas de reader push : la cliente tape le montant directement sur le SumUp Solo. L'API SumUp est appelée pour créer un checkout puis poll le statut.",
+      "trigger": "Manager clique « Encaisser » mode CB, sans SUMUP_READER_ID",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "POST /api/pos/payments/cb/initiate", "detail": "Crée un checkout SumUp côté API mais sans push reader.", "protocol": "HTTP" },
+        { "from": "api", "to": "sumup-api", "label": "POST /v0.1/checkouts", "detail": "Création checkout. Le manager tape ensuite le montant sur le TPE manuellement.", "protocol": "HTTPS" },
+        { "from": "tablet", "to": "api", "label": "GET /api/pos/payments/cb/{id}/status (polling)", "detail": "Polling jusqu'à PAID / FAILED / CANCELLED.", "protocol": "HTTP" },
+        { "from": "api", "to": "sumup-api", "label": "GET /v0.1/checkouts/{id}", "detail": "Récupère le statut final.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "INSERT Transaction + PaymentAttempt", "detail": "Identique au push reader.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "pos-refund",
+      "category": "metier",
+      "group": "POS",
+      "title": "Remboursement partiel ou total",
+      "description": "Manager retrouve la transaction d'origine, sélectionne les articles à rembourser, choisit le mode (espèces, CB, chèque, avoir).",
+      "trigger": "Manager clique « Rembourser » dans /admin/transactions",
+      "steps": [
+        { "from": "browser-mgr", "to": "web", "label": "GET /admin/transactions/{id}", "detail": "Lookup transaction d'origine.", "protocol": "HTTP" },
+        { "from": "web", "to": "api", "label": "POST /api/pos/transactions/{id}/refund", "detail": "Body : items[], refund_method, reason. Crée une Transaction de type REFUND.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "INSERT Transaction (refund) + audit", "detail": "Lien parent → enfant via parent_transaction_id. Si avoir : crédit StoreCredit cliente. Update Product.status=stock si remis en rayon.", "protocol": "SQL" },
+        { "from": "api", "to": "printer-receipt", "label": "Ticket avoir / remboursement", "detail": "Format spécifique NF525 — mention remboursement + référence transaction d'origine.", "protocol": "TCP:9100" }
+      ]
+    },
+    {
+      "id": "pos-loyalty-subscribe",
+      "category": "metier",
+      "group": "POS",
+      "title": "Souscription carte fidélité V###### au POS",
+      "description": "Une cliente nouvelle au POS — manager saisit email, téléphone, prénom, opt-ins RGPD. L'API alloue un numéro V###### unique et provisionne le pass wallet.",
+      "trigger": "Manager clique « Inscrire à la fidélité » au POS",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "GET /api/admin/loyalty/config", "detail": "Récupère mode (free / paid / first_purchase) et prix éventuel.", "protocol": "HTTP" },
+        { "from": "tablet", "to": "api", "label": "POST /api/pos/loyalty/subscribe", "detail": "Body : email, phone?, first_name, last_name?, consents{newsletter, profiling, trend_alerts}. 409 si email existe.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "INSERT Client + Consents + MembershipID", "detail": "Allocation V###### atomique (loyalty.membership_id), points=0, consents horodatés.", "protocol": "SQL" },
+        { "from": "api", "to": "brevo", "label": "Email de bienvenue + lien wallet", "detail": "Templates Brevo si consent newsletter — sinon juste le numéro de carte.", "protocol": "HTTPS" },
+        { "from": "api", "to": "wallet", "label": "Génération payload Wallet (Apple + Google)", "detail": "Pass payload via WALLET_PASS_TYPE_IDENTIFIER + WALLET_GOOGLE_ISSUER_ID. Signing côté ops.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "pos-cashier-pin-login",
+      "category": "metier",
+      "group": "POS",
+      "title": "Identification cashier par PIN 4 chiffres",
+      "description": "Une équipière prend le poste. PIN 4 chiffres au pavé numérique → identité injectée dans toutes les transactions suivantes jusqu'au logout.",
+      "trigger": "Cashier tape son PIN sur la tablette POS",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "POST /api/pos/cashier/login", "detail": "Body : pin. 401 sur mauvais PIN — token manager non révoqué (soft 401).", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "SELECT User WHERE pin_hash matches", "detail": "Comparaison bcrypt sur pin_hash. Verrou anti-bruteforce 5 essais.", "protocol": "SQL" },
+        { "from": "api", "to": "tablet", "label": "200 + cashier_id stocké côté UI", "detail": "Plus de redirection /login : juste un context POS.", "protocol": "HTTP" }
+      ]
+    },
+    {
+      "id": "magic-link-customer",
+      "category": "metier",
+      "group": "Espace client",
+      "title": "Connexion espace client par magic-link",
+      "description": "Cliente saisit son email sur le site → reçoit un OTP 6 chiffres → tape l'OTP → JWT cookie 1h, accès espace client.",
+      "trigger": "Cliente clique « Se connecter » sur le site public",
+      "steps": [
+        { "from": "browser-customer", "to": "site", "label": "POST /api/auth/magic-link/request (proxy)", "detail": "Body : email. Réponse 204 systématique pour anti-énumération.", "protocol": "HTTPS" },
+        { "from": "site", "to": "api", "label": "POST /api/auth/magic-link/request", "detail": "Rate-limit 3/h/email + 30/h/IP côté Redis.", "protocol": "HTTP" },
+        { "from": "api", "to": "redis", "label": "SET magic-link:{email} = OTP (TTL 10min)", "detail": "OTP 6 chiffres aléatoire, 5 tentatives max avant invalidation.", "protocol": "Redis" },
+        { "from": "api", "to": "brevo", "label": "Email OTP « Votre code Vintiz : 432918 »", "detail": "Template court, expéditeur EMAIL_FROM_ADDRESS.", "protocol": "HTTPS" },
+        { "from": "browser-customer", "to": "api", "label": "POST /api/auth/magic-link/verify", "detail": "Body : email, otp. 401 sur mismatch (avec décrément tentatives).", "protocol": "HTTPS" },
+        { "from": "api", "to": "redis", "label": "GET + DEL magic-link:{email}", "detail": "Lookup OTP + invalidation immédiate à la consommation.", "protocol": "Redis" },
+        { "from": "api", "to": "postgres", "label": "Upsert Client + last_login_at", "detail": "Crée le compte cliente si absent (cold customer).", "protocol": "SQL" },
+        { "from": "api", "to": "browser-customer", "label": "Set-Cookie JWT client (HttpOnly, 1h)", "detail": "Cookie domain=.vintiz.fr en prod, signature SECRET_KEY.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "client-data-export-rgpd",
+      "category": "metier",
+      "group": "RGPD",
+      "title": "Export RGPD JSON (Article 20)",
+      "description": "Cliente connectée demande l'export de ses données → JSON portable contenant identité, achats, fidélité, consents, taste profile.",
+      "trigger": "Cliente clique « Télécharger mes données » sur /account/rgpd",
+      "steps": [
+        { "from": "browser-customer", "to": "site", "label": "GET /api/crm/account/data-export?email=…", "detail": "JWT magic-link en cookie. Lookup propre compte uniquement.", "protocol": "HTTPS" },
+        { "from": "site", "to": "api", "label": "Proxy fetch", "detail": "Forward cookie JWT.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "Aggrégation multi-tables", "detail": "Client + Transaction + Consents + LoyaltyLedger + TasteProfile + StoreCredit. SQLAlchemy joinedload.", "protocol": "SQL" },
+        { "from": "api", "to": "browser-customer", "label": "200 application/json", "detail": "Content-Disposition: attachment; filename=vintiz-data-{client_id}-{date}.json", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "client-deletion-request",
+      "category": "metier",
+      "group": "RGPD",
+      "title": "Demande suppression compte (fenêtre 30 jours)",
+      "description": "Cliente demande la suppression → soft delete + scheduled hard delete dans 30 jours. Cron daily_rgpd_purge nettoie au jour J+30.",
+      "trigger": "Cliente clique « Supprimer mon compte » sur /account/rgpd",
+      "steps": [
+        { "from": "browser-customer", "to": "api", "label": "POST /api/crm/account/deletion-request", "detail": "Body : email. Soft delete immédiat, deletion_scheduled_at = now + 30j.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "UPDATE Client SET is_deleted=true, deletion_scheduled_at=…", "detail": "Suppression réversible — cliente peut annuler dans la fenêtre.", "protocol": "SQL" },
+        { "from": "api", "to": "brevo", "label": "Email confirmation suppression J+30", "detail": "Avec lien d'annulation valide 30 jours.", "protocol": "HTTPS" },
+        { "from": "scheduler", "to": "api", "label": "Cron daily_rgpd_purge 03:00", "detail": "Hard delete des clients dont deletion_scheduled_at < now.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "DELETE Client + cascade", "detail": "Suppression définitive — transactions anonymisées, consents purgés.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "personal-shopper-v2",
+      "category": "metier",
+      "group": "Espace client",
+      "title": "Personal Shopper v2 (embeddings + Claude)",
+      "description": "Recommandations live calculées par similarité cosinus entre le taste profile de la cliente et les embeddings produits du catalogue.",
+      "trigger": "Cliente ouvre /shopper (gated : membership + consent profilage)",
+      "steps": [
+        { "from": "browser-customer", "to": "api", "label": "GET /api/crm/account/personal-shopper/live", "detail": "JWT magic-link. 403 si pas opt-in profilage.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT TasteProfile.embedding + Product.embedding stock+display", "detail": "Embeddings stockés en JSONB. Cosine similarity numpy côté Python.", "protocol": "SQL" },
+        { "from": "api", "to": "claude", "label": "Re-rank top 50 + génération raisons (optionnel)", "detail": "Modèle claude-haiku-4-5 — explication courte par produit.", "protocol": "HTTPS" },
+        { "from": "api", "to": "browser-customer", "label": "200 { products: [], reasons: [] }", "detail": "10 suggestions max, fallback heuristique si Claude indisponible.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "personal-shopper-search",
+      "category": "metier",
+      "group": "Espace client",
+      "title": "Recherche sémantique « t-shirt blanc taille M »",
+      "description": "Cliente tape une requête libre → Claude Haiku extrait les filtres → SQL filtré → re-ranking sémantique.",
+      "trigger": "Cliente tape une recherche dans /shopper",
+      "steps": [
+        { "from": "browser-customer", "to": "api", "label": "POST /api/crm/account/personal-shopper/search", "detail": "Body : email, q. Gated profilage.", "protocol": "HTTPS" },
+        { "from": "api", "to": "redis", "label": "Lookup cache sémantique (TTL 24h)", "detail": "Clé hash(q + customer_id) — économise des appels Claude.", "protocol": "Redis" },
+        { "from": "api", "to": "claude", "label": "Extraction filtres NLU", "detail": "Prompt structuré JSON : {category, color, size, occasion}.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT Product WHERE filtres", "detail": "Filtres SQL standards + ORDER BY embedding similarity desc LIMIT 20.", "protocol": "SQL" },
+        { "from": "api", "to": "redis", "label": "SET cache résultat (TTL 24h)", "detail": "Évite ré-appel Claude sur recherche identique.", "protocol": "Redis" }
+      ]
+    },
+    {
+      "id": "newsletter-subscribe",
+      "category": "metier",
+      "group": "Newsletter",
+      "title": "Inscription newsletter avec double opt-in RGPD",
+      "description": "Cliente coche la case sur le site → confirmation email avec lien signé. Stockage horodaté du consentement.",
+      "trigger": "Cliente soumet formulaire newsletter sur le site public",
+      "steps": [
+        { "from": "browser-customer", "to": "site", "label": "POST /api/newsletter/subscribe (proxy)", "detail": "Body : email, consent_text_version, source_page.", "protocol": "HTTPS" },
+        { "from": "site", "to": "api", "label": "Forward avec IP cliente", "detail": "X-Forwarded-For propagé pour audit.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "INSERT NewsletterSubscriber (status=pending_double_optin)", "detail": "Token de confirmation signé + horodatage subscribed_at.", "protocol": "SQL" },
+        { "from": "api", "to": "brevo", "label": "Email confirmation « Confirmez votre inscription »", "detail": "Lien /api/newsletter/confirm?token=… valide 7 jours.", "protocol": "HTTPS" },
+        { "from": "browser-customer", "to": "api", "label": "GET /api/newsletter/confirm?token=…", "detail": "Validation lien → status=confirmed.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "newsletter-unsubscribe",
+      "category": "metier",
+      "group": "Newsletter",
+      "title": "Désinscription newsletter 1-clic",
+      "description": "Tout email contient un lien de désinscription signé. Un clic suffit, aucune authentification requise.",
+      "trigger": "Cliente clique le lien « Se désinscrire » dans un email",
+      "steps": [
+        { "from": "browser-customer", "to": "site", "label": "GET /desinscription?token=…", "detail": "Page de confirmation côté site public.", "protocol": "HTTPS" },
+        { "from": "site", "to": "api", "label": "GET /api/newsletter/unsubscribe?token=…", "detail": "Token signé HMAC SECRET_KEY.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "UPDATE NewsletterSubscriber SET status=unsubscribed", "detail": "Horodatage unsubscribed_at, motif=one_click.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "product-vision-ai",
+      "category": "metier",
+      "group": "IA Booster",
+      "title": "Analyse photo produit (Claude Vision)",
+      "description": "Manager upload une photo dans la fiche produit → Claude détecte type, couleur, marque visible, état approximatif.",
+      "trigger": "Manager upload une photo dans /inventory/products/{id}",
+      "steps": [
+        { "from": "browser-mgr", "to": "web", "label": "POST upload (multipart)", "detail": "Photo redimensionnée côté navigateur (max 1200px).", "protocol": "HTTPS" },
+        { "from": "web", "to": "api", "label": "POST /api/inventory/products/{id}/photos", "detail": "Stockage url (S3-compat ou local /static), AI fields persisted.", "protocol": "HTTP" },
+        { "from": "api", "to": "claude", "label": "Claude Vision messages API", "detail": "Image base64 + prompt structuré « extract type/color/brand/condition ».", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "UPDATE Product + INSERT ProductPhoto", "detail": "Champs AI : ai_type, ai_color, ai_brand, ai_condition + JSON brut Claude.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "product-label-print",
+      "category": "metier",
+      "group": "Inventaire",
+      "title": "Impression étiquette produit (SATO CT4-LX)",
+      "description": "Manager clique « Générer étiquette » dans la fiche produit. Si imprimante SATO configurée, impression directe ; sinon PNG téléchargeable.",
+      "trigger": "Manager clique « Générer étiquette »",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET /api/inventory/products/{id}/label", "detail": "Génération code-barres Code 128 + métadonnées (prix, marque, zone).", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT Product + Category + Zone", "detail": "Pour le rendu de l'étiquette.", "protocol": "SQL" },
+        { "from": "api", "to": "printer-label", "label": "SBPL RAW → printer:9100", "detail": "Si LABEL_PRINTER_HOST configuré. Sinon retourne PNG.", "protocol": "TCP:9100" }
+      ]
+    },
+    {
+      "id": "cahier-jour-load",
+      "category": "metier",
+      "group": "Dashboard",
+      "title": "Chargement du cahier du jour",
+      "description": "Manager ouvre /dashboard/cahier-du-jour. KPIs jour, objectif mensuel, répartition par poids historique, signatures, briefing IA.",
+      "trigger": "Manager ouvre /dashboard/cahier-du-jour",
+      "steps": [
+        { "from": "browser-mgr", "to": "web", "label": "Render page React", "detail": "Server component → client component avec hydration.", "protocol": "HTTPS" },
+        { "from": "web", "to": "api", "label": "GET /api/cahier/{report_date}", "detail": "Données journalières agrégées.", "protocol": "HTTP" },
+        { "from": "web", "to": "api", "label": "GET /api/cahier/monthly-target/{year}/{month}", "detail": "Objectif mensuel + répartition par jour.", "protocol": "HTTP" },
+        { "from": "web", "to": "api", "label": "GET /api/cahier/weekday-weights", "detail": "Poids historiques jour de la semaine (8 dernières semaines).", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "Agrégations Transaction + DailyTarget + Signature", "detail": "Multi-CTE SQL — sommes, moyennes mobiles, comparatif N-1.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "weather-widget",
+      "category": "metier",
+      "group": "Dashboard",
+      "title": "Widget météo Vernon",
+      "description": "Le dashboard affiche la météo actuelle + prévisions 5j. Cache 30 min côté API pour éviter de spammer OpenWeather.",
+      "trigger": "Manager ouvre /dashboard",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET /api/admin/weather", "detail": "Latitude/longitude Vernon hardcodées.", "protocol": "HTTPS" },
+        { "from": "api", "to": "redis", "label": "GET weather:vernon (TTL 30min)", "detail": "Cache hit → réponse immédiate.", "protocol": "Redis" },
+        { "from": "api", "to": "weather-api", "label": "GET /data/2.5/onecall (si cache miss)", "detail": "API key OPENWEATHER_API_KEY. Pas de retry agressif.", "protocol": "HTTPS" },
+        { "from": "api", "to": "redis", "label": "SET weather:vernon (TTL 30min)", "detail": "Persiste pour les sessions suivantes.", "protocol": "Redis" }
+      ]
+    },
+    {
+      "id": "pos-companion",
+      "category": "metier",
+      "group": "POS",
+      "title": "Companion POS — suggestions cliente identifiée",
+      "description": "À l'identification cliente au POS, panneau latéral affiche solde fidélité, suggestions complémentaires, coupons applicables et alertes RFM.",
+      "trigger": "Manager identifie une cliente au POS (scan V######, recherche email/phone)",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "GET /api/pos/clients/identify?q=…", "detail": "Lookup V###### / email / phone.", "protocol": "HTTP" },
+        { "from": "tablet", "to": "api", "label": "GET /api/pos/clients/{id}/companion?cart_total_cents=&items=", "detail": "Debounce 300ms côté UI — refresh à chaque modification panier.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "Agrégation Client + LoyaltyLedger + Coupons + RFM + Birthday", "detail": "5 mini-requêtes asyncio.gather.", "protocol": "SQL" },
+        { "from": "api", "to": "tablet", "label": "200 { suggestions[], coupons[], alerts[], loyalty }", "detail": "Mapping CATEGORY_COMPLEMENTS robe→accessoires/chaussures intégré côté service.", "protocol": "HTTP" }
+      ]
+    },
+    {
+      "id": "wallet-card-fetch",
+      "category": "metier",
+      "group": "Espace client",
+      "title": "Récupération carte wallet Apple / Google",
+      "description": "Cliente clique « Ajouter à mon Wallet » → payload .pkpass (Apple) ou JWT Google Wallet généré côté API.",
+      "trigger": "Cliente clique « Ajouter au Wallet » dans /fidelite",
+      "steps": [
+        { "from": "browser-customer", "to": "api", "label": "GET /api/crm/account/wallet?email=…", "detail": "JWT magic-link.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT Client + LoyaltyLedger", "detail": "Solde points + V###### + tier.", "protocol": "SQL" },
+        { "from": "api", "to": "wallet", "label": "Build pass payload (Apple + Google)", "detail": "Identifiants WALLET_PASS_TYPE_IDENTIFIER et WALLET_GOOGLE_ISSUER_ID. Signing à plugger côté ops.", "protocol": "HTTPS" },
+        { "from": "api", "to": "browser-customer", "label": "200 { apple_pass, google_pass }", "detail": "URLs téléchargeables — chaîne JWT signée pour Google, .pkpass pour Apple.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "trends-fashion-book",
+      "category": "metier",
+      "group": "IA Booster",
+      "title": "Fashion Book IA (Claude Haiku)",
+      "description": "Page /ia onglet « Tendances » — Fashion Book pré-généré chaque lundi matin par le cron. Sert le cache instantanément.",
+      "trigger": "Manager ouvre l'onglet Tendances",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET /api/ai/trends", "detail": "Pas de force_refresh — sert le cache hebdo.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT Setting WHERE key='ai_fashion_trends_cache'", "detail": "Cache JSON stocké en base.", "protocol": "SQL" },
+        { "from": "api", "to": "browser-mgr", "label": "200 { week, year, trends: [] }", "detail": "Si cache vide ou stale, fallback Claude direct (mais le cron du lundi évite ça).", "protocol": "HTTPS" }
+      ]
+    },
+
+    {
+      "id": "ep-auth-login",
+      "category": "endpoint",
+      "group": "Auth",
+      "title": "POST /api/auth/login",
+      "description": "Login manager username + password. Rate-limit 10 tentatives / 5 min / IP via Redis. Reset au succès.",
+      "trigger": "POST /api/auth/login",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST /api/auth/login {username, password}", "detail": "Soft 401 sur échec — pas de redirect /login depuis le client.", "protocol": "HTTPS" },
+        { "from": "api", "to": "redis", "label": "INCR rl:login:{ip}", "detail": "TTL 300s. 429 si > 10.", "protocol": "Redis" },
+        { "from": "api", "to": "postgres", "label": "SELECT User WHERE username = …", "detail": "Comparaison bcrypt sur password_hash.", "protocol": "SQL" },
+        { "from": "api", "to": "browser-mgr", "label": "200 { access_token (JWT), role, username }", "detail": "Stocké localStorage côté web.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "ep-auth-magic-request",
+      "category": "endpoint",
+      "group": "Auth",
+      "title": "POST /api/auth/magic-link/request",
+      "description": "Génère un OTP 6 chiffres pour l'email, l'envoie par Brevo. Réponse 204 toujours pour anti-énumération.",
+      "trigger": "POST /api/auth/magic-link/request",
+      "steps": [
+        { "from": "browser-customer", "to": "api", "label": "POST {email}", "detail": "Rate-limit 3/h/email + 30/h/IP.", "protocol": "HTTPS" },
+        { "from": "api", "to": "redis", "label": "SET magic-link:{email} = OTP TTL 600s", "detail": "Anti-bruteforce 5 tentatives.", "protocol": "Redis" },
+        { "from": "api", "to": "brevo", "label": "Email OTP", "detail": "Template courte.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "ep-auth-magic-verify",
+      "category": "endpoint",
+      "group": "Auth",
+      "title": "POST /api/auth/magic-link/verify",
+      "description": "Vérifie OTP, retourne JWT cookie HttpOnly 1h.",
+      "trigger": "POST /api/auth/magic-link/verify",
+      "steps": [
+        { "from": "browser-customer", "to": "api", "label": "POST {email, otp}", "detail": "401 sur mismatch.", "protocol": "HTTPS" },
+        { "from": "api", "to": "redis", "label": "GET + DEL magic-link:{email}", "detail": "Consommation atomique.", "protocol": "Redis" },
+        { "from": "api", "to": "postgres", "label": "Upsert Client.last_login_at", "detail": "Crée le compte si nouveau.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-pos-transactions-list",
+      "category": "endpoint",
+      "group": "POS",
+      "title": "POST /api/pos/transactions",
+      "description": "Crée une vente. Idempotente via client_uuid (replay offline-safe). Accepte coupon_code? + redeem_loyalty_points?.",
+      "trigger": "POST /api/pos/transactions",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "POST items[], payment_method, …", "detail": "client_uuid optionnel — l'API détecte les replays.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "INSERT Transaction + items + LoyaltyLedger + AuditLog", "detail": "Hash NF525 chaîné. Update Product.status=sold.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-pos-refund",
+      "category": "endpoint",
+      "group": "POS",
+      "title": "POST /api/pos/transactions/{id}/refund",
+      "description": "Refund partiel ou total — cash/card/cheque/avoir.",
+      "trigger": "POST /api/pos/transactions/{id}/refund",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "POST items[], refund_method", "detail": "Lien parent_transaction_id obligatoire.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "INSERT Transaction (type=REFUND)", "detail": "Si avoir : crédit StoreCredit. Si remise en stock : Product.status=stock.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-pos-drawer-open",
+      "category": "endpoint",
+      "group": "POS",
+      "title": "POST /api/pos/drawer/open",
+      "description": "Ouverture caisse en début de service — fond initial saisi par le manager.",
+      "trigger": "POST /api/pos/drawer/open",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "POST {opening_amount_cents}", "detail": "Numpad tactile.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "INSERT CashDrawerSession (status=open)", "detail": "Une seule session ouverte à la fois.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-pos-drawer-close",
+      "category": "endpoint",
+      "group": "POS",
+      "title": "POST /api/pos/drawer/close",
+      "description": "Fermeture caisse + rapport Z (écart attendu vs compté, totaux par méthode).",
+      "trigger": "POST /api/pos/drawer/close",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "POST {counted_amount_cents}", "detail": "Compte cash physique en fin de service.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "UPDATE CashDrawerSession + génère Z-report", "detail": "Z-report PDF stocké, exposé /admin/z-reports.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-pos-payments-cb-initiate",
+      "category": "endpoint",
+      "group": "POS",
+      "title": "POST /api/pos/payments/cb/initiate",
+      "description": "Crée un checkout SumUp — mode production uniquement (sandbox/simulation retiré).",
+      "trigger": "POST /api/pos/payments/cb/initiate",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "POST {amount_cents, currency}", "detail": "reader_id depuis settings si push direct.", "protocol": "HTTP" },
+        { "from": "api", "to": "sumup-api", "label": "POST /v0.1/checkouts ou /readers/{id}/checkout", "detail": "Bearer SUMUP_API_KEY.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "INSERT PaymentAttempt", "detail": "Trace tentatives pour audit /admin/payment-attempts.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-pos-payments-cb-status",
+      "category": "endpoint",
+      "group": "POS",
+      "title": "GET /api/pos/payments/cb/{id}/status",
+      "description": "Polling statut SumUp (1s côté UI). Retourne PENDING / PAID / FAILED / CANCELLED.",
+      "trigger": "GET /api/pos/payments/cb/{id}/status",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "GET status", "detail": "Polling 1s — interface UI affiche un spinner.", "protocol": "HTTP" },
+        { "from": "api", "to": "sumup-api", "label": "GET /v0.1/checkouts/{id}", "detail": "Statut SumUp.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "ep-pos-cashier-login",
+      "category": "endpoint",
+      "group": "POS",
+      "title": "POST /api/pos/cashier/login",
+      "description": "Login cashier PIN 4 chiffres. Soft 401 sur mauvais PIN.",
+      "trigger": "POST /api/pos/cashier/login",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "POST {pin}", "detail": "Pavé numérique.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "SELECT User WHERE pin_hash bcrypt match", "detail": "Verrou anti-bruteforce 5 essais.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-pos-loyalty-subscribe",
+      "category": "endpoint",
+      "group": "POS",
+      "title": "POST /api/pos/loyalty/subscribe",
+      "description": "Crée une carte fidélité V###### au POS avec consents RGPD.",
+      "trigger": "POST /api/pos/loyalty/subscribe",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "POST {email, phone?, consents}", "detail": "409 si email existe.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "INSERT Client + V###### + Consents", "detail": "Allocation atomique du numéro.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-inventory-search",
+      "category": "endpoint",
+      "group": "Inventaire",
+      "title": "GET /api/inventory/products/search",
+      "description": "Recherche produits — filtre stock+display par défaut (exclut vendus + retournés). &include_sold=true pour tout retourner.",
+      "trigger": "GET /api/inventory/products/search?q=…",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET ?q=…&include_sold=false", "detail": "Auto-focus champ POS.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "SELECT WHERE name ILIKE OR barcode = … AND status IN (stock, display)", "detail": "LIMIT 20 par défaut.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-inventory-import-csv",
+      "category": "endpoint",
+      "group": "Inventaire",
+      "title": "POST /api/inventory/products/import-csv",
+      "description": "Import en masse — multipart CSV. ?dry_run=true pour preview.",
+      "trigger": "POST /api/inventory/products/import-csv (multipart)",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST file (multipart)", "detail": "Validation colonnes obligatoires côté API.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "INSERT batch + Products + barcodes", "detail": "Génération barcodes Code 128 automatique.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-inventory-label",
+      "category": "endpoint",
+      "group": "Inventaire",
+      "title": "GET /api/inventory/products/{id}/label",
+      "description": "Étiquette PNG ou impression SATO si configurée.",
+      "trigger": "GET /api/inventory/products/{id}/label",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET label", "detail": "?print=true pour push direct SATO.", "protocol": "HTTPS" },
+        { "from": "api", "to": "printer-label", "label": "SBPL → SATO:9100", "detail": "Sinon retourne PNG image/png.", "protocol": "TCP:9100" }
+      ]
+    },
+    {
+      "id": "ep-inventory-transition",
+      "category": "endpoint",
+      "group": "Inventaire",
+      "title": "POST /api/inventory/products/{id}/transition",
+      "description": "Transition cycle de vie produit (FSM stock→display→sold→returned).",
+      "trigger": "POST /api/inventory/products/{id}/transition",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST {to_status}", "detail": "Validation FSM côté service.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "UPDATE Product.status + AuditLog", "detail": "Trace utilisateur, raison, timestamp.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-inventory-batches",
+      "category": "endpoint",
+      "group": "Inventaire",
+      "title": "POST /api/inventory/batches + assign",
+      "description": "Crée un lot d'arrivage (carton) puis rattache des produits.",
+      "trigger": "POST /api/inventory/batches",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST {label, received_at, supplier?}", "detail": "Création lot.", "protocol": "HTTP" },
+        { "from": "browser-mgr", "to": "api", "label": "POST /batches/{id}/assign-product", "detail": "Rattachement N produits.", "protocol": "HTTP" }
+      ]
+    },
+    {
+      "id": "ep-inventory-suggest-zone",
+      "category": "endpoint",
+      "group": "Inventaire",
+      "title": "GET /api/inventory/products/{id}/suggest-zone",
+      "description": "Reco placement zone — calculée d'après catégorie, score produit, occupation actuelle des zones.",
+      "trigger": "GET /api/inventory/products/{id}/suggest-zone",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET suggest-zone", "detail": "Service merchandising.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT Zone + occupation + scoring", "detail": "Calcul heuristique combiné.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-inventory-locate",
+      "category": "endpoint",
+      "group": "Inventaire",
+      "title": "GET /api/inventory/locate",
+      "description": "Localiser un produit en boutique (par nom, marque, code-barres).",
+      "trigger": "GET /api/inventory/locate?q=…",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET locate", "detail": "Pour les équipiers qui cherchent un article en rayon.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT Product + Zone WHERE match", "detail": "Renvoie zone et position approximative.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-crm-personal-shopper-v2",
+      "category": "endpoint",
+      "group": "CRM",
+      "title": "GET /api/crm/clients/{id}/personal-shopper-v2",
+      "description": "Recommandations personnalisées — taste profile embedding × catalogue.",
+      "trigger": "GET /api/crm/clients/{id}/personal-shopper-v2",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET ?limit=10", "detail": "Manager vue fiche cliente.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "JOIN TasteProfile + Product embeddings", "detail": "Cosine similarity numpy.", "protocol": "SQL" },
+        { "from": "api", "to": "claude", "label": "Re-ranking + raisons (optionnel)", "detail": "Fallback heuristique si Claude KO.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "ep-crm-onboarding",
+      "category": "endpoint",
+      "group": "CRM",
+      "title": "POST /api/crm/account/onboarding",
+      "description": "Cold-start taste profile cliente — choix styles/occasions/budgets pour seed embeddings.",
+      "trigger": "POST /api/crm/account/onboarding",
+      "steps": [
+        { "from": "browser-customer", "to": "api", "label": "POST {email, styles[], occasions[], budgets[]}", "detail": "Public — JWT magic-link.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "Build TasteProfile.embedding initial", "detail": "Aggrégation embeddings styles + occasions.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-crm-avoir",
+      "category": "endpoint",
+      "group": "CRM",
+      "title": "GET /api/crm/clients/{id}/avoir",
+      "description": "Solde + historique des avoirs (store credit) d'une cliente.",
+      "trigger": "GET /api/crm/clients/{id}/avoir",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET avoir", "detail": "Vue fiche cliente / onglet Fidélité.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT StoreCredit + transactions liées", "detail": "Mouvement chronologique.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-crm-consents",
+      "category": "endpoint",
+      "group": "CRM",
+      "title": "POST /api/crm/account/consents/{purpose}",
+      "description": "Toggle consent générique (newsletter, profiling, trend_alerts, sms, mining).",
+      "trigger": "POST /api/crm/account/consents/{purpose}",
+      "steps": [
+        { "from": "browser-customer", "to": "api", "label": "POST {email, granted}", "detail": "JWT magic-link, vérifie le purpose dans la whitelist.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "INSERT Consent (granted, source, recorded_at)", "detail": "Append-only — historique conservé.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-crm-personal-shopper-click",
+      "category": "endpoint",
+      "group": "CRM",
+      "title": "POST /api/crm/personal-shopper-v2/click",
+      "description": "Loggue le click cliente sur une reco — alimente le re-training de l'embedding.",
+      "trigger": "POST /api/crm/personal-shopper-v2/click",
+      "steps": [
+        { "from": "browser-customer", "to": "api", "label": "POST {client_id, product_id, source}", "detail": "Fire-and-forget côté client.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "INSERT RecommendationClick", "detail": "Alimente le cron daily_embedding_refresh.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-ai-vision",
+      "category": "endpoint",
+      "group": "IA",
+      "title": "POST /api/ai/vision (analyse photo)",
+      "description": "Claude Vision détecte type, couleur, marque, état approximatif depuis une photo produit.",
+      "trigger": "POST /api/ai/vision",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST image (base64 ou URL)", "detail": "Multipart ou JSON.", "protocol": "HTTPS" },
+        { "from": "api", "to": "claude", "label": "Claude Vision Messages API", "detail": "Prompt structuré JSON output.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "ep-ai-weekly-checklist",
+      "category": "endpoint",
+      "group": "IA",
+      "title": "GET /api/ai/weekly-checklist",
+      "description": "Checklist semaine IA — pré-générée par le cron lundi 09:00.",
+      "trigger": "GET /api/ai/weekly-checklist",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET", "detail": "Sert le cache hebdo.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT Setting WHERE key='ai_weekly_checklist_cache'", "detail": "Fallback Claude direct si cache vide.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-ai-trends",
+      "category": "endpoint",
+      "group": "IA",
+      "title": "GET /api/ai/trends (Fashion Book)",
+      "description": "Tendances mode — pré-générées lundi 07:30 par le cron.",
+      "trigger": "GET /api/ai/trends",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET ?force_refresh=false", "detail": "Sert le cache hebdo.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT Setting WHERE key='ai_fashion_trends_cache'", "detail": "JSON volumineux.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-ai-marketing",
+      "category": "endpoint",
+      "group": "IA",
+      "title": "POST /api/ai/persona/marketing",
+      "description": "Rapport marketing IA — bicéphale (vue manager + vue stratégique).",
+      "trigger": "POST /api/ai/persona/marketing",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST", "detail": "Sert le cache lundi 08:30 ou regen on-demand.", "protocol": "HTTPS" },
+        { "from": "api", "to": "claude", "label": "Claude prompt persona structuré", "detail": "Use case manager.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "ep-ai-juridique",
+      "category": "endpoint",
+      "group": "IA",
+      "title": "POST /api/ai/persona/juridique",
+      "description": "Audit RGPD IA — conformité CNIL.",
+      "trigger": "POST /api/ai/persona/juridique",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST", "detail": "Persona juridique.", "protocol": "HTTPS" },
+        { "from": "api", "to": "claude", "label": "Claude prompt audit RGPD", "detail": "Sortie structurée.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "ep-admin-fiscal-export",
+      "category": "endpoint",
+      "group": "Admin",
+      "title": "GET /api/admin/fiscal-export",
+      "description": "Export fiscal NF525/DGFiP — formats XML ou JSON. Manager only.",
+      "trigger": "GET /api/admin/fiscal-export?from=&to=&format=xml",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET dates + format", "detail": "Manager only, audit obligatoire.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT Transaction WHERE date range", "detail": "Export hash chaîné NF525.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-admin-audit-logs",
+      "category": "endpoint",
+      "group": "Admin",
+      "title": "GET /api/admin/audit-logs",
+      "description": "Journal AuditLog filtrable par entity / action / user_id. Manager only.",
+      "trigger": "GET /api/admin/audit-logs",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET ?entity=&action=&user_id=&days=", "detail": "Pagination cursor.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT AuditLog WHERE filtres", "detail": "Index composite (entity, action, created_at).", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-admin-window-display",
+      "category": "endpoint",
+      "group": "Admin",
+      "title": "GET /api/admin/window-display/current",
+      "description": "Proposition vitrine semaine courante (pré-générée lundi 06:00).",
+      "trigger": "GET /api/admin/window-display/current",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET", "detail": "Sert la dernière WindowProposal en base.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT WindowProposal ORDER BY iso_week DESC LIMIT 1", "detail": "Proposal items JSONB.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-admin-loyalty-config",
+      "category": "endpoint",
+      "group": "Admin",
+      "title": "PUT /api/admin/loyalty/config",
+      "description": "Configure le mode souscription fidélité (free / paid / first_purchase) + prix éventuel.",
+      "trigger": "PUT /api/admin/loyalty/config",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "PUT {mode, price_cents?, threshold_cents?}", "detail": "Manager only.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "UPDATE Setting WHERE key='loyalty_config'", "detail": "Setting JSON unique.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-reports-retail-kpis",
+      "category": "endpoint",
+      "group": "Rapports",
+      "title": "GET /api/reports/retail-kpis",
+      "description": "KPIs retail — sell-through, GMROI, AIT, CA/m²/mois.",
+      "trigger": "GET /api/reports/retail-kpis?period_days=30",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET period_days", "detail": "Page /reports.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "Agrégations multi-tables", "detail": "Transaction + Product + Zone + Settings.surface_m2.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-reports-ess",
+      "category": "endpoint",
+      "group": "Rapports",
+      "title": "GET /api/reports/ess",
+      "description": "Rapport ESS — réemploi, tonnage, CA reversé.",
+      "trigger": "GET /api/reports/ess?period_days=90",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET period_days", "detail": "Vue mission ESS.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "Agrégations Transaction + Settings.weight_per_piece", "detail": "Calcul tonnage approximatif.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-hw-receipt-test",
+      "category": "endpoint",
+      "group": "Hardware",
+      "title": "POST /api/hardware/receipt/test",
+      "description": "Imprime un ticket de test sur la MUNBYN ESC/POS depuis /settings.",
+      "trigger": "POST /api/hardware/receipt/test",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST (manager)", "detail": "Pas de body — utilise RECEIPT_PRINTER_HOST.", "protocol": "HTTPS" },
+        { "from": "api", "to": "printer-receipt", "label": "ESC/POS RAW → printer:9100", "detail": "Ticket court avec logo + date + IP source.", "protocol": "TCP:9100" }
+      ]
+    },
+    {
+      "id": "ep-hw-drawer-kick",
+      "category": "endpoint",
+      "group": "Hardware",
+      "title": "POST /api/hardware/drawer/kick",
+      "description": "Impulsion d'ouverture tiroir-caisse.",
+      "trigger": "POST /api/hardware/drawer/kick",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST (manager)", "detail": "Sans body.", "protocol": "HTTPS" },
+        { "from": "api", "to": "printer-receipt", "label": "ESC p m vers la MUNBYN", "detail": "Impulsion 100ms.", "protocol": "TCP:9100" },
+        { "from": "printer-receipt", "to": "drawer", "label": "RJ-12 → ouverture mécanique", "detail": "Le tiroir doit être branché sur l'imprimante.", "protocol": "RJ-12" }
+      ]
+    },
+    {
+      "id": "ep-hw-label-test",
+      "category": "endpoint",
+      "group": "Hardware",
+      "title": "POST /api/hardware/label/test",
+      "description": "Imprime une étiquette de test sur la SATO CT4-LX.",
+      "trigger": "POST /api/hardware/label/test",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST (manager)", "detail": "Utilise LABEL_PRINTER_HOST.", "protocol": "HTTPS" },
+        { "from": "api", "to": "printer-label", "label": "SBPL RAW → SATO:9100", "detail": "Étiquette test 60x40mm.", "protocol": "TCP:9100" }
+      ]
+    },
+    {
+      "id": "ep-hw-config",
+      "category": "endpoint",
+      "group": "Hardware",
+      "title": "GET / PUT /api/hardware/config",
+      "description": "Lecture / écriture config hardware persistée dans data/hardware.json (pas de redéploiement nécessaire).",
+      "trigger": "GET / PUT /api/hardware/config",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET ou PUT (manager)", "detail": "Page /settings/materiel.", "protocol": "HTTPS" },
+        { "from": "api", "to": "api", "label": "Lecture/écriture data/hardware.json", "detail": "Fichier local versionné. VINTIZ_HARDWARE_CONFIG configurable.", "protocol": "Fichier" }
+      ]
+    },
+    {
+      "id": "ep-seo-status",
+      "category": "endpoint",
+      "group": "SEO",
+      "title": "GET /api/seo/status",
+      "description": "Smoke test sitemap + robots + métas + JSON-LD du site externe (lancé en CI / smoke deploy).",
+      "trigger": "GET /api/seo/status",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET", "detail": "Manager only.", "protocol": "HTTPS" },
+        { "from": "api", "to": "site", "label": "Fetch externe sitemap.xml + robots.txt + /", "detail": "Validation métas + OG + JSON-LD.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "ep-seo-snapshots",
+      "category": "endpoint",
+      "group": "SEO",
+      "title": "POST /api/seo/snapshots/run",
+      "description": "Lance un snapshot SEO + persiste (cron quotidien 05:00 + trigger manuel).",
+      "trigger": "POST /api/seo/snapshots/run",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST", "detail": "Manager only.", "protocol": "HTTPS" },
+        { "from": "api", "to": "site", "label": "Fetch sitemap + robots + métas", "detail": "Idem GET /api/seo/status.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "INSERT SeoSnapshot", "detail": "Score + détails JSONB.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-seo-social-posts",
+      "category": "endpoint",
+      "group": "SEO",
+      "title": "GET /api/seo/social-posts/current",
+      "description": "4 posts proposés cette semaine — pré-générés lundi 07:00 par Claude.",
+      "trigger": "GET /api/seo/social-posts/current",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET", "detail": "Manager only.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT SocialPost WHERE iso_week=current", "detail": "Status pending / accepted.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-newsletter-export",
+      "category": "endpoint",
+      "group": "Newsletter",
+      "title": "GET /api/newsletter/subscribers/export",
+      "description": "Export CSV des abonnés (admin).",
+      "trigger": "GET /api/newsletter/subscribers/export",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "GET", "detail": "Manager only.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT NewsletterSubscriber WHERE status=confirmed", "detail": "Stream CSV.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-cahier-monthly-target",
+      "category": "endpoint",
+      "group": "Cahier",
+      "title": "PUT /api/cahier/monthly-target",
+      "description": "Saisir l'objectif mensuel CA — alimente la répartition par poids historique des jours de la semaine.",
+      "trigger": "PUT /api/cahier/monthly-target",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "PUT {year, month, target_cents}", "detail": "Page cahier du jour.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "UPSERT MonthlyTarget", "detail": "Une ligne par (year, month).", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "ep-cahier-signature",
+      "category": "endpoint",
+      "group": "Cahier",
+      "title": "PUT /api/cahier/signature",
+      "description": "Apposer signature (manager / équipe) sur le cahier du jour.",
+      "trigger": "PUT /api/cahier/signature",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "PUT {report_date, role}", "detail": "Manager + équipe — 2 signatures distinctes.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "UPSERT DailySignature", "detail": "Horodatage + user_id.", "protocol": "SQL" }
+      ]
+    },
+
+    {
+      "id": "cron-weekly-scoring",
+      "category": "cron",
+      "group": "Scoring",
+      "title": "Cron weekly_scoring — Lundi 04:00 Paris",
+      "description": "Recalcule les trend_scores v3 de tous les produits stock+display. Rafraîchit category_trends + velocity + market_price_estimate.",
+      "trigger": "APScheduler CronTrigger(day_of_week='mon', hour=4, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_weekly_scoring()", "detail": "Tâche enregistrée dans app/jobs.py.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "Refresh category_trends + velocity cache", "detail": "4 semaines de signal ventes + 90j de vélocité.", "protocol": "SQL" },
+        { "from": "api", "to": "claude", "label": "refresh_stale_estimates (limit 500)", "detail": "Re-estime les prix marché des produits dont l'estimation date.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "UPDATE Product.trend_score pour tous", "detail": "6 composantes du score recalculées (shelf age, brand, market, trend, velocity, condition).", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-daily-rgpd-purge",
+      "category": "cron",
+      "group": "RGPD",
+      "title": "Cron daily_rgpd_purge — Tous les jours 03:00",
+      "description": "Hard-delete des clientes dont la fenêtre de 30 jours de suppression est écoulée.",
+      "trigger": "CronTrigger(hour=3, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_daily_rgpd_purge()", "detail": "RGPD Art. 17 — droit à l'oubli.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "DELETE Client WHERE deletion_scheduled_at < now", "detail": "Cascade — transactions anonymisées, consents purgés.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-daily-embedding-refresh",
+      "category": "cron",
+      "group": "Embeddings",
+      "title": "Cron daily_embedding_refresh — 04:00",
+      "description": "Recalcule les embeddings produits manquants + rafraîchit les taste profiles clientes.",
+      "trigger": "CronTrigger(hour=4, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_daily_embedding_refresh()", "detail": "Service EmbeddingService.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "SELECT Products + Transactions", "detail": "Trouver les products sans embedding + les clientes ayant fait des transactions.", "protocol": "SQL" },
+        { "from": "api", "to": "claude", "label": "Embedding calls (batch)", "detail": "Vectorisation produits.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "UPDATE Product.embedding + TasteProfile.embedding", "detail": "Stockage JSONB.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-daily-return-to-sorting",
+      "category": "cron",
+      "group": "Inventaire",
+      "title": "Cron daily_return_to_sorting — 02:00",
+      "description": "Retourne au centre de tri les produits âgés non vendus (selon règles configurables).",
+      "trigger": "CronTrigger(hour=2, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_daily_return_to_sorting()", "detail": "ReturnToSortingService.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "SELECT Product status=stock|display AND age > seuil", "detail": "Seuils par catégorie configurables.", "protocol": "SQL" },
+        { "from": "api", "to": "postgres", "label": "UPDATE Product.status=returned + AuditLog", "detail": "Trace complète audit.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-weekly-window-display",
+      "category": "cron",
+      "group": "Merchandising",
+      "title": "Cron weekly_window_display — Lundi 06:00",
+      "description": "Génère la proposition vitrine de la semaine en croisant scoring + tendances + stock.",
+      "trigger": "CronTrigger(day_of_week='mon', hour=6, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_weekly_window_display()", "detail": "MerchandisingService.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "SELECT top-N Products par trend_score", "detail": "Filtre stock + tag display.", "protocol": "SQL" },
+        { "from": "api", "to": "postgres", "label": "INSERT WindowProposal", "detail": "Iso week + items JSONB + status=pending.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-weekly-social-posts",
+      "category": "cron",
+      "group": "SEO",
+      "title": "Cron weekly_social_posts — Lundi 07:00",
+      "description": "Génère 4 posts Insta/TikTok via Claude — proposés au manager pour validation.",
+      "trigger": "CronTrigger(day_of_week='mon', hour=7, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_weekly_social_posts()", "detail": "Service visibility.generate_weekly_social_posts.", "protocol": "Cron" },
+        { "from": "api", "to": "claude", "label": "Claude prompt social media", "detail": "4 posts avec ton + emoji + hashtags suggérés.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "INSERT SocialPost (status=pending)", "detail": "Validation manager via /seo.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-daily-seo-snapshot",
+      "category": "cron",
+      "group": "SEO",
+      "title": "Cron daily_seo_snapshot — 05:00",
+      "description": "Snapshot SEO quotidien — sitemap + métas + JSON-LD + GSC (si configuré).",
+      "trigger": "CronTrigger(hour=5, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_daily_seo_snapshot()", "detail": "Service _run_seo_check_and_persist.", "protocol": "Cron" },
+        { "from": "api", "to": "site", "label": "Fetch sitemap + robots + métas", "detail": "Validation externe.", "protocol": "HTTPS" },
+        { "from": "api", "to": "ga4", "label": "Search Console API (optionnel)", "detail": "Si GSC_PROPERTY configuré.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "INSERT SeoSnapshot", "detail": "Historique score quotidien.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-monthly-rfm",
+      "category": "cron",
+      "group": "CRM",
+      "title": "Cron monthly_rfm_segmentation — 1er du mois 04:00",
+      "description": "Recalcule les scores RFM (Recency, Frequency, Monetary) et segmente toutes les clientes.",
+      "trigger": "CronTrigger(day='1', hour=4, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_monthly_rfm_segmentation()", "detail": "Service rfm.run_segmentation.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "Agrégations Transaction + window 365j", "detail": "Calcul R, F, M par cliente.", "protocol": "SQL" },
+        { "from": "api", "to": "postgres", "label": "UPDATE Client.segment", "detail": "Champion, loyal_active, at_risk, hibernating, lost.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-daily-anniversary",
+      "category": "cron",
+      "group": "CRM",
+      "title": "Cron daily_anniversary_emails — 09:00",
+      "description": "Envoi coupon anniversaire + email aux clientes dont c'est l'anniversaire ce jour.",
+      "trigger": "CronTrigger(hour=9, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_daily_anniversary_emails()", "detail": "Service anniversary.run_anniversary_pass.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "SELECT Client WHERE date(birth_date) MATCHES today", "detail": "Filtre consents.newsletter = granted.", "protocol": "SQL" },
+        { "from": "api", "to": "postgres", "label": "INSERT Coupon (anniversary, expire +30j)", "detail": "Code unique, 10% par défaut.", "protocol": "SQL" },
+        { "from": "api", "to": "brevo", "label": "Email anniversaire + coupon", "detail": "Template Brevo.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "cron-weekly-new-arrivals",
+      "category": "cron",
+      "group": "CRM",
+      "title": "Cron weekly_new_arrivals_emails — Vendredi 10:00",
+      "description": "Digest hebdo des nouvelles arrivées personnalisé par taste profile.",
+      "trigger": "CronTrigger(day_of_week='fri', hour=10, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_weekly_new_arrivals_emails()", "detail": "Service new_arrivals.run_new_arrivals_pass.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "SELECT Products shelf_date >= 7j + Clients consent newsletter", "detail": "Filtres + matching embeddings.", "protocol": "SQL" },
+        { "from": "api", "to": "brevo", "label": "Emails personnalisés (1 par cliente)", "detail": "5 produits matchés par taste profile.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "cron-morning-restock",
+      "category": "cron",
+      "group": "Inventaire",
+      "title": "Cron morning_restock — Mar-Sam 08:00",
+      "description": "Checklist matinale — quels produits sortir en rayon (passage stock→display).",
+      "trigger": "CronTrigger(day_of_week='tue,wed,thu,fri,sat', hour=8, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_morning_restock()", "detail": "Service checklist.run_morning_restock.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "SELECT top-N Products status=stock par score", "detail": "Filtre zones avec capacity disponible.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-monday-position",
+      "category": "cron",
+      "group": "Inventaire",
+      "title": "Cron monday_position_reco — Lundi 05:00",
+      "description": "Recommandations de repositionnement après le scoring 04:00 — produits à déplacer entre zones.",
+      "trigger": "CronTrigger(day_of_week='mon', hour=5, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_monday_position_reco()", "detail": "Service checklist.run_monday_position_reco.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "Calcul zones cibles via merchandising", "detail": "Dépend des scores tout juste recalculés.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-thursday-exit",
+      "category": "cron",
+      "group": "Inventaire",
+      "title": "Cron thursday_six_weeks_exit — Jeudi 09:00",
+      "description": "Sortie automatique des produits en rayon depuis ≥ 6 semaines.",
+      "trigger": "CronTrigger(day_of_week='thu', hour=9, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_thursday_six_weeks_exit()", "detail": "Service checklist.run_thursday_six_weeks_exit.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "UPDATE Product status=display→stock pour ceux > 42j", "detail": "Retour boîte stockage en attendant la prochaine rotation.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-daily-loyalty-expiry",
+      "category": "cron",
+      "group": "Fidélité",
+      "title": "Cron daily_loyalty_expiry — 03:30",
+      "description": "Péremption des points fidélité après 24 mois sans activité.",
+      "trigger": "CronTrigger(hour=3, minute=30)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_daily_loyalty_expiry()", "detail": "Service loyalty_expiry.expire_inactive_points.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "SELECT Client.last_activity_at < now-24mo + points > 0", "detail": "Critère RGPD minimisation.", "protocol": "SQL" },
+        { "from": "api", "to": "postgres", "label": "INSERT LoyaltyLedger (expiry, -points)", "detail": "Solde remis à 0, événement tracé.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-daily-trend-alerts",
+      "category": "cron",
+      "group": "CRM",
+      "title": "Cron daily_trend_alerts — 11:00",
+      "description": "Envoi alertes tendance — produits trend_score>70 matchant le taste profile.",
+      "trigger": "CronTrigger(hour=11, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_daily_trend_alerts()", "detail": "Service trend_alerts.run_trend_alerts.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "SELECT trending Products × Clients opt-in", "detail": "Filtre consent.trend_alerts + frequency cap 7j.", "protocol": "SQL" },
+        { "from": "api", "to": "brevo", "label": "Emails personnalisés trend alert", "detail": "1 email par cliente max — multi-produits.", "protocol": "HTTPS" }
+      ]
+    },
+    {
+      "id": "cron-monthly-embeddings-cleanup",
+      "category": "cron",
+      "group": "Embeddings",
+      "title": "Cron monthly_embeddings_cleanup — 2 du mois 02:30",
+      "description": "Purge des taste profiles inactives (24 mois) + orphelines. RGPD Art. 5-1-c.",
+      "trigger": "CronTrigger(day='2', hour=2, minute=30)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_monthly_embeddings_cleanup()", "detail": "Service embeddings_cleanup.", "protocol": "Cron" },
+        { "from": "api", "to": "postgres", "label": "DELETE TasteProfile WHERE inactive | orphan", "detail": "Minimisation données.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-weekly-fashion-book",
+      "category": "cron",
+      "group": "IA",
+      "title": "Cron weekly_fashion_book — Lundi 07:30",
+      "description": "Pré-génère le Fashion Book pour /api/ai/trends. Évite à la manager d'attendre l'appel Claude.",
+      "trigger": "CronTrigger(day_of_week='mon', hour=7, minute=30)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_weekly_fashion_book()", "detail": "Force refresh get_fashion_trends.", "protocol": "Cron" },
+        { "from": "api", "to": "claude", "label": "Claude prompt tendances mode", "detail": "Sortie structurée — saisons, couleurs, silhouettes.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "UPDATE Setting ai_fashion_trends_cache", "detail": "Le manager voit le cache au prochain GET.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-weekly-marketing",
+      "category": "cron",
+      "group": "IA",
+      "title": "Cron weekly_marketing_report — Lundi 08:30",
+      "description": "Pré-génère le rapport marketing bicéphale.",
+      "trigger": "CronTrigger(day_of_week='mon', hour=8, minute=30)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_weekly_marketing_report()", "detail": "Service _build_marketing_persona_report.", "protocol": "Cron" },
+        { "from": "api", "to": "claude", "label": "Claude prompt persona marketing", "detail": "Vue manager + stratégique.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "UPDATE Setting ai_marketing_persona_cache", "detail": "Affiché instantanément /ia.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "cron-weekly-checklist",
+      "category": "cron",
+      "group": "IA",
+      "title": "Cron weekly_checklist — Lundi 09:00",
+      "description": "Pré-génère la checklist hebdo IA.",
+      "trigger": "CronTrigger(day_of_week='mon', hour=9, minute=0)",
+      "steps": [
+        { "from": "scheduler", "to": "api", "label": "run_weekly_checklist()", "detail": "Force refresh get_weekly_checklist.", "protocol": "Cron" },
+        { "from": "api", "to": "claude", "label": "Claude prompt checklist actionnable", "detail": "Items priorisés.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "UPDATE Setting ai_weekly_checklist_cache", "detail": "Servi instantanément /api/ai/weekly-checklist.", "protocol": "SQL" }
+      ]
+    },
+
+    {
+      "id": "hw-scan-barcode",
+      "category": "hardware",
+      "group": "Douchette",
+      "title": "Scan code-barres → POS",
+      "description": "La douchette USB HID se comporte comme un clavier. Le champ recherche POS est auto-focus.",
+      "trigger": "Manager scanne un produit avec la douchette",
+      "steps": [
+        { "from": "scanner", "to": "tablet", "label": "Frappes clavier {chiffres} + Entrée", "detail": "USB-HID via USB-C OTG sur la Lenovo Idea Tab Pro Gen 2 — pas de driver spécifique côté Android.", "protocol": "USB-HID" },
+        { "from": "tablet", "to": "api", "label": "GET /api/inventory/products/search?q={barcode}", "detail": "Résolution exact match sur Product.barcode.", "protocol": "HTTP" },
+        { "from": "api", "to": "postgres", "label": "SELECT Product WHERE barcode = …", "detail": "Filtre stock+display + retour 1 résultat.", "protocol": "SQL" }
+      ]
+    },
+    {
+      "id": "hw-kick-drawer",
+      "category": "hardware",
+      "group": "Tiroir",
+      "title": "Ouverture tiroir-caisse",
+      "description": "Le tiroir Safescan est branché en RJ-12 sur l'imprimante MUNBYN. L'API envoie une impulsion ESC p m via la connexion TCP.",
+      "trigger": "Fin de transaction espèces OU bouton /settings « Kicker tiroir »",
+      "steps": [
+        { "from": "api", "to": "printer-receipt", "label": "ESC p m vers printer:9100", "detail": "Impulsion 100ms.", "protocol": "TCP:9100" },
+        { "from": "printer-receipt", "to": "drawer", "label": "Signal RJ-12 → ouverture", "detail": "Mécanique — pas de feedback logiciel sur l'état du tiroir.", "protocol": "RJ-12" }
+      ]
+    },
+    {
+      "id": "hw-print-receipt-munbyn",
+      "category": "hardware",
+      "group": "Imprimante ticket",
+      "title": "Impression ticket via MUNBYN ESC/POS",
+      "description": "Mode recommandé — l'API envoie les bytes ESC/POS directement à l'imprimante. Tiroir kické dans la foulée.",
+      "trigger": "Manager clique « Imprimer (MUNBYN) » dans la modale ticket",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "GET /api/pos/transactions/{id}/receipt", "detail": "Texte 80 mm pré-formaté.", "protocol": "HTTPS" },
+        { "from": "api", "to": "printer-receipt", "label": "ESC/POS RAW → printer:9100", "detail": "Encodage Latin-1, codes-barres EAN, logo header.", "protocol": "TCP:9100" }
+      ]
+    },
+    {
+      "id": "hw-print-label-sato",
+      "category": "hardware",
+      "group": "Imprimante étiquettes",
+      "title": "Impression étiquette via SATO SBPL",
+      "description": "Imprimante thermique 4″ pour étiquettes produits. SBPL natif côté API.",
+      "trigger": "Manager clique « Imprimer étiquette » ou bouton test /settings",
+      "steps": [
+        { "from": "tablet", "to": "api", "label": "POST /api/hardware/label/test OU GET /label?print=true", "detail": "Service sato_service.py.", "protocol": "HTTPS" },
+        { "from": "api", "to": "printer-label", "label": "SBPL RAW → SATO:9100", "detail": "Étiquette format configurable.", "protocol": "TCP:9100" }
+      ]
+    },
+    {
+      "id": "hw-sumup-reader-push",
+      "category": "hardware",
+      "group": "TPE",
+      "title": "Push paiement TPE SumUp Solo",
+      "description": "L'API push directement le montant sur le TPE — la cliente tape juste sa carte, pas de saisie sur le TPE.",
+      "trigger": "Paiement CB avec SUMUP_READER_ID configuré",
+      "steps": [
+        { "from": "api", "to": "sumup-api", "label": "POST /v0.1/merchants/{code}/readers/{id}/checkout", "detail": "Bearer SUMUP_API_KEY production.", "protocol": "HTTPS" },
+        { "from": "sumup-api", "to": "tpe-sumup", "label": "Notification montant", "detail": "Le Solo sonne, affiche le total.", "protocol": "Wi-Fi" }
+      ]
+    },
+    {
+      "id": "hw-test-receipt",
+      "category": "hardware",
+      "group": "Settings",
+      "title": "Bouton « Imprimer ticket test » (/settings/materiel)",
+      "description": "Test live de l'imprimante ticket MUNBYN sans transaction réelle.",
+      "trigger": "Manager clique le bouton test dans /settings",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST /api/hardware/receipt/test", "detail": "Sans body.", "protocol": "HTTPS" },
+        { "from": "api", "to": "printer-receipt", "label": "ESC/POS test ticket → printer:9100", "detail": "Header logo + date + IP source + 'Test OK'.", "protocol": "TCP:9100" }
+      ]
+    },
+    {
+      "id": "hw-test-label",
+      "category": "hardware",
+      "group": "Settings",
+      "title": "Bouton « Imprimer étiquette test » (/settings/materiel)",
+      "description": "Test live de la SATO sans produit réel.",
+      "trigger": "Manager clique le bouton test dans /settings",
+      "steps": [
+        { "from": "browser-mgr", "to": "api", "label": "POST /api/hardware/label/test", "detail": "Sans body.", "protocol": "HTTPS" },
+        { "from": "api", "to": "printer-label", "label": "SBPL test → SATO:9100", "detail": "Étiquette générique 60x40mm.", "protocol": "TCP:9100" }
+      ]
+    },
+    {
+      "id": "hw-deploy",
+      "category": "hardware",
+      "group": "Ops",
+      "title": "Déploiement production via GitHub Actions",
+      "description": "Push sur main → workflow .github/workflows/deploy.yml → SSH VPS → scripts/deploy.sh.",
+      "trigger": "git push origin main",
+      "steps": [
+        { "from": "browser-mgr", "to": "github", "label": "git push origin main", "detail": "Concurrency group 'production' — les pushs s'enchaînent.", "protocol": "Git" },
+        { "from": "github", "to": "api", "label": "SSH VPS_HOST + scripts/deploy.sh", "detail": "Rebuild Docker, migrations Alembic, smoke tests.", "protocol": "SSH" },
+        { "from": "api", "to": "postgres", "label": "Alembic upgrade head", "detail": "Migrations idempotentes.", "protocol": "SQL" }
+      ]
+    }
+  ]
+}

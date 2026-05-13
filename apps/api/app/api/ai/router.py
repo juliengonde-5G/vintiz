@@ -152,13 +152,19 @@ async def get_stale(
 @router.post("/pricing/suggest")
 async def suggest_product_price(
     category_id: str,
-    purchase_price: float,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    purchase_price: float | None = None,
     brand: str | None = None,
     condition: str | None = None,
 ):
-    """Suggest an optimal sale price for a product."""
+    """Suggest an optimal sale price for a product.
+
+    ``purchase_price`` is now optional — Vintiz fonctionne en achat-revente
+    sans saisie du prix d'achat côté caisse, donc la suggestion s'appuie
+    sur la grille tarifaire (médiane catégorie) + le prix moyen vendu +
+    marque + état quand ce paramètre est absent.
+    """
     result = await suggest_price(db, category_id, purchase_price, brand, condition)
     return result
 

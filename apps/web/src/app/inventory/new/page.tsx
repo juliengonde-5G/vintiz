@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import Button from '@/components/ui/Button';
@@ -51,6 +51,7 @@ function getWeekNumber(): number {
 export default function NewProductPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [showLabel, setShowLabel] = useState(false);
@@ -70,7 +71,6 @@ export default function NewProductPage() {
     size: '',
     color: '',
     brand: '',
-    purchasePrice: '',
     sellingPrice: '',
     week_number: String(getWeekNumber()),
     status: 'stock',
@@ -132,28 +132,40 @@ export default function NewProductPage() {
     }
   };
 
-  const fetchPriceSuggestion = async () => {
-    if (!form.category_id || !form.purchasePrice) {
-      setError('Selectionnez une categorie et entrez un prix d\'achat');
-      return;
-    }
+  const fetchPriceSuggestion = useCallback(async () => {
+    if (!form.category_id) return;
     setPricingLoading(true);
     try {
-      const params = new URLSearchParams({
-        category_id: form.category_id,
-        purchase_price: form.purchasePrice,
-      });
+      const params = new URLSearchParams({ category_id: form.category_id });
       if (form.brand) params.set('brand', form.brand);
       if (visionResult?.etat) params.set('condition', visionResult.etat);
       const res = await api.post(`/api/ai/pricing/suggest?${params}`, {});
       if (res.ok) {
         const data: PriceSuggestion = await res.json();
         setPriceSuggestion(data);
-        handleChange('sellingPrice', String(data.suggested_price));
+        // N'écrase pas une saisie manuelle du caissier — uniquement quand
+        // le champ est vide ou égal à la précédente suggestion.
+        if (data.suggested_price > 0) {
+          handleChange('sellingPrice', String(data.suggested_price));
+        }
       }
-    } catch { setError('Erreur suggestion prix'); }
+    } catch {
+      // Échec silencieux — la suggestion auto ne doit pas bloquer la
+      // saisie produit. Le caissier peut toujours saisir le prix à la
+      // main.
+    }
     setPricingLoading(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.category_id, form.brand, visionResult?.etat]);
+
+  // Déclenche systématiquement la suggestion dès qu'on a une catégorie
+  // (et le contexte AI quand il arrive). Le moteur degrade gracefully
+  // sans prix d'achat — grille tarifaire + prix moyen vendu + marque +
+  // état couvrent la grande majorité des cas.
+  useEffect(() => {
+    if (!form.category_id) return;
+    void fetchPriceSuggestion();
+  }, [form.category_id, form.brand, visionResult?.etat, fetchPriceSuggestion]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,7 +178,9 @@ export default function NewProductPage() {
         size: form.size || null,
         color: form.color || null,
         brand: form.brand || null,
-        purchase_price: parseFloat(form.purchasePrice) || 0,
+        // Vintiz fonctionne en achat-revente sans prix d'achat saisi
+        // côté caisse — l'API accepte 0 par défaut.
+        purchase_price: 0,
         sale_price: parseFloat(form.sellingPrice) || 0,
         status: form.status,
         week_number: parseInt(form.week_number) || null,
@@ -250,6 +264,55 @@ export default function NewProductPage() {
                     if (file) handleFileSelect(file);
                   }}
                 />
+                {/* Caméra directe — sur Android Chrome l'attribut
+                    capture=environment ouvre l'appareil photo arrière.
+                    Sur desktop il retombe sur le file picker. Champ
+                    caché, déclenché par le bouton dédié. */}
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileSelect(file);
+                  }}
+                />
+              </div>
+
+              {/* Action buttons — bouton caméra dédié à côté du choix fichier */}
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    cameraInputRef.current?.click();
+                  }}
+                  className="flex items-center justify-center gap-2 px-3 py-3 rounded-xl bg-vz-teal hover:bg-vz-teal-deep text-white text-sm font-medium transition-colors min-h-[48px] shadow-sm"
+                  aria-label="Prendre en photo"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                  Prendre en photo
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  className="flex items-center justify-center gap-2 px-3 py-3 rounded-xl bg-white border border-vz-line hover:bg-vz-bg-alt text-vz-ink text-sm font-medium transition-colors min-h-[48px]"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  Choisir fichier
+                </button>
               </div>
 
               {analyzing && (
@@ -293,22 +356,21 @@ export default function NewProductPage() {
               )}
             </Card>
 
-            {/* Price Suggestion */}
-            {form.category_id && form.purchasePrice && (
-              <Card title="Suggestion prix IA">
-                <Button
-                  type="button"
-                  onClick={fetchPriceSuggestion}
-                  disabled={pricingLoading}
-                  variant="secondary"
-                  className="w-full mb-3"
-                >
-                  {pricingLoading ? 'Calcul en cours...' : 'Obtenir suggestion prix'}
-                </Button>
-                {priceSuggestion && (
+            {/* Price Suggestion — déclenchée systématiquement dès qu'une
+                catégorie est sélectionnée (le moteur degrade gracefully
+                sans prix d'achat). */}
+            {form.category_id && (
+              <Card title="Suggestion prix automatique">
+                {pricingLoading && (
+                  <div className="text-center py-3 text-sm text-gray-500">
+                    <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-vz-teal mr-2 align-middle" />
+                    Calcul à partir des ventes et de la grille tarifaire…
+                  </div>
+                )}
+                {!pricingLoading && priceSuggestion && priceSuggestion.suggested_price > 0 && (
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between py-1">
-                      <span className="text-gray-500">Prix suggere</span>
+                      <span className="text-gray-500">Prix suggéré</span>
                       <span className="font-bold text-vz-teal text-lg">{priceSuggestion.suggested_price.toFixed(2)}&nbsp;&euro;</span>
                     </div>
                     <div className="flex justify-between py-1 text-xs">
@@ -328,6 +390,24 @@ export default function NewProductPage() {
                         ))}
                       </ul>
                     </div>
+                    <Button
+                      type="button"
+                      onClick={fetchPriceSuggestion}
+                      disabled={pricingLoading}
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-2"
+                    >
+                      Recalculer
+                    </Button>
+                  </div>
+                )}
+                {!pricingLoading && priceSuggestion && priceSuggestion.suggested_price === 0 && (
+                  <div className="text-xs text-gray-500 space-y-1">
+                    <p>Pas assez de données marché pour suggérer un prix.</p>
+                    {priceSuggestion.reasoning.map((r, i) => (
+                      <p key={i} className="text-gray-400">• {r}</p>
+                    ))}
                   </div>
                 )}
               </Card>
@@ -428,28 +508,47 @@ export default function NewProductPage() {
               </div>
             </Card>
 
-            <Card title="Tarification">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-sm font-medium text-black mb-1.5">Prix d&apos;achat (EUR)</label>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => handleChange('purchasePrice', String(Math.max(0, parseFloat(form.purchasePrice||'0') - 1).toFixed(2)))}
-                      className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">−</button>
-                    <Input type="number" step="0.01" value={form.purchasePrice} onChange={(e) => handleChange('purchasePrice', e.target.value)} placeholder="0.00" required className="text-center font-bold" />
-                    <button type="button" onClick={() => handleChange('purchasePrice', String((parseFloat(form.purchasePrice||'0') + 1).toFixed(2)))}
-                      className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">+</button>
-                  </div>
+            <Card title="Prix de vente">
+              <div>
+                <label className="block text-sm font-medium text-black mb-1.5">Prix TTC (EUR)</label>
+                <div className="flex items-center gap-2 max-w-md">
+                  <button
+                    type="button"
+                    onClick={() => handleChange('sellingPrice', String(Math.max(0, parseFloat(form.sellingPrice || '0') - 0.5).toFixed(2)))}
+                    className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0"
+                  >
+                    −
+                  </button>
+                  <Input
+                    type="number"
+                    step="0.50"
+                    value={form.sellingPrice}
+                    onChange={(e) => handleChange('sellingPrice', e.target.value)}
+                    placeholder="0.00"
+                    required
+                    className="text-center font-bold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleChange('sellingPrice', String((parseFloat(form.sellingPrice || '0') + 0.5).toFixed(2)))}
+                    className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0"
+                  >
+                    +
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-black mb-1.5">Prix de vente (EUR)</label>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => handleChange('sellingPrice', String(Math.max(0, parseFloat(form.sellingPrice||'0') - 0.5).toFixed(2)))}
-                      className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">−</button>
-                    <Input type="number" step="0.50" value={form.sellingPrice} onChange={(e) => handleChange('sellingPrice', e.target.value)} placeholder="0.00" required className="text-center font-bold" />
-                    <button type="button" onClick={() => handleChange('sellingPrice', String((parseFloat(form.sellingPrice||'0') + 0.5).toFixed(2)))}
-                      className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">+</button>
-                  </div>
-                </div>
+                {priceSuggestion && priceSuggestion.suggested_price > 0 && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Suggestion automatique :{' '}
+                    <button
+                      type="button"
+                      onClick={() => handleChange('sellingPrice', String(priceSuggestion.suggested_price))}
+                      className="text-vz-teal underline font-medium"
+                    >
+                      {priceSuggestion.suggested_price.toFixed(2)}&nbsp;€
+                    </button>{' '}
+                    — basée sur grille tarifaire et ventes récentes.
+                  </p>
+                )}
               </div>
             </Card>
 

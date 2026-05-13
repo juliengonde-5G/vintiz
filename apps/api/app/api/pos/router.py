@@ -510,77 +510,16 @@ async def cancel_cb_payment(
 
 
 # ---------------------------------------------------------------------------
-# SumUp sandbox admin endpoints
+# SumUp config endpoint (production only)
 # ---------------------------------------------------------------------------
 
-@router.get("/payments/cb/sandbox/config")
-async def get_sumup_sandbox_config(current_user: User = Depends(get_current_user)):
-    """Return the current SumUp configuration (environment, keys set, etc.)."""
+@router.get("/payments/cb/config")
+async def get_sumup_config(current_user: User = Depends(get_current_user)):
+    """Return the current SumUp configuration (keys set, masked merchant
+    code, reader id, etc.). Production-only — le mode sandbox/simulation
+    a été retiré pour le passage en prod boutique."""
     from app.services.sumup_service import SumUpService
     return SumUpService().describe()
-
-
-@router.get("/payments/cb/sandbox/state")
-async def get_sumup_sandbox_state(
-    limit: int = 50,
-    current_user: User = Depends(get_current_user),
-):
-    """Return a snapshot of sandbox checkouts and event log for live debugging."""
-    from app.services.sumup_service import SumUpService
-    return SumUpService().sandbox_snapshot(limit=limit)
-
-
-@router.post("/payments/cb/sandbox/{checkout_id}/approve")
-async def approve_sumup_sandbox(
-    checkout_id: str,
-    current_user: User = Depends(get_current_user),
-):
-    """Force a pending sandbox checkout to PAID."""
-    from app.services.sumup_service import SumUpService
-    result = SumUpService().sandbox_approve(checkout_id)
-    if not result.get("ok"):
-        raise HTTPException(status_code=404, detail=result.get("error", "unknown"))
-    return result
-
-
-@router.post("/payments/cb/sandbox/{checkout_id}/decline")
-async def decline_sumup_sandbox(
-    checkout_id: str,
-    current_user: User = Depends(get_current_user),
-):
-    """Force a pending sandbox checkout to FAILED."""
-    from app.services.sumup_service import SumUpService
-    result = SumUpService().sandbox_decline(checkout_id)
-    if not result.get("ok"):
-        raise HTTPException(status_code=404, detail=result.get("error", "unknown"))
-    return result
-
-
-@router.post("/payments/cb/sandbox/clear")
-async def clear_sumup_sandbox(current_user: User = Depends(get_current_user)):
-    """Clear the sandbox event log and checkout store."""
-    from app.services.sumup_service import SumUpService
-    SumUpService().sandbox_clear()
-    return {"ok": True}
-
-
-class SandboxTestRequest(BaseModel):
-    amount: float = 12.50
-    description: str = "Test sandbox Vintiz"
-
-
-@router.post("/payments/cb/sandbox/test")
-async def test_sumup_sandbox(
-    request: SandboxTestRequest,
-    current_user: User = Depends(get_current_user),
-):
-    """Create a test checkout in sandbox — useful for the admin UI button."""
-    from app.services.sumup_service import SumUpService
-    svc = SumUpService()
-    return await svc.create_checkout(
-        amount=request.amount,
-        description=request.description,
-    )
 
 
 @router.post("/transactions/{transaction_id}/resend")

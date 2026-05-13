@@ -50,7 +50,7 @@ docs/
 | Logs | `app/core/logging_config.py` — text ou JSON via `LOG_JSON`, `request_id` propagé |
 | Sécurité | `SecurityHeadersMiddleware` (CSP, X-Frame-Options, Referrer-Policy…) + `RequestIdMiddleware` |
 | IA | Anthropic Claude (claude-haiku-4-5) |
-| Payment CB | SumUp API — 3 modes : production / sandbox / simulation |
+| Payment CB | SumUp API — production uniquement (sandbox retiré pour la mise en prod boutique) |
 | Email | SMTP standard (simulation si non configuré) |
 | SMS | Twilio (simulation si non configuré) |
 | Météo | OpenWeatherMap API |
@@ -122,16 +122,14 @@ ANTHROPIC_API_KEY=sk-ant-...
 # Météo Vernon (sans cette clé, widget météo indisponible)
 OPENWEATHER_API_KEY=votre-cle-openweather
 
-# CB SumUp — 3 modes
-#   - production : SUMUP_ENVIRONMENT=production + clé + merchant code
-#   - sandbox    : SUMUP_ENVIRONMENT=sandbox avec clé de dev
-#   - simulation : pas de clé → sandbox en mémoire, event log + approve manuel
-SUMUP_ENVIRONMENT=sandbox
-SUMUP_API_KEY=
-SUMUP_MERCHANT_CODE=
+# CB SumUp — production uniquement
+# Le mode sandbox/simulation a été retiré pour la mise en prod boutique.
+# Si SUMUP_API_KEY n'est pas posée, les checkouts CB retournent FAILED
+# (pas de simulation de paiement).
+SUMUP_API_KEY=                    # sup_sk_... (obligatoire pour encaisser en CB)
+SUMUP_MERCHANT_CODE=              # M... (obligatoire pour encaisser en CB)
 SUMUP_READER_ID=                  # optionnel: push direct vers un TPE Solo
 SUMUP_RETURN_URL=                 # optionnel: callback après paiement reader
-SUMUP_SANDBOX_AUTO_DELAY_SEC=5    # 0 = approbation manuelle requise
 
 # Hardware (optionnel — sinon configurable via /settings > Materiel)
 RECEIPT_PRINTER_HOST=             # IP de la MUNBYN 047P-WiFi
@@ -239,13 +237,10 @@ POST   /api/pos/drawer/close                 Fermer + rapport Z
 GET    /api/pos/drawer/current               État tiroir
 
 # POS — CB SumUp
-POST   /api/pos/payments/cb/initiate         Initier paiement SumUp
+POST   /api/pos/payments/cb/initiate         Initier paiement SumUp (production)
 GET    /api/pos/payments/cb/{id}/status      Poller statut SumUp
 DELETE /api/pos/payments/cb/{id}             Annuler checkout
-GET    /api/pos/payments/cb/sandbox/config   Config SumUp (env, clés)
-GET    /api/pos/payments/cb/sandbox/state    Event log sandbox (live)
-POST   /api/pos/payments/cb/sandbox/{id}/approve  Valider manuellement
-POST   /api/pos/payments/cb/sandbox/{id}/decline  Refuser manuellement
+GET    /api/pos/payments/cb/config           Config SumUp (clés masquées)
 
 # Hardware (back-office /settings > Materiel)
 GET    /api/hardware/compatibility           Liste matériel supporté
@@ -602,24 +597,19 @@ Matériel supporté :
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 | Branché sur imprimante (kick `ESC p m`) | inclus dans `escpos_service` |
 | TPE | **SumUp Solo** | Wi-Fi / compte SumUp | `app/services/sumup_service.py` |
 
-Deux modes d'impression ticket coexistent dans `apps/web/src/app/pos/page.tsx` :
-
-1. **MUNBYN ESC/POS** (recommandé) — bouton *Imprimer (MUNBYN)* dans la modal de
-   ticket. Appelle `POST /api/hardware/receipt/test` ou la version production
-   liée à la transaction. Tiroir kické via la même connexion réseau.
-2. **AirPrint via `window.print()`** (fallback) — bouton *Imprimer (AirPrint)*.
-   Utilise le format 80 mm CSS-rendered. Tiroir kické si "open drawer on print"
-   est activé sur le pilote AirPrint.
+Une seule impression ticket : **MUNBYN ESC/POS** — bouton *Imprimer (MUNBYN)*
+dans la modal ticket. Appelle `POST /api/pos/transactions/{id}/print` qui
+envoie le ticket en ESC/POS direct vers la MUNBYN port 9100. Tiroir kické
+via la même connexion réseau. L'ancien fallback AirPrint a été retiré
+(Vintiz tourne sur Android, où `window.print()` retombe en PDF — inutile).
 
 Procédure complète + 15 codes-barres scannables : `docs/POS_TEST_BARCODES.md`.
 
 ```bash
-# 1. Configurer SumUp (dev local ou .env prod)
-SUMUP_ENVIRONMENT=sandbox       # sandbox | production
-SUMUP_API_KEY=                  # vide → simulation en mémoire
-SUMUP_MERCHANT_CODE=
+# 1. Configurer SumUp (production uniquement)
+SUMUP_API_KEY=sup_sk_...        # OBLIGATOIRE — sinon les checkouts CB échouent
+SUMUP_MERCHANT_CODE=M...        # OBLIGATOIRE
 SUMUP_READER_ID=                # optionnel: push direct vers TPE Solo
-SUMUP_SANDBOX_AUTO_DELAY_SEC=5  # 0 = approbation manuelle via Settings
 
 # 2. Seeder les 15 produits de test + régénérer les PNG codes-barres
 PYTHONPATH=apps/api python scripts/seed_test_products.py
@@ -646,10 +636,14 @@ Authorization: Bearer <SUMUP_API_KEY>
 Renvoie la liste des TPE enrôlés sur le compte. Le champ `id` du Solo
 souhaité va dans `SUMUP_READER_ID`.
 
-### Modes SumUp
+### SumUp — production uniquement
 
-- **production** — appels réels api.sumup.com, frais SumUp qui s'appliquent.
-- **sandbox** — clé de dev SumUp, appels API réels en mode test.
-- **simulation** (défaut sans clé) — sandbox en mémoire dans l'API. Event log
-  visible dans `/settings > Paiement`, approve/decline manuel disponible, les
-  checkouts PENDING passent auto en PAID après `SUMUP_SANDBOX_AUTO_DELAY_SEC`.
+Le mode sandbox / simulation a été retiré pour la mise en prod boutique.
+Tous les checkouts CB passent par api.sumup.com en production avec une
+vraie clé. Si `SUMUP_API_KEY` n'est pas configurée, les appels retournent
+`FAILED` avec un message explicite plutôt que de simuler un paiement —
+impossible donc d'encaisser une fausse vente CB par accident.
+
+Pour tester avec une carte sans débiter réellement : SumUp propose des
+clés API de test côté developer.sumup.com (préfixe `sup_sk_test_…`).
+Configurer dans `SUMUP_API_KEY` ou via `/settings > Paiement`.

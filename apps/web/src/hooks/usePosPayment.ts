@@ -16,7 +16,7 @@ import type { PaymentStatus } from '@/components/pos/PaymentStatusBanner';
  *   endpoint while the payment is pending; bubble the status changes up
  *   to the wizard via the `onStatus` callback. Auto-cancels on timeout.
  * - **Visibility pause** (Sprint 4) : when the page is backgrounded the
- *   poller stops to save battery on the iPad / Galaxy Tab; resumes on
+ *   poller stops to save battery on the Lenovo tablette; resumes on
  *   visibility change. The 90 s timer keeps running so the cashier
  *   doesn't see a "wedged" state on return.
  * - **Payment-attempt logging** : every CB attempt is logged to

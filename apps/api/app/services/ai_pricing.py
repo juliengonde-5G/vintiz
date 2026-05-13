@@ -23,7 +23,7 @@ logger = logging.getLogger("vintiz.ai.pricing")
 async def suggest_price(
     db: AsyncSession,
     category_id: str,
-    purchase_price: float,
+    purchase_price: float | None = None,
     brand: str | None = None,
     condition: str | None = None,
 ) -> dict:
@@ -32,13 +32,19 @@ async def suggest_price(
     Args:
         db: Database session.
         category_id: Category UUID.
-        purchase_price: What was paid for the item.
+        purchase_price: What was paid for the item (optional — Vintiz dépose
+            en achat-revente sans prix d'achat documenté côté caisse, donc
+            ce paramètre est désormais facultatif. Quand absent, la
+            suggestion s'appuie uniquement sur la grille tarifaire, le prix
+            moyen vendu, la marque et l'état).
         brand: Brand name if known.
         condition: Condition (excellent, tres bon, bon, correct).
 
     Returns:
         Dict with suggested_price, price_range, reasoning.
     """
+    has_purchase = purchase_price is not None and purchase_price > 0
+
     # 1. Check price grid for category
     grid_result = await db.execute(
         select(PriceGrid).where(PriceGrid.category_id == category_id)
@@ -47,10 +53,18 @@ async def suggest_price(
 
     grid_suggestion = None
     if grids:
-        for g in grids:
-            if float(g.min_purchase) <= purchase_price <= float(g.max_purchase):
-                grid_suggestion = float(g.sale_price)
-                break
+        if has_purchase:
+            # Find the grid bucket that covers the purchase price.
+            for g in grids:
+                if float(g.min_purchase) <= purchase_price <= float(g.max_purchase):  # type: ignore[operator]
+                    grid_suggestion = float(g.sale_price)
+                    break
+        # Fallback when no purchase_price : prendre la médiane des grilles
+        # de la catégorie (signal "prix typique" pour la cat).
+        if grid_suggestion is None:
+            grid_prices = sorted(float(g.sale_price) for g in grids)
+            mid = grid_prices[len(grid_prices) // 2]
+            grid_suggestion = mid
 
     # 2. Get recent sales in this category (last 8 weeks)
     eight_weeks_ago = datetime.now() - timedelta(weeks=8)
@@ -79,14 +93,21 @@ async def suggest_price(
     suggestions = []
     reasoning = []
 
-    # Margin-based (minimum 2.5x markup for seconde main)
-    margin_price = round(purchase_price * 2.5, 2)
-    suggestions.append(margin_price)
-    reasoning.append(f"Prix marge x2.5 : {margin_price:.2f} EUR")
+    # Margin-based (minimum 2.5x markup for seconde main) — uniquement
+    # quand on connaît un prix d'achat.
+    if has_purchase:
+        margin_price = round(purchase_price * 2.5, 2)  # type: ignore[operator]
+        suggestions.append(margin_price)
+        reasoning.append(f"Prix marge x2.5 : {margin_price:.2f} EUR")
 
     if grid_suggestion:
         suggestions.append(grid_suggestion)
-        reasoning.append(f"Grille tarifaire : {grid_suggestion:.2f} EUR")
+        if has_purchase:
+            reasoning.append(f"Grille tarifaire : {grid_suggestion:.2f} EUR")
+        else:
+            reasoning.append(
+                f"Grille tarifaire (mediane categorie) : {grid_suggestion:.2f} EUR"
+            )
 
     if avg_sold_price and sales_count >= 3:
         suggestions.append(avg_sold_price)
@@ -132,17 +153,38 @@ async def suggest_price(
     # Final suggestion: weighted average
     if suggestions:
         base_price = sum(suggestions) / len(suggestions)
+    elif has_purchase:
+        base_price = purchase_price * 3  # type: ignore[operator]  # fallback
+        reasoning.append("Aucun signal marché : fallback x3 du prix d'achat")
     else:
-        base_price = purchase_price * 3  # fallback
+        # Aucun signal disponible — la cliente n'aura pas de suggestion.
+        # Renvoie un fallback à 0 que l'UI peut détecter pour proposer
+        # une saisie manuelle.
+        return {
+            "suggested_price": 0.0,
+            "price_range": {"min": 0.0, "max": 0.0},
+            "reasoning": [
+                "Pas assez de donnees pour suggerer un prix : ajoute une "
+                "grille tarifaire pour cette categorie ou attends quelques "
+                "ventes de comparaison."
+            ],
+            "market_data": {
+                "grid_price": grid_suggestion,
+                "avg_sold_price": None,
+                "min_sold_price": None,
+                "max_sold_price": None,
+                "recent_sales_count": sales_count,
+            },
+        }
 
     suggested = round(base_price * condition_factor * brand_factor, 2)
 
     # Round to nearest 0.50
     suggested = round(suggested * 2) / 2
 
-    # Ensure minimum margin
-    if suggested < purchase_price * 1.5:
-        suggested = round(purchase_price * 1.5 * 2) / 2
+    # Ensure minimum margin (only when we know what we paid)
+    if has_purchase and suggested < purchase_price * 1.5:  # type: ignore[operator]
+        suggested = round(purchase_price * 1.5 * 2) / 2  # type: ignore[operator]
         reasoning.append("Ajuste au minimum x1.5 du prix d'achat")
 
     price_min = round(suggested * 0.8 * 2) / 2

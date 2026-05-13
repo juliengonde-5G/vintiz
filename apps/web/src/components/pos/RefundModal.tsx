@@ -5,7 +5,6 @@ import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
-import { isIOS } from '@/lib/platform';
 
 interface TransactionItem {
   id: string;
@@ -125,56 +124,23 @@ export default function RefundModal({
     setSubmitting(false);
   };
 
-  const printRefundReceipt = useCallback(async () => {
+  /**
+   * Direct ESC/POS path — MUNBYN 047P-WiFi on port 9100. The only path
+   * that works on Android (Lenovo Idea Tab Pro Gen 2) since Chrome's
+   * window.print() falls back to "Print to PDF" without a system driver
+   * for raw thermal printers.
+   */
+  const printRefundEscpos = useCallback(async () => {
     if (!refundTxId) return;
     setPrinting(true);
     try {
-      const res = await api.get(`/api/pos/transactions/${refundTxId}/receipt`);
+      const res = await api.post(`/api/pos/transactions/${refundTxId}/print`, {});
       if (!res.ok) {
-        setError('Impossible de générer le ticket de retour');
-        setPrinting(false);
-        return;
+        const err = await res.json().catch(() => null);
+        setError(err?.detail || 'Imprimante ESC/POS indisponible — vérifie l\'IP MUNBYN dans Réglages › Matériel');
       }
-      const data = await res.json();
-      const text: string = data.receipt_text || data.text || '';
-      const w = window.open('', '_blank', 'width=400,height=700');
-      if (!w) {
-        const browser = isIOS() ? 'Safari' : 'Chrome';
-        alert(
-          `Impossible d'ouvrir la fenêtre d'impression. Autorisez les pop-ups pour ce site dans les réglages ${browser}.`,
-        );
-        setPrinting(false);
-        return;
-      }
-      const safe = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const logoUrl = `${window.location.origin}/receipt-logo.png`;
-      w.document.write(`<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>Ticket retour Vintiz</title>
-<style>
-  @page { size: 80mm auto; margin: 0; }
-  body { margin: 0; padding: 4mm 3mm; }
-  .logo { display: block; margin: 0 auto 3mm; width: 28mm; height: auto;
-          filter: grayscale(1) contrast(10) brightness(0.9);
-          -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  pre { font-family: 'Courier New', Consolas, monospace; font-size: 12px;
-        line-height: 1.35; white-space: pre-wrap; word-break: break-word; margin: 0; }
-  @media print { body { padding: 0 2mm; } }
-</style></head>
-<body>
-<img class="logo" src="${logoUrl}" alt="Vintiz" onerror="this.style.display='none'">
-<pre>${safe}</pre>
-<script>
-  (function() {
-    var img = document.querySelector('.logo');
-    var go = function() { window.focus(); window.print(); };
-    if (!img || img.complete) { go(); }
-    else { img.addEventListener('load', go); img.addEventListener('error', go); }
-  })();
-</script>
-</body></html>`);
-      w.document.close();
     } catch {
-      setError('Erreur impression');
+      setError('Erreur de connexion à l\'imprimante');
     }
     setPrinting(false);
   }, [refundTxId]);
@@ -191,10 +157,10 @@ export default function RefundModal({
               Fermer sans ticket
             </Button>
             <Button
-              onClick={printRefundReceipt}
+              onClick={printRefundEscpos}
               disabled={printing || !refundTxId}
             >
-              {printing ? 'Impression…' : 'Imprimer ticket de retour'}
+              {printing ? 'Impression…' : 'Imprimer (MUNBYN)'}
             </Button>
           </>
         ) : (

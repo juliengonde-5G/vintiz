@@ -611,7 +611,7 @@ async def reorder_product_photos(
 # the body of this handler.
 UPLOAD_ROOT = Path(__file__).resolve().parents[3] / "uploads" / "products"
 ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
-MAX_PHOTO_BYTES = 5 * 1024 * 1024  # 5 MB
+MAX_PHOTO_BYTES = 7 * 1024 * 1024  # 7 MB
 
 
 @router.post(

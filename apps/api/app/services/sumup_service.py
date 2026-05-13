@@ -1,38 +1,26 @@
-"""SumUp card payment service.
+"""SumUp card payment service — production only.
 
-Wraps the SumUp REST API to initiate checkouts and poll for completion.
+Wraps the SumUp Checkout API at ``api.sumup.com``. Requires
+``SUMUP_API_KEY`` and ``SUMUP_MERCHANT_CODE`` (or the persisted equivalent
+in ``data/app_config.json``).
 
-Three environments are supported via the ``SUMUP_ENVIRONMENT`` variable:
-
-* ``production`` — talks to the real SumUp API at ``api.sumup.com``.
-  Requires ``SUMUP_API_KEY`` and ``SUMUP_MERCHANT_CODE``.
-* ``sandbox``    — simulated terminal that mimics the real flow (PENDING →
-  PAID/FAILED) with a configurable delay, exposes a live event log and allows
-  manual approve/decline for step-by-step testing. This is the default when no
-  API key is set.
-* ``production`` with no key falls back to ``sandbox`` automatically so the
-  app remains usable out of the box.
-
-The sandbox store lives in-process (module level singleton). It is intended
-for single-worker dev/test setups and is reset on process restart.
+Le mode sandbox/simulation a été retiré : Vintiz boutique tourne sur des
+clés SumUp de production. Si la clé API n'est pas configurée, tout
+checkout retourne un FAILED clair plutôt que de laisser passer un
+faux paiement.
 """
 from __future__ import annotations
 
 import logging
 import os
 import re
-import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Literal
 
 import httpx
 
 _log = logging.getLogger("vintiz")
 
 SUMUP_API_BASE = "https://api.sumup.com/v0.1"
-
-SandboxStatus = Literal["PENDING", "PAID", "FAILED", "CANCELLED"]
 
 
 # ---------------------------------------------------------------------------
@@ -95,118 +83,18 @@ def redact_sumup_error(text: str | None, max_len: int = 300) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Sandbox in-memory store
-# ---------------------------------------------------------------------------
-
-@dataclass
-class SandboxCheckout:
-    checkout_id: str
-    reference: str
-    amount: float
-    currency: str
-    description: str
-    status: SandboxStatus = "PENDING"
-    created_at: float = field(default_factory=time.time)
-    updated_at: float = field(default_factory=time.time)
-    auto_approve_at: float | None = None  # timestamp after which status becomes PAID
-    manual_override: bool = False  # set True when operator approved/declined
-
-    def to_dict(self) -> dict:
-        remaining = None
-        if self.auto_approve_at and self.status == "PENDING" and not self.manual_override:
-            remaining = max(0.0, round(self.auto_approve_at - time.time(), 1))
-        return {
-            "checkout_id": self.checkout_id,
-            "checkout_reference": self.reference,
-            "amount": self.amount,
-            "currency": self.currency,
-            "description": self.description,
-            "status": self.status,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-            "auto_approve_in": remaining,
-            "manual_override": self.manual_override,
-        }
-
-
-@dataclass
-class SandboxEvent:
-    timestamp: float
-    kind: str  # create | poll | approve | decline | cancel | auto_paid
-    checkout_id: str
-    status: str
-    payload: dict
-
-    def to_dict(self) -> dict:
-        return {
-            "timestamp": self.timestamp,
-            "iso_time": time.strftime("%H:%M:%S", time.localtime(self.timestamp)),
-            "kind": self.kind,
-            "checkout_id": self.checkout_id,
-            "status": self.status,
-            "payload": self.payload,
-        }
-
-
-class SandboxStore:
-    """Module-level singleton holding sandbox checkouts and an event log."""
-
-    MAX_EVENTS = 200
-
-    def __init__(self) -> None:
-        self._checkouts: dict[str, SandboxCheckout] = {}
-        self._events: list[SandboxEvent] = []
-
-    # -- checkouts ---------------------------------------------------------
-    def add(self, checkout: SandboxCheckout) -> None:
-        self._checkouts[checkout.checkout_id] = checkout
-
-    def get(self, checkout_id: str) -> SandboxCheckout | None:
-        return self._checkouts.get(checkout_id)
-
-    def list(self) -> list[SandboxCheckout]:
-        return sorted(self._checkouts.values(), key=lambda c: c.created_at, reverse=True)
-
-    # -- events ------------------------------------------------------------
-    def log(self, kind: str, checkout_id: str, status: str, payload: dict | None = None) -> None:
-        self._events.append(
-            SandboxEvent(
-                timestamp=time.time(),
-                kind=kind,
-                checkout_id=checkout_id,
-                status=status,
-                payload=payload or {},
-            )
-        )
-        if len(self._events) > self.MAX_EVENTS:
-            self._events = self._events[-self.MAX_EVENTS :]
-
-    def events(self, limit: int = 50) -> list[SandboxEvent]:
-        return list(reversed(self._events[-limit:]))
-
-    def clear_events(self) -> None:
-        self._events.clear()
-
-    def reset(self) -> None:
-        self._checkouts.clear()
-        self._events.clear()
-
-
-# Module-level singleton — shared across requests within a worker
-_sandbox_store = SandboxStore()
-
-
-def get_sandbox_store() -> SandboxStore:
-    return _sandbox_store
-
-
-# ---------------------------------------------------------------------------
-# SumUp service
+# SumUp service — production API only
 # ---------------------------------------------------------------------------
 
 
 class SumUpService:
-    """Thin wrapper around the SumUp Checkout API with a sandbox fallback."""
+    """Thin wrapper around the SumUp Checkout API (production only).
+
+    Loads its credentials from the persisted config (``data/app_config.json``)
+    or environment variables. Si aucune clé n'est posée, ``is_configured``
+    retourne False et tous les appels CB échouent proprement (``FAILED`` +
+    ``error_detail``) plutôt que de laisser passer un faux paiement.
+    """
 
     def __init__(self) -> None:
         # Persisted config (data/app_config.json) takes precedence over env vars
@@ -230,38 +118,13 @@ class SumUpService:
         # When set, card checkouts are pushed to this reader so the TPE Solo
         # rings automatically without the cashier re-entering the amount.
         self.reader_id = _pick("reader_id", "SUMUP_READER_ID")
-        env = _pick("environment", "SUMUP_ENVIRONMENT").lower()
-        # Auto-detect: sandbox whenever no API key is set
-        if env not in ("sandbox", "production"):
-            env = "sandbox" if not self.api_key else "production"
-        # If production requested but no key, fall back to sandbox. Loud
-        # WARNING when the SYSTEM environment itself is production: a missing
-        # SUMUP_API_KEY in real prod was previously silent and let any
-        # checkout_id auto-resolve to PAID — fake-payment surface.
-        if env == "production" and not self.api_key:
-            env = "sandbox"
-            try:
-                from app.core.config import settings as _app_settings
-                if _app_settings.is_production:
-                    _log.error(
-                        "SumUp configured as production but SUMUP_API_KEY is missing. "
-                        "Falling back to sandbox — card payments will NOT be processed. "
-                        "Configure SUMUP_API_KEY + SUMUP_MERCHANT_CODE before going live."
-                    )
-            except Exception:  # noqa: BLE001 — never block boot on log
-                pass
-        self.environment = env
-        delay_persisted = persisted.get("sandbox_auto_delay_sec")
-        try:
-            if delay_persisted not in (None, ""):
-                self.sandbox_auto_delay = float(delay_persisted)
-            else:
-                self.sandbox_auto_delay = float(os.getenv("SUMUP_SANDBOX_AUTO_DELAY_SEC", "5"))
-        except (ValueError, TypeError):
-            self.sandbox_auto_delay = 5.0
-        # Optional return URL after reader payment (production only)
+        # Optional return URL after reader payment.
         self.return_url = _pick("return_url", "SUMUP_RETURN_URL")
-        self.store = get_sandbox_store()
+
+    @property
+    def is_configured(self) -> bool:
+        """True when the API key is set — required for any real checkout."""
+        return bool(self.api_key)
 
     # -- public config snapshot for UI ------------------------------------
     def describe(self) -> dict:
@@ -272,7 +135,7 @@ class SumUpService:
         if self.reader_id:
             reader_masked = self.reader_id[:4] + "***" + self.reader_id[-2:] if len(self.reader_id) > 6 else "***"
         return {
-            "environment": self.environment,
+            "environment": "production",
             "api_key_set": bool(self.api_key),
             "merchant_code_set": bool(self.merchant_code),
             "merchant_code_masked": masked,
@@ -280,8 +143,7 @@ class SumUpService:
             "reader_id_masked": reader_masked,
             "return_url_set": bool(self.return_url),
             "return_url": self.return_url,
-            "sandbox_auto_delay_sec": self.sandbox_auto_delay,
-            "api_base": SUMUP_API_BASE if self.environment == "production" else "sandbox (in-memory)",
+            "api_base": SUMUP_API_BASE,
         }
 
     @property
@@ -301,33 +163,45 @@ class SumUpService:
         description: str = "Vente Vintiz",
         reference: str | None = None,
     ) -> dict:
-        """Create a checkout.
+        """Create a checkout against the SumUp production API.
 
-        - **Sandbox** — in-memory simulated flow with auto-approve delay.
-        - **Production + `SUMUP_READER_ID`** — push directly to the SumUp Solo
+        - **Avec `SUMUP_READER_ID`** — push directly to the SumUp Solo
           terminal via the Readers API. The TPE rings on the cashier's side;
           the customer taps their card; no manual amount entry on the TPE.
-        - **Production without reader id** — classic Checkouts API; the
-          customer pays via a payment link or the Solo app on the same merchant
-          account (cashier types the amount on the TPE).
+        - **Sans reader id** — classic Checkouts API; the customer pays
+          via a payment link or the Solo app on the same merchant account
+          (cashier types the amount on the TPE).
 
-        In production, API errors are surfaced to the caller (status
-        ``FAILED`` + ``error_detail``) so the cashier can retry or fall back to
-        a manual confirmation rather than seeing a silent fake success.
+        Si la clé API n'est pas configurée, retourne ``FAILED`` avec un
+        ``error_detail`` explicite — la caissière voit l'erreur et ne peut
+        pas valider une vente CB par accident.
         """
         ref = reference or str(uuid.uuid4())[:8].upper()
 
-        if self.environment == "sandbox":
-            return self._sandbox_create(amount, currency, description, ref)
+        if not self.is_configured:
+            _log.error(
+                "SumUp create_checkout called but SUMUP_API_KEY is not configured. "
+                "Configure SUMUP_API_KEY + SUMUP_MERCHANT_CODE dans .env ou via "
+                "/admin/sumup-config avant d'encaisser en CB.",
+            )
+            return {
+                "checkout_id": f"NOKEY-{ref}",
+                "checkout_reference": ref,
+                "amount": amount,
+                "currency": currency,
+                "status": "FAILED",
+                "environment": "production",
+                "error_detail": "SumUp non configuré (SUMUP_API_KEY manquant) — paiement CB indisponible.",
+            }
 
-        # Production: prefer the Readers API if a reader is configured.
+        # Prefer the Readers API if a reader is configured.
         if self.reader_id and self.merchant_code:
             pushed = await self._push_to_reader(amount, currency, description, ref)
             if pushed is not None:
                 return pushed
             # _push_to_reader returned None → fall through to classic checkout
 
-        # Production: classic Checkouts API (customer pays via link/app).
+        # Classic Checkouts API (customer pays via link/app).
         payload = {
             "checkout_reference": ref,
             "amount": round(amount, 2),
@@ -351,7 +225,6 @@ class SumUpService:
                     "currency": currency,
                     "status": data.get("status", "PENDING"),
                     "environment": "production",
-                    "simulated": False,
                     "mode": "checkout",
                 }
             return {
@@ -361,7 +234,6 @@ class SumUpService:
                 "currency": currency,
                 "status": "FAILED",
                 "environment": "production",
-                "simulated": False,
                 "http_status": resp.status_code,
                 "error_detail": redact_sumup_error(resp.text),
             }
@@ -373,7 +245,6 @@ class SumUpService:
                 "currency": currency,
                 "status": "FAILED",
                 "environment": "production",
-                "simulated": False,
                 "error_detail": redact_sumup_error(f"network error: {e}"),
             }
 
@@ -416,7 +287,6 @@ class SumUpService:
                     "currency": currency,
                     "status": "PENDING",
                     "environment": "production",
-                    "simulated": False,
                     "mode": "reader",
                     "reader_id": self.reader_id,
                 }
@@ -428,7 +298,6 @@ class SumUpService:
                 "currency": currency,
                 "status": "FAILED",
                 "environment": "production",
-                "simulated": False,
                 "mode": "reader",
                 "http_status": resp.status_code,
                 "error_detail": redact_sumup_error(resp.text),
@@ -436,70 +305,27 @@ class SumUpService:
         except Exception:
             return None
 
-    def _sandbox_create(
-        self,
-        amount: float,
-        currency: str,
-        description: str,
-        ref: str,
-        note: str | None = None,
-    ) -> dict:
-        checkout_id = f"SBX-{ref}"
-        auto_at = time.time() + self.sandbox_auto_delay if self.sandbox_auto_delay > 0 else None
-        co = SandboxCheckout(
-            checkout_id=checkout_id,
-            reference=ref,
-            amount=round(amount, 2),
-            currency=currency,
-            description=description,
-            auto_approve_at=auto_at,
-        )
-        self.store.add(co)
-        self.store.log(
-            "create",
-            checkout_id,
-            "PENDING",
-            {
-                "amount": co.amount,
-                "currency": currency,
-                "description": description,
-                "reference": ref,
-                "auto_delay_sec": self.sandbox_auto_delay,
-                "note": note,
-            },
-        )
-        result = co.to_dict()
-        result["environment"] = "sandbox"
-        result["simulated"] = True
-        if note:
-            result["note"] = note
-        return result
-
     # ------------------------------------------------------------------
     # Poll status
     # ------------------------------------------------------------------
     async def get_checkout_status(self, checkout_id: str) -> dict:
-        # Sandbox path: SBX-* and also legacy SIM-* identifiers
-        if checkout_id.startswith("SBX-"):
-            return self._sandbox_status(checkout_id)
-        if checkout_id.startswith("SIM-"):
-            # Legacy one-shot simulation — still return PAID for backward compat
-            return {"checkout_id": checkout_id, "status": "PAID", "environment": "sandbox", "simulated": True}
-
-        # Sandbox mode: an arbitrary, unknown checkout_id must NOT auto-resolve
-        # to PAID. The previous behaviour let a forged ID pass for a real
-        # payment when the API key was unset in prod (fake-payment surface).
-        if self.environment == "sandbox" or not self.api_key:
-            _log.warning(
-                "Rejected sandbox status poll for unknown checkout_id=%s",
-                checkout_id,
-            )
+        # Un checkout_id qui commence par NOKEY-* ou ERR-* est une trace
+        # d'erreur côté Vintiz, pas un vrai checkout SumUp. On renvoie
+        # FAILED sans appeler l'API.
+        if checkout_id.startswith(("NOKEY-", "ERR-")):
             return {
                 "checkout_id": checkout_id,
                 "status": "FAILED",
-                "environment": "sandbox",
-                "simulated": True,
-                "error": "unknown checkout_id",
+                "environment": "production",
+                "error": "local error sentinel",
+            }
+
+        if not self.is_configured:
+            return {
+                "checkout_id": checkout_id,
+                "status": "FAILED",
+                "environment": "production",
+                "error": "SumUp non configuré (SUMUP_API_KEY manquant)",
             }
 
         try:
@@ -514,13 +340,11 @@ class SumUpService:
                     "checkout_id": checkout_id,
                     "status": data.get("status", "PENDING"),
                     "environment": "production",
-                    "simulated": False,
                 }
             return {
                 "checkout_id": checkout_id,
                 "status": "FAILED",
                 "environment": "production",
-                "simulated": False,
                 "http_status": resp.status_code,
             }
         except Exception as e:
@@ -529,33 +353,6 @@ class SumUpService:
                 "status": "FAILED",
                 "error": redact_sumup_error(str(e)),
             }
-
-    def _sandbox_status(self, checkout_id: str) -> dict:
-        co = self.store.get(checkout_id)
-        if not co:
-            return {
-                "checkout_id": checkout_id,
-                "status": "FAILED",
-                "environment": "sandbox",
-                "simulated": True,
-                "error": "unknown checkout_id",
-            }
-        # Auto-transition PENDING → PAID once the delay elapsed
-        if (
-            co.status == "PENDING"
-            and not co.manual_override
-            and co.auto_approve_at is not None
-            and time.time() >= co.auto_approve_at
-        ):
-            co.status = "PAID"
-            co.updated_at = time.time()
-            self.store.log("auto_paid", checkout_id, "PAID", {"reason": "auto-delay elapsed"})
-
-        self.store.log("poll", checkout_id, co.status, {})
-        result = co.to_dict()
-        result["environment"] = "sandbox"
-        result["simulated"] = True
-        return result
 
     # ------------------------------------------------------------------
     # Cancel
@@ -569,29 +366,15 @@ class SumUpService:
         Vintiz transaction. We hard-fail in that case so the caller has
         to confirm the payment manually instead of losing the money.
         """
-        if checkout_id.startswith("SBX-"):
-            co = self.store.get(checkout_id)
-            if co is None:
-                self.store.log("cancel_unknown", checkout_id, "FAILED", {})
-                return False
-            if co.status == "PAID":
-                _log.warning(
-                    "cancel_checkout refused: %s already PAID — refusing to cancel",
-                    checkout_id,
-                )
-                self.store.log("cancel_refused", checkout_id, co.status, {"reason": "already_paid"})
-                return False
-            if co.status == "PENDING":
-                co.status = "CANCELLED"
-                co.manual_override = True
-                co.updated_at = time.time()
-            self.store.log("cancel", checkout_id, co.status, {})
-            return True
-        if checkout_id.startswith("SIM-") or self.environment == "sandbox" or not self.api_key:
-            return True
-        # Production: peek at the current status before issuing DELETE. If the
-        # checkout is already PAID at SumUp, refuse the cancel and let the
-        # cashier finalise the sale manually.
+        if checkout_id.startswith(("NOKEY-", "ERR-")):
+            return True  # local sentinel, nothing to cancel side SumUp.
+
+        if not self.is_configured:
+            return False
+
+        # Peek at the current status before issuing DELETE. If the checkout
+        # is already PAID at SumUp, refuse the cancel and let the cashier
+        # finalise the sale manually.
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 peek = await client.get(
@@ -614,36 +397,3 @@ class SumUpService:
         except Exception as exc:  # noqa: BLE001
             _log.warning("cancel_checkout network error for %s: %s", checkout_id, exc)
             return False
-
-    # ------------------------------------------------------------------
-    # Sandbox admin helpers
-    # ------------------------------------------------------------------
-    def sandbox_approve(self, checkout_id: str) -> dict:
-        co = self.store.get(checkout_id)
-        if not co:
-            return {"ok": False, "error": "unknown checkout_id"}
-        co.status = "PAID"
-        co.manual_override = True
-        co.updated_at = time.time()
-        self.store.log("approve", checkout_id, "PAID", {"source": "manual"})
-        return {"ok": True, "checkout": co.to_dict()}
-
-    def sandbox_decline(self, checkout_id: str) -> dict:
-        co = self.store.get(checkout_id)
-        if not co:
-            return {"ok": False, "error": "unknown checkout_id"}
-        co.status = "FAILED"
-        co.manual_override = True
-        co.updated_at = time.time()
-        self.store.log("decline", checkout_id, "FAILED", {"source": "manual"})
-        return {"ok": True, "checkout": co.to_dict()}
-
-    def sandbox_snapshot(self, limit: int = 50) -> dict:
-        return {
-            "config": self.describe(),
-            "checkouts": [c.to_dict() for c in self.store.list()],
-            "events": [e.to_dict() for e in self.store.events(limit)],
-        }
-
-    def sandbox_clear(self) -> None:
-        self.store.reset()

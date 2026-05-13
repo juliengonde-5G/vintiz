@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import Sidebar from '@/components/layout/Sidebar';
 import Button from '@/components/ui/Button';
 import NumPad from '@/components/ui/NumPad';
 import Input from '@/components/ui/Input';
@@ -12,6 +11,7 @@ import CashDrawerCloseModal from '@/components/pos/CashDrawerCloseModal';
 import CashDrawerOpenModal from '@/components/pos/CashDrawerOpenModal';
 import CashMovementButton from '@/components/pos/CashMovementButton';
 import ClientCompanion from '@/components/pos/ClientCompanion';
+import ClientSelectionScreen from '@/components/pos/ClientSelectionScreen';
 import InvoiceClientForm, {
   type InvoiceFields,
   isInvoiceFormValid,
@@ -24,7 +24,7 @@ import { api } from '@/lib/api';
 import { useConnectivity } from '@/lib/connectivity';
 import { isPosWizardEnabled } from '@/lib/feature-flags';
 import { formatCurrency } from '@/lib/format';
-import { isIOS } from '@/lib/platform';
+import { useLandscapeLock } from '@/lib/orientation';
 import {
   count as queueCount,
   drain as drainQueue,
@@ -110,6 +110,7 @@ export default function POSPage() {
   const [clientResults, setClientResults] = useState<ClientResult[]>([]);
   const [selectedClient, setSelectedClient] = useState<ClientDetail | null>(null);
   const [showClientPopup, setShowClientPopup] = useState(false);
+  const [showClientSelect, setShowClientSelect] = useState(false);
   const [customerBrief, setCustomerBrief] = useState<CustomerBrief | null>(null);
 
   // Manual article
@@ -207,10 +208,33 @@ export default function POSPage() {
   });
 
   // Which cart item has its discount strip expanded (compact layout: hide by
-  // default to fit more items on iPad 1024x768).
+  // default to fit more items on Lenovo landscape).
   const [discountOpenIdx, setDiscountOpenIdx] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clientDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Search input ref — the USB-HID scanner needs the search field focused
+  // to deliver the barcode. We refocus after every cart add so the cashier
+  // can scan a second item without tapping the field again.
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const refocusSearch = useCallback(() => {
+    // Don't fight a modal — only refocus when no overlay is open.
+    if (showPayment || showClientSelect || showClientPopup || showSubscribeModal) return;
+    if (showDrawerOpen || showDrawerClose || showCashierModal || showReceipt) return;
+    if (showWizardReceipt || showManualEntry) return;
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    showPayment, showClientSelect, showClientPopup, showSubscribeModal,
+    showDrawerOpen, showDrawerClose, showCashierModal, showReceipt,
+    showWizardReceipt, showManualEntry,
+  ]);
+
+  // Landscape lock for the Lenovo Idea Tab Pro Gen 2 (TB39OFU) when running
+  // as a PWA. Silently ignored in regular tab mode (Chrome non-installé).
+  useLandscapeLock();
 
   // Computed — memoised so unrelated state changes (modals, focus, etc.)
   // don't re-run the cart reduce on every render.
@@ -450,6 +474,9 @@ export default function POSPage() {
     });
     setSearchQuery('');
     setSearchResults([]);
+    // Keep the search input focused so the USB-HID scanner can immediately
+    // pick up the next barcode (Lenovo Idea Tab Pro Gen 2 + Inateck BCST-35).
+    refocusSearch();
   };
 
   // Barcode scanner (Inateck BCST-60 / 160B USB HID): types the code fast then
@@ -481,73 +508,16 @@ export default function POSPage() {
     handleBarcodeScan(q);
   };
 
-  // Browser-print fallback: opens a print-sized window and triggers the
-  // browser's print dialog. On iPad this hits AirPrint and the thermal
-  // printer fires the cash-drawer kick (RJ11) on print. On Android Chrome
-  // it just dumps a PDF — we only expose this button on iOS now (M1
-  // hardware migration). The logo is forced to pure black via CSS filter
-  // so it reads cleanly on 80 mm thermal paper.
-  const printReceipt = useCallback((text: string) => {
-    const w = window.open('', '_blank', 'width=400,height=700');
-    if (!w) {
-      setPrintMsg(
-        "Impossible d'ouvrir la fenêtre d'impression. " +
-        (isIOS()
-          ? "Autorisez les pop-ups pour ce site dans les réglages Safari."
-          : "Autorisez les pop-ups pour ce site dans les réglages Chrome."),
-      );
-      return;
-    }
-    const safe = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const logoUrl = `${window.location.origin}/receipt-logo.png`;
-    w.document.write(`<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>Ticket Vintiz</title>
-<style>
-  @page { size: 80mm auto; margin: 0; }
-  body { margin: 0; padding: 4mm 3mm; }
-  .logo { display: block; margin: 0 auto 3mm; width: 28mm; height: auto;
-          filter: grayscale(1) contrast(10) brightness(0.9);
-          -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  pre { font-family: 'Courier New', Consolas, monospace; font-size: 12px;
-        line-height: 1.35; white-space: pre-wrap; word-break: break-word; margin: 0; }
-  @media print { body { padding: 0 2mm; } }
-</style></head>
-<body>
-<img class="logo" src="${logoUrl}" alt="Vintiz" onerror="this.style.display='none'">
-<pre>${safe}</pre>
-<script>
-  // Wait for the logo image to load (or fail) before triggering print, so it
-  // is rendered on the first print job instead of being blank on first run.
-  (function() {
-    var img = document.querySelector('.logo');
-    var go = function() { window.focus(); window.print(); };
-    if (!img || img.complete) { go(); }
-    else { img.addEventListener('load', go); img.addEventListener('error', go); }
-  })();
-</script>
-</body></html>`);
-    w.document.close();
-  }, []);
-
-  // Kick the cash drawer without printing a visible ticket. We send a
-  // near-empty print job to the same thermal printer — the printer fires
-  // its RJ11 kick pulse as soon as the print starts, so the drawer opens.
-  // On iPad AirPrint the pop-up window auto-closes after 800 ms.
+  // Kick le tiroir-caisse via la MUNBYN ESC/POS (impulsion ESC p m sur
+  // le port 9100). Remplace l'ancien fallback AirPrint qui ouvrait une
+  // pop-up window.print() — celle-ci ne pilotait pas la MUNBYN sur
+  // Android (Lenovo Idea Tab Pro Gen 2 Chrome), elle générait juste un
+  // PDF. Désormais le tiroir est piloté côté API uniquement.
   const kickDrawer = useCallback(() => {
-    const w = window.open('', '_blank', 'width=200,height=60');
-    if (!w) return; // silently skip — the Imprimer button will still work
-    w.document.write(`<!doctype html>
-<html><head><meta charset="utf-8"><title>.</title>
-<style>@page { size: 80mm 5mm; margin: 0; } body { margin: 0; }</style></head>
-<body>
-<script>
-  window.onload = function() {
-    try { window.print(); } catch (e) {}
-    setTimeout(function(){ try { window.close(); } catch (e) {} }, 800);
-  };
-</script>
-</body></html>`);
-    w.document.close();
+    void api.post('/api/hardware/drawer/kick', {}).catch(() => {
+      // Silencieux : si la MUNBYN est injoignable, le caissier ouvre le
+      // tiroir manuellement. L'impression reste possible séparément.
+    });
   }, []);
 
   const addBag = () => {
@@ -1060,57 +1030,177 @@ export default function POSPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-100">
-      <Sidebar />
+    <div className="flex flex-col h-screen overflow-hidden bg-vz-bg-alt">
+      {/* ─── ODOO 17 TOP BAR ────────────────────────────────────────
+           Replaces the back-office Sidebar + 3 inline info strips
+           (connectivity, cashier, drawer). The POS goes fullscreen,
+           Odoo-style. Exit via the brand link → /dashboard. */}
+      <header className="flex-shrink-0 h-14 bg-vz-teal-deep text-white flex items-center px-3 gap-3 shadow-lg z-30">
+        <a
+          href="/dashboard"
+          className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/10 transition-colors min-h-[44px]"
+          title="Retour back-office"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+          <span className="font-display font-bold text-sm tracking-wider">VINTIZ</span>
+          <span className="text-[10px] uppercase tracking-[0.18em] opacity-70 px-1.5 py-0.5 rounded bg-white/10">Caisse</span>
+        </a>
 
-      {/* ── Main POS area ─────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden md:ml-64">
+        <div className="h-7 w-px bg-white/15 hidden md:block" />
 
-        {/* ── LEFT PANEL: Order / Cart ──────────────────────────────
-             Width is responsive — 42% suits an iPad 10.9" (1024-1180 css
-             px), but the Lenovo Idea Tab Pro 13" caisse renders at
-             ≥1280 px in landscape and benefits from a wider cart column
-             (more lines visible without scrolling). xl: ≥1280, 2xl:
-             ≥1536 for very wide docked setups. */}
-        <div className="w-[42%] xl:w-[48%] 2xl:w-[50%] flex flex-col bg-white border-r border-gray-200 shadow-sm">
+        {/* Date / heure session */}
+        <div className="hidden md:flex flex-col leading-tight text-xs">
+          <span className="opacity-70 capitalize">{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' })}</span>
+          <span className="font-mono font-medium">{new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
 
-          {/* Connectivity strip (P1-005) — visible only when offline or with backlog */}
-          {(!online || pendingCount > 0) && (
-            <div
-              className={`flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs ${
-                online
-                  ? 'bg-amber-50 border-b border-amber-200'
-                  : 'bg-red-50 border-b border-red-200'
-              }`}
+        <div className="h-7 w-px bg-white/15 hidden md:block" />
+
+        {/* Cashier badge */}
+        <div className="flex items-center gap-2">
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm ${cashier ? 'bg-vz-accent' : 'bg-white/20'}`}>
+            {cashier ? cashier.username.slice(0, 1).toUpperCase() : '?'}
+          </div>
+          <div className="hidden sm:flex flex-col leading-tight">
+            <span className="text-[10px] opacity-70 uppercase tracking-wider">Cashier</span>
+            <span className="text-xs font-medium truncate max-w-[120px]">{cashier?.username ?? 'Non identifié'}</span>
+          </div>
+          {cashier ? (
+            <div className="flex gap-0.5">
+              <button
+                onClick={switchCashier}
+                className="text-xs min-w-[44px] min-h-[40px] px-2 rounded-lg hover:bg-white/10 transition-colors flex items-center justify-center"
+                title="Relève (changer de cashier)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+              </button>
+              <button
+                onClick={logoutCashier}
+                className="text-xs min-w-[44px] min-h-[40px] px-2 rounded-lg hover:bg-red-500/30 transition-colors flex items-center justify-center"
+                title="Déconnexion"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setCashierModalDismissible(false); setShowCashierModal(true); }}
+              className="text-xs px-3 py-2 rounded-lg bg-vz-accent hover:opacity-90 transition-opacity min-h-[40px] font-medium"
             >
-              <span className={`font-medium ${online ? 'text-amber-800' : 'text-red-700'}`}>
-                {online ? (
-                  <>📡 En ligne — {pendingCount} vente(s) en attente de synchronisation</>
-                ) : (
-                  <>⚠️ Mode hors-ligne — les ventes espèces / chèque / avoir sont bufferisées</>
-                )}
+              S&apos;identifier
+            </button>
+          )}
+        </div>
+
+        <div className="h-7 w-px bg-white/15 hidden lg:block" />
+
+        {/* Drawer status */}
+        {drawer !== null && (
+          <div className="hidden lg:flex items-center gap-2">
+            <span className={`inline-block w-2.5 h-2.5 rounded-full ${drawer.open ? 'bg-green-400' : 'bg-amber-400'}`} title={drawer.open ? 'Caisse ouverte' : 'Caisse fermée'} />
+            <div className="flex flex-col leading-tight">
+              <span className="text-[10px] opacity-70 uppercase tracking-wider">Tiroir</span>
+              <span className="text-xs font-medium font-mono">
+                {drawer.open ? `${drawer.opening_amount?.toFixed(2)} €` : 'Fermé'}
               </span>
-              <div className="flex items-center gap-1.5">
-                {pendingCount > 0 && (
-                  <button
-                    onClick={drainPending}
-                    disabled={draining || !online}
-                    className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                    title={online ? 'Synchroniser maintenant' : 'Synchronisation impossible hors-ligne'}
-                  >
-                    {draining ? 'Sync…' : 'Synchroniser'}
-                  </button>
+            </div>
+            {drawer.open ? (
+              <div className="flex gap-0.5">
+                <button
+                  onClick={kickDrawer}
+                  title="Ouvrir le tiroir-caisse"
+                  className="text-xs min-h-[40px] px-3 rounded-lg bg-white/10 hover:bg-white/20 transition-colors flex items-center gap-1.5"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="10" width="18" height="10" rx="1" />
+                    <path d="M3 10V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4" />
+                    <line x1="10" y1="15" x2="14" y2="15" />
+                  </svg>
+                  Tiroir
+                </button>
+                {wizardEnabled && (
+                  <CashMovementButton
+                    onSubmit={async (payload) => {
+                      await api.post('/api/pos/cash-movements', {
+                        ...payload,
+                        cashier_id: cashier?.id ?? undefined,
+                      });
+                    }}
+                  />
                 )}
                 <button
-                  onClick={() => recheck()}
-                  className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"
-                  title="Re-tester la connexion"
+                  onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
+                  className="text-xs min-h-[40px] px-3 rounded-lg bg-red-500/30 hover:bg-red-500/50 transition-colors font-medium"
+                  title="Clôturer la caisse"
                 >
-                  ↻
+                  Clôturer
                 </button>
               </div>
-            </div>
+            ) : (
+              <button
+                onClick={() => { setDrawerAmount(0); setShowDrawerOpen(true); }}
+                className="text-xs px-3 py-2 rounded-lg bg-vz-accent hover:opacity-90 transition-opacity min-h-[40px] font-medium"
+              >
+                Initialiser
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="flex-1" />
+
+        {/* Online status + queue */}
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-block w-2.5 h-2.5 rounded-full ${online ? 'bg-green-400' : 'bg-red-500 animate-pulse'}`}
+            title={online ? 'En ligne' : 'Hors-ligne'}
+          />
+          <span className="hidden md:inline text-xs">
+            {online ? 'En ligne' : 'Hors-ligne'}
+            {pendingCount > 0 && ` · ${pendingCount} en attente`}
+          </span>
+          {pendingCount > 0 && (
+            <button
+              onClick={drainPending}
+              disabled={draining || !online}
+              className="text-xs min-h-[40px] px-3 rounded-lg bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-40 font-medium"
+              title={online ? 'Synchroniser maintenant' : 'Synchronisation impossible hors-ligne'}
+            >
+              {draining ? 'Sync…' : 'Sync'}
+            </button>
           )}
+          {!online && (
+            <button
+              onClick={() => recheck()}
+              className="text-xs min-w-[40px] min-h-[40px] rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+              title="Re-tester la connexion"
+            >
+              ↻
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* ── Main POS area ─────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* ── LEFT PANEL: Order / Cart ──────────────────────────────
+             Width is responsive — la Lenovo Idea Tab Pro Gen 2 13" rend
+             à ≥1280 px en paysage et bénéficie d'une colonne ticket large
+             (plus de lignes visibles sans scroll). xl: ≥1280, 2xl: ≥1536
+             pour les setups dock très larges. */}
+        <div className="w-[42%] xl:w-[48%] 2xl:w-[50%] flex flex-col bg-white border-r border-vz-line shadow-sm">
+
           {offlineMsg && (
             <div className="px-3 py-1.5 text-xs bg-vz-teal-soft text-vz-teal-deep border-b border-vz-teal-soft flex items-center justify-between">
               <span>{offlineMsg}</span>
@@ -1123,127 +1213,68 @@ export default function POSPage() {
             </div>
           )}
 
-          {/* Cashier identification strip */}
-          <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs bg-vz-teal-soft border-b border-vz-teal-soft">
-            <span className="font-medium text-vz-teal-deep">
-              {cashier
-                ? <>Cashier : <strong>{cashier.username}</strong></>
-                : 'Aucun cashier identifié'}
-            </span>
-            <div className="flex items-center gap-1.5">
-              {cashier && (
-                <>
-                  <button
-                    onClick={switchCashier}
-                    className="text-xs px-2 py-1 rounded bg-white border border-vz-teal-soft text-vz-teal hover:bg-vz-teal-soft transition-colors"
-                    title="Changer de cashier (relève)"
-                  >
-                    Changer
-                  </button>
-                  <button
-                    onClick={logoutCashier}
-                    className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
-                    title="Déconnecter le cashier"
-                  >
-                    Déconnexion
-                  </button>
-                </>
-              )}
-              {!cashier && (
-                <button
-                  onClick={() => { setCashierModalDismissible(false); setShowCashierModal(true); }}
-                  className="text-xs px-2 py-1 rounded bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors"
-                >
-                  S&apos;identifier
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Cash drawer status strip */}
-          {drawer !== null && (
-            <div className={`flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs ${drawer.open ? 'bg-green-50 border-b border-green-100' : 'bg-amber-50 border-b border-amber-200'}`}>
-              <span className={`font-medium ${drawer.open ? 'text-green-700' : 'text-amber-700'}`}>
-                {drawer.open
-                  ? `Caisse ouverte — fonds: ${drawer.opening_amount?.toFixed(2)} €`
-                  : 'Caisse non initialisée'}
-              </span>
-              {drawer.open ? (
-                <div className="flex items-center gap-1.5">
-                  <button onClick={kickDrawer}
-                    title="Ouvrir le tiroir-caisse manuellement"
-                    className="text-xs px-2 py-1 rounded bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors flex items-center gap-1">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="10" width="18" height="10" rx="1"/><path d="M3 10V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"/><line x1="10" y1="15" x2="14" y2="15"/></svg>
-                    Ouvrir tiroir
-                  </button>
-                  {wizardEnabled && (
-                    <CashMovementButton
-                      onSubmit={async (payload) => {
-                        await api.post('/api/pos/cash-movements', {
-                          ...payload,
-                          cashier_id: cashier?.id ?? undefined,
-                        });
-                      }}
-                    />
-                  )}
-                  <button onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
-                    className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
-                    Clôturer
-                  </button>
-                </div>
-              ) : (
-                <button onClick={() => { setDrawerAmount(0); setShowDrawerOpen(true); }}
-                  className="text-xs px-2 py-1 rounded bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors">
-                  Initialiser
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          {/* Header (Odoo 17 style — "Order" panel) */}
+          <div className="px-4 py-3 border-b border-vz-line flex items-center justify-between flex-shrink-0">
             <div>
-              <h1 className="text-base font-bold text-black">Commande</h1>
-              <p className="text-xs text-gray-400">{cart.length} article{cart.length > 1 ? 's' : ''}</p>
+              <h1 className="font-display text-lg text-vz-ink leading-tight">Ticket</h1>
+              <p className="text-xs text-vz-ink-mute">{cart.length} article{cart.length > 1 ? 's' : ''}</p>
             </div>
             {/* Client section */}
             {selectedClient ? (
-              <div className="flex items-center gap-2">
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-black">{selectedClient.first_name} {selectedClient.last_name}</p>
+              <button
+                onClick={() => setShowClientPopup(true)}
+                className="flex items-center gap-2 px-2 py-1.5 rounded-xl bg-vz-teal-soft hover:bg-vz-teal-soft/70 transition-colors max-w-[240px] group"
+                title="Voir la fiche cliente"
+              >
+                <div className="w-9 h-9 rounded-full bg-vz-teal flex-shrink-0 flex items-center justify-center text-white font-bold text-sm">
+                  {(selectedClient.first_name?.[0] ?? '?').toUpperCase()}
+                </div>
+                <div className="text-left min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-vz-ink truncate">
+                    {selectedClient.first_name} {selectedClient.last_name}
+                  </p>
                   {selectedClient.loyalty && (
-                    <p className="text-xs text-purple-600">{selectedClient.loyalty.points} pts fidélité</p>
+                    <p className="text-[10px] text-vz-teal-deep">{selectedClient.loyalty.points} pts · {selectedClient.loyalty.membership_number}</p>
                   )}
                 </div>
-                <div className="flex gap-1">
-                  <button onClick={() => setShowClientPopup(true)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-vz-teal-soft text-vz-teal hover:bg-vz-teal-soft text-xs">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  </button>
-                  <button onClick={() => { setSelectedClient(null); setCustomerBrief(null); setClientSearch(''); }}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 text-xs">&times;</button>
-                </div>
-              </div>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedClient(null);
+                    setCustomerBrief(null);
+                    setClientSearch('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelectedClient(null);
+                      setCustomerBrief(null);
+                      setClientSearch('');
+                    }
+                  }}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-vz-ink-mute hover:bg-red-50 hover:text-red-500 transition-colors text-base flex-shrink-0"
+                  title="Retirer la cliente"
+                >
+                  ×
+                </span>
+              </button>
             ) : (
-              <div className="relative">
-                <input
-                  className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg w-44 focus:outline-none focus:ring-1 focus:ring-vz-teal"
-                  placeholder="Chercher client..."
-                  value={clientSearch}
-                  onChange={(e) => setClientSearch(e.target.value)}
-                />
-                {clientResults.length > 0 && (
-                  <div className="absolute right-0 top-8 z-20 w-64 bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                    {clientResults.map(c => (
-                      <button key={c.id} onClick={() => selectClient(c)}
-                        className="w-full text-left px-3 py-2 hover:bg-vz-accent-soft transition-colors border-b border-gray-50 last:border-0">
-                        <p className="text-sm font-medium text-black">{c.first_name} {c.last_name}</p>
-                        {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={() => {
+                  setClientSearch('');
+                  setShowClientSelect(true);
+                }}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-vz-line bg-white hover:bg-vz-bg-alt hover:border-vz-teal transition-colors text-sm text-vz-ink-soft hover:text-vz-ink min-h-[44px]"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                Ajouter cliente
+              </button>
             )}
           </div>
 
@@ -1528,6 +1559,7 @@ export default function POSPage() {
             <div className="relative">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input
+                ref={searchInputRef}
                 className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-black text-sm focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
                 placeholder="Scanner code-barres ou rechercher un article..."
                 value={searchQuery}
@@ -1569,44 +1601,80 @@ export default function POSPage() {
                 <p className="text-sm">Aucun produit trouvé</p>
               </div>
             ) : searchResults.length > 0 ? (
-              <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+              // Odoo 17 product grid — bigger tiles with photo placeholder header.
+              // Touch targets ≥ 140px to be comfortable on iPad / Lenovo M11.
+              <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                 {searchResults.map(product => (
                   <button
                     key={product.id}
                     onClick={() => addProductToCart(product)}
-                    className="text-left p-4 bg-white rounded-xl border-2 border-transparent hover:border-vz-teal hover:shadow-md transition-all group"
+                    className="text-left bg-white rounded-xl border border-vz-line hover:border-vz-teal hover:shadow-lg active:scale-[0.98] active:bg-vz-teal-soft transition-all overflow-hidden min-h-[180px] flex flex-col group"
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="w-10 h-10 rounded-lg bg-vz-accent-soft flex items-center justify-center text-vz-teal flex-shrink-0">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-                      </div>
-                      <span className="text-lg font-bold text-vz-teal">{formatCurrency(product.sale_price)}</span>
-                    </div>
-                    <p className="text-sm font-semibold text-black group-hover:text-vz-teal leading-tight line-clamp-2">{product.name}</p>
-                    <p className="text-xs text-gray-400 mt-1">{product.barcode}{product.category ? ` · ${product.category}` : ''}</p>
-                    <div className="mt-2 flex items-center gap-1">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        product.status === 'display' ? 'bg-vz-teal-soft text-vz-teal' : 'bg-gray-100 text-gray-500'
+                    {/* Photo placeholder header — Odoo POS style with status corner */}
+                    <div className="aspect-[4/3] bg-gradient-to-br from-vz-bg-alt to-vz-bg flex items-center justify-center relative">
+                      <svg
+                        width="36" height="36"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        className="text-vz-ink-mute opacity-60"
+                      >
+                        <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                      </svg>
+                      <span className={`absolute top-1.5 right-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${
+                        product.status === 'display'
+                          ? 'bg-vz-teal-soft text-vz-teal-deep'
+                          : 'bg-white text-vz-ink-mute border border-vz-line'
                       }`}>
-                        {product.status === 'display' ? 'En vitrine' : 'En stock'}
+                        {product.status === 'display' ? 'Vitrine' : 'Stock'}
+                      </span>
+                    </div>
+                    {/* Title + price block */}
+                    <div className="p-2.5 flex-1 flex flex-col">
+                      <p className="text-sm font-medium text-vz-ink group-hover:text-vz-teal-deep leading-tight line-clamp-2 mb-1">
+                        {product.name}
+                      </p>
+                      <p className="text-[10px] text-vz-ink-mute font-mono truncate">
+                        {product.barcode}{product.category ? ` · ${product.category}` : ''}
+                      </p>
+                      <span className="mt-auto pt-1.5 text-lg font-bold text-vz-teal">
+                        {formatCurrency(product.sale_price)}
                       </span>
                     </div>
                   </button>
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-gray-300">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-4">
+              <div className="flex flex-col items-center justify-center h-full text-vz-ink-mute">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-4 opacity-40">
                   <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                 </svg>
-                <p className="text-base text-gray-400">Scannez un article ou tapez son nom</p>
-                <p className="text-sm text-gray-300 mt-1">Les résultats s&apos;afficheront ici</p>
+                <p className="text-base">Scannez ou tapez le nom d&apos;un article</p>
+                <p className="text-sm opacity-70 mt-1">Les résultats apparaissent ici</p>
               </div>
             )}
           </div>
         </div>
 
       </div>
+
+      {/* ── Client Selection Fullscreen (Odoo 17 pattern) ──────── */}
+      <ClientSelectionScreen
+        open={showClientSelect}
+        onClose={() => setShowClientSelect(false)}
+        search={clientSearch}
+        onSearchChange={setClientSearch}
+        results={clientResults}
+        onSelect={(c) => {
+          setShowClientSelect(false);
+          void selectClient(c);
+        }}
+        onCreateNew={() => {
+          setShowClientSelect(false);
+          setShowSubscribeModal(true);
+        }}
+      />
 
       {/* ── Client Popup Modal ──────────────────────────────────── */}
       <Modal
@@ -1694,250 +1762,369 @@ export default function POSPage() {
         </div>
       </Modal>
 
-      {/* ── Payment Modal (legacy, gated by !wizardEnabled) ─────── */}
-      <Modal
-        open={showPayment && !wizardEnabled}
-        onClose={() => setShowPayment(false)}
-        title="Encaissement"
-        actions={
-          <Button
-            size="lg"
-            disabled={remaining > 0.01 || submitting}
-            onClick={handleValidate}
-          >
-            {submitting ? 'Traitement...' : 'Valider le paiement'}
-          </Button>
-        }
-      >
-        <div className="space-y-5">
-          {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
-
-          {/* Loyalty redemption toggle */}
-          {selectedClient?.loyalty && loyaltyPoints > 0 && (
-            <div className="p-3 bg-purple-50 rounded-lg flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-purple-800">Utiliser les points fidélité</p>
-                <p className="text-xs text-purple-600">{loyaltyPoints} pts disponibles = {(loyaltyPoints * 0.10).toFixed(2)} €</p>
-              </div>
-              <button
-                onClick={() => setRedeemPoints(prev => !prev)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${redeemPoints ? 'bg-purple-600' : 'bg-gray-300'}`}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${redeemPoints ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-            </div>
-          )}
-
-          {/* Total */}
-          <div className="text-center p-4 bg-vz-teal-soft rounded-lg">
-            <p className="text-sm text-gray-500">Total a encaisser</p>
-            {redeemPoints && loyaltyDiscount > 0 && (
-              <p className="text-sm text-gray-400 line-through">{formatCurrency(cartTotal)}</p>
-            )}
-            <p className="text-3xl font-bold text-vz-teal">{formatCurrency(cartTotalAfterLoyalty)}</p>
-            {redeemPoints && loyaltyDiscount > 0 && (
-              <p className="text-xs text-purple-600 mt-1">-{formatCurrency(loyaltyDiscount)} fidélité déduit</p>
-            )}
+      {/* ── Payment Screen (legacy fullscreen, gated by !wizardEnabled) ──
+           Odoo 17 POS pattern : plein écran, panneau gauche = récap
+           panier + lignes de paiement + reste à payer, panneau droit =
+           méthodes + statut CB + numpad. Validation barre du bas. */}
+      {showPayment && !wizardEnabled && (
+        <div className="fixed inset-0 z-[55] bg-vz-bg flex flex-col">
+          {/* Header */}
+          <header className="flex-shrink-0 h-14 bg-vz-teal-deep text-white flex items-center px-3 gap-3 shadow-lg">
+            <button
+              onClick={() => setShowPayment(false)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-colors min-h-[44px]"
+              aria-label="Retour au ticket"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+              <span className="text-sm font-medium">Retour au ticket</span>
+            </button>
+            <div className="h-7 w-px bg-white/15" />
+            <h1 className="font-display text-lg">Encaissement</h1>
             {selectedClient && (
-              <p className="text-xs text-gray-500 mt-1">Client : {selectedClient.first_name} {selectedClient.last_name}</p>
-            )}
-          </div>
-
-          {/* Payment methods */}
-          <div>
-            <p className="text-sm font-medium text-black mb-2">
-              Moyen de paiement{' '}
-              <span className="text-xs font-normal text-gray-500">
-                (cumulables — paiement mixte)
+              <span className="hidden md:inline text-xs opacity-70 px-2 py-1 rounded bg-white/10">
+                {selectedClient.first_name} {selectedClient.last_name}
+                {selectedClient.loyalty && ` · ${selectedClient.loyalty.points} pts`}
               </span>
-            </p>
-            <div className="flex gap-3 flex-wrap">
-              <Button variant="outline" size="sm" onClick={() => addPayment('especes')}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-1.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-                Espèces
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => addPayment('carte')}
-                disabled={cbStatus === 'pending' || cbStatus === 'paid'}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                Carte (CB)
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => addPayment('cheque')}>Chèque</Button>
-              {(selectedClient?.avoir_balance || 0) > 0 && !payments.some(p => p.method === 'avoir') && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => addPayment('avoir')}
-                  title={`Solde avoir : ${formatCurrency(selectedClient?.avoir_balance || 0)}`}
-                >
-                  Avoir ({formatCurrency(selectedClient?.avoir_balance || 0)})
-                </Button>
+            )}
+            <div className="flex-1" />
+            <div className="flex flex-col items-end leading-tight">
+              <span className="text-[10px] opacity-70 uppercase tracking-wider">Total TTC</span>
+              <span className="font-display text-2xl font-bold">{formatCurrency(cartTotalAfterLoyalty)}</span>
+            </div>
+          </header>
+
+          {/* Body : 2 colonnes */}
+          <div className="flex flex-1 overflow-hidden">
+            {/* LEFT : récap commande + lignes de paiement + reste */}
+            <div className="flex-1 flex flex-col bg-vz-bg overflow-y-auto p-4 md:p-6 gap-4">
+              {error && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm flex items-start justify-between gap-3">
+                  <span className="flex-1">{error}</span>
+                  <button onClick={() => setError('')} className="font-bold">×</button>
+                </div>
+              )}
+
+              {/* Loyalty redemption toggle */}
+              {selectedClient?.loyalty && loyaltyPoints > 0 && (
+                <div className="p-3 bg-vz-accent-soft rounded-xl flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-vz-ink">Utiliser les points fidélité</p>
+                    <p className="text-xs text-vz-ink-soft">{loyaltyPoints} pts = {(loyaltyPoints * 0.10).toFixed(2)} €</p>
+                  </div>
+                  <button
+                    onClick={() => setRedeemPoints(prev => !prev)}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${redeemPoints ? 'bg-vz-accent' : 'bg-vz-line'}`}
+                    aria-label="Activer fidélité"
+                  >
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${redeemPoints ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              )}
+
+              {/* Récap commande */}
+              <section className="bg-white rounded-2xl border border-vz-line p-4">
+                <header className="flex items-center justify-between mb-3">
+                  <h2 className="font-display text-base text-vz-ink">Récap commande</h2>
+                  <span className="text-xs text-vz-ink-mute">{cart.length} article{cart.length > 1 ? 's' : ''}</span>
+                </header>
+                <ul className="space-y-1.5 max-h-[40vh] overflow-y-auto pr-1">
+                  {cart.map((item, idx) => {
+                    const linePrice = item.price * item.quantity;
+                    const afterDiscount = linePrice * (1 - item.discount / 100);
+                    return (
+                      <li key={idx} className="flex items-center justify-between text-sm border-b border-vz-line/40 last:border-0 pb-1.5 last:pb-0">
+                        <div className="min-w-0 flex-1 pr-3">
+                          <p className="font-medium text-vz-ink truncate">{item.name}</p>
+                          <p className="text-[11px] text-vz-ink-mute">
+                            {item.quantity} × {formatCurrency(item.price)}
+                            {item.discount > 0 && <span className="ml-1.5 text-vz-accent font-semibold">−{item.discount}%</span>}
+                          </p>
+                        </div>
+                        <span className="font-mono font-medium text-vz-ink">{formatCurrency(afterDiscount)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {(loyaltyDiscount > 0 || couponDiscount > 0) && (
+                  <div className="mt-2 pt-2 border-t border-vz-line space-y-1 text-xs">
+                    {couponDiscount > 0 && (
+                      <div className="flex justify-between text-vz-accent">
+                        <span>Coupon {couponApplied?.code}</span>
+                        <span>−{formatCurrency(couponDiscount)}</span>
+                      </div>
+                    )}
+                    {loyaltyDiscount > 0 && (
+                      <div className="flex justify-between text-vz-accent">
+                        <span>Fidélité ({redeemPoints ? loyaltyPoints : 0} pts)</span>
+                        <span>−{formatCurrency(loyaltyDiscount)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="mt-3 pt-3 border-t border-vz-line flex items-baseline justify-between">
+                  <span className="text-sm font-semibold text-vz-ink-soft">Total TTC</span>
+                  <span className="font-display text-2xl font-bold text-vz-teal">{formatCurrency(cartTotalAfterLoyalty)}</span>
+                </div>
+              </section>
+
+              {/* Lignes de paiement */}
+              {payments.length > 0 && (
+                <section className="bg-white rounded-2xl border border-vz-line p-4">
+                  <h2 className="font-display text-base text-vz-ink mb-3">Lignes de paiement</h2>
+                  <div className="space-y-2">
+                    {payments.map((payment, index) => (
+                      <div key={index} className="flex items-center gap-3 p-2.5 bg-vz-bg-alt rounded-xl">
+                        <span className="flex-1 font-medium text-vz-ink text-sm">{methodLabels[payment.method]}</span>
+                        {payment.method !== 'carte' ? (
+                          <button
+                            type="button"
+                            onClick={() => setNumpadTarget({ type: payment.method === 'especes' ? 'cash' : 'payment', index })}
+                            className={`px-4 py-2 rounded-lg font-bold text-base font-mono transition-colors min-h-[44px] ${
+                              numpadTarget?.index === index
+                                ? 'bg-vz-teal text-white shadow-md'
+                                : 'bg-white border border-vz-line text-vz-ink hover:bg-vz-bg-alt'
+                            }`}
+                          >
+                            {payment.amount.toFixed(2)} €
+                          </button>
+                        ) : (
+                          <span className="text-sm font-mono font-semibold text-vz-ink px-3">{payment.amount.toFixed(2)} € CB</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            removePayment(index);
+                            if (payment.method === 'carte') cancelCBPayment();
+                            if (numpadTarget?.index === index) setNumpadTarget(null);
+                          }}
+                          className="w-10 h-10 flex items-center justify-center text-vz-ink-mute hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                          aria-label="Retirer cette ligne"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Reste à payer */}
+                  <div className={`mt-3 p-3 rounded-xl flex items-center justify-between ${remaining <= 0.01 ? 'bg-green-50 border border-green-200' : 'bg-vz-accent-soft border border-vz-accent/30'}`}>
+                    <span className="text-sm font-semibold">
+                      {remaining <= 0.01 ? 'Solde atteint' : 'Reste à payer'}
+                    </span>
+                    <span className={`font-mono text-xl font-bold ${remaining <= 0.01 ? 'text-green-600' : 'text-vz-accent'}`}>
+                      {formatCurrency(Math.max(0, remaining))}
+                    </span>
+                  </div>
+
+                  {/* Monnaie à rendre */}
+                  {numpadTarget?.type === 'cash' && parseFloat(cashGiven) > 0 && payments[numpadTarget.index] && (
+                    <div className="mt-2 flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-200">
+                      <span className="text-sm font-semibold text-green-800">Monnaie à rendre</span>
+                      <span className="font-mono text-xl font-bold text-green-700">
+                        {formatCurrency(Math.max(0, parseFloat(cashGiven) - payments[numpadTarget.index].amount))}
+                      </span>
+                    </div>
+                  )}
+                </section>
               )}
             </div>
-            {selectedClient?.avoir_balance != null && selectedClient.avoir_balance > 0 && (
-              <p className="text-xs text-gray-500 mt-1">
-                {selectedClient.first_name} dispose d&apos;un avoir de{' '}
-                <strong>{formatCurrency(selectedClient.avoir_balance)}</strong>.
-              </p>
-            )}
-          </div>
 
-          {/* CB Status display */}
-          {cbStatus !== 'idle' && (
-            <div className={`p-4 rounded-xl border-2 ${
-              cbStatus === 'paid' ? 'border-green-400 bg-green-50' :
-              cbStatus === 'failed' ? 'border-red-400 bg-red-50' :
-              cbStatus === 'timeout' ? 'border-amber-400 bg-amber-50' :
-              'border-blue-300 bg-blue-50'
-            }`}>
-              <div className="flex items-center gap-3 mb-3">
-                {cbStatus === 'pending' && (
-                  <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
-                )}
-                {cbStatus === 'paid' && (
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" className="shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
-                )}
-                {cbStatus === 'failed' && (
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" className="shrink-0"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                )}
-                {cbStatus === 'timeout' && (
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" className="shrink-0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                )}
-                <div>
-                  <p className={`font-semibold text-sm ${
-                    cbStatus === 'paid' ? 'text-green-700' :
-                    cbStatus === 'failed' ? 'text-red-700' :
-                    cbStatus === 'timeout' ? 'text-amber-700' :
-                    'text-blue-700'
-                  }`}>
-                    {cbStatus === 'pending' ? 'En attente de confirmation TPE...' :
-                     cbStatus === 'paid' ? 'Paiement CB confirmé' :
-                     cbStatus === 'timeout' ? 'TPE pas de réponse — vérifie l\'écran du Solo' :
-                     'Paiement CB échoué'}
-                  </p>
+            {/* RIGHT : méthodes + CB status + numpad */}
+            <div className="w-[420px] xl:w-[460px] 2xl:w-[500px] flex flex-col bg-white border-l border-vz-line overflow-y-auto p-4 md:p-5 gap-4">
+              {/* Méthodes */}
+              <section>
+                <h2 className="font-display text-base text-vz-ink mb-2">Moyen de paiement</h2>
+                <p className="text-xs text-vz-ink-mute mb-3">Cumulables — paiement mixte possible.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => addPayment('especes')}
+                    className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-vz-teal">
+                      <rect x="1" y="4" width="22" height="16" rx="2"/>
+                      <line x1="1" y1="10" x2="23" y2="10"/>
+                    </svg>
+                    <span className="text-sm font-semibold">Espèces</span>
+                  </button>
+                  <button
+                    onClick={() => addPayment('carte')}
+                    disabled={cbStatus === 'pending' || cbStatus === 'paid'}
+                    className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-vz-teal">
+                      <rect x="2" y="5" width="20" height="14" rx="2"/>
+                      <line x1="2" y1="10" x2="22" y2="10"/>
+                    </svg>
+                    <span className="text-sm font-semibold">Carte CB</span>
+                  </button>
+                  <button
+                    onClick={() => addPayment('cheque')}
+                    className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-vz-teal">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span className="text-sm font-semibold">Chèque</span>
+                  </button>
+                  <button
+                    onClick={() => addPayment('avoir')}
+                    disabled={!((selectedClient?.avoir_balance || 0) > 0) || payments.some(p => p.method === 'avoir')}
+                    title={selectedClient?.avoir_balance ? `Solde avoir : ${formatCurrency(selectedClient.avoir_balance)}` : 'Pas d\'avoir disponible'}
+                    className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-accent hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-vz-accent">
+                      <polyline points="20 12 20 22 4 22 4 12"/>
+                      <rect x="2" y="7" width="20" height="5"/>
+                      <line x1="12" y1="22" x2="12" y2="7"/>
+                      <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                    </svg>
+                    <span className="text-sm font-semibold">
+                      Avoir{selectedClient?.avoir_balance ? ` (${formatCurrency(selectedClient.avoir_balance)})` : ''}
+                    </span>
+                  </button>
+                </div>
+              </section>
+
+              {/* CB Status display */}
+              {cbStatus !== 'idle' && (
+                <section className={`p-4 rounded-xl border-2 ${
+                  cbStatus === 'paid' ? 'border-green-400 bg-green-50' :
+                  cbStatus === 'failed' ? 'border-red-400 bg-red-50' :
+                  cbStatus === 'timeout' ? 'border-amber-400 bg-amber-50' :
+                  'border-blue-300 bg-blue-50'
+                }`}>
+                  <div className="flex items-center gap-3 mb-3">
+                    {cbStatus === 'pending' && (
+                      <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                    )}
+                    {cbStatus === 'paid' && (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" className="shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
+                    )}
+                    {cbStatus === 'failed' && (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" className="shrink-0"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    )}
+                    {cbStatus === 'timeout' && (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" className="shrink-0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    )}
+                    <div>
+                      <p className={`font-semibold text-sm ${
+                        cbStatus === 'paid' ? 'text-green-700' :
+                        cbStatus === 'failed' ? 'text-red-700' :
+                        cbStatus === 'timeout' ? 'text-amber-700' :
+                        'text-blue-700'
+                      }`}>
+                        {cbStatus === 'pending' ? 'En attente de confirmation TPE…' :
+                         cbStatus === 'paid' ? 'Paiement CB confirmé' :
+                         cbStatus === 'timeout' ? 'TPE pas de réponse — vérifie l\'écran du Solo' :
+                         'Paiement CB échoué'}
+                      </p>
+                      {cbStatus === 'pending' && (
+                        <p className="text-xs text-blue-500">Présentez la carte sur le lecteur</p>
+                      )}
+                      {cbStatus === 'timeout' && (
+                        <p className="text-xs text-amber-700">
+                          Confirme uniquement si le TPE indique &laquo;&nbsp;Paiement accepté&nbsp;&raquo;.
+                        </p>
+                      )}
+                    </div>
+                  </div>
                   {cbStatus === 'pending' && (
-                    <p className="text-xs text-blue-500">Présentez la carte sur le lecteur</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={confirmCBManually}
+                        className="flex-1 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors min-h-[44px]"
+                      >
+                        Confirmer manuellement
+                      </button>
+                      <button
+                        onClick={cancelCBPayment}
+                        className="px-4 py-2.5 bg-white text-red-600 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[44px]"
+                      >
+                        Annuler
+                      </button>
+                    </div>
                   )}
                   {cbStatus === 'timeout' && (
-                    <p className="text-xs text-amber-700">
-                      Confirme uniquement si le TPE indique &laquo;&nbsp;Paiement accepté&nbsp;&raquo;.
-                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={confirmCBManually}
+                        className="flex-1 py-2.5 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors min-h-[44px]"
+                      >
+                        Le TPE dit accepté — confirmer
+                      </button>
+                      <button
+                        onClick={cancelCBPayment}
+                        className="px-4 py-2.5 bg-white text-red-700 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[44px]"
+                      >
+                        Annuler
+                      </button>
+                    </div>
                   )}
-                </div>
-              </div>
-              {cbStatus === 'pending' && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={confirmCBManually}
-                    className="flex-1 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors min-h-[48px]"
-                  >
-                    Confirmer manuellement
-                  </button>
-                  <button
-                    onClick={cancelCBPayment}
-                    className="px-4 py-2 bg-white text-red-600 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[48px]"
-                  >
-                    Annuler
-                  </button>
-                </div>
+                  {cbStatus === 'failed' && (
+                    <button
+                      onClick={cancelCBPayment}
+                      className="w-full py-2.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 min-h-[44px]"
+                    >
+                      Réessayer
+                    </button>
+                  )}
+                </section>
               )}
-              {cbStatus === 'timeout' && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={confirmCBManually}
-                    className="flex-1 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors min-h-[48px]"
-                  >
-                    Le TPE dit accepté — confirmer
-                  </button>
-                  <button
-                    onClick={cancelCBPayment}
-                    className="px-4 py-2 bg-white text-red-700 border border-red-300 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors min-h-[48px]"
-                  >
-                    Annuler / réessayer
-                  </button>
-                </div>
-              )}
-              {cbStatus === 'failed' && (
-                <button
-                  onClick={cancelCBPayment}
-                  className="w-full py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 min-h-[48px]"
-                >
-                  Réessayer
-                </button>
+
+              {/* Numpad for active payment */}
+              {numpadTarget && (
+                <section className="border-t border-vz-line pt-3">
+                  <p className="text-xs font-semibold text-vz-ink-mute uppercase tracking-wider mb-2">
+                    {numpadTarget.type === 'cash' ? 'Montant remis par le client' : 'Montant à encaisser'}
+                  </p>
+                  <NumPad
+                    value={numpadTarget.type === 'cash' ? parseFloat(cashGiven) || 0 : payments[numpadTarget.index]?.amount || 0}
+                    onChange={handleNumpadChange}
+                    presets={getNumpadPresets()}
+                  />
+                </section>
               )}
             </div>
-          )}
+          </div>
 
-          {/* Payment lines */}
-          {payments.map((payment, index) => (
-            <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-              <span className="flex-1 font-semibold text-black text-sm">{methodLabels[payment.method]}</span>
-              {payment.method !== 'carte' ? (
-                <button
-                  type="button"
-                  onClick={() => setNumpadTarget({ type: payment.method === 'especes' ? 'cash' : 'payment', index })}
-                  className={`px-4 py-2.5 rounded-xl font-bold text-base transition-colors min-h-[48px] ${
-                    numpadTarget?.index === index
-                      ? 'bg-vz-teal text-white'
-                      : 'bg-white border border-gray-200 text-black hover:bg-gray-100'
-                  }`}
-                >
-                  {payment.amount.toFixed(2)} €
-                </button>
+          {/* Bottom action bar — Odoo 17 style big Validate button */}
+          <footer className="flex-shrink-0 bg-white border-t border-vz-line px-4 md:px-6 py-3 flex items-center gap-3 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
+            <button
+              onClick={() => setShowPayment(false)}
+              className="px-5 py-3 rounded-xl text-sm font-medium text-vz-ink-soft bg-vz-bg-alt hover:bg-vz-line transition-colors min-h-[52px]"
+            >
+              Annuler
+            </button>
+            <button
+              disabled={remaining > 0.01 || submitting}
+              onClick={handleValidate}
+              className={`flex-1 py-3 rounded-xl text-lg font-bold transition-colors min-h-[52px] flex items-center justify-center gap-3 ${
+                remaining > 0.01 || submitting
+                  ? 'bg-vz-line text-vz-ink-mute cursor-not-allowed'
+                  : 'bg-vz-teal text-white hover:bg-vz-teal-deep active:bg-vz-teal-deep shadow-lg'
+              }`}
+            >
+              {submitting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Traitement…
+                </>
               ) : (
-                <span className="text-sm font-medium text-gray-500">{payment.amount.toFixed(2)} € CB</span>
+                <>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Valider — {formatCurrency(cartTotalAfterLoyalty)}
+                </>
               )}
-              <button
-                type="button"
-                onClick={() => {
-                  removePayment(index);
-                  if (payment.method === 'carte') cancelCBPayment();
-                  if (numpadTarget?.index === index) setNumpadTarget(null);
-                }}
-                className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-red-600 rounded-xl hover:bg-red-50"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-          ))}
-
-          {/* Numpad for active payment */}
-          {numpadTarget && (
-            <div className="space-y-2 border-t border-gray-100 pt-3">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                {numpadTarget.type === 'cash' ? 'Montant remis par le client' : 'Montant à encaisser'}
-              </p>
-              <NumPad
-                value={numpadTarget.type === 'cash' ? parseFloat(cashGiven) || 0 : payments[numpadTarget.index]?.amount || 0}
-                onChange={handleNumpadChange}
-                presets={getNumpadPresets()}
-              />
-              {numpadTarget.type === 'cash' && parseFloat(cashGiven) > 0 && payments[numpadTarget.index] && (
-                <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-200">
-                  <span className="text-sm font-semibold text-green-800">Monnaie à rendre</span>
-                  <span className="text-xl font-bold text-green-700">
-                    {formatCurrency(Math.max(0, parseFloat(cashGiven) - payments[numpadTarget.index].amount))}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
-
-          {/* Remaining */}
-          {payments.length > 0 && (
-            <div className="flex items-center justify-between p-3 bg-vz-accent-soft rounded-lg">
-              <span className="text-sm font-medium">Reste a payer</span>
-              <span className={`font-bold ${remaining <= 0.01 ? 'text-green-600' : 'text-red-600'}`}>
-                {formatCurrency(Math.max(0, remaining))}
-              </span>
-            </div>
-          )}
+            </button>
+          </footer>
         </div>
-      </Modal>
+      )}
 
       {/* ── New SumUp-style wizard (PR 6/6) — gated by feature flag ─── */}
       {wizardEnabled && (
@@ -1996,11 +2183,6 @@ export default function POSPage() {
             clientEmail={selectedClient?.email}
             clientPhone={selectedClient?.phone}
             onPrintEscpos={printReceiptOnPrinter}
-            onPrintAirprint={() => {
-              printReceipt(receiptText);
-              setShowWizardReceipt(false);
-              handleReceiptClose();
-            }}
             onResend={async (channel) => {
               if (!receiptTxId) return;
               await api.post(`/api/pos/transactions/${receiptTxId}/resend`, {
@@ -2052,17 +2234,6 @@ export default function POSPage() {
             <Button onClick={printReceiptOnPrinter} disabled={printing || !receiptTxId} variant="secondary">
               {printing ? 'Impression...' : 'Imprimer (MUNBYN)'}
             </Button>
-            {/* AirPrint fallback — visible on iOS only. On Android Chrome the
-                browser print path doesn't drive the thermal printer (no RJ11
-                kick), so the button would just dump a PDF. The MUNBYN ESC/POS
-                path above is the canonical receipt route on the Lenovo Idea
-                Tab Pro 13" caisse. */}
-            {isIOS() && (
-              <Button onClick={() => { printReceipt(receiptText); handleReceiptClose(); }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                Imprimer (AirPrint)
-              </Button>
-            )}
           </div>
         }
       >
@@ -2074,26 +2245,151 @@ export default function POSPage() {
         )}
       </Modal>
 
-      {/* ── Open Drawer Modal (legacy) ────────────────────────── */}
-      {!wizardEnabled && (
-        <Modal open={showDrawerOpen} onClose={() => setShowDrawerOpen(false)} title="Initialiser la caisse"
-          actions={<Button size="lg" onClick={handleOpenDrawer} disabled={drawerSubmitting}>{drawerSubmitting ? 'En cours...' : 'Ouvrir la caisse'}</Button>}>
-          <div className="space-y-3">
-            <p className="text-sm text-gray-500">Saisissez le fonds de caisse initial (monnaie disponible).</p>
-            <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[50, 100, 150, 200]} />
+      {/* ── Open Drawer (legacy fullscreen, Odoo 17 style) ────── */}
+      {!wizardEnabled && showDrawerOpen && (
+        <div className="fixed inset-0 z-[58] bg-vz-bg flex flex-col">
+          <header className="flex-shrink-0 h-14 bg-vz-teal-deep text-white flex items-center px-3 gap-3 shadow-lg">
+            <button
+              onClick={() => setShowDrawerOpen(false)}
+              disabled={drawerSubmitting}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-colors min-h-[44px] disabled:opacity-50"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+              <span className="text-sm font-medium">Annuler</span>
+            </button>
+            <div className="h-7 w-px bg-white/15" />
+            <h1 className="font-display text-lg">Ouverture de caisse</h1>
+            <div className="flex-1" />
+            <div className="flex flex-col items-end leading-tight">
+              <span className="text-[10px] opacity-70 uppercase tracking-wider">Fond de caisse</span>
+              <span className="font-display text-2xl font-bold font-mono">{formatCurrency(drawerAmount)}</span>
+            </div>
+          </header>
+
+          <div className="flex-1 overflow-y-auto bg-vz-bg p-5 md:p-8">
+            <div className="max-w-md mx-auto space-y-5">
+              <p className="text-sm text-vz-ink-soft text-center">
+                Saisissez le fonds de caisse initial (monnaie disponible).
+              </p>
+              <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[50, 100, 150, 200]} />
+            </div>
           </div>
-        </Modal>
+
+          <footer className="flex-shrink-0 bg-white border-t border-vz-line px-4 md:px-6 py-3 flex items-center gap-3 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
+            <button
+              onClick={() => setShowDrawerOpen(false)}
+              disabled={drawerSubmitting}
+              className="px-5 py-3 rounded-xl text-sm font-medium text-vz-ink-soft bg-vz-bg-alt hover:bg-vz-line transition-colors min-h-[52px] disabled:opacity-50"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleOpenDrawer}
+              disabled={drawerSubmitting || drawerAmount <= 0}
+              className={`flex-1 py-3 rounded-xl text-lg font-bold transition-colors min-h-[52px] flex items-center justify-center gap-3 ${
+                drawerSubmitting || drawerAmount <= 0
+                  ? 'bg-vz-line text-vz-ink-mute cursor-not-allowed'
+                  : 'bg-vz-teal text-white hover:bg-vz-teal-deep shadow-lg'
+              }`}
+            >
+              {drawerSubmitting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Ouverture…
+                </>
+              ) : (
+                <>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="10" width="18" height="10" rx="1" />
+                    <path d="M3 10V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4" />
+                    <line x1="10" y1="15" x2="14" y2="15" />
+                  </svg>
+                  Ouvrir la caisse — {formatCurrency(drawerAmount)}
+                </>
+              )}
+            </button>
+          </footer>
+        </div>
       )}
 
-      {/* ── Close Drawer Modal (legacy) ───────────────────────── */}
-      {!wizardEnabled && (
-        <Modal open={showDrawerClose} onClose={() => setShowDrawerClose(false)} title="Clôturer la caisse"
-          actions={<Button size="lg" onClick={handleCloseDrawer} disabled={drawerSubmitting}>{drawerSubmitting ? 'En cours...' : 'Générer le rapport Z'}</Button>}>
-          <div className="space-y-3">
-            <p className="text-sm text-gray-500">Comptez les espèces en caisse et saisissez le montant total.</p>
-            <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[]} />
+      {/* ── Close Drawer (legacy fullscreen, Odoo 17 style) ───── */}
+      {!wizardEnabled && showDrawerClose && (
+        <div className="fixed inset-0 z-[58] bg-vz-bg flex flex-col">
+          <header className="flex-shrink-0 h-14 bg-vz-teal-deep text-white flex items-center px-3 gap-3 shadow-lg">
+            <button
+              onClick={() => setShowDrawerClose(false)}
+              disabled={drawerSubmitting}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-colors min-h-[44px] disabled:opacity-50"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+              <span className="text-sm font-medium">Annuler</span>
+            </button>
+            <div className="h-7 w-px bg-white/15" />
+            <h1 className="font-display text-lg">Clôture de caisse</h1>
+            <div className="flex-1" />
+            <div className="flex flex-col items-end leading-tight">
+              <span className="text-[10px] opacity-70 uppercase tracking-wider">Compté</span>
+              <span className="font-display text-2xl font-bold font-mono">{formatCurrency(drawerAmount)}</span>
+            </div>
+          </header>
+
+          <div className="flex-1 overflow-y-auto bg-vz-bg p-5 md:p-8">
+            <div className="max-w-md mx-auto space-y-5">
+              <p className="text-sm text-vz-ink-soft text-center">
+                Comptez les espèces en caisse et saisissez le total compté.
+                Le rapport Z (NF525) sera généré à la validation.
+              </p>
+              <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[]} />
+              {drawer?.opening_amount != null && (
+                <div className="p-3 bg-vz-bg-alt rounded-xl flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-wider text-vz-ink-mute">Fond ouverture</span>
+                  <span className="font-mono text-base font-semibold text-vz-ink tabular-nums">
+                    {formatCurrency(drawer.opening_amount)}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
-        </Modal>
+
+          <footer className="flex-shrink-0 bg-white border-t border-vz-line px-4 md:px-6 py-3 flex items-center gap-3 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
+            <button
+              onClick={() => setShowDrawerClose(false)}
+              disabled={drawerSubmitting}
+              className="px-5 py-3 rounded-xl text-sm font-medium text-vz-ink-soft bg-vz-bg-alt hover:bg-vz-line transition-colors min-h-[52px] disabled:opacity-50"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleCloseDrawer}
+              disabled={drawerSubmitting || drawerAmount <= 0}
+              className={`flex-1 py-3 rounded-xl text-lg font-bold transition-colors min-h-[52px] flex items-center justify-center gap-3 ${
+                drawerSubmitting || drawerAmount <= 0
+                  ? 'bg-vz-line text-vz-ink-mute cursor-not-allowed'
+                  : 'bg-vz-teal text-white hover:bg-vz-teal-deep shadow-lg'
+              }`}
+            >
+              {drawerSubmitting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Clôture…
+                </>
+              ) : (
+                <>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Générer le rapport Z — {formatCurrency(drawerAmount)}
+                </>
+              )}
+            </button>
+          </footer>
+        </div>
       )}
 
       {/* ── New drawer modals (PR 6/6 — denomination grid + 3-phase close) */}

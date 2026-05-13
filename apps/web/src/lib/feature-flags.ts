@@ -53,7 +53,7 @@ export function setFeatureOverride(
 /**
  * The new SumUp-style POS wizard (PR 4-6 of the routine refactor). False by
  * default — the legacy inline payment UI keeps running until the manager
- * opts a device in. Enable on the Lenovo dock first, then iPad / Galaxy.
+ * opts a device in. Enabled per Lenovo dock via localStorage.
  */
 export function isPosWizardEnabled(): boolean {
   return isFeatureEnabled(
