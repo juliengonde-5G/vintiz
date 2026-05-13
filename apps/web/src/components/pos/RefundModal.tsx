@@ -125,6 +125,27 @@ export default function RefundModal({
     setSubmitting(false);
   };
 
+  /**
+   * Direct ESC/POS path — MUNBYN 047P-WiFi on port 9100. The only path
+   * that works on Android (Lenovo Idea Tab Pro Gen 2) since Chrome's
+   * window.print() falls back to "Print to PDF" without a system driver
+   * for raw thermal printers.
+   */
+  const printRefundEscpos = useCallback(async () => {
+    if (!refundTxId) return;
+    setPrinting(true);
+    try {
+      const res = await api.post(`/api/pos/transactions/${refundTxId}/print`, {});
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        setError(err?.detail || 'Imprimante ESC/POS indisponible — vérifie l\'IP MUNBYN dans Réglages › Matériel');
+      }
+    } catch {
+      setError('Erreur de connexion à l\'imprimante');
+    }
+    setPrinting(false);
+  }, [refundTxId]);
+
   const printRefundReceipt = useCallback(async () => {
     if (!refundTxId) return;
     setPrinting(true);
@@ -191,11 +212,22 @@ export default function RefundModal({
               Fermer sans ticket
             </Button>
             <Button
-              onClick={printRefundReceipt}
+              onClick={printRefundEscpos}
               disabled={printing || !refundTxId}
             >
-              {printing ? 'Impression…' : 'Imprimer ticket de retour'}
+              {printing ? 'Impression…' : 'Imprimer (MUNBYN)'}
             </Button>
+            {/* AirPrint fallback — uniquement iOS Safari (sur Android Chrome
+                window.print() ne pilote pas la MUNBYN, donc inutile). */}
+            {typeof window !== 'undefined' && isIOS() && (
+              <Button
+                variant="outline"
+                onClick={printRefundReceipt}
+                disabled={printing || !refundTxId}
+              >
+                Imprimer (AirPrint)
+              </Button>
+            )}
           </>
         ) : (
           <>
