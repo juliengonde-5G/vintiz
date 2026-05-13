@@ -55,8 +55,10 @@ export default function RootLayout({
         {/* Status bar color — Chrome Android tints it teal on PWA install. */}
         <meta name="theme-color" content="#0B7A6A" />
         {/* iOS home-screen icon + standalone hint (kept for backward compat with
-            existing iPad installs ; no-op on Android). */}
-        <link rel="apple-touch-icon" href="/icon-192.png" />
+            existing iPad installs ; no-op on Android). Aligned on the public
+            site favicon (/logo-teal.png) so back-office and site share the
+            same brand on home screen + tab. */}
+        <link rel="apple-touch-icon" href="/logo-teal.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         {/* Generic Android equivalent — Chrome reads this on PWA install. */}
