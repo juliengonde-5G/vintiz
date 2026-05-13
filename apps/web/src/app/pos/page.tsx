@@ -11,6 +11,7 @@ import CashDrawerCloseModal from '@/components/pos/CashDrawerCloseModal';
 import CashDrawerOpenModal from '@/components/pos/CashDrawerOpenModal';
 import CashMovementButton from '@/components/pos/CashMovementButton';
 import ClientCompanion from '@/components/pos/ClientCompanion';
+import ClientSelectionScreen from '@/components/pos/ClientSelectionScreen';
 import InvoiceClientForm, {
   type InvoiceFields,
   isInvoiceFormValid,
@@ -109,6 +110,7 @@ export default function POSPage() {
   const [clientResults, setClientResults] = useState<ClientResult[]>([]);
   const [selectedClient, setSelectedClient] = useState<ClientDetail | null>(null);
   const [showClientPopup, setShowClientPopup] = useState(false);
+  const [showClientSelect, setShowClientSelect] = useState(false);
   const [customerBrief, setCustomerBrief] = useState<CustomerBrief | null>(null);
 
   // Manual article
@@ -1251,42 +1253,60 @@ export default function POSPage() {
             </div>
             {/* Client section */}
             {selectedClient ? (
-              <div className="flex items-center gap-2">
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-black">{selectedClient.first_name} {selectedClient.last_name}</p>
+              <button
+                onClick={() => setShowClientPopup(true)}
+                className="flex items-center gap-2 px-2 py-1.5 rounded-xl bg-vz-teal-soft hover:bg-vz-teal-soft/70 transition-colors max-w-[240px] group"
+                title="Voir la fiche cliente"
+              >
+                <div className="w-9 h-9 rounded-full bg-vz-teal flex-shrink-0 flex items-center justify-center text-white font-bold text-sm">
+                  {(selectedClient.first_name?.[0] ?? '?').toUpperCase()}
+                </div>
+                <div className="text-left min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-vz-ink truncate">
+                    {selectedClient.first_name} {selectedClient.last_name}
+                  </p>
                   {selectedClient.loyalty && (
-                    <p className="text-xs text-purple-600">{selectedClient.loyalty.points} pts fidélité</p>
+                    <p className="text-[10px] text-vz-teal-deep">{selectedClient.loyalty.points} pts · {selectedClient.loyalty.membership_number}</p>
                   )}
                 </div>
-                <div className="flex gap-1">
-                  <button onClick={() => setShowClientPopup(true)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-vz-teal-soft text-vz-teal hover:bg-vz-teal-soft text-xs">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  </button>
-                  <button onClick={() => { setSelectedClient(null); setCustomerBrief(null); setClientSearch(''); }}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 text-xs">&times;</button>
-                </div>
-              </div>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedClient(null);
+                    setCustomerBrief(null);
+                    setClientSearch('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelectedClient(null);
+                      setCustomerBrief(null);
+                      setClientSearch('');
+                    }
+                  }}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-vz-ink-mute hover:bg-red-50 hover:text-red-500 transition-colors text-base flex-shrink-0"
+                  title="Retirer la cliente"
+                >
+                  ×
+                </span>
+              </button>
             ) : (
-              <div className="relative">
-                <input
-                  className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg w-44 focus:outline-none focus:ring-1 focus:ring-vz-teal"
-                  placeholder="Chercher client..."
-                  value={clientSearch}
-                  onChange={(e) => setClientSearch(e.target.value)}
-                />
-                {clientResults.length > 0 && (
-                  <div className="absolute right-0 top-8 z-20 w-64 bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                    {clientResults.map(c => (
-                      <button key={c.id} onClick={() => selectClient(c)}
-                        className="w-full text-left px-3 py-2 hover:bg-vz-accent-soft transition-colors border-b border-gray-50 last:border-0">
-                        <p className="text-sm font-medium text-black">{c.first_name} {c.last_name}</p>
-                        {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={() => {
+                  setClientSearch('');
+                  setShowClientSelect(true);
+                }}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-vz-line bg-white hover:bg-vz-bg-alt hover:border-vz-teal transition-colors text-sm text-vz-ink-soft hover:text-vz-ink min-h-[44px]"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                Ajouter cliente
+              </button>
             )}
           </div>
 
@@ -1669,6 +1689,23 @@ export default function POSPage() {
         </div>
 
       </div>
+
+      {/* ── Client Selection Fullscreen (Odoo 17 pattern) ──────── */}
+      <ClientSelectionScreen
+        open={showClientSelect}
+        onClose={() => setShowClientSelect(false)}
+        search={clientSearch}
+        onSearchChange={setClientSearch}
+        results={clientResults}
+        onSelect={(c) => {
+          setShowClientSelect(false);
+          void selectClient(c);
+        }}
+        onCreateNew={() => {
+          setShowClientSelect(false);
+          setShowSubscribeModal(true);
+        }}
+      />
 
       {/* ── Client Popup Modal ──────────────────────────────────── */}
       <Modal

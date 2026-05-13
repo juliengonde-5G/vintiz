@@ -81,92 +81,127 @@ export default function CashierPinModal({
 
   if (!open) return null;
 
+  // Odoo 17-style fullscreen login. Dark teal gradient, large PIN dots,
+  // big touch-friendly keypad. Replaces the previous centered modal card —
+  // matches the cashier login screen that ships with Odoo POS.
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/60"
-        onClick={dismissible ? onCancel : undefined}
-      />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
-        <div className="text-center mb-6">
-          <h2 className="text-xl font-bold text-black">
-            Identification cashier
-          </h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Saisissez votre PIN à 4 chiffres
-          </p>
+    <div className="fixed inset-0 z-[60] bg-gradient-to-br from-vz-teal-deep via-[#0a3c33] to-vz-teal flex flex-col">
+      {/* Header */}
+      <header className="flex-shrink-0 flex items-center justify-between px-6 py-4">
+        <div className="flex items-center gap-3 text-white">
+          <img
+            src="/logo-teal.png"
+            alt="Vintiz"
+            className="h-9 w-auto brightness-0 invert"
+            draggable={false}
+          />
+          <div className="leading-tight">
+            <p className="font-display font-bold text-lg tracking-wide">VINTIZ</p>
+            <p className="text-[10px] uppercase tracking-[0.22em] opacity-70">Caisse</p>
+          </div>
         </div>
-
-        {/* PIN display: 4 dots */}
-        <div className="flex justify-center gap-3 mb-4">
-          {Array.from({ length: PIN_LENGTH }).map((_, i) => (
-            <div
-              key={i}
-              className={`w-4 h-4 rounded-full border-2 transition-colors ${
-                i < pin.length
-                  ? 'bg-vz-teal border-vz-teal'
-                  : 'bg-white border-gray-300'
-              }`}
-            />
-          ))}
-        </div>
-
-        {/* Status line: error or loading */}
-        <div className="h-6 text-center mb-4">
-          {submitting && (
-            <span className="text-sm text-gray-500">Vérification…</span>
-          )}
-          {!submitting && error && (
-            <span className="text-sm text-red-600 font-medium">{error}</span>
-          )}
-        </div>
-
-        {/* Numeric keypad */}
-        <div className="grid grid-cols-3 gap-3">
-          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => press(d)}
-              disabled={submitting}
-              className="py-5 rounded-xl text-2xl font-bold bg-white border border-gray-200 text-black hover:bg-vz-accent-soft hover:border-vz-accent-soft active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {d}
-            </button>
-          ))}
-          {/* Bottom row: blank | 0 | back */}
-          <div />
-          <button
-            type="button"
-            onClick={() => press('0')}
-            disabled={submitting}
-            className="py-5 rounded-xl text-2xl font-bold bg-white border border-gray-200 text-black hover:bg-vz-accent-soft hover:border-vz-accent-soft active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            0
-          </button>
-          <button
-            type="button"
-            onClick={back}
-            disabled={submitting || pin.length === 0}
-            className="py-5 rounded-xl text-2xl font-bold bg-red-50 text-red-500 hover:bg-red-100 active:scale-95 transition-all shadow-sm disabled:opacity-30 disabled:cursor-not-allowed"
-            aria-label="Effacer"
-          >
-            ⌫
-          </button>
-        </div>
-
         {dismissible && onCancel && (
-          <div className="mt-5 text-center">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="text-white/70 hover:text-white text-sm px-4 py-2 rounded-lg hover:bg-white/10 transition-colors min-h-[44px]"
+          >
+            Annuler
+          </button>
+        )}
+      </header>
+
+      {/* Centered content */}
+      <div className="flex-1 flex items-center justify-center px-6 pb-12">
+        <div className="w-full max-w-md text-center">
+          {/* Avatar circle */}
+          <div className="mx-auto w-24 h-24 rounded-full bg-white/10 border-2 border-white/20 flex items-center justify-center mb-6 backdrop-blur-sm">
+            <svg
+              width="40"
+              height="40"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              className="text-white"
+            >
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          </div>
+
+          <h1 className="font-display text-3xl text-white mb-2">Identification</h1>
+          <p className="text-white/70 text-sm mb-8">
+            Saisissez votre PIN à {PIN_LENGTH} chiffres
+          </p>
+
+          {/* PIN dots */}
+          <div className="flex justify-center gap-4 mb-6">
+            {Array.from({ length: PIN_LENGTH }).map((_, i) => (
+              <div
+                key={i}
+                className={`w-5 h-5 rounded-full transition-all ${
+                  i < pin.length
+                    ? 'bg-vz-accent scale-110 shadow-lg shadow-vz-accent/50'
+                    : 'bg-white/10 border-2 border-white/30'
+                }`}
+              />
+            ))}
+          </div>
+
+          {/* Status */}
+          <div className="h-7 mb-6">
+            {submitting && (
+              <span className="text-sm text-white/70">Vérification…</span>
+            )}
+            {!submitting && error && (
+              <span className="text-sm text-vz-accent font-medium px-3 py-1 rounded-full bg-vz-accent/10 inline-block">
+                {error}
+              </span>
+            )}
+          </div>
+
+          {/* Numeric keypad — large Odoo-style buttons */}
+          <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => press(d)}
+                disabled={submitting}
+                className="aspect-square rounded-2xl text-3xl font-bold bg-white/5 hover:bg-white/15 active:bg-white/25 active:scale-95 border border-white/10 text-white transition-all shadow-lg disabled:opacity-30 disabled:cursor-not-allowed min-h-[72px]"
+              >
+                {d}
+              </button>
+            ))}
+            <div />
             <button
               type="button"
-              onClick={onCancel}
-              className="text-sm text-gray-500 hover:text-gray-700"
+              onClick={() => press('0')}
+              disabled={submitting}
+              className="aspect-square rounded-2xl text-3xl font-bold bg-white/5 hover:bg-white/15 active:bg-white/25 active:scale-95 border border-white/10 text-white transition-all shadow-lg disabled:opacity-30 disabled:cursor-not-allowed min-h-[72px]"
             >
-              Annuler
+              0
+            </button>
+            <button
+              type="button"
+              onClick={back}
+              disabled={submitting || pin.length === 0}
+              className="aspect-square rounded-2xl text-2xl font-bold bg-vz-accent/20 hover:bg-vz-accent/40 active:scale-95 border border-vz-accent/30 text-white transition-all shadow-lg disabled:opacity-20 disabled:cursor-not-allowed min-h-[72px] flex items-center justify-center"
+              aria-label="Effacer"
+            >
+              ⌫
             </button>
           </div>
-        )}
+        </div>
       </div>
+
+      {/* Footer */}
+      <footer className="flex-shrink-0 text-center pb-6">
+        <p className="text-white/40 text-[11px] tracking-wider">
+          Vintiz Vernon · Caisse iPad / Lenovo
+        </p>
+      </footer>
     </div>
   );
 }
