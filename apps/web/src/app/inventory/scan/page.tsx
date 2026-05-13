@@ -3,12 +3,10 @@
 /**
  * Camera-as-scanner — alternative to a USB/Bluetooth barcode reader.
  *
- * Promoted to P1 in the M2 sprint after the Galaxy Tab S11 Ultra became
- * the merchandising portable: its 13MP rear camera + autofocus is more
- * reliable than the iPad mini's lens, so reading EAN-13 / Code-128 from
- * the camera viewfinder is now a real workflow option. Saves the
- * manager from pairing a Bluetooth scanner each morning, and frees
- * USB for the dock.
+ * Promoted to P1 in the M2 sprint : caméra arrière Android avec autofocus
+ * permet de lire un EAN-13 / Code-128 directement depuis le viewfinder,
+ * sans avoir à appairer un scanner Bluetooth chaque matin et en libérant
+ * l'USB du dock.
  *
  * Decoder: ``@zxing/browser`` — supports EAN-13, EAN-8, UPC-A, UPC-E,
  * Code-128, Code-39, Code-93, ITF, QR, DataMatrix, PDF417 et autres.

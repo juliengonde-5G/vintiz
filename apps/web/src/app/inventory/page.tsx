@@ -141,9 +141,8 @@ export default function InventoryPage() {
             <p className="text-gray-500 mt-1">{total} produit{total > 1 ? 's' : ''}</p>
           </div>
           <div className="flex gap-2">
-            {/* Camera scanner — primary path on the Galaxy Tab S11 Ultra
-                portable (M2 sprint). On desktop / iPad it still works via
-                getUserMedia, just less ergonomic. */}
+            {/* Camera scanner — caméra arrière Android via getUserMedia.
+                Fonctionne aussi sur desktop avec une webcam (moins ergonomique). */}
             <Link href="/inventory/scan">
               <Button variant="outline" size="lg">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">

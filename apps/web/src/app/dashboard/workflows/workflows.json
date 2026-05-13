@@ -4,7 +4,7 @@
     {
       "id": "tablet",
       "name": "Tablette POS",
-      "subtitle": "iPad Safari / Lenovo M11 Chrome",
+      "subtitle": "Lenovo Idea Tab Pro Gen 2 Chrome",
       "category": "client",
       "description": "Interface tactile 1024×768, scanner USB-HID en focus, autorisation pop-ups requise pour kick tiroir automatique.",
       "x": 60,
@@ -13,7 +13,7 @@
     {
       "id": "browser-mgr",
       "name": "Navigateur Manager",
-      "subtitle": "Desktop / iPad back-office",
+      "subtitle": "Desktop / Lenovo back-office",
       "category": "client",
       "description": "Session manager JWT, accès /dashboard, /reports, /admin, /settings.",
       "x": 60,
@@ -206,7 +206,7 @@
       "category": "metier",
       "group": "POS",
       "title": "Vente espèces avec ticket et tiroir-caisse",
-      "description": "Le manager scanne 1 à N produits, choisit Espèces, saisit le montant reçu, valide. Le tiroir s'ouvre tout seul puis l'iPad affiche la modale ticket.",
+      "description": "Le manager scanne 1 à N produits, choisit Espèces, saisit le montant reçu, valide. Le tiroir s'ouvre tout seul puis la tablette affiche la modale ticket.",
       "trigger": "Manager clique « Encaisser » avec mode = Espèces",
       "steps": [
         { "from": "scanner", "to": "tablet", "label": "Scan code-barres → Entrée", "detail": "Le scanner émule un clavier USB-HID, le champ recherche POS est auto-focus.", "protocol": "USB-HID" },
@@ -218,7 +218,7 @@
         { "from": "api", "to": "printer-receipt", "label": "ESC/POS RAW → printer:9100", "detail": "Impulsion ESC p m vers le tiroir branché en RJ-12 sur l'imprimante. Pas d'impression à ce stade — juste le kick.", "protocol": "TCP:9100" },
         { "from": "printer-receipt", "to": "drawer", "label": "Impulsion RJ-12", "detail": "Le tiroir s'ouvre physiquement, le manager rend la monnaie.", "protocol": "RJ-12" },
         { "from": "tablet", "to": "api", "label": "GET /api/pos/transactions/{id}/receipt", "detail": "Texte 80 mm — header boutique, items avec remises, totaux TTC/HT, points fidélité, mentions NF525.", "protocol": "HTTP" },
-        { "from": "tablet", "to": "printer-receipt", "label": "Impression ticket (option MUNBYN)", "detail": "POST /api/hardware/receipt/test côté serveur, ou window.print() AirPrint côté navigateur. Modale « Imprimer / Fermer sans ticket ».", "protocol": "TCP:9100" }
+        { "from": "tablet", "to": "printer-receipt", "label": "Impression ticket MUNBYN", "detail": "POST /api/pos/transactions/{id}/print côté API → ESC/POS direct vers la MUNBYN port 9100. Modale « Imprimer / Fermer sans ticket ».", "protocol": "TCP:9100" }
       ]
     },
     {
@@ -236,7 +236,7 @@
         { "from": "tablet", "to": "api", "label": "GET /api/pos/payments/cb/{id}/status (polling 1s)", "detail": "L'interface POS poll le statut côté serveur pour réagir à la décision.", "protocol": "HTTP" },
         { "from": "api", "to": "sumup-api", "label": "GET /v0.1/checkouts/{id}", "detail": "Statut PENDING → PAID → côté API on commite Transaction + PaymentAttempt.", "protocol": "HTTPS" },
         { "from": "api", "to": "postgres", "label": "INSERT Transaction + PaymentAttempt", "detail": "Audit complet — request_id, payment_id SumUp, amount, statut.", "protocol": "SQL" },
-        { "from": "tablet", "to": "printer-receipt", "label": "Impression ticket", "detail": "Confirmé sur le ticket NF525 + impression MUNBYN ou AirPrint.", "protocol": "TCP:9100" }
+        { "from": "tablet", "to": "printer-receipt", "label": "Impression ticket MUNBYN", "detail": "Confirmé sur le ticket NF525 + impression ESC/POS via la MUNBYN port 9100.", "protocol": "TCP:9100" }
       ]
     },
     {
@@ -289,7 +289,7 @@
       "group": "POS",
       "title": "Identification cashier par PIN 4 chiffres",
       "description": "Une équipière prend le poste. PIN 4 chiffres au pavé numérique → identité injectée dans toutes les transactions suivantes jusqu'au logout.",
-      "trigger": "Cashier tape son PIN sur l'iPad POS",
+      "trigger": "Cashier tape son PIN sur la tablette POS",
       "steps": [
         { "from": "tablet", "to": "api", "label": "POST /api/pos/cashier/login", "detail": "Body : pin. 401 sur mauvais PIN — token manager non révoqué (soft 401).", "protocol": "HTTP" },
         { "from": "api", "to": "postgres", "label": "SELECT User WHERE pin_hash matches", "detail": "Comparaison bcrypt sur pin_hash. Verrou anti-bruteforce 5 essais.", "protocol": "SQL" },
@@ -1290,7 +1290,7 @@
       "description": "La douchette USB HID se comporte comme un clavier. Le champ recherche POS est auto-focus.",
       "trigger": "Manager scanne un produit avec la douchette",
       "steps": [
-        { "from": "scanner", "to": "tablet", "label": "Frappes clavier {chiffres} + Entrée", "detail": "USB-HID — pas de driver spécifique. iPad et Lenovo M11 fonctionnent à l'identique.", "protocol": "USB-HID" },
+        { "from": "scanner", "to": "tablet", "label": "Frappes clavier {chiffres} + Entrée", "detail": "USB-HID via USB-C OTG sur la Lenovo Idea Tab Pro Gen 2 — pas de driver spécifique côté Android.", "protocol": "USB-HID" },
         { "from": "tablet", "to": "api", "label": "GET /api/inventory/products/search?q={barcode}", "detail": "Résolution exact match sur Product.barcode.", "protocol": "HTTP" },
         { "from": "api", "to": "postgres", "label": "SELECT Product WHERE barcode = …", "detail": "Filtre stock+display + retour 1 résultat.", "protocol": "SQL" }
       ]
@@ -1317,17 +1317,6 @@
       "steps": [
         { "from": "tablet", "to": "api", "label": "GET /api/pos/transactions/{id}/receipt", "detail": "Texte 80 mm pré-formaté.", "protocol": "HTTPS" },
         { "from": "api", "to": "printer-receipt", "label": "ESC/POS RAW → printer:9100", "detail": "Encodage Latin-1, codes-barres EAN, logo header.", "protocol": "TCP:9100" }
-      ]
-    },
-    {
-      "id": "hw-print-receipt-airprint",
-      "category": "hardware",
-      "group": "Imprimante ticket",
-      "title": "Impression ticket via AirPrint (fallback)",
-      "description": "Pour iPad sans IP imprimante configurée. window.print() CSS 80 mm — l'imprimante AirPrint pilote le rendu.",
-      "trigger": "Manager clique « Imprimer (AirPrint) » dans la modale ticket",
-      "steps": [
-        { "from": "tablet", "to": "tablet", "label": "window.print()", "detail": "Format CSS 80 mm. L'option « Open drawer on print » du driver kick le tiroir.", "protocol": "CSS/Print" }
       ]
     },
     {

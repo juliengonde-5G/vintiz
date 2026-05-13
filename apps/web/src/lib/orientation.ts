@@ -19,8 +19,7 @@ export function useLandscapeLock(): void {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Only attempt on Android (where the Lenovo tab Pro runs Chrome).
-    // iPadOS Safari doesn't expose `screen.orientation.lock`.
+    // Only attempt on Android (Lenovo Idea Tab Pro Gen 2 Chrome).
     if (!isAndroid()) return;
 
     const isStandalone =

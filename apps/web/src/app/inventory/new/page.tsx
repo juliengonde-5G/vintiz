@@ -264,9 +264,10 @@ export default function NewProductPage() {
                     if (file) handleFileSelect(file);
                   }}
                 />
-                {/* Caméra directe — sur iPad/Android l'attribut capture=environment
-                    ouvre l'appareil photo arrière. Sur desktop il retombe sur
-                    le file picker. Champ caché, déclenché par le bouton dédié. */}
+                {/* Caméra directe — sur Android Chrome l'attribut
+                    capture=environment ouvre l'appareil photo arrière.
+                    Sur desktop il retombe sur le file picker. Champ
+                    caché, déclenché par le bouton dédié. */}
                 <input
                   ref={cameraInputRef}
                   type="file"

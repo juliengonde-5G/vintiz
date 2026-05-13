@@ -31,14 +31,8 @@ export const metadata: Metadata = {
   title: "Vintiz - Back Office",
   description: "Vintiz Boutique Back-Office",
   manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "Vintiz",
-  },
   icons: {
     icon: "/logo-teal.png",
-    apple: "/logo-teal.png",
     shortcut: "/logo-teal.png",
   },
 };
@@ -51,18 +45,11 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`${lexendMega.variable} ${poppins.variable}`}>
       <head>
-        {/* Web app manifest — drives Add-to-Home-Screen on both iOS and Android. */}
+        {/* Web app manifest — drives Add-to-Home-Screen on Android Chrome
+            (Lenovo Idea Tab Pro Gen 2). */}
         <link rel="manifest" href="/manifest.json" />
         {/* Status bar color — Chrome Android tints it teal on PWA install. */}
         <meta name="theme-color" content="#0B7A6A" />
-        {/* iOS home-screen icon + standalone hint (kept for backward compat with
-            existing iPad installs ; no-op on Android). Aligned on the public
-            site favicon (/logo-teal.png) so back-office and site share the
-            same brand on home screen + tab. */}
-        <link rel="apple-touch-icon" href="/logo-teal.png" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        {/* Generic Android equivalent — Chrome reads this on PWA install. */}
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className="font-sans antialiased bg-background text-foreground">

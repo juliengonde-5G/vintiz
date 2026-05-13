@@ -199,7 +199,7 @@ export default function CashierPinModal({
       {/* Footer */}
       <footer className="flex-shrink-0 text-center pb-6">
         <p className="text-white/40 text-[11px] tracking-wider">
-          Vintiz Vernon · Caisse iPad / Lenovo
+          Vintiz Vernon · Caisse Lenovo
         </p>
       </footer>
     </div>

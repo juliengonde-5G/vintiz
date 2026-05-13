@@ -63,12 +63,12 @@ function asPromise<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
-/** Generate a v4 UUID. Uses crypto.randomUUID when available (Safari 15.4+). */
+/** Generate a v4 UUID. Uses crypto.randomUUID when available. */
 export function generateClientUuid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return (crypto as Crypto & { randomUUID(): string }).randomUUID();
   }
-  // Fallback (very unlikely on the iPad Safari we target).
+  // Fallback (très improbable sur Chrome Android moderne).
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === 'x' ? r : (r & 0x3) | 0x8;

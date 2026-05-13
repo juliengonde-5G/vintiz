@@ -25,7 +25,6 @@ import { useConnectivity } from '@/lib/connectivity';
 import { isPosWizardEnabled } from '@/lib/feature-flags';
 import { formatCurrency } from '@/lib/format';
 import { useLandscapeLock } from '@/lib/orientation';
-import { isIOS } from '@/lib/platform';
 import {
   count as queueCount,
   drain as drainQueue,
@@ -209,7 +208,7 @@ export default function POSPage() {
   });
 
   // Which cart item has its discount strip expanded (compact layout: hide by
-  // default to fit more items on iPad 1024x768).
+  // default to fit more items on Lenovo landscape).
   const [discountOpenIdx, setDiscountOpenIdx] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clientDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -234,7 +233,7 @@ export default function POSPage() {
   ]);
 
   // Landscape lock for the Lenovo Idea Tab Pro Gen 2 (TB39OFU) when running
-  // as a PWA. Silently ignored in regular tab mode and on iPadOS.
+  // as a PWA. Silently ignored in regular tab mode (Chrome non-installé).
   useLandscapeLock();
 
   // Computed — memoised so unrelated state changes (modals, focus, etc.)
@@ -509,73 +508,16 @@ export default function POSPage() {
     handleBarcodeScan(q);
   };
 
-  // Browser-print fallback: opens a print-sized window and triggers the
-  // browser's print dialog. On iPad this hits AirPrint and the thermal
-  // printer fires the cash-drawer kick (RJ11) on print. On Android Chrome
-  // it just dumps a PDF — we only expose this button on iOS now (M1
-  // hardware migration). The logo is forced to pure black via CSS filter
-  // so it reads cleanly on 80 mm thermal paper.
-  const printReceipt = useCallback((text: string) => {
-    const w = window.open('', '_blank', 'width=400,height=700');
-    if (!w) {
-      setPrintMsg(
-        "Impossible d'ouvrir la fenêtre d'impression. " +
-        (isIOS()
-          ? "Autorisez les pop-ups pour ce site dans les réglages Safari."
-          : "Autorisez les pop-ups pour ce site dans les réglages Chrome."),
-      );
-      return;
-    }
-    const safe = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const logoUrl = `${window.location.origin}/receipt-logo.png`;
-    w.document.write(`<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>Ticket Vintiz</title>
-<style>
-  @page { size: 80mm auto; margin: 0; }
-  body { margin: 0; padding: 4mm 3mm; }
-  .logo { display: block; margin: 0 auto 3mm; width: 28mm; height: auto;
-          filter: grayscale(1) contrast(10) brightness(0.9);
-          -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  pre { font-family: 'Courier New', Consolas, monospace; font-size: 12px;
-        line-height: 1.35; white-space: pre-wrap; word-break: break-word; margin: 0; }
-  @media print { body { padding: 0 2mm; } }
-</style></head>
-<body>
-<img class="logo" src="${logoUrl}" alt="Vintiz" onerror="this.style.display='none'">
-<pre>${safe}</pre>
-<script>
-  // Wait for the logo image to load (or fail) before triggering print, so it
-  // is rendered on the first print job instead of being blank on first run.
-  (function() {
-    var img = document.querySelector('.logo');
-    var go = function() { window.focus(); window.print(); };
-    if (!img || img.complete) { go(); }
-    else { img.addEventListener('load', go); img.addEventListener('error', go); }
-  })();
-</script>
-</body></html>`);
-    w.document.close();
-  }, []);
-
-  // Kick the cash drawer without printing a visible ticket. We send a
-  // near-empty print job to the same thermal printer — the printer fires
-  // its RJ11 kick pulse as soon as the print starts, so the drawer opens.
-  // On iPad AirPrint the pop-up window auto-closes after 800 ms.
+  // Kick le tiroir-caisse via la MUNBYN ESC/POS (impulsion ESC p m sur
+  // le port 9100). Remplace l'ancien fallback AirPrint qui ouvrait une
+  // pop-up window.print() — celle-ci ne pilotait pas la MUNBYN sur
+  // Android (Lenovo Idea Tab Pro Gen 2 Chrome), elle générait juste un
+  // PDF. Désormais le tiroir est piloté côté API uniquement.
   const kickDrawer = useCallback(() => {
-    const w = window.open('', '_blank', 'width=200,height=60');
-    if (!w) return; // silently skip — the Imprimer button will still work
-    w.document.write(`<!doctype html>
-<html><head><meta charset="utf-8"><title>.</title>
-<style>@page { size: 80mm 5mm; margin: 0; } body { margin: 0; }</style></head>
-<body>
-<script>
-  window.onload = function() {
-    try { window.print(); } catch (e) {}
-    setTimeout(function(){ try { window.close(); } catch (e) {} }, 800);
-  };
-</script>
-</body></html>`);
-    w.document.close();
+    void api.post('/api/hardware/drawer/kick', {}).catch(() => {
+      // Silencieux : si la MUNBYN est injoignable, le caissier ouvre le
+      // tiroir manuellement. L'impression reste possible séparément.
+    });
   }, []);
 
   const addBag = () => {
@@ -1253,11 +1195,10 @@ export default function POSPage() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── LEFT PANEL: Order / Cart ──────────────────────────────
-             Width is responsive — 42% suits an iPad 10.9" (1024-1180 css
-             px), but the Lenovo Idea Tab Pro 13" caisse renders at
-             ≥1280 px in landscape and benefits from a wider cart column
-             (more lines visible without scrolling). xl: ≥1280, 2xl:
-             ≥1536 for very wide docked setups. */}
+             Width is responsive — la Lenovo Idea Tab Pro Gen 2 13" rend
+             à ≥1280 px en paysage et bénéficie d'une colonne ticket large
+             (plus de lignes visibles sans scroll). xl: ≥1280, 2xl: ≥1536
+             pour les setups dock très larges. */}
         <div className="w-[42%] xl:w-[48%] 2xl:w-[50%] flex flex-col bg-white border-r border-vz-line shadow-sm">
 
           {offlineMsg && (
@@ -2242,11 +2183,6 @@ export default function POSPage() {
             clientEmail={selectedClient?.email}
             clientPhone={selectedClient?.phone}
             onPrintEscpos={printReceiptOnPrinter}
-            onPrintAirprint={() => {
-              printReceipt(receiptText);
-              setShowWizardReceipt(false);
-              handleReceiptClose();
-            }}
             onResend={async (channel) => {
               if (!receiptTxId) return;
               await api.post(`/api/pos/transactions/${receiptTxId}/resend`, {
@@ -2298,17 +2234,6 @@ export default function POSPage() {
             <Button onClick={printReceiptOnPrinter} disabled={printing || !receiptTxId} variant="secondary">
               {printing ? 'Impression...' : 'Imprimer (MUNBYN)'}
             </Button>
-            {/* AirPrint fallback — visible on iOS only. On Android Chrome the
-                browser print path doesn't drive the thermal printer (no RJ11
-                kick), so the button would just dump a PDF. The MUNBYN ESC/POS
-                path above is the canonical receipt route on the Lenovo Idea
-                Tab Pro 13" caisse. */}
-            {isIOS() && (
-              <Button onClick={() => { printReceipt(receiptText); handleReceiptClose(); }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                Imprimer (AirPrint)
-              </Button>
-            )}
           </div>
         }
       >

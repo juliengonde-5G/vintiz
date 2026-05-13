@@ -26,8 +26,7 @@ export default function ServiceWorkerRegister() {
     const ctrl = new AbortController();
 
     // Defer to idle so we don't compete with the first paint of the
-    // back-office. requestIdleCallback isn't in iOS Safari ; fall back
-    // to setTimeout(0) which at least yields after the first frame.
+    // back-office. Fallback setTimeout pour les navigateurs très anciens.
     const schedule =
       'requestIdleCallback' in window
         ? (cb: () => void) => (window as unknown as { requestIdleCallback: (cb: () => void) => number }).requestIdleCallback(cb)
