@@ -24,6 +24,7 @@ import { api } from '@/lib/api';
 import { useConnectivity } from '@/lib/connectivity';
 import { isPosWizardEnabled } from '@/lib/feature-flags';
 import { formatCurrency } from '@/lib/format';
+import { useLandscapeLock } from '@/lib/orientation';
 import { isIOS } from '@/lib/platform';
 import {
   count as queueCount,
@@ -212,6 +213,29 @@ export default function POSPage() {
   const [discountOpenIdx, setDiscountOpenIdx] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clientDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Search input ref — the USB-HID scanner needs the search field focused
+  // to deliver the barcode. We refocus after every cart add so the cashier
+  // can scan a second item without tapping the field again.
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const refocusSearch = useCallback(() => {
+    // Don't fight a modal — only refocus when no overlay is open.
+    if (showPayment || showClientSelect || showClientPopup || showSubscribeModal) return;
+    if (showDrawerOpen || showDrawerClose || showCashierModal || showReceipt) return;
+    if (showWizardReceipt || showManualEntry) return;
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    showPayment, showClientSelect, showClientPopup, showSubscribeModal,
+    showDrawerOpen, showDrawerClose, showCashierModal, showReceipt,
+    showWizardReceipt, showManualEntry,
+  ]);
+
+  // Landscape lock for the Lenovo Idea Tab Pro Gen 2 (TB39OFU) when running
+  // as a PWA. Silently ignored in regular tab mode and on iPadOS.
+  useLandscapeLock();
 
   // Computed — memoised so unrelated state changes (modals, focus, etc.)
   // don't re-run the cart reduce on every render.
@@ -451,6 +475,9 @@ export default function POSPage() {
     });
     setSearchQuery('');
     setSearchResults([]);
+    // Keep the search input focused so the USB-HID scanner can immediately
+    // pick up the next barcode (Lenovo Idea Tab Pro Gen 2 + Inateck BCST-35).
+    refocusSearch();
   };
 
   // Barcode scanner (Inateck BCST-60 / 160B USB HID): types the code fast then
@@ -1591,6 +1618,7 @@ export default function POSPage() {
             <div className="relative">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input
+                ref={searchInputRef}
                 className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-black text-sm focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
                 placeholder="Scanner code-barres ou rechercher un article..."
                 value={searchQuery}

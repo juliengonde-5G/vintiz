@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Lexend_Mega, Poppins } from "next/font/google";
 import CompanionDrawer from "@/components/ai/CompanionDrawer";
+import PwaInstallBanner from "@/components/PwaInstallBanner";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import "./globals.css";
 
@@ -67,6 +68,7 @@ export default function RootLayout({
       <body className="font-sans antialiased bg-background text-foreground">
         {children}
         <CompanionDrawer />
+        <PwaInstallBanner />
         <ServiceWorkerRegister />
       </body>
     </html>
