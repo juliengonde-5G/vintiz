@@ -53,36 +53,7 @@ interface SumUpConfig {
   api_key_set: boolean;
   merchant_code_set: boolean;
   merchant_code_masked: string;
-  sandbox_auto_delay_sec: number;
   api_base: string;
-}
-
-interface SandboxCheckout {
-  checkout_id: string;
-  checkout_reference: string;
-  amount: number;
-  currency: string;
-  description: string;
-  status: string;
-  created_at: number;
-  updated_at: number;
-  auto_approve_in: number | null;
-  manual_override: boolean;
-}
-
-interface SandboxEvent {
-  timestamp: number;
-  iso_time: string;
-  kind: string;
-  checkout_id: string;
-  status: string;
-  payload: Record<string, unknown>;
-}
-
-interface SandboxSnapshot {
-  config: SumUpConfig;
-  checkouts: SandboxCheckout[];
-  events: SandboxEvent[];
 }
 
 export default function SettingsPage() {
@@ -111,9 +82,8 @@ export default function SettingsPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  // SumUp sandbox state
-  const [sandbox, setSandbox] = useState<SandboxSnapshot | null>(null);
-  const [sandboxTestAmount, setSandboxTestAmount] = useState('12.50');
+  // SumUp configuration state (production-only — sandbox retiré).
+  const [sumupConfig, setSumupConfig] = useState<SumUpConfig | null>(null);
 
   // New category form
   const [newCatName, setNewCatName] = useState('');
@@ -143,14 +113,14 @@ export default function SettingsPage() {
   } | null>(null);
   const [shopSaving, setShopSaving] = useState(false);
 
-  // SumUp persisted config (overrides env vars)
+  // SumUp persisted config (overrides env vars). Mode production uniquement.
   const [sumupForm, setSumupForm] = useState<{
-    environment: string; api_key: string; merchant_code: string;
-    reader_id: string; sandbox_auto_delay_sec: string; return_url: string;
-  }>({ environment: '', api_key: '', merchant_code: '', reader_id: '', sandbox_auto_delay_sec: '5', return_url: '' });
+    api_key: string; merchant_code: string;
+    reader_id: string; return_url: string;
+  }>({ api_key: '', merchant_code: '', reader_id: '', return_url: '' });
   const [sumupPersisted, setSumupPersisted] = useState<{
-    environment: string; api_key_masked: string; merchant_code_masked: string;
-    reader_id_masked: string; sandbox_auto_delay_sec: number | string; return_url: string;
+    api_key_masked: string; merchant_code_masked: string;
+    reader_id_masked: string; return_url: string;
   } | null>(null);
   const [sumupSaving, setSumupSaving] = useState(false);
 
@@ -190,75 +160,22 @@ export default function SettingsPage() {
     if (tab === 'fidelite') loadLoyaltyConfig();
   }, [tab]);
 
-  // ── SumUp sandbox snapshot: auto-refresh while the payment tab is open
-  // and the page is visible. Polling every 5 s (was 2 s) is enough for the
-  // 5 s auto-approve delay; we also pause when the tab is backgrounded so
-  // a forgotten /settings tab doesn't keep hammering the API.
+  // ── SumUp config snapshot — fetched once on payment tab activation.
+  // Plus de polling sandbox : on lit la config persistée (clés masquées)
+  // et c'est tout. Toute vraie transaction CB passe par l'API SumUp en
+  // production.
   useEffect(() => {
     if (tab !== 'payment') return;
     let cancelled = false;
-    let handle: ReturnType<typeof setInterval> | null = null;
-
     const refresh = async () => {
       try {
-        const res = await api.get('/api/pos/payments/cb/sandbox/state?limit=40');
-        if (!cancelled && res.ok) setSandbox(await res.json());
+        const res = await api.get('/api/pos/payments/cb/config');
+        if (!cancelled && res.ok) setSumupConfig(await res.json());
       } catch { /* silent */ }
     };
-    const start = () => {
-      if (handle !== null) return;
-      handle = setInterval(refresh, 5000);
-    };
-    const stop = () => {
-      if (handle === null) return;
-      clearInterval(handle);
-      handle = null;
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') { refresh(); start(); }
-      else { stop(); }
-    };
-
     refresh();
-    if (typeof document === 'undefined' || document.visibilityState === 'visible') start();
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      cancelled = true;
-      document.removeEventListener('visibilitychange', onVisibility);
-      stop();
-    };
+    return () => { cancelled = true; };
   }, [tab]);
-
-  const runSandboxTest = async () => {
-    setError('');
-    const amount = parseFloat(sandboxTestAmount);
-    if (isNaN(amount) || amount <= 0) {
-      setError('Montant invalide');
-      return;
-    }
-    try {
-      const res = await api.post('/api/pos/payments/cb/sandbox/test', {
-        amount,
-        description: 'Test sandbox depuis Parametres',
-      });
-      if (!res.ok) setError('Erreur lors du test sandbox');
-    } catch { setError('Erreur de connexion'); }
-  };
-
-  const approveSandbox = async (checkoutId: string) => {
-    try { await api.post(`/api/pos/payments/cb/sandbox/${checkoutId}/approve`, {}); }
-    catch { setError('Erreur approbation'); }
-  };
-
-  const declineSandbox = async (checkoutId: string) => {
-    try { await api.post(`/api/pos/payments/cb/sandbox/${checkoutId}/decline`, {}); }
-    catch { setError('Erreur refus'); }
-  };
-
-  const clearSandbox = async () => {
-    try { await api.post('/api/pos/payments/cb/sandbox/clear', {}); }
-    catch { setError('Erreur reset'); }
-  };
 
   const loadShopInfo = async () => {
     try {
@@ -294,12 +211,10 @@ export default function SettingsPage() {
         const data = await res.json();
         setSumupPersisted(data.persisted);
         setSumupForm({
-          environment: data.persisted.environment || '',
           // Never echo back the secret — leave empty so user explicitly retypes to change
           api_key: '',
           merchant_code: '',
           reader_id: '',
-          sandbox_auto_delay_sec: String(data.persisted.sandbox_auto_delay_sec ?? 5),
           return_url: data.persisted.return_url || '',
         });
       }
@@ -313,10 +228,7 @@ export default function SettingsPage() {
     setError('');
     try {
       // Only send fields the operator explicitly typed — empty = no change.
-      // Exception: environment is always sent, even when empty (= clear override).
       const body: Record<string, unknown> = {
-        environment: sumupForm.environment,
-        sandbox_auto_delay_sec: parseFloat(sumupForm.sandbox_auto_delay_sec || '5'),
         return_url: sumupForm.return_url,
       };
       if (sumupForm.api_key.trim()) body.api_key = sumupForm.api_key.trim();
@@ -329,9 +241,9 @@ export default function SettingsPage() {
         setSumupForm((f) => ({ ...f, api_key: '', merchant_code: '', reader_id: '' }));
         setMessage('Configuration SumUp enregistrée');
         setTimeout(() => setMessage(''), 3000);
-        // Refresh sandbox snapshot to reflect env change
-        const snap = await api.get('/api/pos/payments/cb/sandbox/state?limit=40');
-        if (snap.ok) setSandbox(await snap.json());
+        // Refresh masked config snapshot.
+        const snap = await api.get('/api/pos/payments/cb/config');
+        if (snap.ok) setSumupConfig(await snap.json());
       } else {
         const e = await res.json().catch(() => ({}));
         setError(e.detail || 'Erreur enregistrement SumUp');
@@ -421,20 +333,34 @@ export default function SettingsPage() {
   const runHwTest = async (category: string) => {
     setHwTests((s) => ({ ...s, [category]: { status: 'running' } }));
     try {
+      if (category === 'payment_terminal') {
+        // Mode prod uniquement : on ne crée pas de checkout test (cela
+        // débiterait une vraie carte). On vérifie juste que l'API key
+        // et le merchant code sont configurés.
+        const cfg = await api.get('/api/pos/payments/cb/config');
+        if (!cfg.ok) {
+          setHwTests((s) => ({ ...s, [category]: { status: 'error', message: 'Impossible de lire la config SumUp' } }));
+          return;
+        }
+        const data = await cfg.json();
+        if (!data.api_key_set || !data.merchant_code_set) {
+          setHwTests((s) => ({ ...s, [category]: { status: 'error', message: 'SumUp non configuré — clé API ou merchant code manquant.' } }));
+        } else {
+          const reader = data.reader_id_set ? `, reader ${data.reader_id_masked}` : '';
+          setHwTests((s) => ({ ...s, [category]: { status: 'success', message: `SumUp prêt (${data.merchant_code_masked}${reader})` } }));
+        }
+        return;
+      }
       let endpoint = '';
       if (category === 'receipt_printer') endpoint = '/api/hardware/receipt/test';
       else if (category === 'cash_drawer') endpoint = '/api/hardware/drawer/kick';
       else if (category === 'label_printer') endpoint = '/api/hardware/label/test';
-      else if (category === 'payment_terminal') endpoint = '/api/pos/payments/cb/sandbox/test';
       else if (category === 'barcode_scanner') {
         // No backend test — focus the search field at /pos
         setHwTests((s) => ({ ...s, [category]: { status: 'success', message: 'Allez sur /pos et scannez un produit pour valider la douchette' } }));
         return;
       }
-      const body = category === 'payment_terminal'
-        ? { amount: 1, description: 'Test SumUp depuis Materiel' }
-        : {};
-      const res = await api.post(endpoint, body);
+      const res = await api.post(endpoint, {});
       if (res.ok) {
         setHwTests((s) => ({ ...s, [category]: { status: 'success', message: 'Test envoyé ✓' } }));
       } else {
@@ -880,7 +806,7 @@ export default function SettingsPage() {
               </div>
               <div className="mt-4">
                 <Button variant="outline" onClick={() => setTab('payment')}>
-                  Configurer / tester le sandbox SumUp
+                  Configurer SumUp
                 </Button>
               </div>
             </Card>
@@ -907,62 +833,42 @@ export default function SettingsPage() {
         {/* PAYMENT TAB */}
         {tab === 'payment' && (
           <div className="space-y-6">
-            <Card title="Configuration SumUp (TPE Solo)">
-              {!sandbox ? (
-                <p className="text-sm text-gray-500">Chargement...</p>
+            <Card title="Configuration SumUp (TPE Solo) — Production">
+              <p className="text-sm text-vz-ink-soft mb-4">
+                Vintiz utilise SumUp en <strong>mode production uniquement</strong>.
+                Le mode sandbox/simulation a été retiré : toute vente CB passe
+                directement par api.sumup.com et débite la carte réelle.
+              </p>
+              {!sumupConfig ? (
+                <p className="text-sm text-gray-500">Chargement de la configuration…</p>
               ) : (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-5 p-3 rounded-lg bg-vz-bg/60 border border-vz-line">
                     <div>
-                      <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Environnement actif</p>
+                      <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Environnement</p>
                       <p className="font-medium text-black mt-1">
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs ${sandbox.config.environment === 'production' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                          {sandbox.config.environment.toUpperCase()}
+                        <span className="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">
+                          PRODUCTION
                         </span>
                       </p>
                     </div>
                     <div>
                       <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Clé API</p>
                       <p className="font-medium text-black mt-1">
-                        {sandbox.config.api_key_set ? '✓ Définie' : '— Non définie (simulation)'}
+                        {sumupConfig.api_key_set
+                          ? '✓ Définie'
+                          : <span className="text-red-600">⚠ Non définie — CB indisponible</span>}
                       </p>
                     </div>
                     <div>
                       <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Merchant code</p>
                       <p className="font-mono text-black mt-1 text-xs">
-                        {sandbox.config.merchant_code_set ? sandbox.config.merchant_code_masked : '—'}
+                        {sumupConfig.merchant_code_set ? sumupConfig.merchant_code_masked : '—'}
                       </p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-black mb-1.5">Environnement</label>
-                      <select
-                        value={sumupForm.environment}
-                        onChange={(e) => setSumupForm({ ...sumupForm, environment: e.target.value })}
-                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black"
-                      >
-                        <option value="">Auto-détection (selon clé)</option>
-                        <option value="sandbox">Sandbox (test)</option>
-                        <option value="production">Production (réel)</option>
-                      </select>
-                      <p className="text-xs text-gray-400 mt-1">Si vide : sandbox sans clé, prod avec clé.</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-black mb-1.5">
-                        Délai auto PAID (sandbox, secondes)
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={120}
-                        value={sumupForm.sandbox_auto_delay_sec}
-                        onChange={(e) => setSumupForm({ ...sumupForm, sandbox_auto_delay_sec: e.target.value })}
-                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
-                      />
-                      <p className="text-xs text-gray-400 mt-1">0 = approbation manuelle uniquement.</p>
-                    </div>
                     <div className="sm:col-span-2">
                       <label className="block text-sm font-medium text-black mb-1.5">
                         Clé API SumUp
@@ -1018,128 +924,13 @@ export default function SettingsPage() {
                   <div className="flex justify-between items-center mt-5 flex-wrap gap-3">
                     <p className="text-xs text-gray-500">
                       Les valeurs persistées priment sur les variables d&apos;environnement.
-                      Champ vide = conserver la valeur actuelle (sauf l&apos;environnement).
+                      Champ vide = conserver la valeur actuelle.
                     </p>
                     <Button onClick={saveSumupConfig} disabled={sumupSaving}>
                       {sumupSaving ? 'Enregistrement…' : 'Enregistrer SumUp'}
                     </Button>
                   </div>
                 </>
-              )}
-            </Card>
-
-            <Card title="Simulation de paiement">
-              <p className="text-sm text-gray-500 mb-4">
-                Cree un checkout sandbox. Le flux reproduit ce qui se passe depuis la caisse
-                lorsque vous cliquez sur CB : envoi du montant et de la reference, puis polling
-                du statut toutes les 3 secondes jusqu&apos;a PAID ou FAILED.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="flex-1">
-                  <Input
-                    type="number"
-                    value={sandboxTestAmount}
-                    onChange={(e) => setSandboxTestAmount(e.target.value)}
-                    placeholder="Montant EUR"
-                  />
-                </div>
-                <Button onClick={runSandboxTest}>Lancer un paiement test</Button>
-                <Button variant="outline" onClick={clearSandbox}>Vider le journal</Button>
-              </div>
-            </Card>
-
-            <Card title="Checkouts actifs">
-              {!sandbox || sandbox.checkouts.length === 0 ? (
-                <p className="text-sm text-gray-400">Aucun checkout en cours.</p>
-              ) : (
-                <div className="space-y-2">
-                  {sandbox.checkouts.map((c) => (
-                    <div
-                      key={c.checkout_id}
-                      className="flex items-center justify-between border border-gray-200 rounded-lg p-3"
-                    >
-                      <div className="text-sm">
-                        <div className="font-mono text-black">{c.checkout_id}</div>
-                        <div className="text-gray-500">
-                          {c.amount.toFixed(2)} {c.currency} — {c.description}
-                        </div>
-                        <div className="mt-1">
-                          <span
-                            className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                              c.status === 'PAID'
-                                ? 'bg-green-100 text-green-800'
-                                : c.status === 'FAILED' || c.status === 'CANCELLED'
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            {c.status}
-                          </span>
-                          {c.auto_approve_in != null && c.status === 'PENDING' && (
-                            <span className="text-xs text-gray-500 ml-2">
-                              auto-PAID dans {c.auto_approve_in}s
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {c.status === 'PENDING' && (
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={() => approveSandbox(c.checkout_id)}
-                          >
-                            Approuver
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => declineSandbox(c.checkout_id)}
-                          >
-                            Refuser
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-
-            <Card title="Journal des evenements (live)">
-              <p className="text-xs text-gray-500 mb-3">
-                Rafraichi toutes les 2 secondes. Utile pour verifier que la caisse transmet bien
-                les bonnes informations (montant, reference, description, polling).
-              </p>
-              {!sandbox || sandbox.events.length === 0 ? (
-                <p className="text-sm text-gray-400">Aucun evenement.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-gray-200 text-gray-500">
-                        <th className="py-2 pr-2">Heure</th>
-                        <th className="py-2 pr-2">Type</th>
-                        <th className="py-2 pr-2">Checkout</th>
-                        <th className="py-2 pr-2">Statut</th>
-                        <th className="py-2">Details</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sandbox.events.map((e, i) => (
-                        <tr key={i} className="border-b border-gray-100">
-                          <td className="py-2 pr-2 font-mono text-gray-500">{e.iso_time}</td>
-                          <td className="py-2 pr-2 font-medium text-black">{e.kind}</td>
-                          <td className="py-2 pr-2 font-mono">{e.checkout_id}</td>
-                          <td className="py-2 pr-2">{e.status}</td>
-                          <td className="py-2 font-mono text-gray-600">
-                            {Object.keys(e.payload).length > 0
-                              ? JSON.stringify(e.payload)
-                              : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
               )}
             </Card>
           </div>

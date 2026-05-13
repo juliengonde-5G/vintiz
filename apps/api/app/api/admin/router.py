@@ -411,17 +411,18 @@ async def update_shop_info(payload: ShopInfoUpdate):
 
 
 class SumUpConfigUpdate(BaseModel):
-    environment: str | None = None  # "" | "sandbox" | "production"
     api_key: str | None = None
     merchant_code: str | None = None
     reader_id: str | None = None
-    sandbox_auto_delay_sec: float | None = None
     return_url: str | None = None
 
 
 @router.get("/sumup-config", dependencies=[Depends(manager_only)])
 async def get_sumup_config():
-    """Return SumUp credentials state (masked) + the live SumUpService snapshot."""
+    """Return SumUp credentials state (masked) + the live SumUpService snapshot.
+
+    Production-only — le mode sandbox/simulation a été retiré.
+    """
     from app.services.app_config import get_section, mask_secret
     from app.services.sumup_service import SumUpService
 
@@ -430,11 +431,9 @@ async def get_sumup_config():
     return {
         "live": live,
         "persisted": {
-            "environment": persisted.get("environment", ""),
             "api_key_masked": mask_secret(persisted.get("api_key", "")),
             "merchant_code_masked": mask_secret(persisted.get("merchant_code", "")),
             "reader_id_masked": mask_secret(persisted.get("reader_id", "")),
-            "sandbox_auto_delay_sec": persisted.get("sandbox_auto_delay_sec", 5),
             "return_url": persisted.get("return_url", ""),
         },
     }
@@ -444,42 +443,26 @@ async def get_sumup_config():
 async def update_sumup_config(payload: SumUpConfigUpdate):
     """Persist SumUp credentials. Empty strings clear the override (env var fallback).
 
-    Validation:
-    - ``environment`` must be one of ``""``, ``sandbox``, ``production``.
-    - When environment is ``production``, an ``api_key`` and ``merchant_code``
-      must be set (either now or already persisted) — otherwise the service
-      auto-falls back to sandbox.
+    Production-only — il n'y a plus de mode sandbox/simulation. Si la clé
+    API n'est pas configurée, les checkouts CB retournent FAILED avec un
+    message explicite plutôt que de simuler un paiement.
     """
     from app.services.app_config import update_section, get_section
-    from app.services.sumup_service import SumUpService
 
     values = payload.model_dump(exclude_none=True)
-    env = values.get("environment")
-    if env is not None and env not in ("", "sandbox", "production"):
-        raise HTTPException(
-            status_code=400,
-            detail="environment doit être '', 'sandbox' ou 'production'",
-        )
-    delay = values.get("sandbox_auto_delay_sec")
-    if delay is not None and (delay < 0 or delay > 120):
-        raise HTTPException(
-            status_code=400,
-            detail="sandbox_auto_delay_sec doit être entre 0 et 120 secondes",
-        )
 
     update_section("sumup", values)
     # Re-evaluate the service to reflect the change immediately in the UI.
+    from app.services.sumup_service import SumUpService
     live = SumUpService().describe()
     persisted = get_section("sumup")
     from app.services.app_config import mask_secret
     return {
         "live": live,
         "persisted": {
-            "environment": persisted.get("environment", ""),
             "api_key_masked": mask_secret(persisted.get("api_key", "")),
             "merchant_code_masked": mask_secret(persisted.get("merchant_code", "")),
             "reader_id_masked": mask_secret(persisted.get("reader_id", "")),
-            "sandbox_auto_delay_sec": persisted.get("sandbox_auto_delay_sec", 5),
             "return_url": persisted.get("return_url", ""),
         },
     }
