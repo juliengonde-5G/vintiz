@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import Sidebar from '@/components/layout/Sidebar';
 import Button from '@/components/ui/Button';
 import NumPad from '@/components/ui/NumPad';
 import Input from '@/components/ui/Input';
@@ -1060,11 +1059,169 @@ export default function POSPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-100">
-      <Sidebar />
+    <div className="flex flex-col h-screen overflow-hidden bg-vz-bg-alt">
+      {/* ─── ODOO 17 TOP BAR ────────────────────────────────────────
+           Replaces the back-office Sidebar + 3 inline info strips
+           (connectivity, cashier, drawer). The POS goes fullscreen,
+           Odoo-style. Exit via the brand link → /dashboard. */}
+      <header className="flex-shrink-0 h-14 bg-vz-teal-deep text-white flex items-center px-3 gap-3 shadow-lg z-30">
+        <a
+          href="/dashboard"
+          className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/10 transition-colors min-h-[44px]"
+          title="Retour back-office"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+          <span className="font-display font-bold text-sm tracking-wider">VINTIZ</span>
+          <span className="text-[10px] uppercase tracking-[0.18em] opacity-70 px-1.5 py-0.5 rounded bg-white/10">Caisse</span>
+        </a>
+
+        <div className="h-7 w-px bg-white/15 hidden md:block" />
+
+        {/* Date / heure session */}
+        <div className="hidden md:flex flex-col leading-tight text-xs">
+          <span className="opacity-70 capitalize">{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' })}</span>
+          <span className="font-mono font-medium">{new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
+
+        <div className="h-7 w-px bg-white/15 hidden md:block" />
+
+        {/* Cashier badge */}
+        <div className="flex items-center gap-2">
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm ${cashier ? 'bg-vz-accent' : 'bg-white/20'}`}>
+            {cashier ? cashier.username.slice(0, 1).toUpperCase() : '?'}
+          </div>
+          <div className="hidden sm:flex flex-col leading-tight">
+            <span className="text-[10px] opacity-70 uppercase tracking-wider">Cashier</span>
+            <span className="text-xs font-medium truncate max-w-[120px]">{cashier?.username ?? 'Non identifié'}</span>
+          </div>
+          {cashier ? (
+            <div className="flex gap-0.5">
+              <button
+                onClick={switchCashier}
+                className="text-xs min-w-[44px] min-h-[40px] px-2 rounded-lg hover:bg-white/10 transition-colors flex items-center justify-center"
+                title="Relève (changer de cashier)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+              </button>
+              <button
+                onClick={logoutCashier}
+                className="text-xs min-w-[44px] min-h-[40px] px-2 rounded-lg hover:bg-red-500/30 transition-colors flex items-center justify-center"
+                title="Déconnexion"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setCashierModalDismissible(false); setShowCashierModal(true); }}
+              className="text-xs px-3 py-2 rounded-lg bg-vz-accent hover:opacity-90 transition-opacity min-h-[40px] font-medium"
+            >
+              S&apos;identifier
+            </button>
+          )}
+        </div>
+
+        <div className="h-7 w-px bg-white/15 hidden lg:block" />
+
+        {/* Drawer status */}
+        {drawer !== null && (
+          <div className="hidden lg:flex items-center gap-2">
+            <span className={`inline-block w-2.5 h-2.5 rounded-full ${drawer.open ? 'bg-green-400' : 'bg-amber-400'}`} title={drawer.open ? 'Caisse ouverte' : 'Caisse fermée'} />
+            <div className="flex flex-col leading-tight">
+              <span className="text-[10px] opacity-70 uppercase tracking-wider">Tiroir</span>
+              <span className="text-xs font-medium font-mono">
+                {drawer.open ? `${drawer.opening_amount?.toFixed(2)} €` : 'Fermé'}
+              </span>
+            </div>
+            {drawer.open ? (
+              <div className="flex gap-0.5">
+                <button
+                  onClick={kickDrawer}
+                  title="Ouvrir le tiroir-caisse"
+                  className="text-xs min-h-[40px] px-3 rounded-lg bg-white/10 hover:bg-white/20 transition-colors flex items-center gap-1.5"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="10" width="18" height="10" rx="1" />
+                    <path d="M3 10V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4" />
+                    <line x1="10" y1="15" x2="14" y2="15" />
+                  </svg>
+                  Tiroir
+                </button>
+                {wizardEnabled && (
+                  <CashMovementButton
+                    onSubmit={async (payload) => {
+                      await api.post('/api/pos/cash-movements', {
+                        ...payload,
+                        cashier_id: cashier?.id ?? undefined,
+                      });
+                    }}
+                  />
+                )}
+                <button
+                  onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
+                  className="text-xs min-h-[40px] px-3 rounded-lg bg-red-500/30 hover:bg-red-500/50 transition-colors font-medium"
+                  title="Clôturer la caisse"
+                >
+                  Clôturer
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setDrawerAmount(0); setShowDrawerOpen(true); }}
+                className="text-xs px-3 py-2 rounded-lg bg-vz-accent hover:opacity-90 transition-opacity min-h-[40px] font-medium"
+              >
+                Initialiser
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="flex-1" />
+
+        {/* Online status + queue */}
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-block w-2.5 h-2.5 rounded-full ${online ? 'bg-green-400' : 'bg-red-500 animate-pulse'}`}
+            title={online ? 'En ligne' : 'Hors-ligne'}
+          />
+          <span className="hidden md:inline text-xs">
+            {online ? 'En ligne' : 'Hors-ligne'}
+            {pendingCount > 0 && ` · ${pendingCount} en attente`}
+          </span>
+          {pendingCount > 0 && (
+            <button
+              onClick={drainPending}
+              disabled={draining || !online}
+              className="text-xs min-h-[40px] px-3 rounded-lg bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-40 font-medium"
+              title={online ? 'Synchroniser maintenant' : 'Synchronisation impossible hors-ligne'}
+            >
+              {draining ? 'Sync…' : 'Sync'}
+            </button>
+          )}
+          {!online && (
+            <button
+              onClick={() => recheck()}
+              className="text-xs min-w-[40px] min-h-[40px] rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+              title="Re-tester la connexion"
+            >
+              ↻
+            </button>
+          )}
+        </div>
+      </header>
 
       {/* ── Main POS area ─────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden md:ml-64">
+      <div className="flex flex-1 overflow-hidden">
 
         {/* ── LEFT PANEL: Order / Cart ──────────────────────────────
              Width is responsive — 42% suits an iPad 10.9" (1024-1180 css
@@ -1072,45 +1229,8 @@ export default function POSPage() {
              ≥1280 px in landscape and benefits from a wider cart column
              (more lines visible without scrolling). xl: ≥1280, 2xl:
              ≥1536 for very wide docked setups. */}
-        <div className="w-[42%] xl:w-[48%] 2xl:w-[50%] flex flex-col bg-white border-r border-gray-200 shadow-sm">
+        <div className="w-[42%] xl:w-[48%] 2xl:w-[50%] flex flex-col bg-white border-r border-vz-line shadow-sm">
 
-          {/* Connectivity strip (P1-005) — visible only when offline or with backlog */}
-          {(!online || pendingCount > 0) && (
-            <div
-              className={`flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs ${
-                online
-                  ? 'bg-amber-50 border-b border-amber-200'
-                  : 'bg-red-50 border-b border-red-200'
-              }`}
-            >
-              <span className={`font-medium ${online ? 'text-amber-800' : 'text-red-700'}`}>
-                {online ? (
-                  <>📡 En ligne — {pendingCount} vente(s) en attente de synchronisation</>
-                ) : (
-                  <>⚠️ Mode hors-ligne — les ventes espèces / chèque / avoir sont bufferisées</>
-                )}
-              </span>
-              <div className="flex items-center gap-1.5">
-                {pendingCount > 0 && (
-                  <button
-                    onClick={drainPending}
-                    disabled={draining || !online}
-                    className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                    title={online ? 'Synchroniser maintenant' : 'Synchronisation impossible hors-ligne'}
-                  >
-                    {draining ? 'Sync…' : 'Synchroniser'}
-                  </button>
-                )}
-                <button
-                  onClick={() => recheck()}
-                  className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"
-                  title="Re-tester la connexion"
-                >
-                  ↻
-                </button>
-              </div>
-            </div>
-          )}
           {offlineMsg && (
             <div className="px-3 py-1.5 text-xs bg-vz-teal-soft text-vz-teal-deep border-b border-vz-teal-soft flex items-center justify-between">
               <span>{offlineMsg}</span>
@@ -1123,88 +1243,11 @@ export default function POSPage() {
             </div>
           )}
 
-          {/* Cashier identification strip */}
-          <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs bg-vz-teal-soft border-b border-vz-teal-soft">
-            <span className="font-medium text-vz-teal-deep">
-              {cashier
-                ? <>Cashier : <strong>{cashier.username}</strong></>
-                : 'Aucun cashier identifié'}
-            </span>
-            <div className="flex items-center gap-1.5">
-              {cashier && (
-                <>
-                  <button
-                    onClick={switchCashier}
-                    className="text-xs px-2 py-1 rounded bg-white border border-vz-teal-soft text-vz-teal hover:bg-vz-teal-soft transition-colors"
-                    title="Changer de cashier (relève)"
-                  >
-                    Changer
-                  </button>
-                  <button
-                    onClick={logoutCashier}
-                    className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
-                    title="Déconnecter le cashier"
-                  >
-                    Déconnexion
-                  </button>
-                </>
-              )}
-              {!cashier && (
-                <button
-                  onClick={() => { setCashierModalDismissible(false); setShowCashierModal(true); }}
-                  className="text-xs px-2 py-1 rounded bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors"
-                >
-                  S&apos;identifier
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Cash drawer status strip */}
-          {drawer !== null && (
-            <div className={`flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs ${drawer.open ? 'bg-green-50 border-b border-green-100' : 'bg-amber-50 border-b border-amber-200'}`}>
-              <span className={`font-medium ${drawer.open ? 'text-green-700' : 'text-amber-700'}`}>
-                {drawer.open
-                  ? `Caisse ouverte — fonds: ${drawer.opening_amount?.toFixed(2)} €`
-                  : 'Caisse non initialisée'}
-              </span>
-              {drawer.open ? (
-                <div className="flex items-center gap-1.5">
-                  <button onClick={kickDrawer}
-                    title="Ouvrir le tiroir-caisse manuellement"
-                    className="text-xs px-2 py-1 rounded bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors flex items-center gap-1">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="10" width="18" height="10" rx="1"/><path d="M3 10V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"/><line x1="10" y1="15" x2="14" y2="15"/></svg>
-                    Ouvrir tiroir
-                  </button>
-                  {wizardEnabled && (
-                    <CashMovementButton
-                      onSubmit={async (payload) => {
-                        await api.post('/api/pos/cash-movements', {
-                          ...payload,
-                          cashier_id: cashier?.id ?? undefined,
-                        });
-                      }}
-                    />
-                  )}
-                  <button onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
-                    className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
-                    Clôturer
-                  </button>
-                </div>
-              ) : (
-                <button onClick={() => { setDrawerAmount(0); setShowDrawerOpen(true); }}
-                  className="text-xs px-2 py-1 rounded bg-vz-teal text-white hover:bg-vz-teal-deep transition-colors">
-                  Initialiser
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          {/* Header (Odoo 17 style — "Order" panel) */}
+          <div className="px-4 py-3 border-b border-vz-line flex items-center justify-between flex-shrink-0">
             <div>
-              <h1 className="text-base font-bold text-black">Commande</h1>
-              <p className="text-xs text-gray-400">{cart.length} article{cart.length > 1 ? 's' : ''}</p>
+              <h1 className="font-display text-lg text-vz-ink leading-tight">Ticket</h1>
+              <p className="text-xs text-vz-ink-mute">{cart.length} article{cart.length > 1 ? 's' : ''}</p>
             </div>
             {/* Client section */}
             {selectedClient ? (
@@ -1569,38 +1612,57 @@ export default function POSPage() {
                 <p className="text-sm">Aucun produit trouvé</p>
               </div>
             ) : searchResults.length > 0 ? (
-              <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+              // Odoo 17 product grid — bigger tiles with photo placeholder header.
+              // Touch targets ≥ 140px to be comfortable on iPad / Lenovo M11.
+              <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                 {searchResults.map(product => (
                   <button
                     key={product.id}
                     onClick={() => addProductToCart(product)}
-                    className="text-left p-4 bg-white rounded-xl border-2 border-transparent hover:border-vz-teal hover:shadow-md transition-all group"
+                    className="text-left bg-white rounded-xl border border-vz-line hover:border-vz-teal hover:shadow-lg active:scale-[0.98] active:bg-vz-teal-soft transition-all overflow-hidden min-h-[180px] flex flex-col group"
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="w-10 h-10 rounded-lg bg-vz-accent-soft flex items-center justify-center text-vz-teal flex-shrink-0">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-                      </div>
-                      <span className="text-lg font-bold text-vz-teal">{formatCurrency(product.sale_price)}</span>
-                    </div>
-                    <p className="text-sm font-semibold text-black group-hover:text-vz-teal leading-tight line-clamp-2">{product.name}</p>
-                    <p className="text-xs text-gray-400 mt-1">{product.barcode}{product.category ? ` · ${product.category}` : ''}</p>
-                    <div className="mt-2 flex items-center gap-1">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        product.status === 'display' ? 'bg-vz-teal-soft text-vz-teal' : 'bg-gray-100 text-gray-500'
+                    {/* Photo placeholder header — Odoo POS style with status corner */}
+                    <div className="aspect-[4/3] bg-gradient-to-br from-vz-bg-alt to-vz-bg flex items-center justify-center relative">
+                      <svg
+                        width="36" height="36"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        className="text-vz-ink-mute opacity-60"
+                      >
+                        <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                      </svg>
+                      <span className={`absolute top-1.5 right-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${
+                        product.status === 'display'
+                          ? 'bg-vz-teal-soft text-vz-teal-deep'
+                          : 'bg-white text-vz-ink-mute border border-vz-line'
                       }`}>
-                        {product.status === 'display' ? 'En vitrine' : 'En stock'}
+                        {product.status === 'display' ? 'Vitrine' : 'Stock'}
+                      </span>
+                    </div>
+                    {/* Title + price block */}
+                    <div className="p-2.5 flex-1 flex flex-col">
+                      <p className="text-sm font-medium text-vz-ink group-hover:text-vz-teal-deep leading-tight line-clamp-2 mb-1">
+                        {product.name}
+                      </p>
+                      <p className="text-[10px] text-vz-ink-mute font-mono truncate">
+                        {product.barcode}{product.category ? ` · ${product.category}` : ''}
+                      </p>
+                      <span className="mt-auto pt-1.5 text-lg font-bold text-vz-teal">
+                        {formatCurrency(product.sale_price)}
                       </span>
                     </div>
                   </button>
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-gray-300">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-4">
+              <div className="flex flex-col items-center justify-center h-full text-vz-ink-mute">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-4 opacity-40">
                   <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                 </svg>
-                <p className="text-base text-gray-400">Scannez un article ou tapez son nom</p>
-                <p className="text-sm text-gray-300 mt-1">Les résultats s&apos;afficheront ici</p>
+                <p className="text-base">Scannez ou tapez le nom d&apos;un article</p>
+                <p className="text-sm opacity-70 mt-1">Les résultats apparaissent ici</p>
               </div>
             )}
           </div>
