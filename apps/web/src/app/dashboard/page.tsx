@@ -136,10 +136,11 @@ function TicketModal({
       channel,
       ...(to ? { to } : {}),
     });
+    const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const err = await res.json().catch(() => null);
-      throw new Error(err?.detail || 'Erreur envoi');
+      throw new Error((body && body.detail) || 'Erreur envoi');
     }
+    return body as { simulated?: boolean; message?: string };
   };
 
   // Send the receipt to the MUNBYN (network or USB depending on the

@@ -5,8 +5,17 @@ import React, { useState } from 'react';
 interface Props {
   clientEmail?: string | null;
   clientPhone?: string | null;
-  /** Sends the receipt. ``to`` is the optional ad-hoc address (walk-in). */
-  onResend: (channel: 'email' | 'sms', to?: string) => Promise<void> | void;
+  /** Sends the receipt. ``to`` is the optional ad-hoc address (walk-in).
+   *
+   * May return a structured result so we can surface the simulated state
+   * — i.e. when Twilio / Brevo are not configured the backend logs the
+   * call but doesn't actually send anything. We MUST warn the operator
+   * in that case so they don't think the customer received the receipt.
+   */
+  onResend: (
+    channel: 'email' | 'sms',
+    to?: string,
+  ) => Promise<{ simulated?: boolean; message?: string } | void> | void;
 }
 
 /**
@@ -28,24 +37,41 @@ export default function InlineResendButtons({
   const [showEmailInput, setShowEmailInput] = useState(false);
   const [showSmsInput, setShowSmsInput] = useState(false);
   const [sending, setSending] = useState<'email' | 'sms' | null>(null);
-  const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null);
+  type FeedbackTone = 'success' | 'error' | 'warning';
+  const [feedback, setFeedback] = useState<{ msg: string; tone: FeedbackTone } | null>(null);
 
   const handleResend = async (channel: 'email' | 'sms', to?: string) => {
     setSending(channel);
     setFeedback(null);
     try {
-      await onResend(channel, to);
-      setFeedback({
-        msg: channel === 'email'
-          ? `Email envoyé à ${to || clientEmail}`
-          : `SMS envoyé au ${to || clientPhone}`,
-        ok: true,
-      });
+      const result = await onResend(channel, to);
+      // The backend tells us whether the send was real or just simulated
+      // (Twilio/Brevo not configured). A simulated send is NOT a success
+      // from the operator's POV — the customer never received anything.
+      if (result && typeof result === 'object' && result.simulated) {
+        setFeedback({
+          msg:
+            result.message ||
+            (channel === 'email'
+              ? '⚠ Email simulé — provider non configuré, le destinataire n\'a rien reçu.'
+              : '⚠ SMS simulé — Twilio non configuré, le destinataire n\'a rien reçu.'),
+          tone: 'warning',
+        });
+      } else {
+        setFeedback({
+          msg:
+            (result && typeof result === 'object' && result.message) ||
+            (channel === 'email'
+              ? `Email envoyé à ${to || clientEmail}`
+              : `SMS envoyé au ${to || clientPhone}`),
+          tone: 'success',
+        });
+      }
       setShowEmailInput(false);
       setShowSmsInput(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Échec de l'envoi";
-      setFeedback({ msg, ok: false });
+      setFeedback({ msg, tone: 'error' });
     } finally {
       setSending(null);
     }
@@ -60,9 +86,11 @@ export default function InlineResendButtons({
         <div
           role="status"
           className={`rounded-xl px-3 py-2 text-sm ${
-            feedback.ok
+            feedback.tone === 'success'
               ? 'bg-green-50 text-green-700'
-              : 'bg-red-50 text-red-700'
+              : feedback.tone === 'warning'
+                ? 'bg-yellow-50 text-yellow-800 border border-yellow-200'
+                : 'bg-red-50 text-red-700'
           }`}
         >
           {feedback.msg}

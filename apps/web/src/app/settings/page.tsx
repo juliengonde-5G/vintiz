@@ -363,15 +363,26 @@ export default function SettingsPage() {
         }
         return;
       }
-      let endpoint = '';
-      if (category === 'receipt_printer') endpoint = '/api/hardware/receipt/test';
-      else if (category === 'cash_drawer') endpoint = '/api/hardware/drawer/kick';
-      else if (category === 'label_printer') endpoint = '/api/hardware/label/test';
-      else if (category === 'barcode_scanner') {
+      if (category === 'cash_drawer') {
+        // Route through the shared helper so USB mode works too.
+        const { kickDrawer: kick } = await import('@/lib/print-ticket');
+        const result = await kick();
+        setHwTests((s) => ({
+          ...s,
+          [category]: result.ok
+            ? { status: 'success', message: result.message }
+            : { status: 'error', message: result.message },
+        }));
+        return;
+      }
+      if (category === 'barcode_scanner') {
         // No backend test — focus the search field at /pos
         setHwTests((s) => ({ ...s, [category]: { status: 'success', message: 'Allez sur /pos et scannez un produit pour valider la douchette' } }));
         return;
       }
+      let endpoint = '';
+      if (category === 'receipt_printer') endpoint = '/api/hardware/receipt/test';
+      else if (category === 'label_printer') endpoint = '/api/hardware/label/test';
       const res = await api.post(endpoint, {});
       if (res.ok) {
         setHwTests((s) => ({ ...s, [category]: { status: 'success', message: 'Test envoyé ✓' } }));
@@ -567,14 +578,10 @@ export default function SettingsPage() {
 
   const kickDrawer = async () => {
     setError(''); setMessage('');
-    try {
-      const res = await api.post('/api/hardware/drawer/kick', {});
-      if (res.ok) setMessage('Impulsion envoyee au tiroir-caisse');
-      else {
-        const e = await res.json().catch(() => ({}));
-        setError(e.detail || 'Echec ouverture tiroir');
-      }
-    } catch { setError('Erreur de connexion'); }
+    const { kickDrawer: kick } = await import('@/lib/print-ticket');
+    const result = await kick();
+    if (result.ok) setMessage(result.message);
+    else setError(result.message);
   };
 
   const testLabelPrinter = async () => {
