@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import workflowsData from './workflows.json';
 
@@ -115,13 +116,32 @@ function buildArrowPath(
   return { d, midX, midY, angle };
 }
 
+const VALID_CATEGORIES: WorkflowCategory[] = ['metier', 'endpoint', 'cron', 'hardware'];
+
 export default function WorkflowsPage() {
-  const [category, setCategory] = useState<WorkflowCategory>('metier');
+  const searchParams = useSearchParams();
+  const urlCategory = searchParams.get('category') as WorkflowCategory | null;
+  const category: WorkflowCategory =
+    urlCategory && VALID_CATEGORIES.includes(urlCategory) ? urlCategory : 'metier';
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string>(
     data.workflows.find((w) => w.category === 'metier')?.id ?? data.workflows[0].id,
   );
   const [hoveredStepIdx, setHoveredStepIdx] = useState<number | null>(null);
+  const [zoomed, setZoomed] = useState(false);
+
+  useEffect(() => {
+    if (!zoomed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setZoomed(false);
+    };
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [zoomed]);
 
   const packagesById = useMemo(
     () => Object.fromEntries(data.packages.map((p) => [p.id, p])) as Record<string, WorkflowPackage>,
@@ -204,6 +224,129 @@ export default function WorkflowsPage() {
     );
   }, []);
 
+  const svgContent = (
+    <>
+      <defs>
+        <marker
+          id="arrow-teal"
+          markerWidth="10"
+          markerHeight="10"
+          refX="8"
+          refY="3"
+          orient="auto"
+          markerUnits="strokeWidth"
+        >
+          <path d="M0,0 L0,6 L9,3 z" fill="#0B7A6A" />
+        </marker>
+        <marker
+          id="arrow-pink"
+          markerWidth="10"
+          markerHeight="10"
+          refX="8"
+          refY="3"
+          orient="auto"
+          markerUnits="strokeWidth"
+        >
+          <path d="M0,0 L0,6 L9,3 z" fill="#E84E8B" />
+        </marker>
+      </defs>
+
+      {/* Column labels */}
+      <g fontSize="11" fill="#8B8B86" fontWeight="600" letterSpacing="0.1em" textAnchor="middle">
+        <text x={60 + BOX_WIDTH / 2} y={30}>CLIENT / HARDWARE</text>
+        <text x={290 + BOX_WIDTH / 2} y={30}>FRONTEND</text>
+        <text x={530 + BOX_WIDTH / 2} y={30}>BACKEND</text>
+        <text x={760 + BOX_WIDTH / 2} y={30}>DATA</text>
+        <text x={990 + BOX_WIDTH / 2} y={30}>EXTERNE</text>
+      </g>
+
+      {/* Packages */}
+      {data.packages.map((pkg) => {
+        const active = activePackageIds.has(pkg.id);
+        const conf = PACKAGE_COLORS[pkg.category];
+        return (
+          <g key={pkg.id} transform={`translate(${pkg.x},${pkg.y})`}>
+            <rect
+              width={BOX_WIDTH}
+              height={BOX_HEIGHT}
+              rx={10}
+              ry={10}
+              fill={active ? conf.fill : '#FFFFFF'}
+              stroke={active ? conf.stroke : '#D5D3CC'}
+              strokeWidth={active ? 2 : 1}
+              opacity={selected && !active ? 0.4 : 1}
+            >
+              <title>{pkg.description ?? pkg.name}</title>
+            </rect>
+            <text
+              x={BOX_WIDTH / 2}
+              y={26}
+              textAnchor="middle"
+              fontSize="13"
+              fontWeight="600"
+              fill={active ? conf.stroke : '#0E0E0C'}
+              opacity={selected && !active ? 0.5 : 1}
+            >
+              {pkg.name}
+            </text>
+            {pkg.subtitle && (
+              <text
+                x={BOX_WIDTH / 2}
+                y={44}
+                textAnchor="middle"
+                fontSize="10"
+                fill="#8B8B86"
+                opacity={selected && !active ? 0.5 : 1}
+              >
+                {pkg.subtitle}
+              </text>
+            )}
+          </g>
+        );
+      })}
+
+      {/* Arrows */}
+      {arrows.map(({ idx, step, path }) => {
+        const isHovered = hoveredStepIdx === idx;
+        const color = isHovered ? '#E84E8B' : '#0B7A6A';
+        return (
+          <g key={idx}>
+            <path
+              d={path.d}
+              fill="none"
+              stroke={color}
+              strokeWidth={isHovered ? 3 : 2}
+              markerEnd={isHovered ? 'url(#arrow-pink)' : 'url(#arrow-teal)'}
+              opacity={hoveredStepIdx !== null && !isHovered ? 0.25 : 0.9}
+            >
+              <title>{`${idx + 1}. ${step.label}`}</title>
+            </path>
+            {/* Step number badge */}
+            <g transform={`translate(${path.midX},${path.midY})`}>
+              <circle
+                r="12"
+                fill={color}
+                stroke="#FFFFFF"
+                strokeWidth="2"
+                opacity={hoveredStepIdx !== null && !isHovered ? 0.3 : 1}
+              />
+              <text
+                textAnchor="middle"
+                dy="4"
+                fontSize="11"
+                fontWeight="700"
+                fill="#FFFFFF"
+                opacity={hoveredStepIdx !== null && !isHovered ? 0.3 : 1}
+              >
+                {idx + 1}
+              </text>
+            </g>
+          </g>
+        );
+      })}
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-vz-bg flex">
       <Sidebar />
@@ -211,35 +354,19 @@ export default function WorkflowsPage() {
       <main className="flex-1 md:ml-64 transition-all">
         <div className="px-4 md:px-6 py-6 max-w-[1800px] mx-auto">
           {/* Header */}
-          <div className="mb-5">
-            <h1 className="font-display text-2xl md:text-3xl text-vz-ink">Workflows Vintiz</h1>
-            <p className="text-sm text-vz-ink-soft mt-1">
-              Documentation pilotée par <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-vz-line">workflows.json</code> —
-              cliquez un flux pour visualiser la propagation entre paquets et annoter chaque étape.
-            </p>
-          </div>
-
-          {/* Category tabs */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            {(Object.keys(CATEGORY_LABELS) as WorkflowCategory[]).map((cat) => {
-              const active = cat === category;
-              return (
-                <button
-                  key={cat}
-                  onClick={() => setCategory(cat)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                    active
-                      ? 'bg-vz-teal text-white shadow-vz-soft'
-                      : 'bg-white text-vz-ink-soft border border-vz-line hover:bg-vz-bg-alt'
-                  }`}
-                >
-                  {CATEGORY_LABELS[cat]}
-                  <span className={`ml-2 text-xs ${active ? 'opacity-80' : 'text-vz-ink-mute'}`}>
-                    {totalByCategory[cat]}
-                  </span>
-                </button>
-              );
-            })}
+          <div className="mb-5 flex items-baseline justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="font-display text-2xl md:text-3xl text-vz-ink">
+                Workflows Vintiz — {CATEGORY_LABELS[category]}
+              </h1>
+              <p className="text-sm text-vz-ink-soft mt-1">
+                Documentation pilotée par <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-vz-line">workflows.json</code> —
+                cliquez un flux pour visualiser la propagation entre paquets et annoter chaque étape.
+              </p>
+            </div>
+            <span className="text-xs text-vz-ink-mute">
+              {totalByCategory[category]} flux dans cette catégorie
+            </span>
           </div>
 
           {/* Main 3-column layout */}
@@ -291,152 +418,56 @@ export default function WorkflowsPage() {
 
             {/* CENTER — SVG graph */}
             <section className="bg-white border border-vz-line rounded-2xl p-3">
-              <div className="flex items-center justify-between mb-2 px-2">
-                <h2 className="font-display text-lg text-vz-ink">
+              <div className="flex items-center justify-between mb-2 px-2 gap-3">
+                <h2 className="font-display text-lg text-vz-ink truncate">
                   {selected?.title ?? 'Sélectionnez un flux'}
                 </h2>
-                <div className="flex flex-wrap gap-1.5 text-[10px]">
-                  {(Object.entries(PACKAGE_COLORS) as Array<[PackageCategory, typeof PACKAGE_COLORS[PackageCategory]]>).map(
-                    ([key, conf]) => (
-                      <span
-                        key={key}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border"
-                        style={{ borderColor: conf.stroke, color: conf.stroke, background: conf.fill }}
-                      >
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="hidden lg:flex flex-wrap gap-1.5 text-[10px]">
+                    {(Object.entries(PACKAGE_COLORS) as Array<[PackageCategory, typeof PACKAGE_COLORS[PackageCategory]]>).map(
+                      ([key, conf]) => (
                         <span
-                          className="inline-block w-2 h-2 rounded-full"
-                          style={{ background: conf.stroke }}
-                        />
-                        {conf.label}
-                      </span>
-                    ),
-                  )}
+                          key={key}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border"
+                          style={{ borderColor: conf.stroke, color: conf.stroke, background: conf.fill }}
+                        >
+                          <span
+                            className="inline-block w-2 h-2 rounded-full"
+                            style={{ background: conf.stroke }}
+                          />
+                          {conf.label}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setZoomed(true)}
+                    title="Agrandir (plein écran)"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-vz-line text-xs text-vz-ink-soft hover:bg-vz-bg-alt"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 3 21 3 21 9" />
+                      <polyline points="9 21 3 21 3 15" />
+                      <line x1="21" y1="3" x2="14" y2="10" />
+                      <line x1="3" y1="21" x2="10" y2="14" />
+                    </svg>
+                    Agrandir
+                  </button>
                 </div>
               </div>
 
               <svg
                 viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-                className="w-full h-auto"
+                className="w-full h-auto cursor-zoom-in"
                 style={{ minHeight: 480 }}
+                onClick={() => setZoomed(true)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setZoomed(true); }}
+                aria-label="Agrandir le diagramme du workflow"
               >
-                <defs>
-                  <marker
-                    id="arrow-teal"
-                    markerWidth="10"
-                    markerHeight="10"
-                    refX="8"
-                    refY="3"
-                    orient="auto"
-                    markerUnits="strokeWidth"
-                  >
-                    <path d="M0,0 L0,6 L9,3 z" fill="#0B7A6A" />
-                  </marker>
-                  <marker
-                    id="arrow-pink"
-                    markerWidth="10"
-                    markerHeight="10"
-                    refX="8"
-                    refY="3"
-                    orient="auto"
-                    markerUnits="strokeWidth"
-                  >
-                    <path d="M0,0 L0,6 L9,3 z" fill="#E84E8B" />
-                  </marker>
-                </defs>
-
-                {/* Column labels */}
-                <g fontSize="11" fill="#8B8B86" fontWeight="600" letterSpacing="0.1em" textAnchor="middle">
-                  <text x={60 + BOX_WIDTH / 2} y={30}>CLIENT / HARDWARE</text>
-                  <text x={290 + BOX_WIDTH / 2} y={30}>FRONTEND</text>
-                  <text x={530 + BOX_WIDTH / 2} y={30}>BACKEND</text>
-                  <text x={760 + BOX_WIDTH / 2} y={30}>DATA</text>
-                  <text x={990 + BOX_WIDTH / 2} y={30}>EXTERNE</text>
-                </g>
-
-                {/* Packages */}
-                {data.packages.map((pkg) => {
-                  const active = activePackageIds.has(pkg.id);
-                  const conf = PACKAGE_COLORS[pkg.category];
-                  return (
-                    <g key={pkg.id} transform={`translate(${pkg.x},${pkg.y})`}>
-                      <rect
-                        width={BOX_WIDTH}
-                        height={BOX_HEIGHT}
-                        rx={10}
-                        ry={10}
-                        fill={active ? conf.fill : '#FFFFFF'}
-                        stroke={active ? conf.stroke : '#D5D3CC'}
-                        strokeWidth={active ? 2 : 1}
-                        opacity={selected && !active ? 0.4 : 1}
-                      >
-                        <title>{pkg.description ?? pkg.name}</title>
-                      </rect>
-                      <text
-                        x={BOX_WIDTH / 2}
-                        y={26}
-                        textAnchor="middle"
-                        fontSize="13"
-                        fontWeight="600"
-                        fill={active ? conf.stroke : '#0E0E0C'}
-                        opacity={selected && !active ? 0.5 : 1}
-                      >
-                        {pkg.name}
-                      </text>
-                      {pkg.subtitle && (
-                        <text
-                          x={BOX_WIDTH / 2}
-                          y={44}
-                          textAnchor="middle"
-                          fontSize="10"
-                          fill="#8B8B86"
-                          opacity={selected && !active ? 0.5 : 1}
-                        >
-                          {pkg.subtitle}
-                        </text>
-                      )}
-                    </g>
-                  );
-                })}
-
-                {/* Arrows */}
-                {arrows.map(({ idx, step, path }) => {
-                  const isHovered = hoveredStepIdx === idx;
-                  const color = isHovered ? '#E84E8B' : '#0B7A6A';
-                  return (
-                    <g key={idx}>
-                      <path
-                        d={path.d}
-                        fill="none"
-                        stroke={color}
-                        strokeWidth={isHovered ? 3 : 2}
-                        markerEnd={isHovered ? 'url(#arrow-pink)' : 'url(#arrow-teal)'}
-                        opacity={hoveredStepIdx !== null && !isHovered ? 0.25 : 0.9}
-                      >
-                        <title>{`${idx + 1}. ${step.label}`}</title>
-                      </path>
-                      {/* Step number badge */}
-                      <g transform={`translate(${path.midX},${path.midY})`}>
-                        <circle
-                          r="12"
-                          fill={color}
-                          stroke="#FFFFFF"
-                          strokeWidth="2"
-                          opacity={hoveredStepIdx !== null && !isHovered ? 0.3 : 1}
-                        />
-                        <text
-                          textAnchor="middle"
-                          dy="4"
-                          fontSize="11"
-                          fontWeight="700"
-                          fill="#FFFFFF"
-                          opacity={hoveredStepIdx !== null && !isHovered ? 0.3 : 1}
-                        >
-                          {idx + 1}
-                        </text>
-                      </g>
-                    </g>
-                  );
-                })}
+                {svgContent}
               </svg>
             </section>
 
@@ -532,6 +563,51 @@ export default function WorkflowsPage() {
           </p>
         </div>
       </main>
+
+      {zoomed && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex flex-col p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Diagramme du workflow en plein écran"
+        >
+          <div className="flex items-center justify-between text-white mb-3 px-2">
+            <div className="min-w-0">
+              <p className="text-[10px] tracking-[0.22em] uppercase opacity-70">
+                {selected?.group ?? CATEGORY_LABELS[category]}
+              </p>
+              <h2 className="font-display text-xl md:text-2xl truncate">
+                {selected?.title ?? 'Workflow'}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setZoomed(false)}
+              title="Fermer (Échap)"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+              Fermer
+            </button>
+          </div>
+          <div
+            className="flex-1 bg-white rounded-2xl overflow-auto p-4 cursor-zoom-out"
+            onClick={() => setZoomed(false)}
+          >
+            <svg
+              viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+              className="w-full h-full"
+              preserveAspectRatio="xMidYMid meet"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {svgContent}
+            </svg>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

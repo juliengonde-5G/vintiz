@@ -257,7 +257,7 @@ export default function AdminUsersPage() {
 
       {/* Create modal */}
       {creating && (
-        <Modal isOpen onClose={() => setCreating(false)} title="Nouvel utilisateur">
+        <Modal open onClose={() => setCreating(false)} title="Nouvel utilisateur">
           <div className="space-y-3 text-sm">
             <div>
               <label className="text-xs text-gray-500">Username</label>
@@ -296,7 +296,7 @@ export default function AdminUsersPage() {
 
       {/* Edit modal */}
       {editing && (
-        <Modal isOpen onClose={() => setEditing(null)} title={`Éditer · ${editing.username}`}>
+        <Modal open onClose={() => setEditing(null)} title={`Éditer · ${editing.username}`}>
           <div className="space-y-3 text-sm">
             <div>
               <label className="text-xs text-gray-500">Email</label>
@@ -328,7 +328,7 @@ export default function AdminUsersPage() {
 
       {/* PIN modal */}
       {pinUser && (
-        <Modal isOpen onClose={() => setPinUser(null)} title={`PIN · ${pinUser.username}`}>
+        <Modal open onClose={() => setPinUser(null)} title={`PIN · ${pinUser.username}`}>
           <div className="space-y-3 text-sm">
             <p className="text-xs text-gray-500">
               {pinUser.has_pin ? 'Saisis un nouveau PIN à 4 chiffres' : 'Définis un PIN à 4 chiffres'}
