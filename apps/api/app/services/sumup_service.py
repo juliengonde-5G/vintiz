@@ -149,83 +149,134 @@ class SumUpService:
     async def ping_reader(self) -> dict:
         """Probe the configured SumUp reader and return a structured status.
 
-        Used by the POS startup banner to flag the cashier when the
-        terminal is offline before the first attempted CB sale —
-        better than letting them validate a checkout that's bound
-        to time out 30 s later.
+        Spec-compliant (https://developer.sumup.com/api/readers): SumUp
+        splits the reader state into two orthogonal axes :
 
-        Calls ``GET /v0.1/merchants/{merchant}/readers/{reader}`` and
-        maps the reader's ``status`` field to a simple shape :
+        - **Pairing state** (``Reader.status``) — ``unknown | processing
+          | paired | expired``. Returned by ``GET /readers/{id}``. Tells
+          us whether the pairing record is usable at all.
+        - **Live device status** (``StatusResponse.data.status``) —
+          ``ONLINE | OFFLINE``. Returned by ``GET /readers/{id}/status``.
+          Tells us whether the physical Solo is currently reachable via
+          its Wi-Fi / 4G link (Solo firmware ≥ 3.3.39.0).
 
-            { configured, online, ready, status, message }
+        We check both so the POS banner can distinguish "TPE jamais
+        appairé" from "TPE appairé mais Wi-Fi coupé".
+
+        Returns a flat dict suitable for the front-end :
+
+            { configured, paired, online, ready, status, message,
+              state, battery_level, connection_type }
         """
         import httpx
 
         if not self.is_configured:
             return {
-                "configured": False,
-                "online": False,
-                "ready": False,
+                "configured": False, "paired": False, "online": False, "ready": False,
                 "status": "unconfigured",
                 "message": "SUMUP_API_KEY / SUMUP_MERCHANT_CODE non configurés",
             }
         if not self.reader_id:
             return {
-                "configured": True,
-                "online": False,
-                "ready": False,
+                "configured": True, "paired": False, "online": False, "ready": False,
                 "status": "no_reader",
                 "message": "Aucun TPE rattaché (SUMUP_READER_ID vide) — paiements CB possibles via lien checkout mais pas en push direct",
             }
 
-        url = f"{SUMUP_API_BASE}/v0.1/merchants/{self.merchant_code}/readers/{self.reader_id}"
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(url, headers=self._headers)
-        except httpx.HTTPError as exc:
-            return {
-                "configured": True,
-                "online": False,
-                "ready": False,
-                "status": "network_error",
-                "message": f"SumUp Cloud injoignable : {exc}",
-            }
+        # SUMUP_API_BASE already includes /v0.1 — don't prefix it twice.
+        reader_url = (
+            f"{SUMUP_API_BASE}/merchants/{self.merchant_code}"
+            f"/readers/{self.reader_id}"
+        )
+        status_url = f"{reader_url}/status"
 
-        if response.status_code == 404:
-            return {
-                "configured": True,
-                "online": False,
-                "ready": False,
-                "status": "reader_not_found",
-                "message": "Le SUMUP_READER_ID configuré n'existe plus côté SumUp — rappairez le TPE depuis l'app SumUp",
-            }
-        if response.status_code != 200:
-            return {
-                "configured": True,
-                "online": False,
-                "ready": False,
-                "status": f"http_{response.status_code}",
-                "message": f"SumUp Cloud {response.status_code}: {response.text[:120]}",
-            }
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # 1) Pairing state — `Reader.status`
+            try:
+                resp = await client.get(reader_url, headers=self._headers)
+            except httpx.HTTPError as exc:
+                return {
+                    "configured": True, "paired": False, "online": False, "ready": False,
+                    "status": "network_error",
+                    "message": f"SumUp Cloud injoignable : {exc}",
+                }
+            if resp.status_code == 404:
+                return {
+                    "configured": True, "paired": False, "online": False, "ready": False,
+                    "status": "reader_not_found",
+                    "message": "Le SUMUP_READER_ID configuré n'existe plus côté SumUp — rappairez le TPE depuis l'app SumUp",
+                }
+            if resp.status_code != 200:
+                return {
+                    "configured": True, "paired": False, "online": False, "ready": False,
+                    "status": f"http_{resp.status_code}",
+                    "message": f"SumUp Cloud {resp.status_code}: {resp.text[:120]}",
+                }
+            reader = resp.json()
+            pairing = (reader.get("status") or "").lower()
+            # Only "paired" means the reader can take a checkout.
+            # "processing" = pairing not finished yet ; "expired" =
+            # pairing dead, must recreate ; "unknown" = ill-defined.
+            if pairing != "paired":
+                return {
+                    "configured": True, "paired": False, "online": False, "ready": False,
+                    "status": f"pairing_{pairing or 'unknown'}",
+                    "message": {
+                        "processing": "TPE en cours d'appairage avec SumUp — patientez quelques minutes ou rappairez",
+                        "expired": "Appairage SumUp expiré — supprimez ce TPE dans /settings et recréez-le",
+                        "unknown": "Statut d'appairage SumUp inconnu — réessayez plus tard",
+                    }.get(pairing, f"TPE non appairé ({pairing})"),
+                    "name": reader.get("name"),
+                }
 
-        body = response.json()
-        reader_status = (body.get("status") or "").lower()
-        # SumUp's documented reader statuses include: paired, online,
-        # processing, offline, unpaired. "paired" == ready to receive
-        # checkouts. "processing" means a checkout is in flight.
-        ready = reader_status in {"paired", "online", "processing"}
-        return {
-            "configured": True,
-            "online": reader_status not in {"offline", "unpaired", ""},
-            "ready": ready,
-            "status": reader_status or "unknown",
-            "message": (
-                f"TPE {reader_status}"
-                if ready
-                else f"TPE indisponible ({reader_status or 'inconnu'}) — vérifiez le Wi-Fi du Solo ou rappairez"
-            ),
-            "name": body.get("name"),
-        }
+            # 2) Live device status — requires Solo firmware ≥ 3.3.39.0.
+            #    On older firmware the endpoint returns 404 ; we treat
+            #    that as "paired but live state unknown" and let the
+            #    cashier proceed (the checkout itself will surface a
+            #    READER_OFFLINE error if relevant).
+            try:
+                live_resp = await client.get(status_url, headers=self._headers)
+            except httpx.HTTPError as exc:
+                return {
+                    "configured": True, "paired": True, "online": False, "ready": True,
+                    "status": "live_unreachable",
+                    "message": f"TPE appairé mais l'état live n'est pas joignable ({exc}) — tentez quand même la vente",
+                    "name": reader.get("name"),
+                }
+
+            if live_resp.status_code == 404:
+                # Old firmware — live endpoint missing. Treat as ready.
+                return {
+                    "configured": True, "paired": True, "online": True, "ready": True,
+                    "status": "paired",
+                    "message": "TPE appairé (live status indisponible — firmware Solo < 3.3.39 ?)",
+                    "name": reader.get("name"),
+                }
+            if live_resp.status_code != 200:
+                return {
+                    "configured": True, "paired": True, "online": False, "ready": True,
+                    "status": f"live_http_{live_resp.status_code}",
+                    "message": f"État live SumUp {live_resp.status_code} — TPE appairé, tentez quand même",
+                    "name": reader.get("name"),
+                }
+            live = (live_resp.json() or {}).get("data", {}) or {}
+            device_status = (live.get("status") or "").upper()
+            online = device_status == "ONLINE"
+            return {
+                "configured": True, "paired": True,
+                "online": online,
+                "ready": online,
+                "status": device_status.lower() or "unknown",
+                "state": live.get("state"),
+                "battery_level": live.get("battery_level"),
+                "connection_type": live.get("connection_type"),
+                "name": reader.get("name"),
+                "message": (
+                    f"TPE en ligne ({live.get('state', 'IDLE')})"
+                    if online
+                    else "TPE hors ligne — vérifiez le Wi-Fi/4G du Solo (le TPE doit afficher l'écran d'accueil)"
+                ),
+            }
 
     @property
     def _headers(self) -> dict:
