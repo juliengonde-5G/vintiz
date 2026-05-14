@@ -527,6 +527,18 @@ async def get_sumup_config(current_user: User = Depends(get_current_user)):
     return SumUpService().describe()
 
 
+@router.get("/payments/cb/ping")
+async def ping_sumup_reader(current_user: User = Depends(get_current_user)):
+    """Probe the configured SumUp reader's live status.
+
+    Called at POS startup to flag the cashier if the TPE is offline,
+    unpaired, or misconfigured — they see the warning before they try
+    to encash a CB sale that would otherwise time out 30 s later.
+    """
+    from app.services.sumup_service import SumUpService
+    return await SumUpService().ping_reader()
+
+
 @router.post("/transactions/{transaction_id}/resend")
 async def resend_transaction(
     transaction_id: uuid.UUID,

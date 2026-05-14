@@ -146,6 +146,87 @@ class SumUpService:
             "api_base": SUMUP_API_BASE,
         }
 
+    async def ping_reader(self) -> dict:
+        """Probe the configured SumUp reader and return a structured status.
+
+        Used by the POS startup banner to flag the cashier when the
+        terminal is offline before the first attempted CB sale —
+        better than letting them validate a checkout that's bound
+        to time out 30 s later.
+
+        Calls ``GET /v0.1/merchants/{merchant}/readers/{reader}`` and
+        maps the reader's ``status`` field to a simple shape :
+
+            { configured, online, ready, status, message }
+        """
+        import httpx
+
+        if not self.is_configured:
+            return {
+                "configured": False,
+                "online": False,
+                "ready": False,
+                "status": "unconfigured",
+                "message": "SUMUP_API_KEY / SUMUP_MERCHANT_CODE non configurés",
+            }
+        if not self.reader_id:
+            return {
+                "configured": True,
+                "online": False,
+                "ready": False,
+                "status": "no_reader",
+                "message": "Aucun TPE rattaché (SUMUP_READER_ID vide) — paiements CB possibles via lien checkout mais pas en push direct",
+            }
+
+        url = f"{SUMUP_API_BASE}/v0.1/merchants/{self.merchant_code}/readers/{self.reader_id}"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(url, headers=self._headers)
+        except httpx.HTTPError as exc:
+            return {
+                "configured": True,
+                "online": False,
+                "ready": False,
+                "status": "network_error",
+                "message": f"SumUp Cloud injoignable : {exc}",
+            }
+
+        if response.status_code == 404:
+            return {
+                "configured": True,
+                "online": False,
+                "ready": False,
+                "status": "reader_not_found",
+                "message": "Le SUMUP_READER_ID configuré n'existe plus côté SumUp — rappairez le TPE depuis l'app SumUp",
+            }
+        if response.status_code != 200:
+            return {
+                "configured": True,
+                "online": False,
+                "ready": False,
+                "status": f"http_{response.status_code}",
+                "message": f"SumUp Cloud {response.status_code}: {response.text[:120]}",
+            }
+
+        body = response.json()
+        reader_status = (body.get("status") or "").lower()
+        # SumUp's documented reader statuses include: paired, online,
+        # processing, offline, unpaired. "paired" == ready to receive
+        # checkouts. "processing" means a checkout is in flight.
+        ready = reader_status in {"paired", "online", "processing"}
+        return {
+            "configured": True,
+            "online": reader_status not in {"offline", "unpaired", ""},
+            "ready": ready,
+            "status": reader_status or "unknown",
+            "message": (
+                f"TPE {reader_status}"
+                if ready
+                else f"TPE indisponible ({reader_status or 'inconnu'}) — vérifiez le Wi-Fi du Solo ou rappairez"
+            ),
+            "name": body.get("name"),
+        }
+
     @property
     def _headers(self) -> dict:
         return {
