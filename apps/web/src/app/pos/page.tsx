@@ -989,15 +989,61 @@ export default function POSPage() {
     setPrinting(true);
     setPrintMsg('');
     try {
+      // Read printer mode from the hardware config — the cashier tablet
+      // (Lenovo Idea Tab Pro) uses USB-OTG / WebUSB, the fixed station
+      // uses Wi-Fi / TCP. Same MUNBYN payload, different transport.
+      const cfgRes = await api.get('/api/hardware/config');
+      const cfg = cfgRes.ok ? await cfgRes.json() : null;
+      const mode: 'network' | 'usb' =
+        cfg?.receipt_printer?.connection === 'usb' ? 'usb' : 'network';
+
+      if (mode === 'usb') {
+        const { findPairedDevice, sendEscposBytes, isWebUsbSupported } =
+          await import('@/lib/webusb-printer');
+        if (!isWebUsbSupported()) {
+          setPrintMsg('WebUSB indisponible — utilisez Chrome Android sur HTTPS');
+          return;
+        }
+        const rp = cfg.receipt_printer;
+        if (!rp?.usb_vendor_id || !rp?.usb_product_id) {
+          setPrintMsg('Aucune imprimante USB couplée — voir Paramètres > Matériel');
+          return;
+        }
+        const device = await findPairedDevice({
+          vendorId: rp.usb_vendor_id,
+          productId: rp.usb_product_id,
+          serialNumber: rp.usb_serial_number,
+        });
+        if (!device) {
+          setPrintMsg('Imprimante USB introuvable — rebranchez puis recouplez');
+          return;
+        }
+        // ``kick_drawer=true`` appends the ESC p pulse so the Safescan
+        // opens on cash sales just like the network path does.
+        const bytesRes = await api.get(
+          `/api/pos/transactions/${receiptTxId}/escpos?kick_drawer=true`,
+        );
+        if (!bytesRes.ok) {
+          const e = await bytesRes.json().catch(() => ({}));
+          setPrintMsg(e.detail || 'Impossible de générer le ticket');
+          return;
+        }
+        const bytes = new Uint8Array(await bytesRes.arrayBuffer());
+        await sendEscposBytes(device, bytes);
+        setPrintMsg('Ticket envoyé à la MUNBYN (USB)');
+        return;
+      }
+
+      // Network path
       const res = await api.post(`/api/pos/transactions/${receiptTxId}/print`, {});
       if (res.ok) {
-        setPrintMsg('Ticket imprime sur la MUNBYN');
+        setPrintMsg('Ticket imprimé sur la MUNBYN');
       } else {
         const e = await res.json().catch(() => ({}));
-        setPrintMsg(e.detail || 'Echec de l\'impression');
+        setPrintMsg(e.detail || 'Échec de l\'impression');
       }
-    } catch {
-      setPrintMsg('Erreur de connexion imprimante');
+    } catch (err) {
+      setPrintMsg(err instanceof Error ? err.message : 'Erreur imprimante');
     }
     setPrinting(false);
   };
@@ -2183,11 +2229,16 @@ export default function POSPage() {
             clientEmail={selectedClient?.email}
             clientPhone={selectedClient?.phone}
             onPrintEscpos={printReceiptOnPrinter}
-            onResend={async (channel) => {
+            onResend={async (channel, to) => {
               if (!receiptTxId) return;
-              await api.post(`/api/pos/transactions/${receiptTxId}/resend`, {
+              const res = await api.post(`/api/pos/transactions/${receiptTxId}/resend`, {
                 channel,
+                ...(to ? { to } : {}),
               });
+              if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.detail || 'Échec de l\'envoi');
+              }
             }}
             onDownloadInvoicePdf={async () => {
               if (!receiptTxId) return;

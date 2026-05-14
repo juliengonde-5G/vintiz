@@ -32,7 +32,19 @@ interface Zone {
 const ALL_PRODUCT_TYPES = ['Robes', 'Hauts', 'Pantalons', 'Jupes', 'Vestes', 'Manteaux', 'Accessoires', 'Chaussures', 'Sacs', 'Bijoux', 'Enfant'];
 
 interface HardwareConfig {
-  receipt_printer: { enabled: boolean; model: string; host: string; port: number; width_chars: number; cut_paper: boolean };
+  receipt_printer: {
+    enabled: boolean;
+    model: string;
+    host: string;
+    port: number;
+    width_chars: number;
+    cut_paper: boolean;
+    connection?: 'network' | 'usb';
+    usb_vendor_id?: number | null;
+    usb_product_id?: number | null;
+    usb_serial_number?: string | null;
+    usb_product_label?: string | null;
+  };
   cash_drawer: { enabled: boolean; model: string; kick_on_cash: boolean; kick_pin: number; on_time_ms: number; off_time_ms: number };
   label_printer: { enabled: boolean; model: string; host: string; port: number; label_width_mm: number; label_height_mm: number };
   barcode_scanner: { enabled: boolean; model: string; mode: string; suffix: string; min_length: number };
@@ -453,14 +465,104 @@ export default function SettingsPage() {
 
   const testReceiptPrinter = async () => {
     setError(''); setMessage('');
+    if (!hardware) return;
+    const mode = hardware.receipt_printer.connection || 'network';
+    if (mode === 'usb') {
+      // USB path : récupère les bytes ESC/POS bruts depuis le backend
+      // et les pousse à la MUNBYN via WebUSB (Chrome Android tablette).
+      try {
+        const { findPairedDevice, sendEscposBytes, isWebUsbSupported } =
+          await import('@/lib/webusb-printer');
+        if (!isWebUsbSupported()) {
+          setError('WebUSB indisponible — utilisez Chrome Android sur HTTPS.');
+          return;
+        }
+        const vendorId = hardware.receipt_printer.usb_vendor_id;
+        const productId = hardware.receipt_printer.usb_product_id;
+        if (!vendorId || !productId) {
+          setError('Aucun périphérique USB couplé — cliquez d\'abord sur "Coupler le périphérique USB".');
+          return;
+        }
+        const device = await findPairedDevice({
+          vendorId, productId,
+          serialNumber: hardware.receipt_printer.usb_serial_number,
+        });
+        if (!device) {
+          setError('Périphérique USB introuvable — rebranchez la MUNBYN puis recouplez.');
+          return;
+        }
+        const res = await api.get('/api/hardware/receipt/test-escpos');
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          setError(e.detail || 'Impossible de générer le ticket de test');
+          return;
+        }
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        await sendEscposBytes(device, bytes);
+        setMessage('Ticket de test envoyé à la MUNBYN via USB');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Échec USB : ${msg}`);
+      }
+      return;
+    }
+    // Network path (legacy / fixed station)
     try {
       const res = await api.post('/api/hardware/receipt/test', {});
-      if (res.ok) setMessage('Ticket de test envoye a l\'imprimante MUNBYN');
+      if (res.ok) setMessage('Ticket de test envoyé à la MUNBYN');
       else {
         const e = await res.json().catch(() => ({}));
-        setError(e.detail || 'Echec du test imprimante');
+        setError(e.detail || 'Échec du test imprimante');
       }
     } catch { setError('Erreur de connexion'); }
+  };
+
+  const pairUsbReceiptPrinter = async () => {
+    setError(''); setMessage('');
+    if (!hardware) return;
+    try {
+      const { requestMunbynDevice, isWebUsbSupported } = await import('@/lib/webusb-printer');
+      if (!isWebUsbSupported()) {
+        setError('WebUSB indisponible — utilisez Chrome Android sur HTTPS.');
+        return;
+      }
+      const printer = await requestMunbynDevice();
+      const next = {
+        ...hardware,
+        receipt_printer: {
+          ...hardware.receipt_printer,
+          connection: 'usb' as const,
+          usb_vendor_id: printer.vendorId,
+          usb_product_id: printer.productId,
+          usb_serial_number: printer.serialNumber ?? null,
+          usb_product_label: printer.productLabel,
+        },
+      };
+      setHardware(next);
+      // Persist immediately so a reload picks it up.
+      await api.put('/api/hardware/config', { receipt_printer: next.receipt_printer });
+      setMessage(`Périphérique couplé : ${printer.productLabel}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Échec du couplage USB : ${msg}`);
+    }
+  };
+
+  const unpairUsbReceiptPrinter = async () => {
+    if (!hardware) return;
+    const next = {
+      ...hardware,
+      receipt_printer: {
+        ...hardware.receipt_printer,
+        usb_vendor_id: null,
+        usb_product_id: null,
+        usb_serial_number: null,
+        usb_product_label: null,
+      },
+    };
+    setHardware(next);
+    await api.put('/api/hardware/config', { receipt_printer: next.receipt_printer });
+    setMessage('Périphérique USB découplé');
   };
 
   const kickDrawer = async () => {
@@ -1325,7 +1427,7 @@ export default function SettingsPage() {
 
             {hardware && (
               <>
-                <Card title="Imprimante de recus — MUNBYN 047P-WiFi">
+                <Card title="Imprimante de reçus — MUNBYN 047P">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="flex items-center gap-3 sm:col-span-2">
                       <input
@@ -1335,25 +1437,97 @@ export default function SettingsPage() {
                         onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, enabled: e.target.checked } })}
                         className="w-5 h-5 accent-vz-teal"
                       />
-                      <label htmlFor="rp-enabled" className="text-sm font-medium text-black">Activer l&apos;imprimante de recus</label>
+                      <label htmlFor="rp-enabled" className="text-sm font-medium text-black">Activer l&apos;imprimante de reçus</label>
                     </div>
-                    <Input
-                      label="Adresse IP"
-                      value={hardware.receipt_printer.host}
-                      onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, host: e.target.value } })}
-                      placeholder="192.168.1.50"
-                    />
-                    <div>
-                      <label className="block text-sm font-medium text-black mb-1.5">Port TCP</label>
-                      <input
-                        type="number"
-                        value={hardware.receipt_printer.port}
-                        onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, port: parseInt(e.target.value) || 9100 } })}
-                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
-                      />
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-black mb-1.5">Mode de connexion</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {(['network', 'usb'] as const).map((mode) => {
+                          const active = (hardware.receipt_printer.connection || 'network') === mode;
+                          return (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, connection: mode } })}
+                              className={`px-4 py-2 rounded-lg min-h-[44px] text-sm font-medium transition-colors ${
+                                active
+                                  ? 'bg-vz-teal text-white'
+                                  : 'bg-white text-vz-ink-soft border border-vz-line hover:bg-vz-bg-alt'
+                              }`}
+                            >
+                              {mode === 'network' ? 'Réseau (Wi-Fi)' : 'USB (tablette)'}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-vz-ink-mute mt-1">
+                        {(hardware.receipt_printer.connection || 'network') === 'network'
+                          ? 'Station fixe — ESC/POS sur TCP 9100.'
+                          : 'Tablette caissier (Lenovo Idea Tab Pro) — WebUSB sur câble OTG.'}
+                      </p>
                     </div>
+
+                    {(hardware.receipt_printer.connection || 'network') === 'network' && (
+                      <>
+                        <Input
+                          label="Adresse IP"
+                          value={hardware.receipt_printer.host}
+                          onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, host: e.target.value } })}
+                          placeholder="192.168.1.50"
+                        />
+                        <div>
+                          <label className="block text-sm font-medium text-black mb-1.5">Port TCP</label>
+                          <input
+                            type="number"
+                            value={hardware.receipt_printer.port}
+                            onChange={(e) => setHardware({ ...hardware, receipt_printer: { ...hardware.receipt_printer, port: parseInt(e.target.value) || 9100 } })}
+                            className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {(hardware.receipt_printer.connection || 'network') === 'usb' && (
+                      <div className="sm:col-span-2 p-3 rounded-lg bg-vz-bg-alt border border-vz-line">
+                        {hardware.receipt_printer.usb_vendor_id && hardware.receipt_printer.usb_product_id ? (
+                          <div className="flex flex-wrap items-center gap-3">
+                            <span className="inline-flex items-center gap-1.5 text-sm text-vz-ink">
+                              <span className="w-2 h-2 rounded-full bg-green-500" />
+                              Couplé : <strong className="font-mono">{hardware.receipt_printer.usb_product_label || 'Imprimante ESC/POS'}</strong>
+                            </span>
+                            <span className="text-xs text-vz-ink-mute">
+                              VID {hardware.receipt_printer.usb_vendor_id?.toString(16).padStart(4, '0')} ·
+                              PID {hardware.receipt_printer.usb_product_id?.toString(16).padStart(4, '0')}
+                            </span>
+                            <span className="flex-1" />
+                            <button type="button" onClick={pairUsbReceiptPrinter} className="text-xs text-vz-teal underline">
+                              Re-coupler
+                            </button>
+                            <button type="button" onClick={unpairUsbReceiptPrinter} className="text-xs text-red-600 underline">
+                              Découpler
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-3">
+                            <span className="inline-flex items-center gap-1.5 text-sm text-vz-ink-soft">
+                              <span className="w-2 h-2 rounded-full bg-gray-300" />
+                              Aucun périphérique couplé
+                            </span>
+                            <span className="flex-1" />
+                            <Button onClick={pairUsbReceiptPrinter} variant="secondary" size="sm">
+                              Coupler le périphérique USB
+                            </Button>
+                          </div>
+                        )}
+                        <p className="text-xs text-vz-ink-mute mt-2">
+                          Sur la tablette Android : autoriser l&apos;accès USB lors du couplage. Le navigateur retient la permission jusqu&apos;à débranchement.
+                        </p>
+                      </div>
+                    )}
+
                     <div>
-                      <label className="block text-sm font-medium text-black mb-1.5">Largeur papier (caracteres)</label>
+                      <label className="block text-sm font-medium text-black mb-1.5">Largeur papier (caractères)</label>
                       <input
                         type="number"
                         value={hardware.receipt_printer.width_chars}

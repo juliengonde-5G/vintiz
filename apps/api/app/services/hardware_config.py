@@ -26,10 +26,15 @@ DEFAULT_PATH = Path(
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    # Receipt printer — MUNBYN 047P-WiFi, ESC/POS, 80 mm
+    # Receipt printer — MUNBYN 047P, ESC/POS, 80 mm
+    # ``connection`` switches between network (port 9100, fixed station)
+    # and usb (WebUSB on the cashier tablet — Lenovo Idea Tab Pro Gen 2).
+    # When connection=usb, ``usb_vendor_id``/``usb_product_id`` let the
+    # front-end auto-reconnect to the previously paired device without
+    # re-prompting the operator on every reload.
     "receipt_printer": {
         "enabled": False,
-        "model": "MUNBYN 047P-WiFi",
+        "model": "MUNBYN 047P",
         "protocol": "escpos",
         "connection": "network",  # network | usb
         "host": os.getenv("RECEIPT_PRINTER_HOST", ""),
@@ -37,6 +42,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "width_chars": 42,  # 80 mm paper, Font A
         "cut_paper": True,
         "beep": False,
+        # WebUSB metadata — populated by the front when the operator
+        # pairs the device via ``navigator.usb.requestDevice()``.
+        "usb_vendor_id": None,
+        "usb_product_id": None,
+        "usb_serial_number": None,
+        "usb_product_label": None,
     },
     # Cash drawer — Safescan SD-4141, RJ-12, kicked by the receipt printer
     "cash_drawer": {

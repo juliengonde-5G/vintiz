@@ -120,6 +120,27 @@ async def receipt_test(
     return {"success": True, "host": host, "port": port}
 
 
+@router.get("/receipt/test-escpos")
+async def receipt_test_escpos(
+    current_user: User = Depends(get_current_user),
+):
+    """Return raw ESC/POS bytes for a test ticket.
+
+    Used by the front-end's WebUSB flow so the "Imprimer ticket de test"
+    button works in USB mode without going through the backend TCP path
+    — the bytes are streamed straight to the MUNBYN over USB-OTG.
+    """
+    from fastapi.responses import Response
+
+    cfg = load_config()["receipt_printer"]
+    payload = escpos_service.build_test_ticket(width=int(cfg.get("width_chars") or 42))
+    return Response(
+        content=bytes(payload),
+        media_type="application/octet-stream",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @router.post("/drawer/kick")
 async def drawer_kick(
     req: TestPrintRequest,
