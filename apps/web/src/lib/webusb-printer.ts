@@ -72,6 +72,7 @@ interface USBDevice {
   selectConfiguration(value: number): Promise<void>;
   claimInterface(n: number): Promise<void>;
   releaseInterface(n: number): Promise<void>;
+  selectAlternateInterface(interfaceNumber: number, alternateSetting: number): Promise<void>;
   transferOut(endpointNumber: number, data: BufferSource): Promise<USBOutTransferResult>;
 }
 
@@ -181,12 +182,33 @@ export async function sendEscposBytes(
 
   if (!iface.claimed) await device.claimInterface(iface.interfaceNumber);
   try {
+    // Several MUNBYN 047P units expose alternate setting 0 as the data
+    // pipe but boot in an undefined state until ``selectAlternateInterface``
+    // is called explicitly. Without this call, ``transferOut`` reports
+    // success but the printer silently drops the bytes — paper feeds,
+    // ticket comes out blank.
+    try {
+      await device.selectAlternateInterface(iface.interfaceNumber, 0);
+    } catch {
+      // Some devices reject the call when alt 0 is already active —
+      // safe to ignore.
+    }
+
     // Some MUNBYN units stall on payloads larger than 4 KiB; chunk
-    // defensively even though the spec allows arbitrary sizes.
+    // defensively even though the spec allows arbitrary sizes. We also
+    // cap the chunk at a multiple of the endpoint's wMaxPacketSize so
+    // the final packet is short, which signals "end of transfer" to
+    // the printer firmware (otherwise the last bytes can linger in
+    // the buffer until the next job arrives).
     const chunkSize = Math.max(endpoint.packetSize * 16, 4096);
     for (let offset = 0; offset < payload.byteLength; offset += chunkSize) {
       const slice = payload.slice(offset, offset + chunkSize);
       await device.transferOut(endpoint.endpointNumber, slice);
+    }
+    // Send a zero-length packet to force end-of-transfer on devices
+    // that buffer until they see a short packet.
+    if (payload.byteLength % endpoint.packetSize === 0) {
+      await device.transferOut(endpoint.endpointNumber, new Uint8Array(0));
     }
   } finally {
     try { await device.releaseInterface(iface.interfaceNumber); } catch { /* device may have detached */ }

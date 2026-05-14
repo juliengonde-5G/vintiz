@@ -40,7 +40,24 @@ ESC = b"\x1b"
 GS = b"\x1d"
 LF = b"\n"
 
-INIT = ESC + b"@"                          # reset printer
+# Robust initialisation sequence — sent at the start of every job.
+#
+# Why this matters: ``ESC @`` alone resets the printer but leaves the
+# codepage and character set at firmware defaults, which vary between
+# MUNBYN firmware revisions (CN, EU, …). On some 047P units the default
+# codepage is "no codepage" and text bytes are silently dropped, which
+# manifests as a paper that feeds + cuts cleanly but comes out blank.
+# We therefore force CP858 (Western Europe + Euro), the US international
+# charset, Font A and clear character emphasis so the printer is in a
+# predictable, printable state for every job.
+INIT = (
+    ESC + b"@"             # reset all flags
+    + ESC + b"t\x13"       # codepage 19 = CP858 (Western Europe + €)
+    + ESC + b"R\x00"       # international charset = USA
+    + ESC + b"M\x00"       # select Font A
+    + ESC + b"!\x00"       # no double height / no double width / no emphasis
+)
+
 ALIGN_LEFT = ESC + b"a\x00"
 ALIGN_CENTER = ESC + b"a\x01"
 ALIGN_RIGHT = ESC + b"a\x02"
@@ -50,7 +67,10 @@ DOUBLE_ON = GS + b"!\x11"                  # double width + height
 DOUBLE_OFF = GS + b"!\x00"
 UNDERLINE_ON = ESC + b"-\x01"
 UNDERLINE_OFF = ESC + b"-\x00"
-CUT_PARTIAL = GS + b"V\x42\x00"            # full feed + partial cut
+# Feed 6 lines before the partial cut so the receipt clears the tear
+# bar even on units where the firmware ignores trailing LFs.
+FEED_BEFORE_CUT = ESC + b"d\x06"
+CUT_PARTIAL = FEED_BEFORE_CUT + GS + b"V\x42\x00"  # feed + partial cut
 
 STORE_NAME = "VINTIZ"
 STORE_ADDRESS = "6 rue Saint-Jacques, 27200 Vernon"
@@ -168,20 +188,32 @@ def build_drawer_kick(pin: int = 0, on_time: int = 50, off_time: int = 250) -> b
 
 
 def build_test_ticket(width: int = 42) -> bytes:
-    """Build a short test ticket used by the Hardware settings screen."""
+    """Build a short test ticket used by the Hardware settings screen.
+
+    Designed to fail loudly rather than silently : the ticket prints a
+    pure-ASCII banner (no codepage-dependent chars), an explicit visual
+    pattern (asterisks) and the timestamp. If even this comes out blank
+    the issue is upstream of the byte stream (paper loaded backwards,
+    head not heating, USB endpoint wrong) — see ``docs/MANUEL_BOUTIQUE.md``
+    for the troubleshooting checklist.
+    """
     out = bytearray()
-    out += INIT + ALIGN_CENTER + BOLD_ON + DOUBLE_ON
-    out += _line(STORE_NAME)
+    out += INIT
+    out += ALIGN_CENTER + BOLD_ON + DOUBLE_ON
+    out += _line("VINTIZ")
     out += DOUBLE_OFF
     out += BOLD_OFF
     out += _line("Test impression MUNBYN")
     out += _line(datetime.now().strftime("%d/%m/%Y %H:%M"))
-    out += _line("=" * width)
+    out += _line("*" * (width // 2))  # high-contrast pattern visible regardless of codepage
     out += ALIGN_LEFT
     out += _line("Si vous voyez ce ticket,")
     out += _line("l'imprimante est correctement")
     out += _line("connectee au backend Vintiz.")
-    out += LF + LF + LF
+    out += _line("")
+    out += _line("Sinon: papier a l'envers ?")
+    out += _line("(grattez avec l'ongle pour")
+    out += _line(" verifier le cote thermosensible)")
     out += CUT_PARTIAL
     return bytes(out)
 
