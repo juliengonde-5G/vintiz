@@ -156,10 +156,16 @@ WALLET_TEAM_IDENTIFIER=           # ABCDE12345 (Apple Developer)
 WALLET_GOOGLE_ISSUER_ID=          # 19 chiffres (Google Pay & Wallet)
 WALLET_GOOGLE_CLASS_SUFFIX=vintiz_loyalty
 
-# SMS Twilio (sans ces clés, simulation)
-TWILIO_ACCOUNT_SID=ACxxxx
-TWILIO_AUTH_TOKEN=token
-TWILIO_FROM=+33xxxxxxxxx
+# SMS — gateway unifié Brevo (primary) → Twilio (legacy fallback) → simulation.
+# Vintiz a migré sur Brevo pour email ET SMS : la même BREVO_API_KEY ci-dessus
+# active les deux. Aucun nouveau secret à configurer côté ops.
+# Sender ID alphanumérique affiché sur le téléphone (Brevo, max 11 chars).
+BREVO_SMS_SENDER=Vintiz
+# Twilio reste supporté en fallback pour compat anciens déploiements
+# (sera retiré une fois la migration prod confirmée).
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM=
 
 # SEO / Analytics (site public)
 PUBLIC_SITE_URL=https://vintiz.fr

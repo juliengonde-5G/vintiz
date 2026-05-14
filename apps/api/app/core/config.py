@@ -51,7 +51,13 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = False
 
-    # Twilio SMS (optional — simulation if unset)
+    # SMS — Brevo Transactional SMS (primary, same BREVO_API_KEY as email)
+    # ``BREVO_SMS_SENDER`` is the alphanumeric sender shown on the
+    # recipient's phone (max 11 chars, defaults to ``Vintiz``).
+    BREVO_SMS_SENDER: str = "Vintiz"
+
+    # Twilio SMS (legacy fallback — kept for existing deployments).
+    # Vintiz a migré sur Brevo : ces 3 valeurs peuvent rester vides.
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM: str = ""

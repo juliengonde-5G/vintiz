@@ -179,6 +179,11 @@ export default function POSPage() {
   const [drawerAmount, setDrawerAmount] = useState(0);
   const [zReport, setZReport] = useState<{ z_report_number: number; total_sales: number; total_refunds: number; total_net: number; transaction_count: number; difference: number } | null>(null);
   const [drawerSubmitting, setDrawerSubmitting] = useState(false);
+  // Transient toast for drawer kick outcomes (espèces auto-kick + manual
+  // "Tiroir" button on the top bar). Without this the operator sees no
+  // feedback when the WebUSB call fails (device unplugged, permission
+  // revoked) — looks like the button is "KO".
+  const [drawerToast, setDrawerToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
   // Cashier identification (NF525 — P1-002)
   const [cashier, setCashier] = useState<Cashier | null>(null);
@@ -516,15 +521,15 @@ export default function POSPage() {
   // PDF. Désormais le tiroir est piloté côté API uniquement.
   const kickDrawer = useCallback(() => {
     // Route through the shared helper so the kick works in both USB and
-    // network modes — the legacy direct POST to /hardware/drawer/kick
-    // silently failed in USB mode because it opens a TCP socket that
-    // doesn't exist on the cashier tablet.
+    // network modes. Surface the outcome as a transient toast — the
+    // previous "best-effort silent" wrapper hid genuine failures and
+    // looked broken from the cashier's POV when nothing happened on
+    // click (device unplugged, permission revoked, etc.).
     void (async () => {
       const { kickDrawer: kick } = await import('@/lib/print-ticket');
-      await kick();
-      // Best-effort — failures are surfaced by the receipt modal when
-      // the cashier prints; we don't block the cash flow on a tiroir
-      // miss so they can open it manually if needed.
+      const result = await kick();
+      setDrawerToast({ msg: result.message, ok: result.ok });
+      setTimeout(() => setDrawerToast(null), 3500);
     })();
   }, []);
 
@@ -2622,6 +2627,17 @@ export default function POSPage() {
           </div>
         )}
       </Modal>
+
+      {drawerToast && (
+        <div
+          role="status"
+          className={`fixed top-20 right-4 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium max-w-md ${
+            drawerToast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+          }`}
+        >
+          {drawerToast.msg}
+        </div>
+      )}
     </div>
   );
 }

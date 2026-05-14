@@ -635,58 +635,52 @@ async def resend_transaction(
                 status_code=400,
                 detail="Numéro de téléphone manquant (ni client, ni 'to' fourni)",
             )
-        if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_FROM:
-            try:
-                from twilio.rest import Client as TwilioClient
-                tw = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-                tw.messages.create(
-                    body=f"Vintiz - Ticket #{ticket_num} - Total {total:.2f}EUR. Merci !",
-                    from_=settings.TWILIO_FROM,
-                    to=recipient,
-                )
-                logger.info("Receipt SMS sent for transaction %s", transaction_id)
-                return {
-                    "success": True,
-                    "status": "sent",
-                    "simulated": False,
-                    "channel": "sms",
-                    "to": recipient,
-                    "backend": "twilio",
-                    "message": f"SMS envoyé au {recipient}",
-                }
-            except Exception as exc:  # noqa: BLE001 — Twilio raises many subclasses
-                logger.exception("Failed to send receipt SMS for transaction %s", transaction_id)
-                # Surface the Twilio error class + first line of the
-                # message so the manager sees the real cause (account
-                # suspended, invalid number, geo-permission missing…)
-                detail = type(exc).__name__
-                msg = str(exc).splitlines()[0] if str(exc) else ""
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"L'envoi SMS a échoué via Twilio ({detail}: {msg[:120]})",
-                )
-        else:
-            logger.warning(
-                "Receipt SMS simulated for transaction %s — Twilio not configured "
-                "(SID set=%s, TOKEN set=%s, FROM set=%s)",
-                transaction_id,
-                bool(settings.TWILIO_ACCOUNT_SID),
-                bool(settings.TWILIO_AUTH_TOKEN),
-                bool(settings.TWILIO_FROM),
+        # Single SMS gateway covering Brevo (primary) + Twilio (legacy
+        # fallback) + simulation. The /resend response shape mirrors the
+        # email branch so the front shows a consistent warning bandeau
+        # when the send was only simulated.
+        from app.services.sms_gateway import (
+            SMSDeliveryError,
+            SMSMessage,
+            send_sms as _gateway_send_sms,
+        )
+
+        sms_body = (
+            f"Vintiz - Ticket #{ticket_num} - Total {total:.2f}EUR. Merci !"
+        )
+        try:
+            sms_result = _gateway_send_sms(SMSMessage(to=recipient, body=sms_body))
+        except SMSDeliveryError as exc:
+            logger.exception(
+                "Receipt SMS gateway failed for transaction %s: %s",
+                transaction_id, exc,
             )
-            return {
-                "success": True,
-                "status": "simulated",
-                "simulated": True,
-                "channel": "sms",
-                "to": recipient,
-                "backend": "none",
-                "message": (
-                    f"⚠ SMS simulé (Twilio non configuré). "
+            raise HTTPException(
+                status_code=502,
+                detail=f"L'envoi SMS a échoué ({str(exc)[:160]})",
+            )
+        logger.info(
+            "Receipt SMS %s for transaction %s via %s",
+            sms_result.status, transaction_id, sms_result.backend,
+        )
+        simulated = sms_result.status != "sent"
+        return {
+            "success": True,
+            "status": sms_result.status,
+            "simulated": simulated,
+            "channel": "sms",
+            "to": recipient,
+            "backend": sms_result.backend,
+            "message": (
+                f"SMS envoyé au {recipient}"
+                if not simulated
+                else (
+                    f"⚠ SMS simulé (aucun provider configuré). "
                     f"Le destinataire {recipient} N'A PAS reçu le ticket. "
-                    f"Renseignez TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM."
-                ),
-            }
+                    f"Renseignez BREVO_API_KEY dans /settings > Communication."
+                )
+            ),
+        }
     else:
         raise HTTPException(status_code=400, detail="Canal invalide (email ou sms)")
 

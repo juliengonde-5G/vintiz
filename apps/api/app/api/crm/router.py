@@ -687,7 +687,13 @@ async def send_sms(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Send an SMS to a client. Uses Twilio if configured, otherwise simulates."""
+    """Send an SMS to a client via the unified gateway (Brevo → Twilio → sim)."""
+    from app.services.sms_gateway import (
+        SMSDeliveryError,
+        SMSMessage,
+        send_sms as _gateway_send_sms,
+    )
+
     result = await db.execute(select(Client).where(Client.id == request.client_id))
     client = result.scalar_one_or_none()
     if not client:
@@ -695,37 +701,34 @@ async def send_sms(
     if not client.phone:
         raise HTTPException(status_code=400, detail="Client has no phone number")
 
-    if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_FROM:
-        try:
-            from twilio.rest import Client as TwilioClient
-
-            twilio_client = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-            message = twilio_client.messages.create(
-                body=request.message,
-                from_=settings.TWILIO_FROM,
-                to=client.phone,
+    try:
+        sms_result = _gateway_send_sms(
+            SMSMessage(to=client.phone, body=request.message)
+        )
+    except SMSDeliveryError as exc:
+        logger.exception("send-sms failed for client_id=%s: %s", request.client_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"L'envoi du SMS a échoué ({str(exc)[:160]})",
+        )
+    simulated = sms_result.status != "sent"
+    return {
+        "status": sms_result.status,
+        "simulated": simulated,
+        "backend": sms_result.backend,
+        "message": (
+            f"SMS envoyé au {client.phone}"
+            if not simulated
+            else (
+                f"⚠ SMS simulé (aucun provider configuré). "
+                f"Le destinataire {client.phone} N'A PAS reçu le message. "
+                f"Renseignez BREVO_API_KEY dans /settings > Communication."
             )
-            return {
-                "status": "sent",
-                "message": f"SMS envoye au {client.phone}",
-                "client_id": str(request.client_id),
-                "sid": message.sid,
-                "sent_at": datetime.now(timezone.utc).isoformat(),
-            }
-        except Exception:
-            logger.exception("send-sms failed for client_id=%s", request.client_id)
-            raise HTTPException(
-                status_code=502,
-                detail="L'envoi du SMS a échoué. Réessayez plus tard.",
-            )
-    else:
-        # Simulated send
-        return {
-            "status": "simulated",
-            "message": f"[SIMULATION] SMS envoye au {client.phone} ({client.first_name} {client.last_name}): '{request.message}'",
-            "client_id": str(request.client_id),
-            "sent_at": datetime.now(timezone.utc).isoformat(),
-        }
+        ),
+        "client_id": str(request.client_id),
+        "sid": sms_result.message_id,
+        "sent_at": sms_result.sent_at,
+    }
 
 # ---------------------------------------------------------------------------
 # Campaigns
