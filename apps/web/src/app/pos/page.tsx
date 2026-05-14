@@ -186,6 +186,18 @@ export default function POSPage() {
   // revoked) — looks like the button is "KO".
   const [drawerToast, setDrawerToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
+  // SumUp Solo connectivity check — probed at startup so the cashier
+  // sees a banner when the TPE is offline or misconfigured BEFORE
+  // they try a CB sale that would otherwise hang for 30s on the
+  // wizard.
+  const [sumupStatus, setSumupStatus] = useState<{
+    ready: boolean;
+    online: boolean;
+    configured: boolean;
+    message: string;
+    status: string;
+  } | null>(null);
+
   // Cashier identification (NF525 — P1-002)
   const [cashier, setCashier] = useState<Cashier | null>(null);
   const [showCashierModal, setShowCashierModal] = useState(false);
@@ -306,6 +318,28 @@ export default function POSPage() {
     api.get('/api/pos/drawer/current').then(async (res) => {
       if (res.ok) setDrawer(await res.json());
     }).catch(() => {});
+  }, []);
+
+  // ── SumUp connectivity check (cloud + reader status) ─────────────
+  // Probe at mount so the cashier sees a yellow banner when the TPE
+  // is offline before they try a CB sale that would otherwise hang
+  // through the wizard. Re-probed every 60 s so a transient Wi-Fi
+  // drop on the Solo clears on its own without a page reload.
+  useEffect(() => {
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        const res = await api.get('/api/pos/payments/cb/ping');
+        if (cancelled || !res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setSumupStatus(data);
+      } catch {
+        /* silent — sumupStatus stays null, no banner shown */
+      }
+    };
+    probe();
+    const id = setInterval(probe, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
   }, []);
 
   const handleOpenDrawer = async () => {
@@ -1227,6 +1261,25 @@ export default function POSPage() {
           )}
         </div>
       </header>
+
+      {/* SumUp connectivity banner — silent when ready, yellow warning
+          when the TPE is unreachable or misconfigured. Lets the cashier
+          either fix the issue or skip CB and encash cash/cheque
+          without waiting 30 s for a wizard timeout. */}
+      {sumupStatus && !sumupStatus.ready && (
+        <div className="flex-shrink-0 px-3 py-2 bg-yellow-50 border-b border-yellow-200 text-yellow-900 text-sm flex items-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <strong>TPE SumUp&nbsp;:</strong>
+          <span className="flex-1">{sumupStatus.message}</span>
+          <a href="/settings" className="underline text-yellow-900 hover:text-yellow-950">
+            Configurer
+          </a>
+        </div>
+      )}
 
       {/* ── Main POS area ─────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
