@@ -23,8 +23,12 @@ interface Props {
   onPrintAirprint?: () => void;
   /** Send the receipt by email/sms — falls through to
    * /transactions/:id/resend. ``to`` is the optional ad-hoc address (for
-   * walk-in customers without a CRM record). */
-  onResend?: (channel: 'email' | 'sms', to?: string) => Promise<void> | void;
+   * walk-in customers without a CRM record). May return ``{simulated, message}``
+   * so the card can flag a fallback / non-real send. */
+  onResend?: (
+    channel: 'email' | 'sms',
+    to?: string,
+  ) => Promise<{ simulated?: boolean; message?: string } | void> | void;
   /** Download the B2B invoice PDF (only when isInvoice). */
   onDownloadInvoicePdf?: () => Promise<void> | void;
   onNewSale: () => void;

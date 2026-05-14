@@ -609,8 +609,24 @@ async def resend_transaction(
             )
         logger.info("Receipt email %s for transaction %s via %s",
                     outcome.status, transaction_id, outcome.backend)
-        prefix = "" if outcome.status == "sent" else "[SIMULE] "
-        return {"success": True, "message": f"{prefix}Email envoyé à {recipient}"}
+        simulated = outcome.status != "sent"
+        return {
+            "success": True,
+            "status": outcome.status,
+            "simulated": simulated,
+            "channel": "email",
+            "to": recipient,
+            "backend": outcome.backend,
+            "message": (
+                f"Email envoyé à {recipient}"
+                if not simulated
+                else (
+                    f"⚠ Email simulé (provider non configuré). "
+                    f"Le destinataire {recipient} N'A PAS reçu le ticket. "
+                    f"Configurez Brevo ou SMTP dans /settings > Communication."
+                )
+            ),
+        }
 
     elif request.channel == "sms":
         recipient = ad_hoc_to or client.get("phone")
@@ -619,7 +635,7 @@ async def resend_transaction(
                 status_code=400,
                 detail="Numéro de téléphone manquant (ni client, ni 'to' fourni)",
             )
-        if settings.TWILIO_ACCOUNT_SID:
+        if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_FROM:
             try:
                 from twilio.rest import Client as TwilioClient
                 tw = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
@@ -629,16 +645,48 @@ async def resend_transaction(
                     to=recipient,
                 )
                 logger.info("Receipt SMS sent for transaction %s", transaction_id)
-                return {"success": True, "message": f"SMS envoye au {recipient}"}
-            except Exception:
+                return {
+                    "success": True,
+                    "status": "sent",
+                    "simulated": False,
+                    "channel": "sms",
+                    "to": recipient,
+                    "backend": "twilio",
+                    "message": f"SMS envoyé au {recipient}",
+                }
+            except Exception as exc:  # noqa: BLE001 — Twilio raises many subclasses
                 logger.exception("Failed to send receipt SMS for transaction %s", transaction_id)
+                # Surface the Twilio error class + first line of the
+                # message so the manager sees the real cause (account
+                # suspended, invalid number, geo-permission missing…)
+                detail = type(exc).__name__
+                msg = str(exc).splitlines()[0] if str(exc) else ""
                 raise HTTPException(
                     status_code=502,
-                    detail="L'envoi du SMS a échoué. Réessayez plus tard.",
+                    detail=f"L'envoi SMS a échoué via Twilio ({detail}: {msg[:120]})",
                 )
         else:
-            logger.info("Receipt SMS simulated for transaction %s", transaction_id)
-            return {"success": True, "message": f"[SIMULE] SMS envoye au {recipient}"}
+            logger.warning(
+                "Receipt SMS simulated for transaction %s — Twilio not configured "
+                "(SID set=%s, TOKEN set=%s, FROM set=%s)",
+                transaction_id,
+                bool(settings.TWILIO_ACCOUNT_SID),
+                bool(settings.TWILIO_AUTH_TOKEN),
+                bool(settings.TWILIO_FROM),
+            )
+            return {
+                "success": True,
+                "status": "simulated",
+                "simulated": True,
+                "channel": "sms",
+                "to": recipient,
+                "backend": "none",
+                "message": (
+                    f"⚠ SMS simulé (Twilio non configuré). "
+                    f"Le destinataire {recipient} N'A PAS reçu le ticket. "
+                    f"Renseignez TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM."
+                ),
+            }
     else:
         raise HTTPException(status_code=400, detail="Canal invalide (email ou sms)")
 

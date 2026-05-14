@@ -515,10 +515,17 @@ export default function POSPage() {
   // Android (Lenovo Idea Tab Pro Gen 2 Chrome), elle générait juste un
   // PDF. Désormais le tiroir est piloté côté API uniquement.
   const kickDrawer = useCallback(() => {
-    void api.post('/api/hardware/drawer/kick', {}).catch(() => {
-      // Silencieux : si la MUNBYN est injoignable, le caissier ouvre le
-      // tiroir manuellement. L'impression reste possible séparément.
-    });
+    // Route through the shared helper so the kick works in both USB and
+    // network modes — the legacy direct POST to /hardware/drawer/kick
+    // silently failed in USB mode because it opens a TCP socket that
+    // doesn't exist on the cashier tablet.
+    void (async () => {
+      const { kickDrawer: kick } = await import('@/lib/print-ticket');
+      await kick();
+      // Best-effort — failures are surfaced by the receipt modal when
+      // the cashier prints; we don't block the cash flow on a tiroir
+      // miss so they can open it manually if needed.
+    })();
   }, []);
 
   const addBag = () => {
@@ -1001,10 +1008,11 @@ export default function POSPage() {
       channel,
       ...(to ? { to } : {}),
     });
+    const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
       throw new Error(body.detail || "Échec de l'envoi");
     }
+    return body as { simulated?: boolean; message?: string };
   };
 
   const handleReceiptClose = () => {
@@ -2188,17 +2196,7 @@ export default function POSPage() {
             clientEmail={selectedClient?.email}
             clientPhone={selectedClient?.phone}
             onPrintEscpos={printReceiptOnPrinter}
-            onResend={async (channel, to) => {
-              if (!receiptTxId) return;
-              const res = await api.post(`/api/pos/transactions/${receiptTxId}/resend`, {
-                channel,
-                ...(to ? { to } : {}),
-              });
-              if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.detail || 'Échec de l\'envoi');
-              }
-            }}
+            onResend={resendReceipt}
             onDownloadInvoicePdf={async () => {
               if (!receiptTxId) return;
               const res = await api.get(

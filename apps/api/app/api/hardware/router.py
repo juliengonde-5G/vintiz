@@ -146,7 +146,12 @@ async def drawer_kick(
     req: TestPrintRequest,
     current_user: User = Depends(get_current_user),
 ):
-    """Kick open the Safescan cash drawer via the receipt printer."""
+    """Kick open the Safescan cash drawer via the receipt printer (network path).
+
+    USB-mode callers should use ``GET /api/hardware/drawer/kick-escpos``
+    instead — it returns the same ``ESC p`` bytes for the front to send
+    over WebUSB.
+    """
     cfg = load_config()
     rp = cfg["receipt_printer"]
     drawer = cfg["cash_drawer"]
@@ -165,6 +170,35 @@ async def drawer_kick(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Tiroir injoignable : {exc}") from exc
     return {"success": True}
+
+
+@router.get("/drawer/kick-escpos")
+async def drawer_kick_escpos(
+    current_user: User = Depends(get_current_user),
+):
+    """Return the raw ESC/POS pulse bytes that open the cash drawer.
+
+    Used by the WebUSB path on the cashier tablet : the front fetches
+    these bytes and pushes them to the MUNBYN over USB-OTG, which
+    bridges the pulse to the Safescan drawer via the RJ-12 port.
+
+    Without this endpoint, the test button and the cash-sale auto-kick
+    silently fail in USB mode because the legacy network endpoint
+    opens a TCP socket that doesn't exist on the tablet.
+    """
+    from fastapi.responses import Response
+
+    drawer = load_config()["cash_drawer"]
+    payload = escpos_service.build_drawer_kick(
+        pin=int(drawer.get("kick_pin") or 0),
+        on_time=int(drawer.get("on_time_ms") or 50),
+        off_time=int(drawer.get("off_time_ms") or 250),
+    )
+    return Response(
+        content=bytes(payload),
+        media_type="application/octet-stream",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.post("/label/test")
