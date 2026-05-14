@@ -2,12 +2,16 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 type NavItem = {
   label: string;
   href: string;
   icon: React.ReactNode;
+  // For items sharing the same pathname but distinguished by a query
+  // parameter (e.g. /dashboard/workflows?category=metier|endpoint|...).
+  matchQuery?: { key: string; value: string };
+  indent?: boolean;
 };
 
 type NavGroup = {
@@ -71,6 +75,50 @@ const navGroups: NavGroup[] = [
             <circle cx="19" cy="12" r="2" />
             <path d="M7 6h6a4 4 0 0 1 4 4v0" />
             <path d="M7 18h6a4 4 0 0 0 4-4v0" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Parcours métier',
+        href: '/dashboard/workflows?category=metier',
+        indent: true,
+        matchQuery: { key: 'category', value: 'metier' },
+        icon: (
+          <svg {...iconProps}>
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Endpoints API',
+        href: '/dashboard/workflows?category=endpoint',
+        indent: true,
+        matchQuery: { key: 'category', value: 'endpoint' },
+        icon: (
+          <svg {...iconProps}>
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Crons & jobs',
+        href: '/dashboard/workflows?category=cron',
+        indent: true,
+        matchQuery: { key: 'category', value: 'cron' },
+        icon: (
+          <svg {...iconProps}>
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Hardware & Ops',
+        href: '/dashboard/workflows?category=hardware',
+        indent: true,
+        matchQuery: { key: 'category', value: 'hardware' },
+        icon: (
+          <svg {...iconProps}>
+            <circle cx="12" cy="12" r="3" />
           </svg>
         ),
       },
@@ -253,6 +301,7 @@ const COLLAB_HIDDEN_PATHS = new Set(['/seo', '/admin/operations']);
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [collapsed, setCollapsed] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [userName, setUserName] = useState<string>('Admin');
@@ -285,9 +334,25 @@ export default function Sidebar() {
     }
   }, [desktopCollapsed]);
 
-  const isItemActive = (href: string) => {
-    if (href === '/dashboard') return pathname === href;
-    return pathname === href || pathname.startsWith(`${href}/`);
+  const isItemActive = (item: NavItem) => {
+    // Strip the optional query string for pathname comparison.
+    const itemPath = item.href.split('?')[0];
+    if (itemPath === '/dashboard') {
+      if (pathname !== itemPath) return false;
+    } else if (pathname !== itemPath && !pathname.startsWith(`${itemPath}/`)) {
+      return false;
+    }
+    // If the item discriminates on a query param, only match when the
+    // current URL carries the same value (default to first registered
+    // value when the param is absent).
+    if (item.matchQuery) {
+      const current = searchParams?.get(item.matchQuery.key);
+      if (current) return current === item.matchQuery.value;
+      // No param in URL: only the item that represents the default value
+      // (the workflow page falls back to "metier") is considered active.
+      return item.matchQuery.value === 'metier';
+    }
+    return true;
   };
 
   return (
@@ -364,14 +429,15 @@ export default function Sidebar() {
               )}
               <ul className={`space-y-0.5 ${desktopCollapsed ? 'md:px-2' : 'px-3'}`}>
                 {items.map((item) => {
-                  const isActive = isItemActive(item.href);
+                  const isActive = isItemActive(item);
+                  const indented = item.indent && !desktopCollapsed;
                   return (
                     <li key={item.href}>
                       <Link
                         href={item.href}
                         onClick={() => setCollapsed(false)}
                         title={desktopCollapsed ? item.label : undefined}
-                        className={`relative flex items-center gap-3 ${desktopCollapsed ? 'md:justify-center md:px-2 px-4' : 'px-4'} py-2.5 rounded-xl min-h-[48px] transition-all ${
+                        className={`relative flex items-center gap-3 ${desktopCollapsed ? 'md:justify-center md:px-2 px-4' : indented ? 'pl-10 pr-4' : 'px-4'} ${indented ? 'py-1.5 min-h-[36px]' : 'py-2.5 min-h-[48px]'} rounded-xl transition-all ${
                           isActive
                             ? 'bg-vz-bg text-vz-teal font-medium shadow-sm'
                             : 'text-gray-600 hover:bg-gray-50 hover:text-black'
@@ -380,10 +446,12 @@ export default function Sidebar() {
                         {isActive && (
                           <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-vz-teal" />
                         )}
-                        <span className={isActive ? 'text-vz-teal' : 'text-gray-400'}>
-                          {item.icon}
-                        </span>
-                        <span className={`text-sm ${desktopCollapsed ? 'md:hidden' : ''}`}>{item.label}</span>
+                        {!indented && (
+                          <span className={isActive ? 'text-vz-teal' : 'text-gray-400'}>
+                            {item.icon}
+                          </span>
+                        )}
+                        <span className={`text-sm ${desktopCollapsed ? 'md:hidden' : ''} ${indented ? 'text-[13px]' : ''}`}>{item.label}</span>
                       </Link>
                     </li>
                   );
