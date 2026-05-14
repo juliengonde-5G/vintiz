@@ -155,6 +155,28 @@ class Payment(Base):
     )
     amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
 
+    # SumUp traceability (CB payments only). NULL when method != card or
+    # the operator used a non-SumUp terminal. Populated from the SumUp
+    # checkout response + the GetTransaction v2.1 follow-up call.
+    # Used by :
+    #   - the refund flow (transaction_id is required by
+    #     POST /v1.0/merchants/{m}/payments/{id}/refunds)
+    #   - receipt rendering (card_brand + last4 printed for SAV)
+    #   - reconciliation (transaction_code matches the SumUp app + bank
+    #     statement, used by accountants)
+    sumup_checkout_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sumup_transaction_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sumup_transaction_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sumup_auth_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sumup_card_brand: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sumup_card_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    sumup_refunded_amount: Mapped[float | None] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
+    # "production" | "sandbox" — captured at checkout time so test
+    # transactions can be filtered out of fiscal exports.
+    sumup_environment: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
     transaction: Mapped["Transaction"] = relationship(
         "Transaction", back_populates="payments", lazy="selectin"
     )

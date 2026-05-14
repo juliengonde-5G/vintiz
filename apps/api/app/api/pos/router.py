@@ -514,6 +514,23 @@ async def cancel_cb_payment(
     return {"cancelled": ok}
 
 
+@router.post("/payments/cb/terminate")
+async def terminate_cb_reader(
+    current_user: User = Depends(get_current_user),
+):
+    """Force the SumUp reader to abort the in-flight checkout.
+
+    Used when the cashier wants to cancel mid-payment (customer
+    changed their mind, wrong amount, etc.) without waiting for
+    the 60-second SumUp side-timeout. Maps to the official
+    ``POST /v0.1/merchants/{m}/readers/{r}/terminate`` endpoint.
+
+    Returns a structured outcome the front renders as a toast.
+    """
+    from app.services.sumup_service import SumUpService
+    return await SumUpService().terminate_reader_checkout()
+
+
 # ---------------------------------------------------------------------------
 # SumUp config endpoint (production only)
 # ---------------------------------------------------------------------------
@@ -1117,6 +1134,52 @@ async def refund_transaction(
     )
     await fiscal_service.sign_transaction(refund_tx)
 
+    # SumUp refund (when refund_method == card AND the original sale
+    # was paid by card with a tracked SumUp transaction_id). Without
+    # this call, we would refund cash from the till but SumUp would
+    # still hold the customer's money — direct accounting loss.
+    sumup_refund_status: dict | None = None
+    if request.refund_method == "card":
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        from app.models.pos import PaymentMethod, Transaction
+        from app.services.sumup_service import SumUpService
+
+        original = (
+            await db.execute(
+                select(Transaction)
+                .options(selectinload(Transaction.payments))
+                .where(Transaction.id == transaction_id)
+            )
+        ).scalar_one_or_none()
+        cb_payment = None
+        for p in (original.payments if original else []):
+            if p.method == PaymentMethod.card and getattr(p, "sumup_transaction_id", None):
+                cb_payment = p
+                break
+        if cb_payment is None:
+            sumup_refund_status = {
+                "ok": False,
+                "status": "no_sumup_payment_linked",
+                "message": (
+                    "Aucun paiement SumUp tracé sur la transaction d'origine — "
+                    "remboursement comptable enregistré côté Vintiz mais à reverser "
+                    "manuellement au client via l'app SumUp."
+                ),
+            }
+        else:
+            svc = SumUpService()
+            sumup_refund_status = await svc.refund_transaction(
+                cb_payment.sumup_transaction_id,
+                amount=float(refund_tx.total_ttc),
+            )
+            if sumup_refund_status.get("ok"):
+                cb_payment.sumup_refunded_amount = (
+                    float(cb_payment.sumup_refunded_amount or 0)
+                    + float(refund_tx.total_ttc)
+                )
+                await db.commit()
+
     # Emit a product.refunded event per refunded item (P1-003).
     from app.models.events import EventSource, EventType
     events = EventService(db)
@@ -1148,6 +1211,11 @@ async def refund_transaction(
         "total_ttc": float(refund_tx.total_ttc),
         "refund_method": request.refund_method,
         "hash_chain": refund_tx.hash_chain,
+        # When the refund went through SumUp, the front renders a green
+        # success ; when it didn't (offline, untracked payment), it
+        # renders a yellow warning instructing the operator to issue
+        # the SumUp refund manually from the SumUp app.
+        "sumup_refund": sumup_refund_status,
     }
 
 
