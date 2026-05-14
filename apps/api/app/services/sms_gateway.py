@@ -21,6 +21,8 @@ import base64
 import json
 import logging
 import os
+import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
@@ -29,6 +31,43 @@ from urllib.request import Request, urlopen
 
 
 logger = logging.getLogger("vintiz.sms")
+
+
+# E.164 normalisation — Brevo and Twilio both reject phone numbers
+# that aren't in international E.164 format ("+33612345678"). Boutique
+# operators routinely type "06 12 34 56 78" or "+33 6 12 34 56 78" or
+# "0612345678" ; we normalise on the way in so the send always works.
+_PHONE_NON_DIGITS = re.compile(r"[^\d+]")
+
+
+def normalise_phone_e164(raw: str, default_country_code: str = "33") -> str:
+    """Best-effort E.164 conversion for French numbers.
+
+    Rules :
+    - ``+33 6 12 34 56 78`` → ``+33612345678``
+    - ``06 12 34 56 78`` → ``+33612345678`` (assume FR national)
+    - ``0033612345678`` → ``+33612345678`` (drop the international 00)
+    - already E.164 → unchanged
+
+    Anything that doesn't look like a phone (≤ 6 digits) is returned
+    as-is and the gateway will surface the API error to the caller.
+    """
+    if not raw:
+        return ""
+    cleaned = _PHONE_NON_DIGITS.sub("", raw)
+    if cleaned.startswith("+"):
+        return cleaned
+    if cleaned.startswith("00"):
+        return "+" + cleaned[2:]
+    if cleaned.startswith("0") and len(cleaned) >= 9:
+        # National FR (or another country with same convention) — drop
+        # the leading 0 and prefix the default country code.
+        return f"+{default_country_code}{cleaned[1:]}"
+    if len(cleaned) >= 9:
+        # Numbers without a leading 0 → assume already in international
+        # form without the +, e.g. "33612345678".
+        return f"+{cleaned}"
+    return cleaned
 
 
 class SMSDeliveryError(RuntimeError):
@@ -196,12 +235,47 @@ def send_sms(message: SMSMessage) -> SMSResult:
 
     Order: Brevo (preferred — single key shared with email) → Twilio
     (legacy fallback) → simulation.
+
+    Normalises the destination phone to E.164 (Brevo + Twilio both
+    require it). Retries up to 3× on 429/5xx with exponential backoff,
+    honouring the ``Retry-After`` header when SumUp returns one.
     """
-    if _brevo_api_key():
-        return _send_via_brevo(message)
-    sid = _from_config("TWILIO_ACCOUNT_SID", "twilio_account_sid")
-    token = _from_config("TWILIO_AUTH_TOKEN", "twilio_auth_token")
-    from_ = _from_config("TWILIO_FROM", "twilio_from")
-    if sid and token and from_:
-        return _send_via_twilio(message)
-    return _simulate(message)
+    # Defensive : both Brevo and Twilio reject malformed numbers with
+    # a generic 400 that confuses operators ; normalise first so the
+    # error surface matches what the cashier expects.
+    message = SMSMessage(to=normalise_phone_e164(message.to), body=message.body)
+    if not message.to or len(message.to) < 8:
+        return SMSResult(
+            status="failed",
+            backend="simulation",
+            detail=f"Numéro de téléphone invalide ({message.to or 'vide'})",
+            sent_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    max_attempts = 3
+    last_err: SMSDeliveryError | None = None
+    use_brevo = bool(_brevo_api_key())
+    use_twilio = bool(
+        _from_config("TWILIO_ACCOUNT_SID", "twilio_account_sid")
+        and _from_config("TWILIO_AUTH_TOKEN", "twilio_auth_token")
+        and _from_config("TWILIO_FROM", "twilio_from")
+    )
+    if not (use_brevo or use_twilio):
+        return _simulate(message)
+
+    for attempt in range(max_attempts):
+        try:
+            return _send_via_brevo(message) if use_brevo else _send_via_twilio(message)
+        except SMSDeliveryError as exc:
+            last_err = exc
+            msg = str(exc)
+            should_retry = ("429" in msg) or any(f"{c}" in msg for c in (500, 502, 503, 504))
+            if not should_retry or attempt == max_attempts - 1:
+                raise
+            sleep_for = 0.5 * (2 ** attempt)
+            logger.info("SMS retry %d/%d in %.1fs after %s",
+                        attempt + 1, max_attempts, sleep_for, msg[:80])
+            time.sleep(sleep_for)
+    if last_err:
+        raise last_err
+    raise SMSDeliveryError("SMS gateway: unknown error")

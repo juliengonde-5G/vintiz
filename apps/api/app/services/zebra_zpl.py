@@ -38,6 +38,19 @@ LABELARY_SIZE = "3.15x4.72"
 
 MARKDOWN_DAYS = 30
 
+# Print rate (^PR) — inches per second. ZD421d 203 dpi supports 2-6 ips.
+# Lower = sharper print on small fonts and barcodes ; higher = faster
+# throughput when batch-printing dozens of labels. 4 ips is a balanced
+# default that keeps the Code 128 scannable.
+DEFAULT_PRINT_RATE = 4
+
+# Media darkness (^MD) — relative offset from the printer's permanent
+# darkness setting (set via the front-panel pause+feed calibration).
+# Range -30..30. 0 = use the printer's saved value. Positive values
+# burn darker (better contrast on Vintiz cream labels but eats the
+# print head faster).
+DEFAULT_MEDIA_DARKNESS = 0
+
 
 @dataclass(frozen=True)
 class LabelData:
@@ -87,15 +100,28 @@ def _format_date(dt: datetime | None) -> str:
     return dt.strftime("%d/%m/%Y") if dt else "—"
 
 
-def build_label_zpl(data: LabelData, *, copies: int = 1) -> str:
+def build_label_zpl(
+    data: LabelData,
+    *,
+    copies: int = 1,
+    print_rate: int = DEFAULT_PRINT_RATE,
+    media_darkness: int = DEFAULT_MEDIA_DARKNESS,
+) -> str:
     """Render a single Vintiz product label as a ZPL II string.
 
     ``copies`` is passed through to ``^PQ`` so a single submission can
     print several physical labels (used by the batch endpoint with
     ``copies=N``).
+
+    ``print_rate`` and ``media_darkness`` let the manager tune the
+    output without redeploying : faster speed for big batches, darker
+    burn for low-contrast media. Both are clamped to the ZPL II valid
+    ranges (PR: 2..6 for ZD421d 203 dpi, MD: -30..30).
     """
     if copies < 1:
         copies = 1
+    pr = max(2, min(6, int(print_rate)))
+    md = max(-30, min(30, int(media_darkness)))
 
     name = _sanitize(data.product_name, max_length=30) or "Article"
     category = _sanitize(data.category, max_length=20) or "Article"
@@ -111,9 +137,14 @@ def build_label_zpl(data: LabelData, *, copies: int = 1) -> str:
     category_line = f"{category} • T.{size}" if size else category
 
     # ZPL II — `^CI28` enables UTF-8 so accented characters in the name,
-    # category and condition fields render correctly.
+    # category and condition fields render correctly. ``^PR`` and ``^MD``
+    # are sent at the top of every job so the manager's tuning takes
+    # effect even after the printer was power-cycled (these commands
+    # don't persist by default — use ``^JU S`` to save).
     return (
         "^XA"
+        f"^PR{pr}"
+        f"^MD{md}"
         "^CI28"
         f"^PW{LABEL_WIDTH_DOTS}"
         f"^LL{LABEL_HEIGHT_DOTS}"

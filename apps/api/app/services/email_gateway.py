@@ -25,11 +25,14 @@ would mix concerns: tests can assert on either.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import smtplib
-from dataclasses import dataclass
+import time
+import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -57,6 +60,14 @@ class EmailMessage:
     # ``{"filename": str, "content": bytes, "mime": str}``.
     # Used by the Z-report mailer (PDF). Ignored by the simulation backend.
     attachments: list[dict] | None = None
+    # Brevo analytics — tagging lets the manager filter delivery
+    # reports in the Brevo dashboard ("ticket-resend", "anniversary",
+    # "new-arrivals", "zreport", "magic-link"…). Up to 5 tags.
+    tags: list[str] = field(default_factory=list)
+    # Idempotency key — when set, Brevo dedupes retries with the same
+    # key so a network blip doesn't double-send. We derive a stable
+    # key from the message content if the caller doesn't supply one.
+    idempotency_key: str | None = None
 
 
 @dataclass
@@ -128,9 +139,33 @@ def describe_active_provider() -> dict:
     return {"provider": "simulation", "configured": False}
 
 
+def _stable_idempotency_key(message: EmailMessage) -> str:
+    """Deterministic idempotency key derived from the message content.
+
+    A retry of the exact same (to, subject, html) within ~24 h is treated
+    by Brevo as the same message and not re-sent. Caller can override by
+    setting ``message.idempotency_key`` explicitly (e.g. transaction
+    UUID for ticket resends).
+    """
+    if message.idempotency_key:
+        return message.idempotency_key
+    digest = hashlib.sha256(
+        f"{message.to}|{message.subject}|{message.html}".encode("utf-8")
+    ).hexdigest()
+    return f"vintiz-{digest[:32]}"
+
+
 def _send_via_brevo(message: EmailMessage) -> EmailResult:
     """Hit Brevo's transactional endpoint. Network call wrapped in
-    urllib so we keep zero runtime dependencies (no httpx/aiohttp)."""
+    urllib so we keep zero runtime dependencies (no httpx/aiohttp).
+
+    Conformity audit (developers.brevo.com 2026-05-14) :
+    - ``POST https://api.brevo.com/v3/smtp/email`` ✓
+    - ``api-key`` header (not Bearer) ✓
+    - ``Idempotency-Key`` header — dedupes retries within Brevo's window
+    - Exponential backoff on 429 (rate limit) + 5xx (transient)
+    - ``tags`` field for analytics grouping in the Brevo dashboard
+    """
 
     api_key = _from_env("BREVO_API_KEY")
     if not api_key:
@@ -162,35 +197,70 @@ def _send_via_brevo(message: EmailMessage) -> EmailResult:
             }
             for a in message.attachments
         ]
+    if message.tags:
+        # Brevo caps tags at 5 per message — silently truncate, no need
+        # to error on a non-critical analytics field.
+        payload["tags"] = list(message.tags)[:5]
 
     body = json.dumps(payload).encode("utf-8")
-    req = Request(
-        "https://api.brevo.com/v3/smtp/email",
-        data=body,
-        headers={
-            "accept": "application/json",
-            "content-type": "application/json",
-            "api-key": api_key,
-        },
-        method="POST",
-    )
-    try:
-        with urlopen(req, timeout=15) as resp:  # noqa: S310 — domain pinned
-            text = resp.read().decode("utf-8")
-            data = json.loads(text) if text else {}
-            return EmailResult(
-                status="sent",
-                backend="brevo",
-                message_id=data.get("messageId"),
-                sent_at=datetime.now(timezone.utc).isoformat(),
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "api-key": api_key,
+        "Idempotency-Key": _stable_idempotency_key(message),
+    }
+    # Retry on 429 (Retry-After) and 5xx with exponential backoff.
+    # Max 3 attempts so we don't block the request handler too long.
+    max_attempts = 3
+    last_exc: EmailDeliveryError | None = None
+    for attempt in range(max_attempts):
+        req = Request(
+            "https://api.brevo.com/v3/smtp/email",
+            data=body,
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urlopen(req, timeout=15) as resp:  # noqa: S310 — domain pinned
+                text = resp.read().decode("utf-8")
+                data = json.loads(text) if text else {}
+                return EmailResult(
+                    status="sent",
+                    backend="brevo",
+                    message_id=data.get("messageId"),
+                    sent_at=datetime.now(timezone.utc).isoformat(),
+                )
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else str(exc)
+            should_retry = exc.code == 429 or 500 <= exc.code < 600
+            last_exc = EmailDeliveryError(f"Brevo {exc.code}: {detail[:200]}")
+            if not should_retry or attempt == max_attempts - 1:
+                logger.warning("Brevo API rejected message: %s %s", exc.code, detail)
+                raise last_exc from exc
+            # Honour the Retry-After header when present (seconds or HTTP date)
+            sleep_for = 0.0
+            try:
+                retry_after = exc.headers.get("Retry-After") if hasattr(exc, "headers") else None
+                if retry_after:
+                    sleep_for = float(retry_after)
+            except (TypeError, ValueError):
+                sleep_for = 0.0
+            if sleep_for <= 0:
+                sleep_for = 0.5 * (2 ** attempt)  # 0.5s, 1s, 2s
+            logger.info(
+                "Brevo %s — retry %d/%d in %.1fs", exc.code, attempt + 1, max_attempts, sleep_for,
             )
-    except HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else str(exc)
-        logger.warning("Brevo API rejected message: %s %s", exc.code, detail)
-        raise EmailDeliveryError(f"Brevo {exc.code}: {detail[:200]}") from exc
-    except (URLError, TimeoutError) as exc:
-        logger.warning("Brevo network error: %s", exc)
-        raise EmailDeliveryError(f"Brevo network: {exc}") from exc
+            time.sleep(sleep_for)
+        except (URLError, TimeoutError) as exc:
+            last_exc = EmailDeliveryError(f"Brevo network: {exc}")
+            if attempt == max_attempts - 1:
+                logger.warning("Brevo network error after %d attempts: %s", max_attempts, exc)
+                raise last_exc from exc
+            time.sleep(0.5 * (2 ** attempt))
+    # Defensive — loop always returns or raises.
+    if last_exc:
+        raise last_exc
+    raise EmailDeliveryError("Brevo: unknown error")
 
 
 def _send_via_smtp(message: EmailMessage) -> EmailResult:
