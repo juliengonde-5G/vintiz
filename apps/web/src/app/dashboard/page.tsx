@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import InlineResendButtons from '@/components/pos/InlineResendButtons';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
 
@@ -125,28 +126,39 @@ function TicketModal({
   ticket: TransactionDetail;
   onClose: () => void;
 }) {
-  const [sending, setSending] = useState(false);
-  const [sendResult, setSendResult] = useState('');
+  const [printing, setPrinting] = useState(false);
+  const [printResult, setPrintResult] = useState('');
 
-  const handleResend = async (channel: 'email' | 'sms') => {
-    if (!ticket.client) return;
-    setSending(true);
-    setSendResult('');
-    try {
-      const res = await api.post(`/api/pos/transactions/${ticket.id}/resend`, { channel });
-      if (res.ok) {
-        setSendResult(channel === 'email' ? 'Email envoyé !' : 'SMS envoyé !');
-      } else {
-        const err = await res.json().catch(() => null);
-        setSendResult(err?.detail || 'Erreur envoi');
-      }
-    } catch {
-      setSendResult('Erreur réseau');
+  // Resend (email/SMS) — ad-hoc recipient supported, see /lib/print-ticket
+  // and ``InlineResendButtons`` for the shared UI.
+  const handleResend = async (channel: 'email' | 'sms', to?: string) => {
+    const res = await api.post(`/api/pos/transactions/${ticket.id}/resend`, {
+      channel,
+      ...(to ? { to } : {}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.detail || 'Erreur envoi');
     }
-    setSending(false);
   };
 
-  const handlePrint = () => {
+  // Send the receipt to the MUNBYN (network or USB depending on the
+  // configured connection mode). Replaces the old ``window.open`` +
+  // ``win.print()`` path which used the tablet's PDF dialog rather
+  // than the thermal printer.
+  const handlePrint = async () => {
+    setPrinting(true);
+    setPrintResult('');
+    const { printTransactionTicket } = await import('@/lib/print-ticket');
+    const result = await printTransactionTicket(ticket.id, { kickDrawer: false });
+    setPrintResult(result.message);
+    setPrinting(false);
+  };
+
+  // Fallback: open a printable HTML version in a new tab (regular
+  // printer / save as PDF). Kept as an escape hatch when the thermal
+  // printer is unreachable.
+  const handlePrintFallback = () => {
     const win = window.open('', '_blank', 'width=400,height=600');
     if (!win) return;
     win.document.write(`
@@ -266,40 +278,42 @@ function TicketModal({
             ))}
           </div>
 
-          {sendResult && (
-            <div className={`p-3 rounded-lg text-sm text-center ${sendResult.includes('Erreur') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
-              {sendResult}
+          {printResult && (
+            <div className={`p-3 rounded-lg text-sm text-center ${
+              printResult.toLowerCase().includes('échec') || printResult.toLowerCase().includes('erreur') || printResult.toLowerCase().includes('injoignable')
+                ? 'bg-red-50 text-red-600'
+                : 'bg-green-50 text-green-700'
+            }`}>
+              {printResult}
             </div>
           )}
+
+          <InlineResendButtons
+            clientEmail={ticket.client?.email ?? null}
+            clientPhone={ticket.client?.phone ?? null}
+            onResend={handleResend}
+          />
         </div>
 
         {/* Actions */}
         <div className="px-6 pb-6 flex flex-wrap gap-3">
-          <Button variant="outline" size="sm" onClick={handlePrint}>
+          <Button variant="secondary" size="sm" onClick={handlePrint} disabled={printing}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
               <polyline points="6 9 6 2 18 2 18 9" />
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
               <rect x="6" y="14" width="12" height="8" />
             </svg>
-            Réimprimer
+            {printing ? 'Impression…' : 'Réimprimer (MUNBYN)'}
           </Button>
-          {ticket.client?.email && (
-            <Button variant="outline" size="sm" onClick={() => handleResend('email')} disabled={sending}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                <polyline points="22,6 12,13 2,6" />
-              </svg>
-              Email
-            </Button>
-          )}
-          {ticket.client?.phone && (
-            <Button variant="outline" size="sm" onClick={() => handleResend('sms')} disabled={sending}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-              SMS
-            </Button>
-          )}
+          <Button variant="outline" size="sm" onClick={handlePrintFallback}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+              <rect x="4" y="3" width="16" height="18" rx="2" />
+              <line x1="8" y1="8" x2="16" y2="8" />
+              <line x1="8" y1="12" x2="16" y2="12" />
+              <line x1="8" y1="16" x2="12" y2="16" />
+            </svg>
+            Version A4 / PDF
+          </Button>
         </div>
       </div>
     </div>

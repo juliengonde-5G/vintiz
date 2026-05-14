@@ -10,6 +10,7 @@ import CashierPinModal from '@/components/cashier/CashierPinModal';
 import CashDrawerCloseModal from '@/components/pos/CashDrawerCloseModal';
 import CashDrawerOpenModal from '@/components/pos/CashDrawerOpenModal';
 import CashMovementButton from '@/components/pos/CashMovementButton';
+import InlineResendButtons from '@/components/pos/InlineResendButtons';
 import ClientCompanion from '@/components/pos/ClientCompanion';
 import ClientSelectionScreen from '@/components/pos/ClientSelectionScreen';
 import InvoiceClientForm, {
@@ -988,64 +989,22 @@ export default function POSPage() {
     if (!receiptTxId) return;
     setPrinting(true);
     setPrintMsg('');
-    try {
-      // Read printer mode from the hardware config — the cashier tablet
-      // (Lenovo Idea Tab Pro) uses USB-OTG / WebUSB, the fixed station
-      // uses Wi-Fi / TCP. Same MUNBYN payload, different transport.
-      const cfgRes = await api.get('/api/hardware/config');
-      const cfg = cfgRes.ok ? await cfgRes.json() : null;
-      const mode: 'network' | 'usb' =
-        cfg?.receipt_printer?.connection === 'usb' ? 'usb' : 'network';
-
-      if (mode === 'usb') {
-        const { findPairedDevice, sendEscposBytes, isWebUsbSupported } =
-          await import('@/lib/webusb-printer');
-        if (!isWebUsbSupported()) {
-          setPrintMsg('WebUSB indisponible — utilisez Chrome Android sur HTTPS');
-          return;
-        }
-        const rp = cfg.receipt_printer;
-        if (!rp?.usb_vendor_id || !rp?.usb_product_id) {
-          setPrintMsg('Aucune imprimante USB couplée — voir Paramètres > Matériel');
-          return;
-        }
-        const device = await findPairedDevice({
-          vendorId: rp.usb_vendor_id,
-          productId: rp.usb_product_id,
-          serialNumber: rp.usb_serial_number,
-        });
-        if (!device) {
-          setPrintMsg('Imprimante USB introuvable — rebranchez puis recouplez');
-          return;
-        }
-        // ``kick_drawer=true`` appends the ESC p pulse so the Safescan
-        // opens on cash sales just like the network path does.
-        const bytesRes = await api.get(
-          `/api/pos/transactions/${receiptTxId}/escpos?kick_drawer=true`,
-        );
-        if (!bytesRes.ok) {
-          const e = await bytesRes.json().catch(() => ({}));
-          setPrintMsg(e.detail || 'Impossible de générer le ticket');
-          return;
-        }
-        const bytes = new Uint8Array(await bytesRes.arrayBuffer());
-        await sendEscposBytes(device, bytes);
-        setPrintMsg('Ticket envoyé à la MUNBYN (USB)');
-        return;
-      }
-
-      // Network path
-      const res = await api.post(`/api/pos/transactions/${receiptTxId}/print`, {});
-      if (res.ok) {
-        setPrintMsg('Ticket imprimé sur la MUNBYN');
-      } else {
-        const e = await res.json().catch(() => ({}));
-        setPrintMsg(e.detail || 'Échec de l\'impression');
-      }
-    } catch (err) {
-      setPrintMsg(err instanceof Error ? err.message : 'Erreur imprimante');
-    }
+    const { printTransactionTicket } = await import('@/lib/print-ticket');
+    const result = await printTransactionTicket(receiptTxId, { kickDrawer: true });
+    setPrintMsg(result.message);
     setPrinting(false);
+  };
+
+  const resendReceipt = async (channel: 'email' | 'sms', to?: string) => {
+    if (!receiptTxId) return;
+    const res = await api.post(`/api/pos/transactions/${receiptTxId}/resend`, {
+      channel,
+      ...(to ? { to } : {}),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || "Échec de l'envoi");
+    }
   };
 
   const handleReceiptClose = () => {
@@ -2272,7 +2231,7 @@ export default function POSPage() {
         </Modal>
       )}
 
-      {/* ── Receipt Modal ───────────────────────────────────────── */}
+      {/* ── Receipt Modal (legacy non-wizard flow) ─────────────── */}
       <Modal
         open={showReceipt}
         onClose={handleReceiptClose}
@@ -2293,6 +2252,15 @@ export default function POSPage() {
         </div>
         {printMsg && (
           <p className="mt-3 text-sm text-vz-teal">{printMsg}</p>
+        )}
+        {/* Email / SMS ad-hoc — walk-in customers without a CRM record
+            can still get their receipt by typing the destination here. */}
+        {receiptTxId && (
+          <InlineResendButtons
+            clientEmail={selectedClient?.email ?? null}
+            clientPhone={selectedClient?.phone ?? null}
+            onResend={resendReceipt}
+          />
         )}
       </Modal>
 
