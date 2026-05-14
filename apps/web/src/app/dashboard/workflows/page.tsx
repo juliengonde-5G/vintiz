@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import workflowsData from './workflows.json';
@@ -119,6 +119,21 @@ function buildArrowPath(
 const VALID_CATEGORIES: WorkflowCategory[] = ['metier', 'endpoint', 'cron', 'hardware'];
 
 export default function WorkflowsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-vz-bg flex">
+          <Sidebar />
+          <main className="flex-1 md:ml-64" />
+        </div>
+      }
+    >
+      <WorkflowsPageInner />
+    </Suspense>
+  );
+}
+
+function WorkflowsPageInner() {
   const searchParams = useSearchParams();
   const urlCategory = searchParams.get('category') as WorkflowCategory | null;
   const category: WorkflowCategory =
