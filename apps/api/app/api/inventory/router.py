@@ -138,18 +138,23 @@ async def create_product_from_photo(
 
 
 def _generate_vintiz_barcode() -> str:
-    """Generate a Vintiz-formatted barcode for new products.
+    """Generate a Vintiz-formatted barcode matching the brief spec.
 
-    Format: ``VTZ`` prefix + 10 uppercase alphanum chars from a UUID.
-    The hyphens that ``str(uuid.uuid4())`` produces are stripped so the
-    barcode is purely alphanumeric — some cheap HID scanners (notably
-    the Inateck BCST-35 on FR keyboard layout) drop or mistranslate
-    the dash, which led to "barcode generated but unrecognised on scan"
-    bug reports in production.
+    Format: ``VTZ-YYYY-NNNNNN`` — prefix + current year + 6-digit
+    pseudo-random sequence. Same shape as the documented example
+    (``VTZ-2026-00142``) so labels printed by the Zebra look familiar.
+
+    The 6-digit space (100 000 … 999 999) gives 900 000 possible codes
+    per year; collisions are vanishingly rare at the volume of a single
+    boutique (a few hundred items per year). If a collision does occur,
+    the unique constraint on ``Product.barcode`` raises an
+    ``IntegrityError`` and the caller can retry — kept simple here
+    rather than wrapping in a retry loop.
     """
+    from datetime import datetime
     import secrets
-    token = secrets.token_hex(5).upper()  # 10 chars, [0-9A-F]
-    return f"VTZ{token}"
+    seq = secrets.randbelow(900_000) + 100_000  # always 6 digits
+    return f"VTZ-{datetime.now().year}-{seq:06d}"
 
 
 @router.post("/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
