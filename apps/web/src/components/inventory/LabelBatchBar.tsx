@@ -53,11 +53,29 @@ export default function LabelBatchBar({ selectedIds, onCleared, onToast }: Label
 
   const printable = status?.online && status?.enabled;
 
-  const handleA4Sheet = () => {
-    // Mode dégradé : ouvre une planche A4 imprimable dans un nouvel
-    // onglet. window.print() se déclenche tout seul côté serveur.
-    const qs = new URLSearchParams({ ids: selectedIds.join(',') });
-    window.open(`/api/labels/sheet?${qs.toString()}`, '_blank', 'noopener');
+  const handleA4Sheet = async () => {
+    // Mode dégradé : récupère la planche A4 via fetch (avec le JWT
+    // manager dans l'Authorization header) puis ouvre le HTML dans un
+    // nouvel onglet via une blob URL. ``window.open(url)`` direct ne
+    // joint pas le header d'auth et tape sur l'origin du front (pas de
+    // l'API en prod) — d'où le 404 historique.
+    try {
+      const qs = new URLSearchParams({ ids: selectedIds.join(',') });
+      const res = await api.get(`/api/labels/sheet?${qs.toString()}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({} as Record<string, unknown>));
+        onToast((body.detail as string) || 'Impossible de générer la planche A4', 'error');
+        return;
+      }
+      const html = await res.text();
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener');
+      // Revoke after the new tab has had time to load + render barcodes.
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch {
+      onToast('Erreur réseau — planche A4', 'error');
+    }
   };
 
   const handleBatch = async () => {

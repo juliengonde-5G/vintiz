@@ -10,10 +10,12 @@ All endpoints are manager-only.
 from __future__ import annotations
 
 import asyncio
-import html
+import base64
+import logging
 import uuid
-from datetime import timedelta
 from typing import Annotated
+
+logger = logging.getLogger("vintiz")
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, Response
@@ -29,8 +31,6 @@ from app.services import zebra_printer
 from app.services.hardware_config import load_config
 from app.services.label_preview import PreviewUnavailable, render_zpl_to_png
 from app.services.zebra_zpl import (
-    MARKDOWN_DAYS,
-    LabelData,
     build_label_zpl,
     product_to_label_data,
 )
@@ -234,13 +234,16 @@ async def labels_a4_sheet(
 ):
     """A4 fallback when the Zebra is unavailable.
 
-    Renders the same product data as the ZPL template but as an HTML page
-    sized to A4 with a CSS grid. Each cell is the size of a Vintiz label
-    (default 2×4 = 8 labels per page). The operator opens the page in a
-    new tab and uses Ctrl+P (or the device's print menu) to send it to
-    a standard A4 printer; an embedded ``onload=window.print()`` triggers
-    the dialog automatically. The user then cuts the labels manually or
-    uses pre-cut Avery-style sheets.
+    Renders each label by passing its ZPL through Labelary's PNG endpoint
+    — same renderer as the per-product preview, so the printed A4
+    matches the Zebra output **pixel-for-pixel**, including font sizes,
+    barcode style, separator placement, and date formatting. The PNGs
+    are embedded as base64 in an A4-sized HTML grid that auto-prints.
+
+    Why not re-implement the layout in CSS : the brief specifies the
+    label content & geometry once, and the ZPL template is the single
+    source of truth. Recoding it in CSS would drift over time — every
+    tweak to ``zebra_zpl.py`` would have to be mirrored here.
     """
     raw_ids = [p.strip() for p in ids.split(",") if p.strip()]
     if not raw_ids:
@@ -249,8 +252,8 @@ async def labels_a4_sheet(
         uuids = [uuid.UUID(p) for p in raw_ids]
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"ID invalide : {exc}") from exc
-    if len(uuids) > 96:  # 12 A4 pages of 8 labels — generous safety stop
-        raise HTTPException(status_code=400, detail="Maximum 96 étiquettes par planche")
+    if len(uuids) > 24:  # 24 labels = up to 3 A4 pages at 8 per page
+        raise HTTPException(status_code=400, detail="Maximum 24 étiquettes par planche")
 
     result = await db.execute(
         select(Product)
@@ -264,7 +267,21 @@ async def labels_a4_sheet(
     if not ordered:
         raise HTTPException(status_code=404, detail="Aucun produit trouvé")
 
-    html_doc = _render_a4_sheet(ordered, cols=cols, rows=rows)
+    # Render every label through Labelary in parallel. Each call is ~200 ms
+    # so 8 labels take ~1 s total. If one fails (timeout, 5xx), we fall
+    # back to a clear placeholder for that cell so the rest still prints.
+    async def _png_for(p: Product) -> str:
+        zpl = build_label_zpl(product_to_label_data(p))
+        try:
+            png = await render_zpl_to_png(zpl)
+            return base64.b64encode(png).decode("ascii")
+        except PreviewUnavailable as exc:
+            logger.warning("Labelary failed for product %s: %s", p.id, exc)
+            return ""
+
+    pngs = await asyncio.gather(*[_png_for(p) for p in ordered])
+
+    html_doc = _render_a4_sheet_from_pngs(pngs, cols=cols, rows=rows)
     return HTMLResponse(content=html_doc, headers={"Cache-Control": "no-store"})
 
 
@@ -291,61 +308,34 @@ async def test_print():
 # ---------------------------------------------------------------------------
 
 
-def _fmt_price(amount: float) -> str:
-    return f"{amount:.2f} €".replace(".", ",")
+def _render_a4_sheet_from_pngs(
+    pngs_b64: list[str], *, cols: int, rows: int,
+) -> str:
+    """Wrap base64-encoded label PNGs in an A4-sized HTML page.
 
-
-def _fmt_date(dt) -> str:
-    return dt.strftime("%d/%m/%Y") if dt else "—"
-
-
-def _render_label_cell(data: LabelData) -> str:
-    """Render a single label as inline HTML.
-
-    Mirrors the ZPL template layout (name, category·size, condition,
-    price XXL, barcode placeholder, dates) so a printed A4 cell looks
-    visually similar to a Zebra label. The barcode is rendered as a
-    Code 128 SVG via the in-page ``JsBarcode`` script.
+    The PNGs come from Labelary so each cell is a pixel-perfect copy of
+    what the Zebra physically prints — same template, same fonts, same
+    barcode style. The A4 grid just lays them out for cutting.
     """
-    name = html.escape(data.product_name or "Article")[:60]
-    category = html.escape(data.category or "Article")
-    size = html.escape(data.size or "")
-    condition = html.escape(data.condition or "Bon état")
-    price = html.escape(_fmt_price(float(data.sale_price)))
-    ref = html.escape(data.barcode or "VTZ-NOREF")
-    shelf = _fmt_date(data.shelf_date)
-    markdown = _fmt_date(
-        (data.shelf_date + timedelta(days=MARKDOWN_DAYS)) if data.shelf_date else None
-    )
-    category_line = f"{category} • T.{size}" if size else category
-    return (
-        '<div class="cell">'
-        '  <div class="brand">VINTIZ</div>'
-        '  <div class="sep"></div>'
-        f'  <div class="name">{name}</div>'
-        f'  <div class="cat">{category_line}</div>'
-        f'  <div class="cond">{condition}</div>'
-        f'  <div class="price">{price}</div>'
-        '  <div class="sep"></div>'
-        f'  <svg class="barcode" jsbarcode-format="CODE128"'
-        f'       jsbarcode-value="{ref}" jsbarcode-displayvalue="true"'
-        '        jsbarcode-fontsize="11" jsbarcode-height="40"></svg>'
-        f'  <div class="ref">Réf : {ref}</div>'
-        f'  <div class="date">Rayon depuis : {shelf}</div>'
-        f'  <div class="date">Démarque le : {markdown}</div>'
-        '</div>'
-    )
-
-
-def _render_a4_sheet(products: list, *, cols: int, rows: int) -> str:
-    """Wrap N label cells in an A4-sized HTML page ready to ``window.print()``.
-
-    Uses ``@page A4`` + a CSS grid to lay out the cells. ``JsBarcode`` is
-    loaded from a CDN to render Code 128 barcodes from data attributes —
-    no server-side image generation needed.
-    """
-    cells = "\n".join(_render_label_cell(product_to_label_data(p)) for p in products)
     per_page = cols * rows
+    cells = []
+    for png_b64 in pngs_b64:
+        if png_b64:
+            cells.append(
+                f'<div class="cell">'
+                f'  <img alt="Étiquette" src="data:image/png;base64,{png_b64}" />'
+                f'</div>'
+            )
+        else:
+            # Labelary failed for this product — print a clear "missing"
+            # cell rather than silently skip; the cashier can re-print
+            # just that one once Labelary is back.
+            cells.append(
+                '<div class="cell cell--error">'
+                '<span>Aperçu indisponible — relancez plus tard</span>'
+                '</div>'
+            )
+    cells_html = "\n".join(cells)
     return f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -377,58 +367,48 @@ def _render_a4_sheet(products: list, *, cols: int, rows: int) -> str:
   }}
   .cell {{
     border: 1px dashed #d5d3cc;
-    padding: 4mm;
-    display: flex; flex-direction: column;
-    text-align: center;
+    padding: 2mm;
+    display: flex; align-items: center; justify-content: center;
     page-break-inside: avoid;
     break-inside: avoid;
-    aspect-ratio: 1 / 1.15;
   }}
-  .brand {{
-    font-family: Georgia, "Fraunces", serif;
-    font-weight: 700; font-size: 22pt; letter-spacing: 0.04em;
-    color: #0B7A6A;
+  .cell img {{
+    max-width: 100%; max-height: 100%;
+    object-fit: contain;
+    display: block;
   }}
-  .sep {{
-    height: 1px; background: #0E0E0C; margin: 4px 12px;
+  .cell--error {{
+    color: #b00; font-size: 10pt; text-align: center;
   }}
-  .name {{
-    font-weight: 600; font-size: 12pt; line-height: 1.15;
-    margin-top: 4px; min-height: 30px;
-  }}
-  .cat {{ font-size: 10pt; color: #4A4A47; margin-top: 2px; }}
-  .cond {{ font-size: 9pt; color: #8B8B86; margin-top: 1px; }}
-  .price {{
-    font-weight: 700; font-size: 32pt; color: #0E0E0C;
-    margin: 6px 0; line-height: 1;
-  }}
-  .barcode {{ display: block; margin: 0 auto; max-width: 80%; height: 50px; }}
-  .ref {{ font-family: ui-monospace, monospace; font-size: 9pt; margin-top: 2px; }}
-  .date {{ font-size: 8pt; color: #4A4A47; margin-top: 1px; }}
   @media print {{
     .toolbar {{ display: none !important; }}
     .sheet {{ padding: 0; gap: 2mm; }}
+    .cell {{ border: none; }}
   }}
 </style>
 </head>
 <body>
   <div class="toolbar">
-    <strong>Planche A4 — {len(products)} étiquette{"s" if len(products) > 1 else ""}</strong>
+    <strong>Planche A4 — {len(pngs_b64)} étiquette{"s" if len(pngs_b64) > 1 else ""}</strong>
     <span style="opacity: 0.8;">({cols}×{rows} = {per_page} par page)</span>
     <span style="flex: 1"></span>
     <button onclick="window.print()" type="button">Imprimer</button>
     <button onclick="window.close()" type="button" style="background:#fff;color:#4A4A47;">Fermer</button>
   </div>
   <div class="sheet">
-{cells}
+{cells_html}
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', function () {{
-      try {{ JsBarcode('.barcode').init(); }} catch (e) {{}}
-      // Auto-trigger print dialog after barcodes render
-      setTimeout(function () {{ window.print(); }}, 250);
-    }});
+    // Wait for all <img> to decode before triggering the print dialog,
+    // otherwise the operator sees a half-rendered preview.
+    Promise.all(
+      Array.from(document.images).map((img) =>
+        img.complete ? Promise.resolve() : new Promise((r) => {{
+          img.addEventListener('load', r);
+          img.addEventListener('error', r);
+        }})
+      ),
+    ).then(function () {{ setTimeout(function () {{ window.print(); }}, 200); }});
   </script>
 </body>
 </html>"""

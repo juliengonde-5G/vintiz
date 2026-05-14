@@ -49,6 +49,7 @@ interface SearchProduct {
   sale_price: number;
   status: string;
   category: string | null;
+  photo_url?: string | null;
 }
 
 interface CartItem {
@@ -486,12 +487,30 @@ export default function POSPage() {
   };
 
   // Barcode scanner (Inateck BCST-60 / 160B USB HID): types the code fast then
-  // sends Enter. We resolve the code → product and add it to the cart.
+  // sends Enter. We hit the dedicated by-barcode endpoint first (exact
+  // match, bypasses the status filter — works for freshly created
+  // products whose lifecycle stage isn't ``stock`` yet) and fall back
+  // to the fuzzy search only on 404 so partial scans still work.
   const handleBarcodeScan = useCallback(async (rawCode: string) => {
     const code = rawCode.trim();
     if (!code) return;
     try {
-      const res = await api.get(`/api/inventory/products/search?q=${encodeURIComponent(code)}`);
+      const exactRes = await api.get(
+        `/api/inventory/products/by-barcode/${encodeURIComponent(code)}`,
+      );
+      if (exactRes.ok) {
+        addProductToCart(await exactRes.json());
+        return;
+      }
+      if (exactRes.status !== 404) {
+        setError(`Erreur lecture code-barres ${code}`);
+        return;
+      }
+      // Fallback: fuzzy search (legacy behaviour, useful when the
+      // operator types a partial barcode by hand).
+      const res = await api.get(
+        `/api/inventory/products/search?q=${encodeURIComponent(code)}`,
+      );
       if (!res.ok) { setError(`Produit introuvable pour ${code}`); return; }
       const data: SearchProduct[] = await res.json();
       const exact = data.find(p => p.barcode === code);
@@ -1628,18 +1647,30 @@ export default function POSPage() {
                     onClick={() => addProductToCart(product)}
                     className="text-left bg-white rounded-xl border border-vz-line hover:border-vz-teal hover:shadow-lg active:scale-[0.98] active:bg-vz-teal-soft transition-all overflow-hidden min-h-[180px] flex flex-col group"
                   >
-                    {/* Photo placeholder header — Odoo POS style with status corner */}
-                    <div className="aspect-[4/3] bg-gradient-to-br from-vz-bg-alt to-vz-bg flex items-center justify-center relative">
-                      <svg
-                        width="36" height="36"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        className="text-vz-ink-mute opacity-60"
-                      >
-                        <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                      </svg>
+                    {/* Photo thumbnail — falls back to the silhouette icon
+                        when the product has no photo on file. The cashier
+                        can confirm visually before adding to the cart. */}
+                    <div className="aspect-[4/3] bg-gradient-to-br from-vz-bg-alt to-vz-bg flex items-center justify-center relative overflow-hidden">
+                      {product.photo_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={product.photo_url}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <svg
+                          width="36" height="36"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="text-vz-ink-mute opacity-60"
+                        >
+                          <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                        </svg>
+                      )}
                       <span className={`absolute top-1.5 right-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${
                         product.status === 'display'
                           ? 'bg-vz-teal-soft text-vz-teal-deep'
