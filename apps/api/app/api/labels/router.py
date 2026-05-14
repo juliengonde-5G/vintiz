@@ -29,7 +29,11 @@ from app.core.security import RoleChecker
 from app.models.product import Product
 from app.services import zebra_printer
 from app.services.hardware_config import load_config
-from app.services.label_preview import PreviewUnavailable, render_zpl_to_png
+from app.services.label_preview import (
+    PreviewUnavailable,
+    render_zpl_to_pdf,
+    render_zpl_to_png,
+)
 from app.services.zebra_zpl import (
     build_label_zpl,
     product_to_label_data,
@@ -267,9 +271,35 @@ async def labels_a4_sheet(
     if not ordered:
         raise HTTPException(status_code=404, detail="Aucun produit trouvé")
 
-    # Render every label through Labelary in parallel. Each call is ~200 ms
-    # so 8 labels take ~1 s total. If one fails (timeout, 5xx), we fall
-    # back to a clear placeholder for that cell so the rest still prints.
+    # Render the whole batch as ONE multi-page PDF via Labelary — each
+    # page = one Vintiz label. Two wins vs the previous "N PNGs assembled
+    # in HTML" approach :
+    #
+    #   1. 1 HTTP roundtrip to Labelary instead of N (latency, rate limit)
+    #   2. The operator can print the PDF directly on their A4 printer,
+    #      cutting along the page boundaries instead of approximating
+    #      80×120 mm cells in CSS that never quite matched the Zebra.
+    #
+    # The CSS grid path is kept as a fallback when Labelary is offline
+    # (the PDF call raises PreviewUnavailable) — we fall back to a
+    # one-PNG-per-cell HTML page so the cashier still gets *something*
+    # printable.
+    combined_zpl = "\n".join(
+        build_label_zpl(product_to_label_data(p)) for p in ordered
+    )
+    try:
+        pdf_bytes = await render_zpl_to_pdf(combined_zpl)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Disposition": f'inline; filename="etiquettes-{len(ordered)}.pdf"',
+            },
+        )
+    except PreviewUnavailable as exc:
+        logger.warning("Labelary PDF batch failed, falling back to PNG grid: %s", exc)
+
     async def _png_for(p: Product) -> str:
         zpl = build_label_zpl(product_to_label_data(p))
         try:
@@ -280,7 +310,6 @@ async def labels_a4_sheet(
             return ""
 
     pngs = await asyncio.gather(*[_png_for(p) for p in ordered])
-
     html_doc = _render_a4_sheet_from_pngs(pngs, cols=cols, rows=rows)
     return HTMLResponse(content=html_doc, headers={"Cache-Control": "no-store"})
 

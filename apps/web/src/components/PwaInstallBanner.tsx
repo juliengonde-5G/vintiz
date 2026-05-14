@@ -35,13 +35,25 @@ export default function PwaInstallBanner() {
 
     const stickyDismissed = localStorage.getItem(STORAGE_KEY) === STORAGE_VAL;
     setDismissed(stickyDismissed);
-    if (stickyDismissed) return;
 
+    // Always capture the deferred event — even if the user previously
+    // dismissed, we still want it cached so that `?reinstall=1` (or the
+    // /settings reset button) can fire the native prompt without a
+    // page reload.
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferred(e as BeforeInstallPromptEvent);
     };
     window.addEventListener('beforeinstallprompt', handler);
+
+    // Query string override : `/pos?reinstall=1` clears the sticky
+    // dismissal so the banner re-appears next time Chrome emits
+    // beforeinstallprompt. Useful when the cashier needs to reinstall
+    // after a tablet reset without digging through Chrome's storage.
+    if (window.location.search.includes('reinstall=1')) {
+      localStorage.removeItem(STORAGE_KEY);
+      setDismissed(false);
+    }
 
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);

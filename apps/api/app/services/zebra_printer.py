@@ -102,3 +102,75 @@ def send_test_label(*, host: str, port: int = DEFAULT_PORT) -> int:
         "^PQ1^XZ"
     )
     return send_zpl(test_zpl, host=host, port=port)
+
+
+def query_error_status(
+    *, host: str, port: int = DEFAULT_PORT, timeout: float = DEFAULT_TIMEOUT_S,
+) -> dict:
+    """Probe the Zebra error register via the ``~HQES`` SGD command.
+
+    Returns a structured dict describing the printer's current error
+    state. Helpful for the /settings test button : the operator sees
+    "Paper out" or "Head open" *before* trying to print and getting a
+    silent failure.
+
+    The Zebra responds with a multi-line ASCII payload of the form ::
+
+        PRINTER STATUS
+         ERRORS:         0 00000000 00000000
+         WARNINGS:       0 00000000 00000000
+         ...
+
+    We parse the ERRORS / WARNINGS bitmasks documented in the ZPL
+    programmer's guide (Zebra doc P1012728-008 §6.40).
+    """
+    if not host:
+        return {"online": False, "error": "host non configuré"}
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            sock.settimeout(timeout)
+            sock.sendall(b"~HQES\r\n")
+            buf = bytearray()
+            while True:
+                try:
+                    chunk = sock.recv(1024)
+                except socket.timeout:
+                    break
+                if not chunk:
+                    break
+                buf.extend(chunk)
+                if b"\x03" in chunk:  # ETX = end of response
+                    break
+            payload = buf.decode("ascii", errors="replace")
+    except (socket.timeout, OSError) as exc:
+        return {"online": False, "error": str(exc)}
+
+    # Parse the bitmask hex words. The "errors" line carries flags for
+    # head open, paper out, ribbon out, etc. — a non-zero value means
+    # the printer can't actually print.
+    error_flag = 0
+    warning_flag = 0
+    for line in payload.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("ERRORS:"):
+            parts = stripped.replace("ERRORS:", "").split()
+            if parts:
+                try:
+                    error_flag = int(parts[0])
+                except ValueError:
+                    error_flag = 0
+        elif stripped.startswith("WARNINGS:"):
+            parts = stripped.replace("WARNINGS:", "").split()
+            if parts:
+                try:
+                    warning_flag = int(parts[0])
+                except ValueError:
+                    warning_flag = 0
+    return {
+        "online": True,
+        "raw": payload[:500],
+        "error_flag": error_flag,
+        "warning_flag": warning_flag,
+        # Convenience boolean for the UI : True = ready, False = blocked
+        "ready": error_flag == 0,
+    }

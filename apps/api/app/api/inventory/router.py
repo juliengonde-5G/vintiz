@@ -228,7 +228,12 @@ async def search_products(
     pour la caisse — on ne propose que des articles vendables). Passer
     ``?include_sold=true`` pour inclure tout l'historique (ex: SAV, retours).
     """
-    pattern = f"%{q}%"
+    # Strip aggressively so a scanned barcode with a trailing CR/LF
+    # injected by the BCST-35 still resolves on the inventory page's
+    # search box (the user types a barcode then hits Enter, or the
+    # scanner injects Enter as its suffix — same effect).
+    clean = "".join(q.split()) or q.strip()
+    pattern = f"%{clean}%"
     query = (
         select(Product)
         .outerjoin(Category, Product.category_id == Category.id)
@@ -282,16 +287,22 @@ async def get_product_by_barcode(
 ):
     """Exact-match lookup by barcode — used by the POS scan flow.
 
-    Bypasses the status filter on /search so a freshly created product
-    (or one whose lifecycle stage isn't quite "stock") still resolves
-    when the cashier scans its printed label. The check on
-    "is this article vendable" stays the responsibility of the cart
-    code, which already handles non-stock statuses (e.g. refuses to
-    add a ``sold`` item twice).
+    Aggressively tolerant : the Inateck BCST-35 scanner sometimes
+    sends garbage characters before/after the data depending on its
+    keyboard locale and "suffix" config. We strip all whitespace and
+    fall back to a case-insensitive match so a CapsLock-flipped scan
+    still finds the product. The check on "is this article vendable"
+    stays the responsibility of the cart code (it already handles
+    non-stock statuses, e.g. refuses to add a ``sold`` item twice).
     """
-    code = (barcode or "").strip()
+    import logging
+    logger = logging.getLogger("vintiz")
+    # Strip all whitespace (including CR/LF/Tab the scanner may inject).
+    code = "".join((barcode or "").split())
     if not code:
         raise HTTPException(status_code=400, detail="barcode manquant")
+
+    # Exact match first.
     result = await db.execute(
         select(Product)
         .outerjoin(Category, Product.category_id == Category.id)
@@ -299,11 +310,32 @@ async def get_product_by_barcode(
         .limit(1)
     )
     product = result.scalar_one_or_none()
+
+    # Case-insensitive fallback — handles a CapsLock-flipped scan (the
+    # BCST-35 in FR keyboard layout sends "vtz-2026-123456" when caps
+    # is engaged, even though the printed Code 128 is uppercase).
     if product is None:
+        result = await db.execute(
+            select(Product)
+            .outerjoin(Category, Product.category_id == Category.id)
+            .where(Product.barcode.ilike(code))
+            .limit(1)
+        )
+        product = result.scalar_one_or_none()
+
+    # Inventory diagnostic log so the manager can see what was actually
+    # scanned when a "not found" report comes in. Logged at INFO so it
+    # ends up in the daily journal without spamming WARNING.
+    if product is None:
+        logger.info(
+            "barcode lookup miss : raw=%r normalised=%r — check that the printed label matches Product.barcode in DB",
+            barcode, code,
+        )
         raise HTTPException(
             status_code=404,
             detail=f"Aucun produit ne porte le code-barres {code}",
         )
+
     return {
         "id": str(product.id),
         "barcode": product.barcode,
