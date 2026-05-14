@@ -286,7 +286,12 @@ def build_receipt(transaction: Any, *, width: int = 42, cut: bool = True) -> byt
     out += BOLD_OFF
     out += _line("-" * width)
 
-    # Payments
+    # Payments — for CB payments backed by a SumUp transaction we add
+    # the card brand + last 4 digits + auth code + SumUp transaction
+    # code on dedicated lines. This is required by French ANC fiscal
+    # rules for card-present payments (the customer's "souche
+    # commerçant" must show the auth code and a way to reconcile back
+    # to the acquirer) and is also useful for SAV / disputes.
     payments = getattr(transaction, "payments", None) or []
     total_paid = Decimal("0")
     for payment in payments:
@@ -295,6 +300,23 @@ def build_receipt(transaction: Any, *, width: int = 42, cut: bool = True) -> byt
         amount = float(getattr(payment, "amount", 0) or 0)
         total_paid += Decimal(str(amount))
         out += _row(label, f"{amount:.2f} EUR", width=width)
+
+        # SumUp CB-specific detail block — only present when the
+        # payment was matched against a SumUp transaction (see
+        # migration 0037). Stays silent for cash/cheque/avoir.
+        card_brand = getattr(payment, "sumup_card_brand", None)
+        card_last4 = getattr(payment, "sumup_card_last4", None)
+        auth_code = getattr(payment, "sumup_auth_code", None)
+        tx_code = getattr(payment, "sumup_transaction_code", None)
+        if any((card_brand, card_last4, auth_code, tx_code)):
+            if card_brand or card_last4:
+                brand = (card_brand or "CB").upper()
+                last4 = card_last4 or "****"
+                out += _line(f"  {brand} **** {last4}"[:width])
+            if auth_code:
+                out += _line(f"  Authorisation : {auth_code}"[:width])
+            if tx_code:
+                out += _line(f"  Réf SumUp : {tx_code}"[:width])
 
     change = float(total_paid) - total_ttc
     if change > 0:

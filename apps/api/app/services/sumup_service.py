@@ -730,6 +730,45 @@ class SumUpService:
             ),
         }
 
+    async def get_official_receipt(
+        self,
+        *,
+        transaction_id: str,
+    ) -> dict | None:
+        """Fetch the official SumUp receipt JSON for a transaction.
+
+        Spec: ``GET /v1.1/receipts/{id}?mid={merchant_code}``.
+
+        Returns the structured receipt with merchant info, transaction
+        amount/VAT/tip, EMV data, auth_code, return_code etc. Used by
+        the back-office to display the SumUp-side copy (for SAV,
+        disputes, fiscal audits).
+
+        On the customer side, the Solo terminal already prompts for an
+        email/SMS receipt at checkout time — that flow is built into
+        the Solo firmware and doesn't need an API call from us. This
+        endpoint is for the **merchant copy**, which we render either
+        on our MUNBYN (via build_receipt) or on screen.
+        """
+        if not self.is_configured or not self.merchant_code or not transaction_id:
+            return None
+        if transaction_id.startswith(("NOKEY-", "ERR-")):
+            return None
+        url = f"https://api.sumup.com/v1.1/receipts/{transaction_id}"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    url,
+                    params={"mid": self.merchant_code},
+                    headers=self._headers,
+                )
+            if resp.status_code == 200:
+                return resp.json()
+            _log.warning("get_official_receipt %s → HTTP %s", transaction_id, resp.status_code)
+        except httpx.HTTPError as exc:
+            _log.warning("get_official_receipt network error: %s", exc)
+        return None
+
     async def get_transaction(
         self,
         *,
