@@ -193,9 +193,12 @@ export default function POSPage() {
   const [sumupStatus, setSumupStatus] = useState<{
     ready: boolean;
     online: boolean;
+    paired: boolean;
     configured: boolean;
     message: string;
     status: string;
+    state?: string | null;
+    battery_level?: number | null;
   } | null>(null);
 
   // Cashier identification (NF525 — P1-002)

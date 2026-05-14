@@ -10,14 +10,33 @@ The printer is an 80 mm thermal model, 42 characters wide in Font A.
 from __future__ import annotations
 
 import logging
+import os
 import socket
 import threading
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 _log = logging.getLogger("vintiz")
+
+# Vintiz logo for the ticket header — converted on the fly from the PNG
+# in app/assets/. The result is cached so we don't pay the resize +
+# threshold cost on every receipt. ``RECEIPT_LOGO_PATH`` env var lets
+# ops point at a different asset without redeploying.
+_LOGO_PATH = Path(
+    os.getenv(
+        "RECEIPT_LOGO_PATH",
+        str(Path(__file__).resolve().parent.parent / "assets" / "receipt-logo.png"),
+    )
+)
+# Logo printed at 320 dots wide (≈ 40 mm) so it sits comfortably in the
+# 80 mm paper with margin on both sides. The 047P's print zone is 576
+# dots — anything wider than that is silently clipped on the right.
+_LOGO_TARGET_WIDTH = 320
+_logo_raster_cache: bytes | None = None
+_logo_raster_lock = threading.Lock()
 
 # Per-host serialization: two concurrent ESC/POS streams on the same printer
 # would interleave bytes and corrupt the output (and the cash drawer kick
@@ -85,6 +104,88 @@ def _encode(text: str) -> bytes:
         return text.encode("ascii", errors="replace")
 
 
+def _build_logo_raster() -> bytes:
+    """Convert the Vintiz receipt logo PNG into an ESC/POS raster command.
+
+    Uses ``GS v 0 m xL xH yL yH d…`` (raster bit image) which is the
+    most widely supported image command on ESC/POS clones. The PNG is
+    composited on white, converted to 1-bit at ``_LOGO_TARGET_WIDTH``
+    dots wide, then packed MSB-first 8 pixels per byte. Cached for the
+    lifetime of the process.
+
+    Returns ``b""`` on any failure (missing file, Pillow not available,
+    image bigger than the buffer) so the receipt still prints without
+    the logo — better than failing the whole job because the asset
+    moved.
+    """
+    global _logo_raster_cache  # noqa: PLW0603 — module-level cache
+    with _logo_raster_lock:
+        if _logo_raster_cache is not None:
+            return _logo_raster_cache
+        try:
+            from PIL import Image  # local import — only needed once
+        except ImportError:
+            _log.warning("Pillow not available, receipt logo disabled")
+            _logo_raster_cache = b""
+            return b""
+        if not _LOGO_PATH.exists():
+            _log.warning("Receipt logo missing at %s", _LOGO_PATH)
+            _logo_raster_cache = b""
+            return b""
+        try:
+            im = Image.open(_LOGO_PATH).convert("RGBA")
+            ratio = _LOGO_TARGET_WIDTH / im.size[0]
+            target_h = int(im.size[1] * ratio)
+            bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
+            flat = Image.alpha_composite(bg, im).convert("L")
+            resized = flat.resize(
+                (_LOGO_TARGET_WIDTH, target_h), Image.LANCZOS
+            ).convert("1")
+            width_bytes = _LOGO_TARGET_WIDTH // 8
+            # Pillow's "1" mode is one bit per pixel ; black = 0, white = 1.
+            # ESC/POS raster expects "1 = burn / print" — invert.
+            pixels = resized.tobytes()
+            inverted = bytes(b ^ 0xFF for b in pixels)
+            x_l, x_h = width_bytes & 0xFF, (width_bytes >> 8) & 0xFF
+            y_l, y_h = target_h & 0xFF, (target_h >> 8) & 0xFF
+            header = GS + b"v0" + bytes([0, x_l, x_h, y_l, y_h])
+            _logo_raster_cache = header + inverted
+            return _logo_raster_cache
+        except Exception as exc:  # noqa: BLE001 — never fail the receipt
+            _log.warning("Receipt logo conversion failed: %s", exc)
+            _logo_raster_cache = b""
+            return b""
+
+
+def _item_detail_parts(item: Any) -> list[str]:
+    """Build extra description chips for one transaction item.
+
+    Pulls size / color / brand / barcode from the linked Product when
+    available. Falls back to whatever attributes the item itself carries
+    so the function also works with the dict-shaped transactions
+    returned by ``PosService.get_transaction`` (used by the resend
+    handler and the dashboard preview).
+    """
+    parts: list[str] = []
+
+    def _get(field: str) -> str | None:
+        value = getattr(item, field, None)
+        if value is None and hasattr(item, "product"):
+            value = getattr(item.product, field, None)
+        return value or None
+
+    size = _get("size")
+    if size:
+        parts.append(f"T.{size}")
+    color = _get("color")
+    if color:
+        parts.append(str(color))
+    brand = _get("brand")
+    if brand:
+        parts.append(str(brand))
+    return parts
+
+
 def _line(text: str = "") -> bytes:
     return _encode(text) + LF
 
@@ -100,6 +201,14 @@ def build_receipt(transaction: Any, *, width: int = 42, cut: bool = True) -> byt
     """Produce an ESC/POS byte stream for a completed Vintiz transaction."""
     out = bytearray()
     out += INIT
+
+    # Logo (centered raster image) — falls back silently to the text
+    # wordmark below if the PNG can't be loaded.
+    logo = _build_logo_raster()
+    if logo:
+        out += ALIGN_CENTER
+        out += logo
+        out += LF
 
     # Header (centered, bold, double size for store name)
     out += ALIGN_CENTER + BOLD_ON + DOUBLE_ON
@@ -118,15 +227,45 @@ def build_receipt(transaction: Any, *, width: int = 42, cut: bool = True) -> byt
     out += _line(f"Date: {dt.strftime('%d/%m/%Y %H:%M')}")
     out += _line("-" * width)
 
-    # Line items
+    # Line items — full detail: name, size/color/brand chips, optional
+    # barcode reference, qty × unit price + line total. The brief asked
+    # for more than a bare reference: the customer should be able to
+    # read what they bought from the ticket alone.
     items = getattr(transaction, "items", None) or []
     for item in items:
-        name = getattr(item, "product_name", None) or getattr(item, "name", None) or "Article"
+        product = getattr(item, "product", None)
+        name = (
+            getattr(item, "product_name", None)
+            or getattr(item, "name", None)
+            or getattr(product, "name", None)
+            or "Article"
+        )
         qty = getattr(item, "quantity", 1) or 1
         unit = float(getattr(item, "unit_price", 0) or 0)
         total = float(getattr(item, "line_total", qty * unit) or 0)
-        out += _line(name[: width])
-        out += _row(f"  {qty} x {unit:.2f}", f"{total:.2f} EUR", width=width)
+        discount = float(getattr(item, "discount_percent", 0) or 0)
+        barcode = (
+            getattr(item, "barcode", None)
+            or getattr(product, "barcode", None)
+            or None
+        )
+
+        out += _line(name[:width])
+        # Secondary chip line — only when there's actually something to show
+        chips = _item_detail_parts(item)
+        if chips:
+            out += _line("  " + " · ".join(chips)[: width - 2])
+        # Barcode reference on its own discreet line so the customer can
+        # spot the ref for an exchange / SAV without ambiguity
+        if barcode:
+            out += _line(f"  Réf : {barcode}"[:width])
+
+        discount_suffix = f" -{discount:.0f}%" if discount > 0 else ""
+        out += _row(
+            f"  {qty} x {unit:.2f}{discount_suffix}",
+            f"{total:.2f} EUR",
+            width=width,
+        )
 
     out += _line("-" * width)
 
@@ -162,12 +301,25 @@ def build_receipt(transaction: Any, *, width: int = 42, cut: bool = True) -> byt
     if hash_chain:
         out += _line(f"Hash NF525: {hash_chain[:16]}")
 
+    # Footer — wrapped in an explicit state reset so it always prints
+    # in the right size/alignment even if an earlier section left the
+    # printer in a weird state (some MUNBYN clones don't clear flags
+    # on LF). The previous version only printed "Merci..." and
+    # "vintiz.fr" with no buffer flush — on some firmwares the
+    # CUT_PARTIAL was reaching the cutter before the head had inked
+    # the footer.
     out += LF
     out += ALIGN_CENTER + BOLD_ON
     out += _line("Merci de votre visite !")
     out += BOLD_OFF
+    out += _line("Boutique de seconde main premium")
     out += _line("vintiz.fr")
-    out += LF + LF + LF
+    out += _line(f"Vernon, Normandie · {dt.strftime('%d/%m/%Y')}")
+    out += _line("À bientôt chez Vintiz !")
+    # Explicit feed before cut so the head has time to flush the
+    # buffer onto the paper before the cutter fires.
+    out += LF + LF
+    out += ALIGN_LEFT
 
     if cut:
         out += CUT_PARTIAL
