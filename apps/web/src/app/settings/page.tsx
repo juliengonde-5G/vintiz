@@ -1418,7 +1418,10 @@ export default function SettingsPage() {
                   </div>
                 </Card>
 
-                <Card title="Imprimante d&apos;etiquettes — SATO CT4-LX">
+                <Card title="Imprimante d&apos;étiquettes — Zebra ZD421d">
+                  <p className="text-xs text-vz-ink-mute mb-3">
+                    ZPL II sur Ethernet (port 9100). Format Vintiz 80×120 mm, thermique direct 203 dpi.
+                  </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="flex items-center gap-3 sm:col-span-2">
                       <input
@@ -1428,13 +1431,13 @@ export default function SettingsPage() {
                         onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, enabled: e.target.checked } })}
                         className="w-5 h-5 accent-vz-teal"
                       />
-                      <label htmlFor="lp-enabled" className="text-sm font-medium text-black">Activer l&apos;imprimante SATO</label>
+                      <label htmlFor="lp-enabled" className="text-sm font-medium text-black">Activer l&apos;imprimante Zebra</label>
                     </div>
                     <Input
                       label="Adresse IP"
                       value={hardware.label_printer.host}
                       onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, host: e.target.value } })}
-                      placeholder="192.168.1.51"
+                      placeholder="192.168.1.100"
                     />
                     <div>
                       <label className="block text-sm font-medium text-black mb-1.5">Port TCP</label>
@@ -1446,26 +1449,26 @@ export default function SettingsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-black mb-1.5">Largeur etiquette (mm)</label>
+                      <label className="block text-sm font-medium text-black mb-1.5">Largeur étiquette (mm)</label>
                       <input
                         type="number"
                         value={hardware.label_printer.label_width_mm}
-                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_width_mm: parseInt(e.target.value) || 50 } })}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_width_mm: parseInt(e.target.value) || 80 } })}
                         className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-black mb-1.5">Hauteur etiquette (mm)</label>
+                      <label className="block text-sm font-medium text-black mb-1.5">Hauteur étiquette (mm)</label>
                       <input
                         type="number"
                         value={hardware.label_printer.label_height_mm}
-                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_height_mm: parseInt(e.target.value) || 30 } })}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_height_mm: parseInt(e.target.value) || 120 } })}
                         className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
                   </div>
                   <div className="flex gap-2 mt-4">
-                    <Button onClick={testLabelPrinter} variant="secondary">Imprimer une etiquette de test</Button>
+                    <Button onClick={testLabelPrinter} variant="secondary">Imprimer une étiquette de test</Button>
                   </div>
                 </Card>
 

@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Card from '@/components/ui/Card';
+import LabelBatchBar from '@/components/inventory/LabelBatchBar';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
 
@@ -64,6 +65,9 @@ export default function InventoryPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null);
+  const [printingId, setPrintingId] = useState<string | null>(null);
 
   const pageSize = 20;
 
@@ -129,6 +133,49 @@ export default function InventoryPage() {
     if (p.category?.name) return p.category.name;
     const cat = categories.find(c => c.id === p.category_id);
     return cat?.name || '-';
+  };
+
+  const showToast = useCallback((message: string, kind: 'success' | 'error' = 'success') => {
+    setToast({ message, kind });
+    setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const allOnPageSelected = products.length > 0 && products.every((p) => selectedIds.has(p.id));
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) {
+        products.forEach((p) => next.delete(p.id));
+      } else {
+        products.forEach((p) => next.add(p.id));
+      }
+      return next;
+    });
+  };
+
+  const handlePrintOne = async (id: string) => {
+    setPrintingId(id);
+    try {
+      const res = await api.post(`/api/labels/print/${id}`, {});
+      const body = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (res.ok) {
+        showToast('Étiquette envoyée à l\'imprimante', 'success');
+      } else {
+        showToast((body.detail as string) || 'Imprimante hors ligne', 'error');
+      }
+    } catch {
+      showToast('Imprimante hors ligne', 'error');
+    } finally {
+      setPrintingId(null);
+    }
   };
 
   return (
@@ -223,6 +270,15 @@ export default function InventoryPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-3 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      aria-label="Tout sélectionner"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 accent-vz-teal cursor-pointer"
+                    />
+                  </th>
                   <th className="px-3 py-3 text-sm font-semibold text-gray-600 w-14">Photo</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Nom</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Code</th>
@@ -241,12 +297,24 @@ export default function InventoryPage() {
               <tbody>
                 {products.map((p) => {
                   const s = statusLabels[p.status] || statusLabels.stock;
+                  const isSelected = selectedIds.has(p.id);
                   return (
                     <tr
                       key={p.id}
-                      className="border-b border-gray-100 hover:bg-vz-accent-soft transition-colors cursor-pointer"
+                      className={`border-b border-gray-100 hover:bg-vz-accent-soft transition-colors cursor-pointer ${
+                        isSelected ? 'bg-vz-teal-soft/30' : ''
+                      }`}
                       onClick={() => router.push('/inventory/' + p.id)}
                     >
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          aria-label={`Sélectionner ${p.name}`}
+                          checked={isSelected}
+                          onChange={() => toggleSelect(p.id)}
+                          className="w-4 h-4 accent-vz-teal cursor-pointer"
+                        />
+                      </td>
                       <td className="px-3 py-2">
                         <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0">
                           {p.photo_url ? (
@@ -284,10 +352,22 @@ export default function InventoryPage() {
                           <span className="text-gray-300">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex gap-1">
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                            onClick={() => handlePrintOne(p.id)}
+                            disabled={printingId === p.id}
+                            className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg hover:bg-vz-teal-soft transition-colors text-gray-400 hover:text-vz-teal disabled:opacity-50"
+                            title="Imprimer l'étiquette"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="6 9 6 2 18 2 18 9" />
+                              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                              <rect x="6" y="14" width="12" height="8" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleDelete(p.id)}
                             className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg hover:bg-red-50 transition-colors text-gray-400 hover:text-red-600"
                             title="Supprimer"
                           >
@@ -333,6 +413,25 @@ export default function InventoryPage() {
           </div>
         )}
       </main>
+
+      <LabelBatchBar
+        selectedIds={Array.from(selectedIds)}
+        onCleared={() => setSelectedIds(new Set())}
+        onToast={showToast}
+      />
+
+      {toast && (
+        <div
+          role="status"
+          className={`fixed top-20 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
+            toast.kind === 'success'
+              ? 'bg-green-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }

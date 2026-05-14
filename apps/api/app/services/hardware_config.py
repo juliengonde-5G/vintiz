@@ -1,9 +1,9 @@
 """Persistent hardware configuration for Vintiz peripherals.
 
 Stores the network/USB settings for the receipt printer (MUNBYN 047P-WiFi),
-the label printer (SATO CT4-LX), the cash drawer (Safescan SD-4141 wired via
-the receipt printer's RJ-12 port) and the Bluetooth / USB barcode scanner
-(Inateck BCST-35).
+the label printer (Zebra ZD421d, ZPL over TCP), the cash drawer (Safescan
+SD-4141 wired via the receipt printer's RJ-12 port) and the Bluetooth / USB
+barcode scanner (Inateck BCST-35).
 
 The config is persisted on disk under ``data/hardware.json`` (next to the
 API process) so it survives reloads. Defaults can be overridden via env
@@ -47,17 +47,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "on_time_ms": 50,
         "off_time_ms": 250,
     },
-    # Label printer — SATO CT4-LX, SBPL, 4 inch thermal transfer
+    # Label printer — Zebra ZD421d, ZPL II, 4 inch direct thermal
     "label_printer": {
         "enabled": False,
-        "model": "SATO CT4-LX",
-        "protocol": "sbpl",
+        "model": "Zebra ZD421d",
+        "protocol": "zpl",
         "connection": "network",
-        "host": os.getenv("LABEL_PRINTER_HOST", ""),
-        "port": int(os.getenv("LABEL_PRINTER_PORT", "9100")),
+        "host": os.getenv("ZEBRA_PRINTER_IP", os.getenv("LABEL_PRINTER_HOST", "")),
+        "port": int(os.getenv("ZEBRA_PRINTER_PORT", os.getenv("LABEL_PRINTER_PORT", "9100"))),
         "dpi": 203,
-        "label_width_mm": 50,
-        "label_height_mm": 30,
+        "label_width_mm": 80,
+        "label_height_mm": 120,
     },
     # Barcode scanner — Inateck BCST-35 2D (HID keyboard mode by default)
     "barcode_scanner": {

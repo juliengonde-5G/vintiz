@@ -166,29 +166,32 @@ export default function ProductDetailPage() {
     setShowLabel(true);
     setSatoMsg('');
     try {
-      const res = await api.get(`/api/inventory/products/${productId}/label`);
+      const res = await api.get(`/api/labels/preview/${productId}`);
       if (res.ok) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         setLabelUrl(url);
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setSatoMsg(e.detail || 'Aperçu indisponible — Labelary injoignable');
       }
     } catch { /* show error in modal */ }
     setLabelLoading(false);
   };
 
-  const handlePrintSato = async () => {
+  const handlePrintZebra = async () => {
     setSatoSending(true);
     setSatoMsg('');
     try {
-      const res = await api.post(`/api/inventory/products/${productId}/print-label?quantity=1`, {});
+      const res = await api.post(`/api/labels/print/${productId}`, {});
       if (res.ok) {
-        setSatoMsg('Etiquette envoyee a la SATO CT4-LX');
+        setSatoMsg('Étiquette envoyée à l\'imprimante Zebra');
       } else {
         const e = await res.json().catch(() => ({}));
-        setSatoMsg(e.detail || 'Echec de l\'impression SATO');
+        setSatoMsg(e.detail || 'Échec de l\'impression Zebra');
       }
     } catch {
-      setSatoMsg('Erreur de connexion SATO');
+      setSatoMsg('Erreur réseau — imprimante injoignable');
     }
     setSatoSending(false);
   };
@@ -431,8 +434,8 @@ export default function ProductDetailPage() {
                     const win = window.open(labelUrl, '_blank');
                     win?.print();
                   }}>🖨 Imprimer</Button>
-                  <Button onClick={handlePrintSato} disabled={satoSending} variant="secondary">
-                    {satoSending ? 'Envoi...' : 'Imprimer sur SATO'}
+                  <Button onClick={handlePrintZebra} disabled={satoSending} variant="secondary">
+                    {satoSending ? 'Envoi...' : 'Imprimer sur Zebra'}
                   </Button>
                 </div>
                 {satoMsg && <p className="text-sm text-vz-teal mt-2">{satoMsg}</p>}

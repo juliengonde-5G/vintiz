@@ -7,7 +7,7 @@ Exposes endpoints for the back-office "Materiel" settings tab:
 * ``GET  /hardware/compatibility``  — static matrix of supported peripherals
 * ``POST /hardware/receipt/test``   — send a test ticket (MUNBYN)
 * ``POST /hardware/drawer/kick``    — pulse the Safescan drawer
-* ``POST /hardware/label/test``     — send a test label (SATO)
+* ``POST /hardware/label/test``     — send a test label (Zebra ZD421d)
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from app.core.security import get_current_user
 from app.models.user import User
-from app.services import escpos_service, sato_service
+from app.services import escpos_service
 from app.services.hardware_config import load_config, save_config
 
 router = APIRouter(prefix="/hardware", tags=["hardware"])
@@ -61,10 +61,10 @@ COMPATIBILITY_MATRIX = [
     {
         "category": "label_printer",
         "label": "Imprimante d'etiquettes",
-        "model": "SATO CT4-LX",
-        "connection": "Ethernet / USB (SBPL)",
+        "model": "Zebra ZD421d",
+        "connection": "Ethernet (ZPL II, port 9100)",
         "supported": True,
-        "notes": "Impression des etiquettes Vintiz 50x30 mm (transfert thermique 203 dpi).",
+        "notes": "Etiquettes Vintiz 80x120 mm (thermique direct 203 dpi). Apercu via Labelary.",
     },
     {
         "category": "payment_terminal",
@@ -151,14 +151,23 @@ async def label_test(
     req: TestPrintRequest,
     current_user: User = Depends(get_current_user),
 ):
-    """Send a test SBPL label to the SATO CT4-LX."""
+    """Send a test ZPL label to the Zebra ZD421d.
+
+    Kept under /hardware/label/test for legacy compatibility with the
+    settings UI, but the actual driver is now ``zebra_printer``. The
+    canonical endpoint going forward is ``POST /api/labels/test-print``.
+    """
+    from app.services import zebra_printer
+
     cfg = load_config()["label_printer"]
     host = req.host or cfg.get("host") or ""
-    port = int(req.port or cfg.get("port") or 9100)
+    port = int(req.port or cfg.get("port") or zebra_printer.DEFAULT_PORT)
     if not host:
-        raise HTTPException(status_code=400, detail="Imprimante SATO non configuree")
+        raise HTTPException(
+            status_code=400, detail="Imprimante étiquettes non configurée"
+        )
     try:
-        sato_service.print_test(host, port)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Imprimante SATO injoignable : {exc}") from exc
+        zebra_printer.send_test_label(host=host, port=port)
+    except zebra_printer.PrinterUnreachable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"success": True, "host": host, "port": port}

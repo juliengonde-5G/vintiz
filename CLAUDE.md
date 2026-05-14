@@ -58,7 +58,7 @@ docs/
 | Site public | Next.js 14 App Router + Tailwind CSS — landing + SEO + GA4 |
 | Barcode | python-barcode + Pillow (Code 128) |
 | Imprimante ticket | **MUNBYN 047P-WiFi** ESC/POS 80 mm (réseau, port 9100) **ou** AirPrint via `window.print()` |
-| Imprimante étiquettes | **SATO CT4-LX** SBPL 4″ thermique (réseau, port 9100) |
+| Imprimante étiquettes | **Zebra ZD421d** ZPL II thermique direct 80×120 mm (réseau, port 9100) — preview Labelary |
 | Douchette | **Inateck BCST-35** USB HID (champ POS auto-focus) ou Inateck 160B |
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 kické par l'imprimante ESC/POS (`ESC p m`) |
 | TPE | **SumUp Solo** Wi-Fi (push direct possible via `SUMUP_READER_ID`) |
@@ -134,8 +134,8 @@ SUMUP_RETURN_URL=                 # optionnel: callback après paiement reader
 # Hardware (optionnel — sinon configurable via /settings > Materiel)
 RECEIPT_PRINTER_HOST=             # IP de la MUNBYN 047P-WiFi
 RECEIPT_PRINTER_PORT=9100
-LABEL_PRINTER_HOST=               # IP de la SATO CT4-LX
-LABEL_PRINTER_PORT=9100
+ZEBRA_PRINTER_IP=                 # IP de la Zebra ZD421d (legacy: LABEL_PRINTER_HOST fallback)
+ZEBRA_PRINTER_PORT=9100
 VINTIZ_HARDWARE_CONFIG=           # chemin custom du fichier hardware.json (défaut: data/hardware.json)
 
 # Email transactional (P4-003) — gateway unifié Brevo > SMTP > simulation.
@@ -210,7 +210,10 @@ GET    /api/pos/cashier/list                 Lister utilisateurs + statut PIN (m
 GET    /api/inventory/products               Liste produits (paginée)
 GET    /api/inventory/products/search?q=…    Recherche (filtre stock+display par défaut, &include_sold=true sinon)
 GET    /api/inventory/products/{id}          Fiche produit
-GET    /api/inventory/products/{id}/label    Étiquette PNG (ou impression SATO si configurée)
+POST   /api/labels/print/{product_id}        Impression unitaire Zebra (ZPL TCP 9100)
+POST   /api/labels/print/batch                Impression multiple (body: product_ids[], copies)
+GET    /api/labels/preview/{product_id}       Aperçu PNG Labelary (image/png)
+GET    /api/labels/printer/status             Ping TCP imprimante (online/offline + latency_ms)
 GET    /api/inventory/products/{id}/score    Score détaillé
 GET    /api/inventory/products/{id}/photos   Liste multi-photos
 POST   /api/inventory/products/{id}/photos   Ajouter une photo (url + AI fields)
@@ -248,7 +251,7 @@ GET    /api/hardware/config                  Lire config persistée (data/hardwa
 PUT    /api/hardware/config                  Modifier config (IP imprimante, kick pin…)
 POST   /api/hardware/receipt/test            Imprimer un ticket de test (MUNBYN ESC/POS)
 POST   /api/hardware/drawer/kick             Ouvrir tiroir (impulsion ESC p m via printer)
-POST   /api/hardware/label/test              Imprimer étiquette de test (SATO SBPL)
+POST   /api/hardware/label/test              Imprimer étiquette de test (Zebra ZPL)
 
 # Cahier de travail (back-office /dashboard/cahier-du-jour)
 GET    /api/cahier/{report_date}                Données cahier journalier (KPI + objectifs + IA)
@@ -441,7 +444,7 @@ GET    /api/admin/predictive/audience?period_days=90  Snapshot debug dominant ta
 - Boutons de test live :
   - "Imprimer ticket test" (MUNBYN ESC/POS port 9100)
   - "Kicker tiroir" (impulsion `ESC p m`)
-  - "Imprimer étiquette test" (SATO SBPL port 9100)
+  - "Imprimer étiquette test" (Zebra ZPL port 9100)
 - Tableau de compatibilité avec annotations (`/api/hardware/compatibility`)
 - Utilisable même en production : pas de redéploiement requis pour changer une IP
 
@@ -593,7 +596,7 @@ Matériel supporté :
 | Tablette caisse | iPad (Safari) | — | — |
 | Douchette code-barres | **Inateck BCST-35** ou **160B** | USB HID (clavier) | Auto-focus champ POS |
 | Imprimante ticket | **MUNBYN 047P-WiFi** ESC/POS 80 mm | Réseau (port 9100) | `app/services/escpos_service.py` |
-| Imprimante étiquettes | **SATO CT4-LX** SBPL 4″ | Réseau (port 9100) | `app/services/sato_service.py` |
+| Imprimante étiquettes | **Zebra ZD421d** ZPL II 80×120 mm | Réseau (port 9100) | `app/services/zebra_printer.py` + `zebra_zpl.py` |
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 | Branché sur imprimante (kick `ESC p m`) | inclus dans `escpos_service` |
 | TPE | **SumUp Solo** | Wi-Fi / compte SumUp | `app/services/sumup_service.py` |
 
