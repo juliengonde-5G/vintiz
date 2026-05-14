@@ -202,13 +202,19 @@ def build_receipt(transaction: Any, *, width: int = 42, cut: bool = True) -> byt
     out = bytearray()
     out += INIT
 
-    # Logo (centered raster image) — falls back silently to the text
-    # wordmark below if the PNG can't be loaded.
-    logo = _build_logo_raster()
-    if logo:
-        out += ALIGN_CENTER
-        out += logo
-        out += LF
+    # Logo : the `GS v 0` raster command is OFF by default because
+    # several MUNBYN 047P firmware revisions don't recognise it and
+    # print the raw bytes as garbled ASCII at the top of the ticket
+    # (verified in boutique 2026-05-14). Set
+    # ``RECEIPT_PRINT_RASTER_LOGO=true`` to opt-in once your printer
+    # has been verified to support GS v 0. The text "VINTIZ" header
+    # below stays in bold + double size and serves as the wordmark.
+    if os.getenv("RECEIPT_PRINT_RASTER_LOGO", "false").lower() in {"1", "true", "yes"}:
+        logo = _build_logo_raster()
+        if logo:
+            out += ALIGN_CENTER
+            out += logo
+            out += LF
 
     # Header (centered, bold, double size for store name)
     out += ALIGN_CENTER + BOLD_ON + DOUBLE_ON

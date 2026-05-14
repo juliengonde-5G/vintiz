@@ -199,6 +199,8 @@ export default function POSPage() {
     status: string;
     state?: string | null;
     battery_level?: number | null;
+    is_sandbox?: boolean;
+    environment?: string;
   } | null>(null);
 
   // Cashier identification (NF525 — P1-002)
@@ -1269,6 +1271,13 @@ export default function POSPage() {
           when the TPE is unreachable or misconfigured. Lets the cashier
           either fix the issue or skip CB and encash cash/cheque
           without waiting 30 s for a wizard timeout. */}
+      {sumupStatus?.is_sandbox && (
+        <div className="flex-shrink-0 px-3 py-2 bg-orange-100 border-b border-orange-300 text-orange-900 text-sm flex items-center gap-2 font-medium">
+          <span className="inline-block w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+          <strong>MODE TEST SumUp</strong>
+          <span className="opacity-80">— clé sup_sk_test_… utilisée. Ne pas encaisser de vrais paiements.</span>
+        </div>
+      )}
       {sumupStatus && !sumupStatus.ready && (
         <div className="flex-shrink-0 px-3 py-2 bg-yellow-50 border-b border-yellow-200 text-yellow-900 text-sm flex items-center gap-2">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
