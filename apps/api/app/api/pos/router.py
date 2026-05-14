@@ -464,6 +464,11 @@ class CBInitiateRequest(BaseModel):
 
 class ResendRequest(BaseModel):
     channel: str  # 'email' or 'sms'
+    # Optional ad-hoc recipient (walk-in customer with no CRM record).
+    # When set, overrides the client's stored email/phone on the
+    # transaction. When omitted, the linked client's email/phone is used
+    # as before.
+    to: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -540,13 +545,21 @@ async def resend_transaction(
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction introuvable")
     logger.info(
-        "Receipt resend requested by user=%s for transaction=%s channel=%s",
-        current_user.id, transaction_id, request.channel,
+        "Receipt resend requested by user=%s for transaction=%s channel=%s ad_hoc=%s",
+        current_user.id, transaction_id, request.channel, bool(request.to),
     )
 
-    client = transaction.get("client")
-    if not client:
-        raise HTTPException(status_code=400, detail="Aucun client associe a cette transaction")
+    client = transaction.get("client") or {}
+    ad_hoc_to = (request.to or "").strip() or None
+    # Greeting derived from the linked client first name when present;
+    # falls back to a neutral wording for ad-hoc recipients.
+    greeting_name = client.get("first_name") if client else None
+
+    if not ad_hoc_to and not client:
+        raise HTTPException(
+            status_code=400,
+            detail="Aucun client associe a cette transaction — fournissez 'to'",
+        )
 
     ticket_num = transaction["transaction_number"]
     total = transaction["total_ttc"]
@@ -556,16 +569,21 @@ async def resend_transaction(
     )
 
     if request.channel == "email":
-        if not client.get("email"):
-            raise HTTPException(status_code=400, detail="Ce client n'a pas d'adresse email")
+        recipient = ad_hoc_to or client.get("email")
+        if not recipient:
+            raise HTTPException(
+                status_code=400,
+                detail="Adresse email manquante (ni client, ni 'to' fourni)",
+            )
         from app.services.email_gateway import (
             EmailDeliveryError,
             EmailMessage,
             send_email as _gateway_send,
         )
 
+        salutation = f"Bonjour {greeting_name}" if greeting_name else "Bonjour"
         body_text = (
-            f"Bonjour {client['first_name']},\n\n"
+            f"{salutation},\n\n"
             f"Voici le recu de votre achat chez Vintiz.\n\n"
             f"Ticket #{ticket_num}\n"
             f"Articles :\n{items_text}\n\n"
@@ -576,8 +594,8 @@ async def resend_transaction(
 
         try:
             outcome = _gateway_send(EmailMessage(
-                to=client["email"],
-                to_name=client.get("first_name"),
+                to=recipient,
+                to_name=greeting_name,
                 subject=f"Votre reçu Vintiz #{ticket_num}",
                 html=body_html,
                 text=body_text,
@@ -592,11 +610,15 @@ async def resend_transaction(
         logger.info("Receipt email %s for transaction %s via %s",
                     outcome.status, transaction_id, outcome.backend)
         prefix = "" if outcome.status == "sent" else "[SIMULE] "
-        return {"success": True, "message": f"{prefix}Email envoyé à {client['email']}"}
+        return {"success": True, "message": f"{prefix}Email envoyé à {recipient}"}
 
     elif request.channel == "sms":
-        if not client.get("phone"):
-            raise HTTPException(status_code=400, detail="Ce client n'a pas de numero de telephone")
+        recipient = ad_hoc_to or client.get("phone")
+        if not recipient:
+            raise HTTPException(
+                status_code=400,
+                detail="Numéro de téléphone manquant (ni client, ni 'to' fourni)",
+            )
         if settings.TWILIO_ACCOUNT_SID:
             try:
                 from twilio.rest import Client as TwilioClient
@@ -604,10 +626,10 @@ async def resend_transaction(
                 tw.messages.create(
                     body=f"Vintiz - Ticket #{ticket_num} - Total {total:.2f}EUR. Merci !",
                     from_=settings.TWILIO_FROM,
-                    to=client["phone"],
+                    to=recipient,
                 )
                 logger.info("Receipt SMS sent for transaction %s", transaction_id)
-                return {"success": True, "message": f"SMS envoye au {client['phone']}"}
+                return {"success": True, "message": f"SMS envoye au {recipient}"}
             except Exception:
                 logger.exception("Failed to send receipt SMS for transaction %s", transaction_id)
                 raise HTTPException(
@@ -616,7 +638,7 @@ async def resend_transaction(
                 )
         else:
             logger.info("Receipt SMS simulated for transaction %s", transaction_id)
-            return {"success": True, "message": f"[SIMULE] SMS envoye au {client['phone']}"}
+            return {"success": True, "message": f"[SIMULE] SMS envoye au {recipient}"}
     else:
         raise HTTPException(status_code=400, detail="Canal invalide (email ou sms)")
 
@@ -701,6 +723,65 @@ async def print_transaction_receipt(
         if drawer_error:
             response["drawer_error"] = drawer_error
     return response
+
+
+@router.get("/transactions/{transaction_id}/escpos")
+async def get_transaction_escpos(
+    transaction_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    kick_drawer: bool = False,
+):
+    """Return the raw ESC/POS byte stream for the receipt.
+
+    Used by the WebUSB flow on the cashier tablet (Lenovo Idea Tab Pro):
+    the front fetches these bytes and pipes them to the MUNBYN directly
+    over USB-OTG, bypassing the backend's TCP socket. Same ``build_receipt``
+    helper as the network path, so the printed output is identical.
+
+    Pass ``kick_drawer=true`` to append the ``ESC p`` drawer pulse at the
+    end of the payload (used on cash sales when the drawer is wired to
+    the printer's RJ-12 port).
+    """
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from fastapi.responses import Response
+
+    from app.models.pos import Transaction
+    from app.services import escpos_service
+    from app.services.hardware_config import load_config
+
+    result = await db.execute(
+        select(Transaction)
+        .options(selectinload(Transaction.items), selectinload(Transaction.payments))
+        .where(Transaction.id == transaction_id)
+    )
+    transaction = result.scalar_one_or_none()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction introuvable")
+
+    cfg = load_config()
+    rp = cfg["receipt_printer"]
+    payload = escpos_service.build_receipt(
+        transaction,
+        width=int(rp.get("width_chars") or 42),
+        cut=bool(rp.get("cut_paper", True)),
+    )
+    if kick_drawer:
+        drawer_cfg = cfg["cash_drawer"]
+        payload += escpos_service.build_drawer_kick(
+            pin=int(drawer_cfg.get("kick_pin") or 0),
+            on_time=int(drawer_cfg.get("on_time_ms") or 50),
+            off_time=int(drawer_cfg.get("off_time_ms") or 250),
+        )
+    return Response(
+        content=bytes(payload),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="receipt-{transaction_id}.bin"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get(

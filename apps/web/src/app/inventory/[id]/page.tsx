@@ -430,10 +430,20 @@ export default function ProductDetailPage() {
                   <a href={labelUrl} download={`etiquette-${product.barcode}.png`}>
                     <Button variant="outline">⬇ Télécharger</Button>
                   </a>
-                  <Button onClick={() => {
-                    const win = window.open(labelUrl, '_blank');
-                    win?.print();
-                  }}>🖨 Imprimer</Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      // Mode dégradé : planche A4 (1 étiquette, agrandie)
+                      // sur une imprimante classique.
+                      window.open(
+                        `/api/labels/sheet?ids=${productId}&cols=1&rows=1`,
+                        '_blank',
+                        'noopener',
+                      );
+                    }}
+                  >
+                    📄 Planche A4
+                  </Button>
                   <Button onClick={handlePrintZebra} disabled={satoSending} variant="secondary">
                     {satoSending ? 'Envoi...' : 'Imprimer sur Zebra'}
                   </Button>

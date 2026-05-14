@@ -53,6 +53,13 @@ export default function LabelBatchBar({ selectedIds, onCleared, onToast }: Label
 
   const printable = status?.online && status?.enabled;
 
+  const handleA4Sheet = () => {
+    // Mode dégradé : ouvre une planche A4 imprimable dans un nouvel
+    // onglet. window.print() se déclenche tout seul côté serveur.
+    const qs = new URLSearchParams({ ids: selectedIds.join(',') });
+    window.open(`/api/labels/sheet?${qs.toString()}`, '_blank', 'noopener');
+  };
+
   const handleBatch = async () => {
     setSending(true);
     try {
@@ -99,6 +106,21 @@ export default function LabelBatchBar({ selectedIds, onCleared, onToast }: Label
 
         <button
           type="button"
+          onClick={handleA4Sheet}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-vz-line text-vz-ink-soft hover:bg-vz-bg-alt transition-colors"
+          title="Mode dégradé : planche A4 sur imprimante classique"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="4" y="3" width="16" height="18" rx="2" />
+            <line x1="8" y1="8" x2="16" y2="8" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+            <line x1="8" y1="16" x2="12" y2="16" />
+          </svg>
+          Planche A4
+        </button>
+
+        <button
+          type="button"
           disabled={sending || !printable}
           onClick={handleBatch}
           className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
@@ -113,7 +135,7 @@ export default function LabelBatchBar({ selectedIds, onCleared, onToast }: Label
             <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
             <rect x="6" y="14" width="12" height="8" />
           </svg>
-          {sending ? 'Envoi…' : `Imprimer les étiquettes (${selectedIds.length})`}
+          {sending ? 'Envoi…' : `Imprimer Zebra (${selectedIds.length})`}
         </button>
       </div>
     </div>

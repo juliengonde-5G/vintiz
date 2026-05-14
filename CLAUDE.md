@@ -57,7 +57,7 @@ docs/
 | Admin UI | Next.js 14 App Router + Tailwind CSS |
 | Site public | Next.js 14 App Router + Tailwind CSS — landing + SEO + GA4 |
 | Barcode | python-barcode + Pillow (Code 128) |
-| Imprimante ticket | **MUNBYN 047P-WiFi** ESC/POS 80 mm (réseau, port 9100) **ou** AirPrint via `window.print()` |
+| Imprimante ticket | **MUNBYN 047P** ESC/POS 80 mm — réseau (port 9100) **ou** USB-OTG via WebUSB sur tablette Android |
 | Imprimante étiquettes | **Zebra ZD421d** ZPL II thermique direct 80×120 mm (réseau, port 9100) — preview Labelary |
 | Douchette | **Inateck BCST-35** USB HID (champ POS auto-focus) ou Inateck 160B |
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 kické par l'imprimante ESC/POS (`ESC p m`) |
@@ -214,6 +214,9 @@ POST   /api/labels/print/{product_id}        Impression unitaire Zebra (ZPL TCP 
 POST   /api/labels/print/batch                Impression multiple (body: product_ids[], copies)
 GET    /api/labels/preview/{product_id}       Aperçu PNG Labelary (image/png)
 GET    /api/labels/printer/status             Ping TCP imprimante (online/offline + latency_ms)
+GET    /api/labels/sheet?ids=…&cols=2&rows=4  Mode dégradé : planche A4 HTML (window.print auto)
+GET    /api/pos/transactions/{id}/escpos      Bytes ESC/POS bruts pour WebUSB (mode tablette)
+GET    /api/hardware/receipt/test-escpos     Bytes ESC/POS pour ticket test WebUSB
 GET    /api/inventory/products/{id}/score    Score détaillé
 GET    /api/inventory/products/{id}/photos   Liste multi-photos
 POST   /api/inventory/products/{id}/photos   Ajouter une photo (url + AI fields)
@@ -234,7 +237,7 @@ GET    /api/inventory/locate?q=              Localiser un produit en boutique (P
 POST   /api/pos/transactions                 Créer une vente (idempotent via client_uuid optionnel — replay offline safe)
 POST   /api/pos/transactions/{id}/refund     Refund partiel/total (cash/card/cheque/avoir)
 GET    /api/pos/transactions/{id}/receipt    Texte du ticket (80 mm)
-POST   /api/pos/transactions/{id}/resend     Renvoyer ticket (email/SMS)
+POST   /api/pos/transactions/{id}/resend     Renvoyer ticket (email/SMS, body: channel + to optionnel pour walk-in)
 POST   /api/pos/drawer/open                  Ouvrir la caisse (fond initial)
 POST   /api/pos/drawer/close                 Fermer + rapport Z
 GET    /api/pos/drawer/current               État tiroir
