@@ -53,6 +53,10 @@ export default function NewProductPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  // Keep the raw File so we can upload it after the product is created.
+  // ``photoPreview`` is just the base64 data URL for the preview; the
+  // real upload needs the binary blob.
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [showLabel, setShowLabel] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -87,6 +91,10 @@ export default function NewProductPage() {
   };
 
   const handleFileSelect = async (file: File) => {
+    // Keep the raw blob so handleSave can upload it after the product
+    // is created — the preview is only useful for the form UI.
+    setPhotoFile(file);
+
     // Show preview
     const reader = new FileReader();
     reader.onload = (e) => setPhotoPreview(e.target?.result as string);
@@ -185,7 +193,28 @@ export default function NewProductPage() {
         status: form.status,
         week_number: parseInt(form.week_number) || null,
       });
-      if (res.ok) { const savedProduct = await res.json(); router.push('/inventory/' + savedProduct.id + '?showLabel=true');
+      if (res.ok) {
+        const savedProduct = await res.json();
+        // Upload the photo selected by the operator AFTER the product
+        // exists (the endpoint needs the product id). Previously the
+        // preview was captured but never sent, so newly created
+        // products showed up without a photo even though one was
+        // visible on the form.
+        if (photoFile) {
+          try {
+            const fd = new FormData();
+            fd.append('file', photoFile);
+            await api.upload(
+              `/api/inventory/products/${savedProduct.id}/photos/upload`,
+              fd,
+            );
+          } catch {
+            // Non-blocking: the product is saved, only the photo
+            // attachment failed. The operator can re-add it from the
+            // product detail page (it has its own gallery uploader).
+          }
+        }
+        router.push('/inventory/' + savedProduct.id + '?showLabel=true');
       } else {
         const data = await res.json().catch(() => ({}));
         setError(data.detail || 'Erreur lors de la creation');

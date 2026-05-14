@@ -432,14 +432,31 @@ export default function ProductDetailPage() {
                   </a>
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      // Mode dégradé : planche A4 (1 étiquette, agrandie)
-                      // sur une imprimante classique.
-                      window.open(
-                        `/api/labels/sheet?ids=${productId}&cols=1&rows=1`,
-                        '_blank',
-                        'noopener',
-                      );
+                    onClick={async () => {
+                      // Mode dégradé : fetch authentifié + blob URL. Le
+                      // window.open direct sur /api/labels/sheet déclenche
+                      // un 404 (pas de token Bearer en navigation, et URL
+                      // résolue sur l'origin du front en prod).
+                      try {
+                        const qs = new URLSearchParams({
+                          ids: productId,
+                          cols: '1',
+                          rows: '1',
+                        });
+                        const res = await api.get(`/api/labels/sheet?${qs.toString()}`);
+                        if (!res.ok) {
+                          const body = await res.json().catch(() => ({}));
+                          setSatoMsg(body.detail || 'Impossible de générer la planche A4');
+                          return;
+                        }
+                        const html = await res.text();
+                        const blob = new Blob([html], { type: 'text/html' });
+                        const url = URL.createObjectURL(blob);
+                        window.open(url, '_blank', 'noopener');
+                        setTimeout(() => URL.revokeObjectURL(url), 30_000);
+                      } catch {
+                        setSatoMsg('Erreur réseau — planche A4');
+                      }
                     }}
                   >
                     📄 Planche A4

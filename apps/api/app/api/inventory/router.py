@@ -137,6 +137,21 @@ async def create_product_from_photo(
     return result
 
 
+def _generate_vintiz_barcode() -> str:
+    """Generate a Vintiz-formatted barcode for new products.
+
+    Format: ``VTZ`` prefix + 10 uppercase alphanum chars from a UUID.
+    The hyphens that ``str(uuid.uuid4())`` produces are stripped so the
+    barcode is purely alphanumeric — some cheap HID scanners (notably
+    the Inateck BCST-35 on FR keyboard layout) drop or mistranslate
+    the dash, which led to "barcode generated but unrecognised on scan"
+    bug reports in production.
+    """
+    import secrets
+    token = secrets.token_hex(5).upper()  # 10 chars, [0-9A-F]
+    return f"VTZ{token}"
+
+
 @router.post("/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 async def create_product(
     product_in: ProductCreate,
@@ -144,8 +159,21 @@ async def create_product(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Create a new product."""
-    # Generate a barcode if not provided
-    barcode_value = product_in.barcode or str(uuid.uuid4())[:12]
+    barcode_value = product_in.barcode or _generate_vintiz_barcode()
+
+    # Coerce the string status into the enum explicitly. Without this,
+    # SQLAlchemy can leave the raw string in the column on some
+    # drivers, and the ``Product.status.in_([ProductStatus.stock, …])``
+    # filter at /search then fails to match — symptomatic of the
+    # "newly created product not found on scan" bug.
+    try:
+        status_enum = ProductStatus(product_in.status)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"status invalide : {product_in.status}. Valeurs autorisées : "
+                   f"{[s.value for s in ProductStatus]}",
+        )
 
     product = Product(
         barcode=barcode_value,
@@ -156,7 +184,7 @@ async def create_product(
         brand=product_in.brand,
         purchase_price=product_in.purchase_price,
         sale_price=product_in.sale_price,
-        status=product_in.status,
+        status=status_enum,
         week_number=product_in.week_number,
     )
     db.add(product)
@@ -208,8 +236,17 @@ async def search_products(
         )
     )
     if not include_sold:
+        # Accept the full "vendable" lifecycle, not just the legacy
+        # ``stock`` + ``display`` pair. ``displayed`` is what the
+        # automated lifecycle uses for products actually on the floor.
         query = query.where(
-            Product.status.in_([ProductStatus.stock, ProductStatus.display])
+            Product.status.in_([
+                ProductStatus.stock,
+                ProductStatus.display,
+                ProductStatus.displayed,
+                ProductStatus.discounted,
+                ProductStatus.deep_discounted,
+            ])
         )
     query = query.limit(20)
     result = await db.execute(query)
@@ -223,9 +260,54 @@ async def search_products(
             "sale_price": float(p.sale_price),
             "status": p.status.value,
             "category": p.category.name if p.category else None,
+            # Surface the product photo so the POS can render a
+            # thumbnail in the search results — the cashier can then
+            # confirm visually before adding the item to the cart.
+            "photo_url": getattr(p, "photo_url", None),
         }
         for p in products
     ]
+
+
+@router.get("/products/by-barcode/{barcode}")
+async def get_product_by_barcode(
+    barcode: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Exact-match lookup by barcode — used by the POS scan flow.
+
+    Bypasses the status filter on /search so a freshly created product
+    (or one whose lifecycle stage isn't quite "stock") still resolves
+    when the cashier scans its printed label. The check on
+    "is this article vendable" stays the responsibility of the cart
+    code, which already handles non-stock statuses (e.g. refuses to
+    add a ``sold`` item twice).
+    """
+    code = (barcode or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="barcode manquant")
+    result = await db.execute(
+        select(Product)
+        .outerjoin(Category, Product.category_id == Category.id)
+        .where(Product.barcode == code)
+        .limit(1)
+    )
+    product = result.scalar_one_or_none()
+    if product is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Aucun produit ne porte le code-barres {code}",
+        )
+    return {
+        "id": str(product.id),
+        "barcode": product.barcode,
+        "name": product.name,
+        "sale_price": float(product.sale_price),
+        "status": product.status.value,
+        "category": product.category.name if product.category else None,
+        "photo_url": getattr(product, "photo_url", None),
+    }
 
 
 @router.get("/products/{product_id}", response_model=ProductResponse)
