@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
@@ -298,7 +298,27 @@ const navGroups: NavGroup[] = [
 const COLLAB_HIDDEN_GROUPS = new Set(['Configuration']);
 const COLLAB_HIDDEN_PATHS = new Set(['/seo', '/admin/operations']);
 
+// Minimal placeholder rendered while Suspense hydrates the inner sidebar.
+// Matches the desktop dimensions of the real aside so the layout doesn't
+// shift on first paint.
+function SidebarFallback() {
+  return (
+    <aside
+      aria-hidden
+      className="hidden md:flex fixed top-0 left-0 h-full w-64 bg-white border-r border-gray-100 z-40"
+    />
+  );
+}
+
 export default function Sidebar() {
+  return (
+    <Suspense fallback={<SidebarFallback />}>
+      <SidebarInner />
+    </Suspense>
+  );
+}
+
+function SidebarInner() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
