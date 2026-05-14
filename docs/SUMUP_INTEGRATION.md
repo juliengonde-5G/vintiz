@@ -42,6 +42,47 @@ Tablette POS Vintiz                          api.sumup.com
 | `POST /v0.1/merchants/{m}/readers/{r}/terminate` | `terminate_reader_checkout` | Annulation mid-paiement |
 | `POST /v1.0/merchants/{m}/payments/{id}/refunds` | `refund_transaction` | Remboursement CB |
 | `GET  /v2.1/merchants/{m}/transactions` | `get_transaction` | Réconciliation post-paiement |
+| `GET  /v1.1/receipts/{id}` | `get_official_receipt` | Récépissé SumUp officiel (SAV / litige) |
+
+## Ticket cardholder — qui imprime quoi
+
+Deux **tickets distincts** sortent à chaque paiement CB :
+
+### Ticket cardholder (côté client) — géré par le Solo
+Le SumUp Solo intercepte cette étape lui-même à la fin du paiement :
+
+```
+Solo écran → "Receipt?"  → "Email" / "SMS" / "Print" / "No thanks"
+                ↓
+SumUp Cloud envoie email ou SMS au client
+(ou imprime sur le Solo s'il a une mini-imprimante intégrée)
+```
+
+**Aucun appel API requis côté Vintiz.** Le client choisit son canal
+sur l'écran du Solo, SumUp gère l'envoi.
+
+### Ticket merchant (souche commerçant) — imprimé par Vintiz
+Le ticket Vintiz (MUNBYN ESC/POS, format 80 mm) **inclut désormais
+les infos CB** quand le paiement est tracé côté SumUp (depuis PR #80
+qui persiste `sumup_card_brand`, `sumup_card_last4`, `sumup_auth_code`,
+`sumup_transaction_code` sur la table `payments`) :
+
+```
+CARD                                 25.00 EUR
+  VISA **** 1234
+  Authorisation : 053201
+  Réf SumUp : TEENSK4W2K
+```
+
+Conforme à la **ANC 2018-06 art. 286** : la souche commerçant pour
+un paiement CB doit afficher le code d'autorisation et une référence
+permettant la réconciliation acquéreur.
+
+### Reçu SumUp officiel (PDF) — pour SAV / litige
+`GET /api/pos/payments/cb/receipt/{sumup_transaction_id}` proxy vers
+SumUp `/v1.1/receipts/{id}` et renvoie le JSON officiel avec
+auth_code, EMV data, info merchant. Utilisé en arrière-plan par
+l'admin pour répondre à un client qui dispute une vente.
 
 ## Configuration
 

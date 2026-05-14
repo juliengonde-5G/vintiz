@@ -531,6 +531,36 @@ async def terminate_cb_reader(
     return await SumUpService().terminate_reader_checkout()
 
 
+@router.get("/payments/cb/receipt/{sumup_transaction_id}")
+async def get_sumup_receipt(
+    sumup_transaction_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Fetch the official SumUp receipt for a CB transaction.
+
+    Spec: ``GET /v1.1/receipts/{id}`` — returns the merchant + auth
+    data SumUp would print on its own receipt copy. Used by the
+    back-office (admin > transactions) to display a reference SumUp
+    receipt next to our Vintiz fiscal ticket — useful for SAV and
+    disputes.
+
+    The customer-facing receipt is already handled by the Solo
+    terminal itself : right after the customer taps the card, the
+    Solo prompts "Receipt? Email / SMS / Print" — that flow runs
+    inside SumUp's firmware, not through our API.
+    """
+    from app.services.sumup_service import SumUpService
+    receipt = await SumUpService().get_official_receipt(
+        transaction_id=sumup_transaction_id,
+    )
+    if receipt is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Reçu SumUp introuvable (transaction trop ancienne, supprimée, ou SumUp non configuré)",
+        )
+    return receipt
+
+
 # ---------------------------------------------------------------------------
 # SumUp config endpoint (production only)
 # ---------------------------------------------------------------------------
