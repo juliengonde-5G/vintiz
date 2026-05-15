@@ -28,6 +28,9 @@ include(":core:core-common")
 include(":core:core-network")
 include(":core:core-security")
 include(":core:core-datastore")
+include(":hardware:hardware-api")
+include(":hardware:hardware-escpos-tcp")
+include(":hardware:hardware-zpl-tcp")
 
 // Modules à activer au fil des sprints — voir docs/MIGRATION_ANDROID_NATIVE.md §3.9
 // include(":core:core-database")

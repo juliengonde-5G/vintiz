@@ -92,6 +92,9 @@ dependencies {
     implementation(project(":core:core-network"))
     implementation(project(":core:core-security"))
     implementation(project(":core:core-datastore"))
+    implementation(project(":hardware:hardware-api"))
+    implementation(project(":hardware:hardware-escpos-tcp"))
+    implementation(project(":hardware:hardware-zpl-tcp"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.bundles.lifecycle)

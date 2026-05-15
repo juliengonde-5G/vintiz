@@ -20,10 +20,23 @@ Application Android Kotlin/Jetpack Compose qui consomme `apps/api/*` via
 - [x] Hilt root (`@HiltAndroidApp` + `AppModule`)
 - [x] `network_security_config.xml` (TLS partout sauf LAN imprimantes RFC 1918)
 - [x] GitHub Action `.github/workflows/android.yml`
+
+**Semaines 2-3 — Hardware abstractions** (en cours)
+
+- [x] `hardware:hardware-api` (`PrinterService`, `LabelPrinterService`, `ScannerService`, `PaymentTerminalService`, `NfcService`, `EscPosBytes.drawerKick`)
+- [x] `hardware:hardware-escpos-tcp` (impl MUNBYN réseau port 9100 + retries)
+- [x] `hardware:hardware-zpl-tcp` (impl Zebra ZD421d réseau port 9100 + retries)
+- [ ] `hardware:hardware-escpos-usb` (UsbManager + USB-OTG MUNBYN)
+- [ ] `hardware:hardware-scanner-hid` (KeyEvent listener Inateck)
+- [ ] `hardware:hardware-scanner-camera` (CameraX + ML Kit)
+- [ ] `hardware:hardware-nfc` (NfcAdapter foreground dispatch)
+- [ ] `hardware:hardware-sumup` (SumUp Android SDK BT direct + `SumUpRestTerminal` fallback)
+
+**Sprints suivants**
 - [ ] Gradle wrapper (à générer côté Mac dev, voir §Bootstrap)
 - [ ] Module `data:data-auth` (refresh token réel câblé dans `AppModule`)
 - [ ] `core:core-database` (Room + SQLCipher)
-- [ ] Modules `data/*`, `domain/*`, `feature/*`, `hardware/*`
+- [ ] Modules `data/*`, `domain/*`, `feature/*`
 
 Les modules listés "à venir" seront créés au fil des sprints — voir
 `docs/MIGRATION_ANDROID_NATIVE.md` §3.9 pour le phasage.
