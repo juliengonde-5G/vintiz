@@ -3,6 +3,7 @@ package fr.vintiz.pos.nav
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -18,12 +19,17 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import fr.vintiz.feature.admin.AdminScreen
 import fr.vintiz.feature.auth.CashierPinScreen
 import fr.vintiz.feature.auth.LoginScreen
+import fr.vintiz.feature.cahier.CahierScreen
 import fr.vintiz.feature.clients.ClientsScreen
+import fr.vintiz.feature.dashboard.DashboardScreen
+import fr.vintiz.feature.ia.IaScreen
 import fr.vintiz.feature.inventory.InventoryScreen
 import fr.vintiz.feature.pos.PosScreen
 import fr.vintiz.feature.settings.SettingsScreen
+import fr.vintiz.feature.zones.ZonesScreen
 
 object Routes {
     const val LOGIN = "login"
@@ -33,7 +39,13 @@ object Routes {
     const val POS = "shell/pos"
     const val INVENTORY = "shell/inventory"
     const val CLIENTS = "shell/clients"
+    const val CAHIER = "shell/cahier"
     const val SETTINGS = "shell/settings"
+
+    const val DASHBOARD = "shell/dashboard"
+    const val IA = "shell/ia"
+    const val ZONES = "shell/zones"
+    const val ADMIN = "shell/admin"
 }
 
 @Composable
@@ -54,9 +66,7 @@ fun VintizNavGraph() {
                 }
             })
         }
-        composable(Routes.SHELL) {
-            Shell(rootNav = nav)
-        }
+        composable(Routes.SHELL) { Shell(rootNav = nav) }
     }
 }
 
@@ -71,12 +81,11 @@ private fun Shell(rootNav: NavHostController) {
             NavigationBar {
                 BottomNavItem.entries.forEach { item ->
                     NavigationBarItem(
-                        selected = currentRoute == item.route,
+                        selected = currentRoute == item.route ||
+                            (item == BottomNavItem.Plus && currentRoute in PLUS_ROUTES),
                         onClick = {
                             shellNav.navigate(item.route) {
-                                popUpTo(shellNav.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
+                                popUpTo(shellNav.graph.findStartDestination().id) { saveState = true }
                                 launchSingleTop = true
                                 restoreState = true
                             }
@@ -102,8 +111,53 @@ private fun Shell(rootNav: NavHostController) {
                 }
                 composable(Routes.INVENTORY) { InventoryScreen() }
                 composable(Routes.CLIENTS) { ClientsScreen() }
+                composable(Routes.CAHIER) { CahierScreen() }
                 composable(Routes.SETTINGS) { SettingsScreen() }
+                composable(Routes.DASHBOARD) { DashboardScreen() }
+                composable(Routes.IA) { IaScreen() }
+                composable(Routes.ZONES) { ZonesScreen() }
+                composable(Routes.ADMIN) { AdminScreen() }
+                composable(BottomNavItem.Plus.route) {
+                    PlusMenu(onSelect = { route ->
+                        shellNav.navigate(route) {
+                            popUpTo(shellNav.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                        }
+                    })
+                }
             }
+        }
+    }
+}
+
+private val PLUS_ROUTES = setOf(Routes.DASHBOARD, Routes.IA, Routes.ZONES, Routes.ADMIN, "shell/plus")
+
+@Composable
+private fun PlusMenu(onSelect: (String) -> Unit) {
+    Scaffold { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Plus", style = MaterialTheme.typography.headlineLarge)
+            PlusItem("Tableau de bord", "Vue manager : CA, météo, top produits", Routes.DASHBOARD, onSelect)
+            PlusItem("Compagnon IA", "Checklist hebdo, tendances", Routes.IA, onSelect)
+            PlusItem("Plan boutique", "Zones et occupation", Routes.ZONES, onSelect)
+            PlusItem("Admin", "Transactions, refund, Z-reports, users, audit", Routes.ADMIN, onSelect)
+        }
+    }
+}
+
+@Composable
+private fun PlusItem(title: String, subtitle: String, route: String, onSelect: (String) -> Unit) {
+    androidx.compose.material3.Card(
+        onClick = { onSelect(route) },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -112,5 +166,7 @@ private enum class BottomNavItem(val route: String, val label: String, val icon:
     Pos(Routes.POS, "Caisse", "₽"),
     Inventory(Routes.INVENTORY, "Stock", "≡"),
     Clients(Routes.CLIENTS, "Clientes", "♥"),
+    Cahier(Routes.CAHIER, "Cahier", "✎"),
+    Plus("shell/plus", "Plus", "⋮"),
     Settings(Routes.SETTINGS, "Réglages", "⚙"),
 }

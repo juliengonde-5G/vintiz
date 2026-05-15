@@ -17,16 +17,26 @@ import fr.vintiz.core.datastore.AppPreferences
 import fr.vintiz.core.network.HttpClientFactory
 import fr.vintiz.core.security.AndroidTokenStorage
 import fr.vintiz.core.security.TokenStorage
+import fr.vintiz.data.admin.AdminApi
+import fr.vintiz.data.admin.AdminRepository
 import fr.vintiz.data.auth.AuthApi
 import fr.vintiz.data.auth.AuthRepository
+import fr.vintiz.data.cahier.CahierApi
+import fr.vintiz.data.cahier.CahierRepository
 import fr.vintiz.data.clients.ClientsApi
 import fr.vintiz.data.clients.ClientsRepository
 import fr.vintiz.data.hardware.HardwareApi
 import fr.vintiz.data.hardware.HardwareRepository
+import fr.vintiz.data.ia.IaApi
+import fr.vintiz.data.ia.IaRepository
 import fr.vintiz.data.inventory.InventoryApi
 import fr.vintiz.data.inventory.InventoryRepository
+import fr.vintiz.data.notifications.NotificationsApi
+import fr.vintiz.data.notifications.NotificationsRepository
 import fr.vintiz.data.pos.PosApi
 import fr.vintiz.data.pos.PosRepository
+import fr.vintiz.data.reports.ReportsApi
+import fr.vintiz.data.reports.ReportsRepository
 import fr.vintiz.hardware.api.PaymentTerminalService
 import fr.vintiz.hardware.sumup.rest.SumUpRestApi
 import fr.vintiz.hardware.sumup.rest.SumUpRestTerminal
@@ -78,6 +88,12 @@ object AppModule {
     @Provides @Singleton fun provideClientsApi(r: Retrofit): ClientsApi = r.create(ClientsApi::class.java)
     @Provides @Singleton fun provideHardwareApi(r: Retrofit): HardwareApi = r.create(HardwareApi::class.java)
     @Provides @Singleton fun provideSumUpRestApi(r: Retrofit): SumUpRestApi = r.create(SumUpRestApi::class.java)
+    @Provides @Singleton fun provideCahierApi(r: Retrofit): CahierApi = r.create(CahierApi::class.java)
+    @Provides @Singleton fun provideReportsApi(r: Retrofit): ReportsApi = r.create(ReportsApi::class.java)
+    @Provides @Singleton fun provideAdminApi(r: Retrofit): AdminApi = r.create(AdminApi::class.java)
+    @Provides @Singleton fun provideIaApi(r: Retrofit): IaApi = r.create(IaApi::class.java)
+    @Provides @Singleton fun provideNotificationsApi(r: Retrofit): NotificationsApi =
+        r.create(NotificationsApi::class.java)
 
     @Provides @Singleton
     fun provideAuthRepository(api: AuthApi, tokens: TokenStorage): AuthRepository =
@@ -103,6 +119,29 @@ object AppModule {
         HardwareRepository(api, dao)
 
     @Provides @Singleton
-    fun providePaymentTerminal(api: SumUpRestApi): PaymentTerminalService =
-        SumUpRestTerminal(api)
+    fun provideCahierRepository(api: CahierApi): CahierRepository = CahierRepository(api)
+
+    @Provides @Singleton
+    fun provideReportsRepository(api: ReportsApi): ReportsRepository = ReportsRepository(api)
+
+    @Provides @Singleton
+    fun provideAdminRepository(api: AdminApi): AdminRepository = AdminRepository(api)
+
+    @Provides @Singleton
+    fun provideIaRepository(api: IaApi): IaRepository = IaRepository(api)
+
+    @Provides @Singleton
+    fun provideNotificationsRepository(
+        api: NotificationsApi,
+        @ApplicationContext context: Context,
+    ): NotificationsRepository {
+        val deviceId = android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            android.provider.Settings.Secure.ANDROID_ID,
+        ) ?: "unknown-device"
+        return NotificationsRepository(api, deviceId, BuildConfig.VERSION_NAME)
+    }
+
+    @Provides @Singleton
+    fun providePaymentTerminal(api: SumUpRestApi): PaymentTerminalService = SumUpRestTerminal(api)
 }
