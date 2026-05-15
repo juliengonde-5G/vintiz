@@ -20,63 +20,70 @@ Application Android Kotlin/Jetpack Compose qui consomme `apps/api/*` via
 - [x] `core:core-testing` (fakes hardware partagés)
 - [x] Hilt root + `network_security_config.xml` + GitHub Action
 
-**Semaines 2-3 — Hardware abstractions** — TCP livrés, USB/SDK BT pour V2
+**Semaines 2-3 — Hardware abstractions** — terminé
 
 - [x] `hardware:hardware-api` (`PrinterService`, `LabelPrinterService`, `ScannerService`, `PaymentTerminalService`, `NfcService`, `EscPosBytes`)
 - [x] `hardware:hardware-escpos-tcp` (impl MUNBYN réseau port 9100 + retries)
+- [x] `hardware:hardware-escpos-usb` (USB-OTG `UsbManager` + chunks/zero-length packet)
 - [x] `hardware:hardware-zpl-tcp` (impl Zebra ZD421d réseau port 9100 + retries)
 - [x] `hardware:hardware-scanner-hid` (KeyEvent listener Inateck via `MainActivity.dispatchKeyEvent`)
+- [x] `hardware:hardware-scanner-camera` (CameraX + ML Kit BarcodeScanning debounce 800 ms)
 - [x] `hardware:hardware-nfc` (NfcAdapter foreground dispatch, UID hex)
 - [x] `hardware:hardware-sumup-rest` (polling REST aligné `usePosPayment.ts` web)
-- [ ] `hardware:hardware-escpos-usb` (UsbManager + USB-OTG MUNBYN) — V2
-- [ ] `hardware:hardware-scanner-camera` (CameraX + ML Kit) — V2
-- [ ] `hardware:hardware-sumup-sdk` (sumup-android-sdk BT direct) — V2
+- [ ] `hardware:hardware-sumup-sdk` (sumup-android-sdk BT direct) — sprint hardware ultérieur
 
-**Semaines 4-10 — Data + Domain + Features**
+**Semaines 4-10 — Data + Domain + Features** — terminé
 
 - [x] `data:data-auth` (login JWT + cashier PIN + refresh)
 - [x] `data:data-pos` (commit local-first + idempotence `client_uuid` + `DrainTransactionsWorker`)
-- [x] `data:data-inventory` (search / by-barcode / by-id offline-first Room cache)
-- [x] `data:data-clients` (identify / byNfcUid offline-first)
-- [x] `data:data-hardware` (sync GET/PUT `/api/v1/hardware/config`)
-- [x] `domain:domain-pos` (`Cart`, `CartLine`, `PaymentSplit`, `computeChange`)
-- [x] `domain:domain-inventory` (`Product`, `ProductStatus`, `BarcodeNormalizer`)
-- [x] `domain:domain-clients` (`Client`, `LoyaltyTier`)
-- [x] `feature:feature-auth` (LoginScreen + CashierPinScreen NumPad)
-- [x] `feature:feature-pos` (recherche + panier + paiements espèces/CB SumUp REST + ticket id)
-- [x] `feature:feature-inventory` (recherche + liste)
-- [x] `feature:feature-clients` (identification + fidélité)
-- [x] `feature:feature-settings` (config matériel + toggles backends + camera scanner)
+- [x] `data:data-inventory` / `data:data-clients` / `data:data-hardware` (offline-first Room cache)
+- [x] `data:data-cahier` / `data:data-reports` / `data:data-admin` / `data:data-ia`
+- [x] `data:data-notifications` (POST `/api/v1/notifications/fcm-token`)
+- [x] `domain:domain-pos` / `domain-inventory` / `domain-clients` / `domain-cahier` / `domain-reports`
+- [x] `feature:feature-auth` / `feature-pos` / `feature-inventory` / `feature-clients` / `feature-settings`
+- [x] `feature:feature-dashboard` (KPIs + météo + top produits)
+- [x] `feature:feature-cahier` (progress jour + cumul mois + YoY + signature)
+- [x] `feature:feature-admin` (4 onglets : Ventes / Z-Reports / Users / Audit + RefundDialog)
+- [x] `feature:feature-ia` (Checklist hebdo + Signaux sociaux / retail)
+- [x] `feature:feature-zones` (`ZonesCanvas` Compose top-down + tap detection)
 
-**Semaines 11-14 — à venir**
+**Semaines 11-14 — Polish** — terminé
 
+- [x] `VintizFcmService` (`FirebaseMessagingService` + register onNewToken)
+- [x] `KioskManager` (Lock Task Mode wrapper, device-owner requis pour activation)
+- [x] `InAppUpdateManager` (Play Core, check au onResume, prompt IMMEDIATE)
+- [x] `benchmark:` module Macrobenchmark + Baseline Profile plugin (`PosColdStartBenchmark`)
+- [x] Nav étendue : 5 onglets bottom + entrée "Plus" → Dashboard / IA / Zones / Admin
 - [ ] Gradle wrapper (à générer côté Mac dev, voir §Bootstrap)
-- [ ] `feature:feature-dashboard` + `feature:feature-cahier` + `feature:feature-zones` (IsoCanvas)
-- [ ] `feature:feature-admin` (refund / users / Z-reports / fiscal export)
-- [ ] `feature:feature-ia` (CompanionHero + RecosDuJour)
-- [ ] In-App Update, Kiosk Mode, Baseline Profile, FCM, hardening OWASP MASVS
+- [ ] Robolectric tests Room + HidScanner + NfcService (sprint hardening Mac)
+- [ ] OWASP MASVS audit + MobSF report (sprint hardening Mac)
 
 ## Tests locaux validés
 
-**40 tests JVM purs verts** sur ce checkout (validation locale Gradle 8.14 / JDK 21) :
+**41 tests JVM purs verts** sur ce checkout (validation locale Gradle 8.14 / JDK 21) :
 
 | Module | Tests |
 |---|---|
 | `core:core-common` | 6 (`Money`) |
+| `core:core-network` | 9 (interceptors MockWebServer) |
 | `domain:domain-pos` | 11 (`Cart` 7 + `PaymentSplit` 4) |
 | `domain:domain-inventory` | 2 (`BarcodeNormalizer`) |
+| `domain:domain-cahier` | 8 (`CahierDay` progress / YoY / signature) |
+| `domain:domain-reports` | 4 (`ZReport` diff / reconcile / surplus) |
 | `hardware:hardware-api` | 5 (`EscPosBytes`) |
 | `hardware:hardware-escpos-tcp` | 3 (`TcpEscPosPrinter` sur ServerSocket localhost) |
 | `hardware:hardware-zpl-tcp` | 2 (`TcpZebraPrinter` UTF-8) |
 | `hardware:hardware-sumup-rest` | 4 (`SumUpRestTerminal` succès/refus/annulation/timeout) |
 | `data:data-auth` | 7 (`AuthRepository` MockWebServer) |
-| `core:core-network` | 9 (interceptors MockWebServer) |
 
 Tests non couverts par ce harnais (nécessitent Android SDK / émulateur) :
 - Compose UI (`feature/*`) → Espresso + ComposeRule sur Mac
 - Room DAO (`core:core-database`) → Robolectric ou test instrumenté
-- `HidScanner` + `AndroidNfcService` → Robolectric KeyEvent / Intent
-- `data:data-pos:PosRepositoryTest` (a une dep `core:core-database` Android lib)
+- `HidScanner` + `AndroidNfcService` + `UsbEscPosPrinter` → Robolectric ou test device
+- `CameraBarcodeAnalyzer` → device avec caméra physique
+- `data:data-pos:PosRepositoryTest` (dépend de Room)
+- `benchmark:PosColdStartBenchmark` → device Lenovo Tab M11 cible
+- `VintizFcmService` → device avec google-services.json valide
 
 ## Bootstrap (Mac dev, première fois)
 
