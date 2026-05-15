@@ -61,7 +61,14 @@ jobs:
             :core:core-network:testDebugUnitTest \
             :hardware:hardware-api:test \
             :hardware:hardware-escpos-tcp:test \
-            :hardware:hardware-zpl-tcp:test
+            :hardware:hardware-zpl-tcp:test \
+            :hardware:hardware-sumup-rest:testDebugUnitTest \
+            :domain:domain-pos:test \
+            :domain:domain-inventory:test \
+            :domain:domain-cahier:test \
+            :domain:domain-reports:test \
+            :data:data-auth:testDebugUnitTest \
+            :data:data-pos:testDebugUnitTest
           ./gradlew :app:lintDevDebug
 
       - name: Skip notice

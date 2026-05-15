@@ -128,6 +128,15 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.androidx.work.runtime)
 
+    // Play Core In-App Update (V2 polish, sprint 12)
+    implementation(libs.play.app.update.lib)
+
+    // Firebase — optionnel : sans google-services.json le FCM service
+    // sera no-op (try/catch dans VintizFcmService.onNewToken).
+    implementation(platform(libs.firebase.bom.lib))
+    implementation(libs.firebase.messaging)
+    implementation(libs.firebase.crashlytics)
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.bundles.lifecycle)
     implementation(libs.androidx.activity.compose)

@@ -9,12 +9,15 @@ import dagger.hilt.android.AndroidEntryPoint
 import fr.vintiz.core.design.VzTheme
 import fr.vintiz.hardware.scanner.hid.HidScanner
 import fr.vintiz.pos.nav.VintizNavGraph
+import fr.vintiz.pos.update.InAppUpdateManager
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var hidScanner: HidScanner
+
+    private val updateManager by lazy { InAppUpdateManager(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,11 +27,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        updateManager.checkAndPrompt(this)
+    }
+
     /**
      * La douchette Inateck arrive en KeyEvent. On laisse [HidScanner]
      * accumuler ; il retourne true quand un code complet vient d'être
-     * émis sur son SharedFlow. Les ViewModels (POS / Inventaire) s'y
-     * abonnent via Hilt.
+     * émis sur son SharedFlow.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (hidScanner.feed(event)) return true
