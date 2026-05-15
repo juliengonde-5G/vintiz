@@ -56,7 +56,7 @@ jobs:
       - name: Unit tests + lint
         if: steps.wrapper.outputs.present == 'true'
         run: |
-          ./gradlew :core:core-common:test
+          ./gradlew :core:core-common:test :core:core-network:testDebugUnitTest
           ./gradlew :app:lintDevDebug
 
       - name: Skip notice

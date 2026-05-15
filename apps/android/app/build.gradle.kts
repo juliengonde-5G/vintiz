@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -87,6 +89,9 @@ android {
 dependencies {
     implementation(project(":core:core-design"))
     implementation(project(":core:core-common"))
+    implementation(project(":core:core-network"))
+    implementation(project(":core:core-security"))
+    implementation(project(":core:core-datastore"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.bundles.lifecycle)
@@ -96,6 +101,10 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.bundles.compose)
     debugImplementation(libs.compose.ui.tooling)
+
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.hilt.navigation.compose)
 
     implementation(libs.timber)
 

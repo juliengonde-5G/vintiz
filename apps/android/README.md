@@ -6,20 +6,23 @@ Application Android Kotlin/Jetpack Compose qui consomme `apps/api/*` via
 
 ## État
 
-**Sprint 0 — Setup** (en cours)
+**Sprint 0 — Setup** (presque fini)
 
 - [x] Mono-repo `apps/android/`
 - [x] Gradle catalog `libs.versions.toml`
 - [x] `settings.gradle.kts` + root `build.gradle.kts`
-- [x] Module `app` (entry point Compose vide)
+- [x] Module `app` (entry point Compose, Hilt câblé)
 - [x] Module `core:core-design` (tokens `vz-*` : `VzColors`, `VzTypography`, `VzTheme`)
-- [x] Module `core:core-common` (`Money`, `Result` wrapper)
+- [x] Module `core:core-common` (`Money`, `VintizResult`/`VintizError`)
+- [x] Module `core:core-network` (Retrofit + Moshi + interceptors Auth/ClientId/RequestId/RateLimit + `RefreshTokenAuthenticator`)
+- [x] Module `core:core-security` (`TokenStorage` + impl `EncryptedSharedPreferences`)
+- [x] Module `core:core-datastore` (Preferences DataStore : env switch, backends imprimante/TPE, last sync timestamps)
+- [x] Hilt root (`@HiltAndroidApp` + `AppModule`)
+- [x] `network_security_config.xml` (TLS partout sauf LAN imprimantes RFC 1918)
 - [x] GitHub Action `.github/workflows/android.yml`
 - [ ] Gradle wrapper (à générer côté Mac dev, voir §Bootstrap)
-- [ ] `core:core-network` (Retrofit + interceptors JWT/refresh/X-Client)
-- [ ] `core:core-security` (EncryptedSharedPreferences + biométrie)
+- [ ] Module `data:data-auth` (refresh token réel câblé dans `AppModule`)
 - [ ] `core:core-database` (Room + SQLCipher)
-- [ ] `core:core-datastore` (Preferences DataStore)
 - [ ] Modules `data/*`, `domain/*`, `feature/*`, `hardware/*`
 
 Les modules listés "à venir" seront créés au fil des sprints — voir

@@ -25,12 +25,12 @@ rootProject.name = "vintiz-android"
 include(":app")
 include(":core:core-design")
 include(":core:core-common")
+include(":core:core-network")
+include(":core:core-security")
+include(":core:core-datastore")
 
 // Modules à activer au fil des sprints — voir docs/MIGRATION_ANDROID_NATIVE.md §3.9
-// include(":core:core-network")
-// include(":core:core-security")
 // include(":core:core-database")
-// include(":core:core-datastore")
 // include(":core:core-testing")
 // include(":data:data-auth")
 // include(":data:data-pos")
