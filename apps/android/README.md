@@ -6,40 +6,77 @@ Application Android Kotlin/Jetpack Compose qui consomme `apps/api/*` via
 
 ## État
 
-**Sprint 0 — Setup** (presque fini)
+**Sprint 0 — Setup** — terminé
 
-- [x] Mono-repo `apps/android/`
-- [x] Gradle catalog `libs.versions.toml`
+- [x] Mono-repo `apps/android/` + Gradle catalog `libs.versions.toml`
 - [x] `settings.gradle.kts` + root `build.gradle.kts`
-- [x] Module `app` (entry point Compose, Hilt câblé)
-- [x] Module `core:core-design` (tokens `vz-*` : `VzColors`, `VzTypography`, `VzTheme`)
-- [x] Module `core:core-common` (`Money`, `VintizResult`/`VintizError`)
-- [x] Module `core:core-network` (Retrofit + Moshi + interceptors Auth/ClientId/RequestId/RateLimit + `RefreshTokenAuthenticator`)
-- [x] Module `core:core-security` (`TokenStorage` + impl `EncryptedSharedPreferences`)
-- [x] Module `core:core-datastore` (Preferences DataStore : env switch, backends imprimante/TPE, last sync timestamps)
-- [x] Hilt root (`@HiltAndroidApp` + `AppModule`)
-- [x] `network_security_config.xml` (TLS partout sauf LAN imprimantes RFC 1918)
-- [x] GitHub Action `.github/workflows/android.yml`
+- [x] `app` (entry point Compose, Hilt câblé, single-activity)
+- [x] `core:core-design` (tokens `vz-*` : `VzColors`, `VzTypography`, `VzTheme`)
+- [x] `core:core-common` (`Money`, `VintizResult`/`VintizError`)
+- [x] `core:core-network` (Retrofit + Moshi + interceptors Auth/ClientId/RequestId/RateLimit + `RefreshTokenAuthenticator`)
+- [x] `core:core-security` (`TokenStorage` + impl `EncryptedSharedPreferences`)
+- [x] `core:core-datastore` (Preferences DataStore : env switch, backends imprimante/TPE, last sync timestamps)
+- [x] `core:core-database` (Room + 4 entités + 4 DAOs)
+- [x] `core:core-testing` (fakes hardware partagés)
+- [x] Hilt root + `network_security_config.xml` + GitHub Action
 
-**Semaines 2-3 — Hardware abstractions** (en cours)
+**Semaines 2-3 — Hardware abstractions** — TCP livrés, USB/SDK BT pour V2
 
-- [x] `hardware:hardware-api` (`PrinterService`, `LabelPrinterService`, `ScannerService`, `PaymentTerminalService`, `NfcService`, `EscPosBytes.drawerKick`)
+- [x] `hardware:hardware-api` (`PrinterService`, `LabelPrinterService`, `ScannerService`, `PaymentTerminalService`, `NfcService`, `EscPosBytes`)
 - [x] `hardware:hardware-escpos-tcp` (impl MUNBYN réseau port 9100 + retries)
 - [x] `hardware:hardware-zpl-tcp` (impl Zebra ZD421d réseau port 9100 + retries)
-- [ ] `hardware:hardware-escpos-usb` (UsbManager + USB-OTG MUNBYN)
-- [ ] `hardware:hardware-scanner-hid` (KeyEvent listener Inateck)
-- [ ] `hardware:hardware-scanner-camera` (CameraX + ML Kit)
-- [ ] `hardware:hardware-nfc` (NfcAdapter foreground dispatch)
-- [ ] `hardware:hardware-sumup` (SumUp Android SDK BT direct + `SumUpRestTerminal` fallback)
+- [x] `hardware:hardware-scanner-hid` (KeyEvent listener Inateck via `MainActivity.dispatchKeyEvent`)
+- [x] `hardware:hardware-nfc` (NfcAdapter foreground dispatch, UID hex)
+- [x] `hardware:hardware-sumup-rest` (polling REST aligné `usePosPayment.ts` web)
+- [ ] `hardware:hardware-escpos-usb` (UsbManager + USB-OTG MUNBYN) — V2
+- [ ] `hardware:hardware-scanner-camera` (CameraX + ML Kit) — V2
+- [ ] `hardware:hardware-sumup-sdk` (sumup-android-sdk BT direct) — V2
 
-**Sprints suivants**
+**Semaines 4-10 — Data + Domain + Features**
+
+- [x] `data:data-auth` (login JWT + cashier PIN + refresh)
+- [x] `data:data-pos` (commit local-first + idempotence `client_uuid` + `DrainTransactionsWorker`)
+- [x] `data:data-inventory` (search / by-barcode / by-id offline-first Room cache)
+- [x] `data:data-clients` (identify / byNfcUid offline-first)
+- [x] `data:data-hardware` (sync GET/PUT `/api/v1/hardware/config`)
+- [x] `domain:domain-pos` (`Cart`, `CartLine`, `PaymentSplit`, `computeChange`)
+- [x] `domain:domain-inventory` (`Product`, `ProductStatus`, `BarcodeNormalizer`)
+- [x] `domain:domain-clients` (`Client`, `LoyaltyTier`)
+- [x] `feature:feature-auth` (LoginScreen + CashierPinScreen NumPad)
+- [x] `feature:feature-pos` (recherche + panier + paiements espèces/CB SumUp REST + ticket id)
+- [x] `feature:feature-inventory` (recherche + liste)
+- [x] `feature:feature-clients` (identification + fidélité)
+- [x] `feature:feature-settings` (config matériel + toggles backends + camera scanner)
+
+**Semaines 11-14 — à venir**
+
 - [ ] Gradle wrapper (à générer côté Mac dev, voir §Bootstrap)
-- [ ] Module `data:data-auth` (refresh token réel câblé dans `AppModule`)
-- [ ] `core:core-database` (Room + SQLCipher)
-- [ ] Modules `data/*`, `domain/*`, `feature/*`
+- [ ] `feature:feature-dashboard` + `feature:feature-cahier` + `feature:feature-zones` (IsoCanvas)
+- [ ] `feature:feature-admin` (refund / users / Z-reports / fiscal export)
+- [ ] `feature:feature-ia` (CompanionHero + RecosDuJour)
+- [ ] In-App Update, Kiosk Mode, Baseline Profile, FCM, hardening OWASP MASVS
 
-Les modules listés "à venir" seront créés au fil des sprints — voir
-`docs/MIGRATION_ANDROID_NATIVE.md` §3.9 pour le phasage.
+## Tests locaux validés
+
+**40 tests JVM purs verts** sur ce checkout (validation locale Gradle 8.14 / JDK 21) :
+
+| Module | Tests |
+|---|---|
+| `core:core-common` | 6 (`Money`) |
+| `domain:domain-pos` | 11 (`Cart` 7 + `PaymentSplit` 4) |
+| `domain:domain-inventory` | 2 (`BarcodeNormalizer`) |
+| `hardware:hardware-api` | 5 (`EscPosBytes`) |
+| `hardware:hardware-escpos-tcp` | 3 (`TcpEscPosPrinter` sur ServerSocket localhost) |
+| `hardware:hardware-zpl-tcp` | 2 (`TcpZebraPrinter` UTF-8) |
+| `hardware:hardware-sumup-rest` | 4 (`SumUpRestTerminal` succès/refus/annulation/timeout) |
+| `data:data-auth` | 7 (`AuthRepository` MockWebServer) |
+| `core:core-network` | 9 (interceptors MockWebServer) |
+
+Tests non couverts par ce harnais (nécessitent Android SDK / émulateur) :
+- Compose UI (`feature/*`) → Espresso + ComposeRule sur Mac
+- Room DAO (`core:core-database`) → Robolectric ou test instrumenté
+- `HidScanner` + `AndroidNfcService` → Robolectric KeyEvent / Intent
+- `data:data-pos:PosRepositoryTest` (a une dep `core:core-database` Android lib)
 
 ## Bootstrap (Mac dev, première fois)
 
