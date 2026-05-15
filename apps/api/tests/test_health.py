@@ -5,10 +5,11 @@ from app.main import app
 
 
 @pytest.mark.anyio
-async def test_health_check():
+@pytest.mark.parametrize("path", ["/api/v1/health", "/api/health"])
+async def test_health_check(path):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/api/health")
+        response = await client.get(path)
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"

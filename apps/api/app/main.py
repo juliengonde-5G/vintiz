@@ -142,20 +142,32 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     return JSONResponse(status_code=500, content=body)
 
-# Routers
-app.include_router(auth_router, prefix="/api")
-app.include_router(inventory_router, prefix="/api")
-app.include_router(pos_router, prefix="/api")
-app.include_router(crm_router, prefix="/api")
-app.include_router(reporting_router, prefix="/api")
-app.include_router(admin_router, prefix="/api")
-app.include_router(ai_router, prefix="/api")
-app.include_router(hardware_router, prefix="/api")
-app.include_router(labels_router, prefix="/api")
-app.include_router(seo_router, prefix="/api")
-app.include_router(newsletter_router, prefix="/api")
-app.include_router(cahier_router, prefix="/api")
-app.include_router(checklist_router, prefix="/api")
+# Routers — versioning /api/v1/* (primary, exposed in OpenAPI) with /api/*
+# kept as a temporary legacy alias for apps/web and apps/site that haven't
+# migrated yet. The alias is hidden from the schema (include_in_schema=False)
+# so the docs reflect the canonical v1 surface only. Remove the legacy block
+# once both web clients consume /api/v1/*.
+_ROUTERS = (
+    auth_router,
+    inventory_router,
+    pos_router,
+    crm_router,
+    reporting_router,
+    admin_router,
+    ai_router,
+    hardware_router,
+    labels_router,
+    seo_router,
+    newsletter_router,
+    cahier_router,
+    checklist_router,
+)
+
+for _router in _ROUTERS:
+    app.include_router(_router, prefix="/api/v1")
+
+for _router in _ROUTERS:
+    app.include_router(_router, prefix="/api", include_in_schema=False)
 
 # Static files for product photo uploads (P1-008 follow-up). The folder is
 # created on demand by the upload handler, but we mount it eagerly so missing
@@ -165,6 +177,11 @@ _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
 
 
-@app.get("/api/health")
+@app.get("/api/v1/health")
 async def health_check():
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.get("/api/health", include_in_schema=False)
+async def health_check_legacy():
+    return await health_check()
