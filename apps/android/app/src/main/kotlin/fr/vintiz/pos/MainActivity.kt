@@ -1,54 +1,37 @@
 package fr.vintiz.pos
 
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import dagger.hilt.android.AndroidEntryPoint
 import fr.vintiz.core.design.VzTheme
+import fr.vintiz.hardware.scanner.hid.HidScanner
+import fr.vintiz.pos.nav.VintizNavGraph
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var hidScanner: HidScanner
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            VzTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-                    LandingScreen(modifier = Modifier.padding(padding))
-                }
-            }
+            VzTheme { VintizNavGraph() }
         }
     }
-}
 
-@Composable
-internal fun LandingScreen(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(text = "Vintiz", style = androidx.compose.material3.MaterialTheme.typography.displayLarge)
-        Text(
-            text = "Sprint 0 — squelette",
-            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-        )
+    /**
+     * La douchette Inateck arrive en KeyEvent. On laisse [HidScanner]
+     * accumuler ; il retourne true quand un code complet vient d'être
+     * émis sur son SharedFlow. Les ViewModels (POS / Inventaire) s'y
+     * abonnent via Hilt.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (hidScanner.feed(event)) return true
+        return super.dispatchKeyEvent(event)
     }
-}
-
-@Preview(showBackground = true, widthDp = 1024, heightDp = 768)
-@Composable
-private fun LandingScreenPreview() {
-    VzTheme { LandingScreen() }
 }
