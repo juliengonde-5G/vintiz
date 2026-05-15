@@ -7,7 +7,7 @@ import okhttp3.Response
 /**
  * Injecte `Authorization: Bearer <jwt>` sur les requêtes sortantes
  * sauf si la requête porte le header `X-Skip-Auth: true` (utile pour
- * `/auth/login`, `/auth/refresh`, `/auth/magic-link/*` qui doivent
+ * `/auth/login`, `/auth/refresh`, `/auth/magic-link/...` qui doivent
  * partir sans token).
  */
 class AuthInterceptor(

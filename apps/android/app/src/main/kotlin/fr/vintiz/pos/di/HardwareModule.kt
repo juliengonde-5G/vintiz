@@ -28,8 +28,8 @@ object HardwareModule {
     fun provideScannerService(hid: HidScanner): ScannerService = hid
 
     @Provides @Singleton
-    fun provideNfcService(): NfcService = AndroidNfcService()
+    fun provideAndroidNfcService(): AndroidNfcService = AndroidNfcService()
 
     @Provides @Singleton
-    fun provideAndroidNfcService(svc: NfcService): AndroidNfcService = svc as AndroidNfcService
+    fun provideNfcService(svc: AndroidNfcService): NfcService = svc
 }

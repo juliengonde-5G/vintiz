@@ -185,10 +185,12 @@ private fun BackendToggle(
     onLeft: () -> Unit,
     onRight: () -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         Text(label, modifier = Modifier.weight(1f))
         Button(onClick = onLeft, enabled = !leftSelected) { Text(leftLabel) }
-        Spacer(Modifier.height(4.dp))
         Button(onClick = onRight, enabled = leftSelected) { Text(rightLabel) }
     }
 }

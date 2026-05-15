@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * Abstraction TPE Vintiz. Deux implémentations :
  * - `SumUpSdkTerminal` (sumup-android-sdk, BT direct, recommandé)
- * - `SumUpRestTerminal` (polling /api/v1/pos/payments/cb/* en fallback)
+ * - `SumUpRestTerminal` (polling /api/v1/pos/payments/cb/... en fallback)
  *
  * Le choix entre les deux est piloté par
  * [fr.vintiz.core.datastore.AppPreferences.paymentBackend].
