@@ -1,0 +1,103 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+}
+
+android {
+    namespace = "fr.vintiz.pos"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "fr.vintiz.pos"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = "0.1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        vectorDrawables { useSupportLibrary = true }
+    }
+
+    flavorDimensions += "env"
+    productFlavors {
+        create("dev") {
+            dimension = "env"
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            buildConfigField("String", "API_BASE_URL", "\"https://api.dev.vintiz.fr/\"")
+            buildConfigField("String", "CLIENT_ID", "\"vintiz-android-dev\"")
+        }
+        create("prod") {
+            dimension = "env"
+            buildConfigField("String", "API_BASE_URL", "\"https://api.vintiz.fr/\"")
+            buildConfigField("String", "CLIENT_ID", "\"vintiz-android\"")
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("VINTIZ_KEYSTORE_PATH")
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("VINTIZ_KEYSTORE_PASSWORD")
+                keyAlias = "vintiz-release"
+                keyPassword = System.getenv("VINTIZ_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            isMinifyEnabled = false
+            applicationIdSuffix = ".debug"
+        }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+dependencies {
+    implementation(project(":core:core-design"))
+    implementation(project(":core:core-common"))
+
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.bundles.lifecycle)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.navigation.compose)
+
+    implementation(platform(libs.compose.bom))
+    implementation(libs.bundles.compose)
+    debugImplementation(libs.compose.ui.tooling)
+
+    implementation(libs.timber)
+
+    testImplementation(libs.bundles.testing)
+}
