@@ -137,6 +137,7 @@ dependencies {
     implementation(project(":feature:feature-newsletter"))
     implementation(project(":feature:feature-loyalty"))
     implementation(project(":feature:feature-personal-shopper"))
+    implementation(project(":feature:feature-drawer"))
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

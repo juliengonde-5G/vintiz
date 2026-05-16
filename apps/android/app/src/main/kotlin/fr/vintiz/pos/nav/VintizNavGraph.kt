@@ -25,7 +25,9 @@ import fr.vintiz.feature.auth.LoginScreen
 import fr.vintiz.feature.cahier.CahierScreen
 import fr.vintiz.feature.clients.ClientsScreen
 import fr.vintiz.feature.dashboard.DashboardScreen
+import fr.vintiz.feature.drawer.DrawerScreen
 import fr.vintiz.feature.fiscal.FiscalExportScreen
+import fr.vintiz.feature.inventory.ProductDetailScreen
 import fr.vintiz.feature.ia.IaScreen
 import fr.vintiz.feature.loyalty.LoyaltySubscribeScreen
 import fr.vintiz.feature.newsletter.NewsletterScreen
@@ -56,6 +58,10 @@ object Routes {
     const val NEWSLETTER = "shell/newsletter"
     const val LOYALTY_SUBSCRIBE = "shell/loyalty/subscribe"
     const val PERSONAL_SHOPPER = "shell/personal-shopper"
+    const val DRAWER = "shell/drawer"
+    const val INVENTORY_DETAIL = "shell/inventory/detail"
+
+    fun inventoryDetail(productId: String) = "$INVENTORY_DETAIL/$productId"
 
     fun fiscalRoute(from: String? = null, to: String? = null): String {
         val params = buildList {
@@ -134,7 +140,25 @@ private fun Shell(rootNav: NavHostController) {
                         }
                     })
                 }
-                composable(Routes.INVENTORY) { InventoryScreen() }
+                composable(Routes.INVENTORY) {
+                    InventoryScreen(onProductClick = { id ->
+                        shellNav.navigate(Routes.inventoryDetail(id))
+                    })
+                }
+                composable(
+                    route = "${Routes.INVENTORY_DETAIL}/{productId}",
+                    arguments = listOf(
+                        androidx.navigation.navArgument("productId") {
+                            type = androidx.navigation.NavType.StringType
+                        },
+                    ),
+                ) { backStackEntry ->
+                    ProductDetailScreen(
+                        productId = backStackEntry.arguments?.getString("productId").orEmpty(),
+                        onBack = { shellNav.popBackStack() },
+                    )
+                }
+                composable(Routes.DRAWER) { DrawerScreen() }
                 composable(Routes.CLIENTS) { ClientsScreen() }
                 composable(Routes.CAHIER) { CahierScreen() }
                 composable(Routes.SETTINGS) { SettingsScreen() }
@@ -191,7 +215,7 @@ private fun Shell(rootNav: NavHostController) {
 private val PLUS_ROUTES = setOf(
     Routes.DASHBOARD, Routes.IA, Routes.ZONES, Routes.ADMIN, Routes.FISCAL,
     Routes.NEWSLETTER, Routes.LOYALTY_SUBSCRIBE, Routes.PERSONAL_SHOPPER,
-    "shell/plus",
+    Routes.DRAWER, "shell/plus",
 )
 
 @Composable
@@ -210,6 +234,7 @@ private fun PlusMenu(onSelect: (String) -> Unit) {
             PlusItem("Newsletter", "Abonnés RGPD, export CSV, droit à l'oubli", Routes.NEWSLETTER, onSelect)
             PlusItem("Adhésion fidélité", "Créer une carte V###### au POS", Routes.LOYALTY_SUBSCRIBE, onSelect)
             PlusItem("Personal Shopper", "Recos IA pour une cliente identifiée", Routes.PERSONAL_SHOPPER, onSelect)
+            PlusItem("Caisse — ouverture/fermeture", "Fond, Z-Report, écart", Routes.DRAWER, onSelect)
         }
     }
 }

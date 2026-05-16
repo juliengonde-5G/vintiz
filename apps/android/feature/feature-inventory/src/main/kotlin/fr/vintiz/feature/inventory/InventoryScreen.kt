@@ -63,7 +63,10 @@ data class InventoryUiState(
 )
 
 @Composable
-fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
+fun InventoryScreen(
+    onProductClick: (productId: String) -> Unit = {},
+    viewModel: InventoryViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsState()
     Scaffold { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
@@ -79,7 +82,10 @@ fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
             Spacer(Modifier.height(12.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(state.items, key = { it.id }) { p ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        onClick = { onProductClick(p.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
