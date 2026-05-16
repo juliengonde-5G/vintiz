@@ -121,6 +121,8 @@ dependencies {
     implementation(project(":feature:feature-admin"))
     implementation(project(":feature:feature-ia"))
     implementation(project(":feature:feature-zones"))
+    implementation(project(":feature:feature-onboarding"))
+    implementation(project(":feature:feature-receipt"))
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
@@ -149,6 +151,8 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+    implementation("androidx.hilt:hilt-work:1.2.0")
+    ksp("androidx.hilt:hilt-compiler:1.2.0")
 
     implementation(libs.timber)
 

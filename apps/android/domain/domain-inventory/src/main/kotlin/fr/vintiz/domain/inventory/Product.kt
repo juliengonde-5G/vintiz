@@ -35,6 +35,13 @@ enum class ProductStatus(val key: String) {
  * Symétrique avec `apps/api/app/api/inventory/router.py` côté serveur.
  */
 object BarcodeNormalizer {
-    private val WHITESPACE = Regex("\\s+")
+    /**
+     * Couvre `\s` (ASCII : espace, tab, CR, LF, FF, VT) + les
+     * séparateurs Unicode courants : NBSP (` `), Narrow NBSP
+     * (` `), Figure space (` `), Em space (` `),
+     * Zero-width space (`​`) — keyboard wedge français peuvent
+     * en générer.
+     */
+    private val WHITESPACE = Regex("[\\s\\u00A0\\u202F\\u2007\\u2003\\u200B]+")
     fun normalize(raw: String): String = WHITESPACE.replace(raw, "")
 }

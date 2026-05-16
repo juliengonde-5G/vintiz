@@ -101,8 +101,15 @@ fun PosScreen(
                 color = MaterialTheme.colorScheme.outlineVariant,
             )
 
-            // Colonne droite : panier + paiement
+            // Colonne droite : panier + paiement + companion
             Column(modifier = Modifier.weight(0.45f).fillMaxHeight().padding(16.dp)) {
+                state.client?.let { c ->
+                    ClientCompanionPanel(
+                        client = c,
+                        cartSubtotalCents = state.cart.subtotal.cents,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
                 Text("Panier", style = MaterialTheme.typography.headlineMedium)
                 Spacer(Modifier.height(12.dp))
                 LazyColumn(

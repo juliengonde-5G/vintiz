@@ -1,14 +1,18 @@
 package fr.vintiz.data.pos.sync
 
 import android.content.Context
+import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
 import fr.vintiz.data.pos.PosRepository
 import timber.log.Timber
 
-class DrainTransactionsWorker(
-    appContext: Context,
-    params: WorkerParameters,
+@HiltWorker
+class DrainTransactionsWorker @AssistedInject constructor(
+    @Assisted appContext: Context,
+    @Assisted params: WorkerParameters,
     private val repository: PosRepository,
 ) : CoroutineWorker(appContext, params) {
 

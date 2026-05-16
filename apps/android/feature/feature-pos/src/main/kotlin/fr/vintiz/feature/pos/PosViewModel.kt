@@ -19,12 +19,16 @@ import fr.vintiz.domain.pos.CartLine
 import fr.vintiz.domain.pos.PaymentLeg
 import fr.vintiz.domain.pos.PaymentMethod
 import fr.vintiz.domain.pos.PaymentSplit
+import fr.vintiz.hardware.api.NfcService
 import fr.vintiz.hardware.api.PaymentOutcome
 import fr.vintiz.hardware.api.PaymentTerminalService
+import fr.vintiz.hardware.api.ScannerService
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -35,10 +39,24 @@ class PosViewModel @Inject constructor(
     private val clients: ClientsRepository,
     private val pos: PosRepository,
     private val terminal: PaymentTerminalService,
+    private val scanner: ScannerService,
+    private val nfc: NfcService,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PosUiState())
     val state: StateFlow<PosUiState> = _state.asStateFlow()
+
+    init {
+        // Tout scan code-barres (HID ou caméra) ajoute le produit au panier.
+        scanner.scans()
+            .onEach { onBarcodeScanned(it.code) }
+            .launchIn(viewModelScope)
+
+        // Tap NFC → résolution carte fidélité.
+        nfc.tags()
+            .onEach { tag -> resolveNfc(tag.uid) }
+            .launchIn(viewModelScope)
+    }
 
     fun onSearchChange(q: String) {
         _state.update { it.copy(searchQuery = q) }
@@ -54,7 +72,7 @@ class PosViewModel @Inject constructor(
         }
     }
 
-    /** Appelée par le HID scanner et le scan caméra. */
+    /** Appelée par le HID scanner ET le scan caméra ET la doublure de saisie manuelle. */
     fun onBarcodeScanned(raw: String) {
         val normalized = BarcodeNormalizer.normalize(raw)
         if (normalized.isEmpty()) return
@@ -63,6 +81,17 @@ class PosViewModel @Inject constructor(
                 is VintizResult.Success -> addProduct(r.value)
                 is VintizResult.Failure -> _state.update {
                     it.copy(error = "Code-barres non reconnu : $normalized")
+                }
+            }
+        }
+    }
+
+    private fun resolveNfc(uid: String) {
+        viewModelScope.launch {
+            when (val r = clients.byNfcUid(uid)) {
+                is VintizResult.Success -> selectClient(r.value)
+                is VintizResult.Failure -> _state.update {
+                    it.copy(error = "Carte non reconnue : $uid")
                 }
             }
         }
@@ -93,6 +122,13 @@ class PosViewModel @Inject constructor(
         if (qty < 1) return
         _state.update {
             it.copy(cart = it.cart.updateAt(index) { line -> line.copy(quantity = qty) })
+        }
+    }
+
+    fun applyDiscount(index: Int, percent: Int) {
+        if (percent !in 0..100) return
+        _state.update {
+            it.copy(cart = it.cart.updateAt(index) { line -> line.copy(discountPercent = percent) })
         }
     }
 
@@ -204,3 +240,4 @@ data class PosUiState(
     val lastChange: Money = Money.ZERO,
     val error: String? = null,
 )
+

@@ -73,6 +73,8 @@ include(":feature:feature-cahier")
 include(":feature:feature-admin")
 include(":feature:feature-ia")
 include(":feature:feature-zones")
+include(":feature:feature-onboarding")
+include(":feature:feature-receipt")
 
 // Benchmark / Baseline Profile
 include(":benchmark")

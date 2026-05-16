@@ -29,9 +29,11 @@ import fr.vintiz.feature.ia.IaScreen
 import fr.vintiz.feature.inventory.InventoryScreen
 import fr.vintiz.feature.pos.PosScreen
 import fr.vintiz.feature.settings.SettingsScreen
+import fr.vintiz.feature.onboarding.OnboardingScreen
 import fr.vintiz.feature.zones.ZonesScreen
 
 object Routes {
+    const val ONBOARDING = "onboarding"
     const val LOGIN = "login"
     const val CASHIER_PIN = "cashier_pin"
     const val SHELL = "shell"
@@ -49,9 +51,16 @@ object Routes {
 }
 
 @Composable
-fun VintizNavGraph() {
+fun VintizNavGraph(startDestination: String = Routes.LOGIN) {
     val nav = rememberNavController()
-    NavHost(navController = nav, startDestination = Routes.LOGIN) {
+    NavHost(navController = nav, startDestination = startDestination) {
+        composable(Routes.ONBOARDING) {
+            OnboardingScreen(onFinished = {
+                nav.navigate(Routes.LOGIN) {
+                    popUpTo(Routes.ONBOARDING) { inclusive = true }
+                }
+            })
+        }
         composable(Routes.LOGIN) {
             LoginScreen(onLoginSuccess = {
                 nav.navigate(Routes.CASHIER_PIN) {
