@@ -171,6 +171,15 @@ class PosViewModel @Inject constructor(
         viewModelScope.launch { personalShopper.logClick(clientId, productId) }
     }
 
+    /**
+     * Fermeture de la modal ticket post-vente — efface le
+     * `lastTransactionId` pour que le PosScreen retrouve un panier
+     * vide prêt pour la vente suivante.
+     */
+    fun dismissReceipt() {
+        _state.value = PosUiState()
+    }
+
     fun lookupClient(q: String) {
         if (q.isBlank()) return
         viewModelScope.launch {
@@ -215,7 +224,7 @@ class PosViewModel @Inject constructor(
             return
         }
         val split = PaymentSplit(total).add(PaymentLeg(PaymentMethod.Cash, total))
-        commit(split, change = split.computeChange(tendered))
+        commit(split, change = split.computeChange(tendered), paidByCash = true)
     }
 
     fun payCard() {
@@ -230,7 +239,7 @@ class PosViewModel @Inject constructor(
                     val split = PaymentSplit(total).add(
                         PaymentLeg(PaymentMethod.Card, total, checkoutId = outcome.checkoutId)
                     )
-                    commit(split, change = Money.ZERO)
+                    commit(split, change = Money.ZERO, paidByCash = false)
                 }
                 is PaymentOutcome.Declined -> _state.update {
                     it.copy(paymentInProgress = false, error = "Paiement refusé : ${outcome.reason}")
@@ -245,7 +254,7 @@ class PosViewModel @Inject constructor(
         }
     }
 
-    private fun commit(split: PaymentSplit, change: Money) {
+    private fun commit(split: PaymentSplit, change: Money, paidByCash: Boolean) {
         val cart = _state.value.cart
         if (cart.isEmpty) return
         val req = CreateTransactionRequest(
@@ -273,7 +282,11 @@ class PosViewModel @Inject constructor(
         viewModelScope.launch {
             when (val r = pos.commit(req)) {
                 is VintizResult.Success -> _state.update {
-                    PosUiState(lastTransactionId = r.value.id, lastChange = change)
+                    PosUiState(
+                        lastTransactionId = r.value.id,
+                        lastChange = change,
+                        lastPaidByCash = paidByCash,
+                    )
                 }
                 is VintizResult.Failure -> _state.update {
                     it.copy(
@@ -300,6 +313,7 @@ data class PosUiState(
     val companionError: String? = null,
     val lastTransactionId: String? = null,
     val lastChange: Money = Money.ZERO,
+    val lastPaidByCash: Boolean = false,
     val error: String? = null,
 ) {
     /**

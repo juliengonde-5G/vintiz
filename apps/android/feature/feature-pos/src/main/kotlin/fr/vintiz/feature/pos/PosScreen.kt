@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import fr.vintiz.core.common.Money
 import fr.vintiz.domain.pos.PaymentMethod
+import fr.vintiz.feature.receipt.ReceiptDialog
 
 @Composable
 fun PosScreen(
@@ -212,6 +213,19 @@ fun PosScreen(
                 }
             }
         }
+    }
+
+    // Modal ticket post-vente — s'ouvre dès qu'une transaction vient
+    // d'être validée. Le ReceiptViewModel injecté est un autre Hilt
+    // ViewModel : il télécharge les bytes ESC/POS pré-signés serveur
+    // et les envoie à l'imprimante MUNBYN (USB ou TCP selon config).
+    // Le kick tiroir est automatique si la vente était en espèces.
+    state.lastTransactionId?.let { txId ->
+        ReceiptDialog(
+            transactionId = txId,
+            paidByCash = state.lastPaidByCash,
+            onDismiss = viewModel::dismissReceipt,
+        )
     }
 }
 
