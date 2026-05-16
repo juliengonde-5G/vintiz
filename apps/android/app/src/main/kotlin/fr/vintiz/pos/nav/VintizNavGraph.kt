@@ -29,6 +29,7 @@ import fr.vintiz.feature.fiscal.FiscalExportScreen
 import fr.vintiz.feature.ia.IaScreen
 import fr.vintiz.feature.loyalty.LoyaltySubscribeScreen
 import fr.vintiz.feature.newsletter.NewsletterScreen
+import fr.vintiz.feature.personalshopper.PersonalShopperScreen
 import fr.vintiz.feature.inventory.InventoryScreen
 import fr.vintiz.feature.pos.PosScreen
 import fr.vintiz.feature.settings.SettingsScreen
@@ -54,6 +55,7 @@ object Routes {
     const val FISCAL = "shell/fiscal"
     const val NEWSLETTER = "shell/newsletter"
     const val LOYALTY_SUBSCRIBE = "shell/loyalty/subscribe"
+    const val PERSONAL_SHOPPER = "shell/personal-shopper"
 
     fun fiscalRoute(from: String? = null, to: String? = null): String {
         val params = buildList {
@@ -172,6 +174,7 @@ private fun Shell(rootNav: NavHostController) {
                         }
                     })
                 }
+                composable(Routes.PERSONAL_SHOPPER) { PersonalShopperScreen() }
                 composable(BottomNavItem.Plus.route) {
                     PlusMenu(onSelect = { route ->
                         shellNav.navigate(route) {
@@ -187,7 +190,8 @@ private fun Shell(rootNav: NavHostController) {
 
 private val PLUS_ROUTES = setOf(
     Routes.DASHBOARD, Routes.IA, Routes.ZONES, Routes.ADMIN, Routes.FISCAL,
-    Routes.NEWSLETTER, Routes.LOYALTY_SUBSCRIBE, "shell/plus",
+    Routes.NEWSLETTER, Routes.LOYALTY_SUBSCRIBE, Routes.PERSONAL_SHOPPER,
+    "shell/plus",
 )
 
 @Composable
@@ -205,6 +209,7 @@ private fun PlusMenu(onSelect: (String) -> Unit) {
             PlusItem("Export fiscal NF525", "Génération XML/JSON DGFiP signée serveur", Routes.FISCAL, onSelect)
             PlusItem("Newsletter", "Abonnés RGPD, export CSV, droit à l'oubli", Routes.NEWSLETTER, onSelect)
             PlusItem("Adhésion fidélité", "Créer une carte V###### au POS", Routes.LOYALTY_SUBSCRIBE, onSelect)
+            PlusItem("Personal Shopper", "Recos IA pour une cliente identifiée", Routes.PERSONAL_SHOPPER, onSelect)
         }
     }
 }

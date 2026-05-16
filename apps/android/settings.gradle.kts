@@ -84,6 +84,7 @@ include(":feature:feature-receipt")
 include(":feature:feature-fiscal")
 include(":feature:feature-newsletter")
 include(":feature:feature-loyalty")
+include(":feature:feature-personal-shopper")
 
 // Benchmark / Baseline Profile
 include(":benchmark")

@@ -134,6 +134,7 @@ dependencies {
     implementation(project(":feature:feature-fiscal"))
     implementation(project(":feature:feature-newsletter"))
     implementation(project(":feature:feature-loyalty"))
+    implementation(project(":feature:feature-personal-shopper"))
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
