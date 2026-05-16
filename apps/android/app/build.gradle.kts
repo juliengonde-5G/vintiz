@@ -87,6 +87,14 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    lint {
+        // L'APK debug doit pouvoir builder même si lint trouve des
+        // soucis non-bloquants. Les rapports HTML/XML restent générés.
+        abortOnError = false
+        warningsAsErrors = false
+        checkReleaseBuilds = true
+    }
 }
 
 dependencies {
