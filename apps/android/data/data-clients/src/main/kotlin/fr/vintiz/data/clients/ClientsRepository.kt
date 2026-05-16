@@ -22,6 +22,14 @@ class ClientsRepository(
         VintizResult.Success(dao.search(query).map { it.toDto() })
     }
 
+    suspend fun fullClient(id: String): VintizResult<ClientFullDto> = try {
+        VintizResult.Success(api.fullClient(id))
+    } catch (io: IOException) {
+        VintizResult.Failure(VintizError.Network)
+    } catch (http: retrofit2.HttpException) {
+        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+    }
+
     suspend fun byNfcUid(uid: String): VintizResult<ClientDto> {
         val cached = dao.byNfcUid(uid)
         if (cached != null) return VintizResult.Success(cached.toDto())

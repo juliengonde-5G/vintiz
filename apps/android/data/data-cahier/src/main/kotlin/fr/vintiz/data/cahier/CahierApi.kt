@@ -25,7 +25,17 @@ interface CahierApi {
 
     @PUT("api/v1/cahier/signature")
     suspend fun sign(@Body body: SignatureDto): CahierDayDto
+
+    @GET("api/v1/cahier/weekday-weights")
+    suspend fun weekdayWeights(): WeekdayWeightsDto
 }
+
+@JsonClass(generateAdapter = true)
+data class WeekdayWeightsDto(
+    /** Poids historique normalisé 0..1 par jour (0=lundi, 6=dimanche). */
+    val weights: List<Double>,
+    val sample_weeks: Int = 0,
+)
 
 @JsonClass(generateAdapter = true)
 data class CahierDayDto(

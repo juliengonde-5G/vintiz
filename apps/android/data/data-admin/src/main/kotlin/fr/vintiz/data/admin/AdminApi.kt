@@ -39,7 +39,30 @@ interface AdminApi {
         @Path("id") id: String,
         @Body body: RefundRequest,
     ): AdminTransactionDto
+
+    /** Audit CB SumUp — toutes les tentatives loggées (paid/failed/timeout). */
+    @GET("api/v1/admin/payment-attempts")
+    suspend fun paymentAttempts(
+        @Query("limit") limit: Int = 100,
+        @Query("status") status: String? = null,
+    ): List<PaymentAttemptDto>
 }
+
+@JsonClass(generateAdapter = true)
+data class PaymentAttemptDto(
+    val id: String,
+    val transaction_id: String? = null,
+    val drawer_id: String? = null,
+    val cashier_id: String? = null,
+    val checkout_id: String? = null,
+    val amount_cents: Long,
+    val status: String, // pending / paid / failed / cancelled / timeout
+    val card_brand: String? = null,
+    val card_last4: String? = null,
+    val error_detail: String? = null,
+    val attempted_at: String,
+    val finished_at: String? = null,
+)
 
 @JsonClass(generateAdapter = true)
 data class AdminTransactionDto(

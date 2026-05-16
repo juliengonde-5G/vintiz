@@ -23,6 +23,7 @@ import fr.vintiz.feature.admin.AdminScreen
 import fr.vintiz.feature.auth.CashierPinScreen
 import fr.vintiz.feature.auth.LoginScreen
 import fr.vintiz.feature.cahier.CahierScreen
+import fr.vintiz.feature.clients.ClientDetailScreen
 import fr.vintiz.feature.clients.ClientsScreen
 import fr.vintiz.feature.dashboard.DashboardScreen
 import fr.vintiz.feature.drawer.DrawerScreen
@@ -60,8 +61,10 @@ object Routes {
     const val PERSONAL_SHOPPER = "shell/personal-shopper"
     const val DRAWER = "shell/drawer"
     const val INVENTORY_DETAIL = "shell/inventory/detail"
+    const val CLIENT_DETAIL = "shell/clients/detail"
 
     fun inventoryDetail(productId: String) = "$INVENTORY_DETAIL/$productId"
+    fun clientDetail(clientId: String) = "$CLIENT_DETAIL/$clientId"
 
     fun fiscalRoute(from: String? = null, to: String? = null): String {
         val params = buildList {
@@ -159,7 +162,24 @@ private fun Shell(rootNav: NavHostController) {
                     )
                 }
                 composable(Routes.DRAWER) { DrawerScreen() }
-                composable(Routes.CLIENTS) { ClientsScreen() }
+                composable(Routes.CLIENTS) {
+                    ClientsScreen(onClientClick = { id ->
+                        shellNav.navigate(Routes.clientDetail(id))
+                    })
+                }
+                composable(
+                    route = "${Routes.CLIENT_DETAIL}/{clientId}",
+                    arguments = listOf(
+                        androidx.navigation.navArgument("clientId") {
+                            type = androidx.navigation.NavType.StringType
+                        },
+                    ),
+                ) { backStackEntry ->
+                    ClientDetailScreen(
+                        clientId = backStackEntry.arguments?.getString("clientId").orEmpty(),
+                        onBack = { shellNav.popBackStack() },
+                    )
+                }
                 composable(Routes.CAHIER) { CahierScreen() }
                 composable(Routes.SETTINGS) { SettingsScreen() }
                 composable(Routes.DASHBOARD) { DashboardScreen() }

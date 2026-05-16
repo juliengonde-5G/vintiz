@@ -206,8 +206,38 @@ private fun WindowTab(
                         Text("En attente de validation",
                             color = MaterialTheme.colorScheme.error)
                     }
-                    val products = (wp.proposal["products"] as? List<*>)?.size ?: 0
-                    Text("Produits proposés : $products")
+
+                    // Rendu détaillé du proposal : on parse au mieux le Map
+                    // opaque renvoyé par le backend (forme à figer V2).
+                    val theme = wp.proposal["theme"] as? String
+                    val rationale = wp.proposal["rationale"] as? String
+                    val products = wp.proposal["products"] as? List<*> ?: emptyList<Any>()
+
+                    theme?.takeIf { it.isNotBlank() }?.let {
+                        Text("Thème : $it", style = MaterialTheme.typography.titleSmall)
+                    }
+                    rationale?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("Produits proposés : ${products.size}")
+
+                    // Affiche jusqu'aux 5 premiers produits si la forme est
+                    // un List<Map<String, Any>> avec name + price_cents.
+                    products.take(5).forEachIndexed { i, item ->
+                        val m = item as? Map<*, *> ?: return@forEachIndexed
+                        val name = m["name"] as? String ?: "Produit ${i + 1}"
+                        val priceCents = (m["price_cents"] as? Number)?.toLong()
+                        Text(
+                            "• $name" + (priceCents?.let { " — ${fr.vintiz.core.common.Money(it).format()}" } ?: ""),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    if (products.size > 5) {
+                        Text("…et ${products.size - 5} autres",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         } ?: state.windowError?.let {

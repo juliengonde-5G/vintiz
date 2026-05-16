@@ -22,6 +22,12 @@ class CahierRepository(private val api: CahierApi) {
     suspend fun sign(date: String, role: String, signature: String): VintizResult<CahierDayDto> =
         call { api.sign(SignatureDto(date, role, signature)) }
 
+    suspend fun weekdayWeights(): VintizResult<WeekdayWeightsDto> =
+        call { api.weekdayWeights() }
+
+    suspend fun monthlyTarget(year: Int, month: Int): VintizResult<MonthlyTargetDto> =
+        call { api.monthlyTarget(year, month) }
+
     private suspend inline fun <T> call(block: suspend () -> T): VintizResult<T> = try {
         VintizResult.Success(block())
     } catch (io: IOException) {

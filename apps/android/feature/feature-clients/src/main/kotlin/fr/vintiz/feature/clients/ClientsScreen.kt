@@ -62,7 +62,10 @@ data class ClientsUiState(
 )
 
 @Composable
-fun ClientsScreen(viewModel: ClientsViewModel = hiltViewModel()) {
+fun ClientsScreen(
+    onClientClick: (clientId: String) -> Unit = {},
+    viewModel: ClientsViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsState()
     Scaffold { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
@@ -78,7 +81,10 @@ fun ClientsScreen(viewModel: ClientsViewModel = hiltViewModel()) {
             Spacer(Modifier.height(12.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(state.items, key = { it.id }) { c ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        onClick = { onClientClick(c.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,

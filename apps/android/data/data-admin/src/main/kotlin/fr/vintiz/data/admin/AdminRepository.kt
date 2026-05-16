@@ -37,6 +37,11 @@ class AdminRepository(private val api: AdminApi) {
         api.refund(transactionId, RefundRequest(items, method, reason))
     }
 
+    suspend fun paymentAttempts(
+        limit: Int = 100,
+        status: String? = null,
+    ): VintizResult<List<PaymentAttemptDto>> = call { api.paymentAttempts(limit, status) }
+
     private suspend inline fun <T> call(block: suspend () -> T): VintizResult<T> = try {
         VintizResult.Success(block())
     } catch (io: IOException) {

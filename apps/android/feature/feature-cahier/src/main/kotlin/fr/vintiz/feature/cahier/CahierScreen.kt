@@ -1,6 +1,8 @@
 package fr.vintiz.feature.cahier
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
@@ -30,6 +33,7 @@ import fr.vintiz.core.common.Money
 import fr.vintiz.core.common.VintizResult
 import fr.vintiz.data.cahier.CahierDayDto
 import fr.vintiz.data.cahier.CahierRepository
+import fr.vintiz.data.cahier.WeekdayWeightsDto
 import fr.vintiz.domain.cahier.CahierDay
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,6 +63,28 @@ class CahierViewModel @Inject constructor(
                 is VintizResult.Failure -> _state.update {
                     it.copy(loading = false, error = r.error.message)
                 }
+            }
+            (repo.weekdayWeights() as? VintizResult.Success)?.let { ok ->
+                _state.update { it.copy(weekdayWeights = ok.value) }
+            }
+        }
+    }
+
+    fun setMonthlyTargetInput(v: String) {
+        _state.update { it.copy(monthlyTargetInput = v.filter { c -> c.isDigit() }) }
+    }
+
+    fun saveMonthlyTarget() {
+        val cents = _state.value.monthlyTargetInput.toLongOrNull() ?: return
+        val parsedDate = runCatching { LocalDate.parse(_state.value.date) }
+            .getOrNull() ?: return
+        viewModelScope.launch {
+            when (val r = repo.setMonthlyTarget(parsedDate.year, parsedDate.monthValue, cents)) {
+                is VintizResult.Success -> _state.update {
+                    it.copy(monthlyTargetSavedCents = r.value.target_cents,
+                        monthlyTargetInput = "")
+                }
+                is VintizResult.Failure -> _state.update { it.copy(error = r.error.message) }
             }
         }
     }
@@ -110,6 +136,9 @@ data class CahierUiState(
     val messageDraft: String = "",
     val operationDraft: String = "",
     val savedAt: Long? = null,
+    val weekdayWeights: WeekdayWeightsDto? = null,
+    val monthlyTargetInput: String = "",
+    val monthlyTargetSavedCents: Long? = null,
     val error: String? = null,
 )
 
@@ -174,7 +203,81 @@ fun CahierScreen(viewModel: CahierViewModel = hiltViewModel()) {
                 Button(onClick = { viewModel.sign("equipe", "Équipe") }) { Text("Signer équipe") }
             }
 
+            state.weekdayWeights?.let { WeekdayWeightsCard(it) }
+            MonthlyTargetCard(state, viewModel::setMonthlyTargetInput, viewModel::saveMonthlyTarget)
+
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        }
+    }
+}
+
+@Composable
+private fun WeekdayWeightsCard(w: WeekdayWeightsDto) {
+    val labels = listOf("L", "M", "M", "J", "V", "S", "D")
+    val max = w.weights.maxOrNull() ?: 1.0
+    androidx.compose.material3.Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("Poids historique des jours",
+                style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Sur ${w.sample_weeks} semaines. Sert à répartir l'objectif " +
+                    "mensuel jour par jour.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().height(60.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.Bottom,
+                horizontalArrangement = Arrangement.SpaceAround,
+            ) {
+                w.weights.forEachIndexed { i, value ->
+                    val ratio = (value / max).toFloat().coerceIn(0f, 1f)
+                    val primary = MaterialTheme.colorScheme.primary
+                    Column(
+                        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(20.dp)
+                                .height((40 * ratio).dp.coerceAtLeast(4.dp))
+                                .background(primary),
+                        )
+                        Text(labels.getOrNull(i) ?: "?",
+                            style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MonthlyTargetCard(
+    state: CahierUiState,
+    onChange: (String) -> Unit,
+    onSave: () -> Unit,
+) {
+    androidx.compose.material3.Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Objectif mensuel", style = MaterialTheme.typography.titleMedium)
+            state.monthlyTargetSavedCents?.let {
+                Text("Objectif actuel : ${Money(it).format()}",
+                    color = MaterialTheme.colorScheme.primary)
+            }
+            androidx.compose.material3.OutlinedTextField(
+                value = state.monthlyTargetInput,
+                onValueChange = onChange,
+                label = { Text("Nouvel objectif (centimes)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(onClick = onSave,
+                enabled = state.monthlyTargetInput.toLongOrNull()?.let { it > 0 } == true) {
+                Text("Enregistrer l'objectif")
+            }
         }
     }
 }

@@ -38,6 +38,7 @@ import fr.vintiz.core.common.VintizResult
 import fr.vintiz.data.admin.AdminRepository
 import fr.vintiz.data.admin.AdminTransactionDto
 import fr.vintiz.data.admin.AuditLogDto
+import fr.vintiz.data.admin.PaymentAttemptDto
 import fr.vintiz.data.admin.RefundItemDto
 import fr.vintiz.data.admin.UserDto
 import fr.vintiz.data.reports.ReportsRepository
@@ -71,6 +72,9 @@ class AdminViewModel @Inject constructor(
             }
             (admin.auditLogs() as? VintizResult.Success)?.let { ok ->
                 _state.update { it.copy(auditLogs = ok.value) }
+            }
+            (admin.paymentAttempts() as? VintizResult.Success)?.let { ok ->
+                _state.update { it.copy(paymentAttempts = ok.value) }
             }
         }
     }
@@ -107,6 +111,7 @@ data class AdminUiState(
     val users: List<UserDto> = emptyList(),
     val zReports: List<ZReportDto> = emptyList(),
     val auditLogs: List<AuditLogDto> = emptyList(),
+    val paymentAttempts: List<PaymentAttemptDto> = emptyList(),
     val refundCandidate: AdminTransactionDto? = null,
     val lastRefundId: String? = null,
     val error: String? = null,
@@ -123,7 +128,7 @@ fun AdminScreen(
     Scaffold { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             TabRow(selectedTabIndex = state.tab) {
-                listOf("Ventes", "Z-Reports", "Utilisateurs", "Audit").forEachIndexed { i, label ->
+                listOf("Ventes", "Z-Reports", "Utilisateurs", "CB", "Audit").forEachIndexed { i, label ->
                     Tab(selected = state.tab == i, onClick = { viewModel.selectTab(i) }, text = { Text(label) })
                 }
             }
@@ -131,6 +136,7 @@ fun AdminScreen(
                 0 -> TransactionsTab(state.transactions, onRefund = viewModel::startRefund)
                 1 -> ZReportsTab(state.zReports, onExportPeriod = onExportPeriod)
                 2 -> UsersTab(state.users)
+                3 -> PaymentAttemptsTab(state.paymentAttempts)
                 else -> AuditTab(state.auditLogs)
             }
         }
@@ -233,6 +239,47 @@ private fun UsersTab(items: List<UserDto>) {
                     }
                     if (u.has_pin) Text("PIN ✓") else Text("PIN —",
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaymentAttemptsTab(items: List<PaymentAttemptDto>) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (items.isEmpty()) {
+            item {
+                Text("Aucune tentative CB enregistrée.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        items(items, key = { it.id }) { a ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(Money(a.amount_cents).format(),
+                            style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "${a.attempted_at.take(16).replace("T", " à ")} • " +
+                                "${a.card_brand ?: "—"} ${a.card_last4 ?: ""} " +
+                                (if (a.error_detail != null) "• ${a.error_detail}" else ""),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    val color = when (a.status.lowercase()) {
+                        "paid" -> MaterialTheme.colorScheme.primary
+                        "pending" -> MaterialTheme.colorScheme.onSurfaceVariant
+                        else -> MaterialTheme.colorScheme.error
+                    }
+                    Text(a.status.uppercase(),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = color)
                 }
             }
         }
