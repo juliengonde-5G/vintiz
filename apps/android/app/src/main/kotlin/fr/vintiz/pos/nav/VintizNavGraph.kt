@@ -28,6 +28,7 @@ import fr.vintiz.feature.clients.ClientsScreen
 import fr.vintiz.feature.dashboard.DashboardScreen
 import fr.vintiz.feature.drawer.DrawerScreen
 import fr.vintiz.feature.fiscal.FiscalExportScreen
+import fr.vintiz.feature.inventory.InventoryImportScreen
 import fr.vintiz.feature.inventory.ProductDetailScreen
 import fr.vintiz.feature.ia.IaScreen
 import fr.vintiz.feature.loyalty.LoyaltySubscribeScreen
@@ -61,6 +62,7 @@ object Routes {
     const val PERSONAL_SHOPPER = "shell/personal-shopper"
     const val DRAWER = "shell/drawer"
     const val INVENTORY_DETAIL = "shell/inventory/detail"
+    const val INVENTORY_IMPORT = "shell/inventory/import"
     const val CLIENT_DETAIL = "shell/clients/detail"
 
     fun inventoryDetail(productId: String) = "$INVENTORY_DETAIL/$productId"
@@ -161,6 +163,9 @@ private fun Shell(rootNav: NavHostController) {
                         onBack = { shellNav.popBackStack() },
                     )
                 }
+                composable(Routes.INVENTORY_IMPORT) {
+                    InventoryImportScreen(onBack = { shellNav.popBackStack() })
+                }
                 composable(Routes.DRAWER) { DrawerScreen() }
                 composable(Routes.CLIENTS) {
                     ClientsScreen(onClientClick = { id ->
@@ -235,7 +240,7 @@ private fun Shell(rootNav: NavHostController) {
 private val PLUS_ROUTES = setOf(
     Routes.DASHBOARD, Routes.IA, Routes.ZONES, Routes.ADMIN, Routes.FISCAL,
     Routes.NEWSLETTER, Routes.LOYALTY_SUBSCRIBE, Routes.PERSONAL_SHOPPER,
-    Routes.DRAWER, "shell/plus",
+    Routes.DRAWER, Routes.INVENTORY_IMPORT, "shell/plus",
 )
 
 @Composable
@@ -255,6 +260,7 @@ private fun PlusMenu(onSelect: (String) -> Unit) {
             PlusItem("Adhésion fidélité", "Créer une carte V###### au POS", Routes.LOYALTY_SUBSCRIBE, onSelect)
             PlusItem("Personal Shopper", "Recos IA pour une cliente identifiée", Routes.PERSONAL_SHOPPER, onSelect)
             PlusItem("Caisse — ouverture/fermeture", "Fond, Z-Report, écart", Routes.DRAWER, onSelect)
+            PlusItem("Import CSV produits", "Bulk upload depuis tableur, dry-run + commit", Routes.INVENTORY_IMPORT, onSelect)
         }
     }
 }

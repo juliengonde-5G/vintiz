@@ -1,2 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Pour la capture photo produit via Intent ACTION_IMAGE_CAPTURE.
+         Pas required (l'app marche aussi sans caméra, le manager
+         peut uploader via le web). -->
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+</manifest>

@@ -103,6 +103,27 @@ class AdminViewModel @Inject constructor(
             }
         }
     }
+
+    fun openCreateUserDialog() = _state.update { it.copy(showCreateUserDialog = true) }
+    fun closeCreateUserDialog() = _state.update { it.copy(showCreateUserDialog = false) }
+
+    fun createUser(username: String, password: String, role: String) {
+        viewModelScope.launch {
+            when (val r = admin.createUser(username, password, role)) {
+                is VintizResult.Success -> {
+                    _state.update { it.copy(showCreateUserDialog = false) }
+                    loadAll()
+                }
+                is VintizResult.Failure -> _state.update { it.copy(error = r.error.message) }
+            }
+        }
+    }
+
+    fun deleteUser(id: String) {
+        viewModelScope.launch {
+            if (admin.deleteUser(id) is VintizResult.Success) loadAll()
+        }
+    }
 }
 
 data class AdminUiState(
@@ -114,6 +135,7 @@ data class AdminUiState(
     val paymentAttempts: List<PaymentAttemptDto> = emptyList(),
     val refundCandidate: AdminTransactionDto? = null,
     val lastRefundId: String? = null,
+    val showCreateUserDialog: Boolean = false,
     val error: String? = null,
 )
 
@@ -135,7 +157,11 @@ fun AdminScreen(
             when (state.tab) {
                 0 -> TransactionsTab(state.transactions, onRefund = viewModel::startRefund)
                 1 -> ZReportsTab(state.zReports, onExportPeriod = onExportPeriod)
-                2 -> UsersTab(state.users)
+                2 -> UsersTab(
+                    state.users,
+                    onCreate = viewModel::openCreateUserDialog,
+                    onDelete = viewModel::deleteUser,
+                )
                 3 -> PaymentAttemptsTab(state.paymentAttempts)
                 else -> AuditTab(state.auditLogs)
             }
@@ -147,6 +173,13 @@ fun AdminScreen(
             tx = tx,
             onCancel = viewModel::cancelRefund,
             onConfirm = { amount, method -> viewModel.confirmRefund(amount, method) },
+        )
+    }
+
+    if (state.showCreateUserDialog) {
+        CreateUserDialog(
+            onCancel = viewModel::closeCreateUserDialog,
+            onConfirm = { u, p, r -> viewModel.createUser(u, p, r) },
         )
     }
 }
@@ -222,27 +255,89 @@ private fun ZReportsTab(
 }
 
 @Composable
-private fun UsersTab(items: List<UserDto>) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        items(items, key = { it.id }) { u ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(u.username, style = MaterialTheme.typography.titleMedium)
-                        Text(u.role, style = MaterialTheme.typography.bodySmall)
+private fun UsersTab(
+    items: List<UserDto>,
+    onCreate: () -> Unit,
+    onDelete: (id: String) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("${items.size} utilisateur(s)", modifier = Modifier.weight(1f))
+            androidx.compose.material3.Button(onClick = onCreate) {
+                Text("Nouvel utilisateur")
+            }
+        }
+        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(items, key = { it.id }) { u ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(u.username, style = MaterialTheme.typography.titleMedium)
+                            Text(u.role, style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (u.has_pin) Text("PIN ✓") else Text("PIN —",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        androidx.compose.material3.TextButton(onClick = { onDelete(u.id) }) {
+                            Text("✕", color = MaterialTheme.colorScheme.error)
+                        }
                     }
-                    if (u.has_pin) Text("PIN ✓") else Text("PIN —",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
     }
+}
+
+@Composable
+private fun CreateUserDialog(
+    onCancel: () -> Unit,
+    onConfirm: (username: String, password: String, role: String) -> Unit,
+) {
+    val username = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    val password = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    val role = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("collaborateur") }
+
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Nouvel utilisateur") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.OutlinedTextField(
+                    value = username.value,
+                    onValueChange = { username.value = it },
+                    label = { Text("Identifiant") },
+                    singleLine = true,
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = password.value,
+                    onValueChange = { password.value = it },
+                    label = { Text("Mot de passe") },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("manager", "collaborateur").forEach { r ->
+                        androidx.compose.material3.Button(
+                            onClick = { role.value = r },
+                            enabled = role.value != r,
+                        ) { Text(r) }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.Button(
+                onClick = { onConfirm(username.value.trim(), password.value, role.value) },
+                enabled = username.value.isNotBlank() && password.value.length >= 8,
+            ) { Text("Créer") }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onCancel) { Text("Annuler") }
+        },
+    )
 }
 
 @Composable

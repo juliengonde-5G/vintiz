@@ -4,7 +4,12 @@ import fr.vintiz.core.common.VintizError
 import fr.vintiz.core.common.VintizResult
 import fr.vintiz.core.database.dao.ProductDao
 import fr.vintiz.core.database.entity.ProductCacheEntity
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import retrofit2.HttpException
 import timber.log.Timber
+import java.io.File
 import java.io.IOException
 
 class InventoryRepository(
@@ -48,6 +53,50 @@ class InventoryRepository(
         val cached = dao.byId(id)
         if (cached != null) VintizResult.Success(cached.toDto())
         else VintizResult.Failure(VintizError.Network)
+    }
+
+    /**
+     * Import CSV en masse. `dryRun=true` permet de prévisualiser le
+     * résultat (volumes + erreurs ligne par ligne) sans rien
+     * persister. À utiliser avant tout commit pour éviter qu'un import
+     * mal formaté n'écrase la base.
+     */
+    suspend fun importCsv(file: File, dryRun: Boolean): VintizResult<CsvImportResultDto> = try {
+        val body = file.asRequestBody("text/csv".toMediaTypeOrNull())
+        val part = MultipartBody.Part.createFormData("file", file.name, body)
+        val result = api.importCsv(part, dryRun)
+        if (!dryRun) dao.clear() // forcer SyncProducts au prochain run
+        VintizResult.Success(result)
+    } catch (io: IOException) {
+        VintizResult.Failure(VintizError.Network)
+    } catch (http: HttpException) {
+        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+    }
+
+    suspend fun photos(productId: String): VintizResult<List<ProductPhotoDto>> = try {
+        VintizResult.Success(api.photos(productId))
+    } catch (io: IOException) {
+        VintizResult.Failure(VintizError.Network)
+    } catch (http: HttpException) {
+        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+    }
+
+    suspend fun uploadPhoto(productId: String, file: File): VintizResult<ProductPhotoDto> = try {
+        val mediaType = (file.guessMimeType()).toMediaTypeOrNull()
+        val body = file.asRequestBody(mediaType)
+        val part = MultipartBody.Part.createFormData("photo", file.name, body)
+        VintizResult.Success(api.uploadPhoto(productId, part))
+    } catch (io: IOException) {
+        VintizResult.Failure(VintizError.Network)
+    } catch (http: HttpException) {
+        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+    }
+
+    private fun File.guessMimeType(): String = when (extension.lowercase()) {
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "webp" -> "image/webp"
+        else -> "application/octet-stream"
     }
 }
 
