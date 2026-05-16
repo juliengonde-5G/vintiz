@@ -27,7 +27,11 @@ android {
             dimension = "env"
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-dev"
-            buildConfigField("String", "API_BASE_URL", "\"https://api.dev.vintiz.fr/\"")
+            // Tant que api.dev.vintiz.fr n'existe pas en DNS, le flavor
+            // dev pointe sur la prod pour permettre le sideload boutique
+            // avec login fonctionnel. À repointer sur api.dev quand le
+            // sous-domaine sera provisionné (DNS + Caddy + VPS env).
+            buildConfigField("String", "API_BASE_URL", "\"https://api.vintiz.fr/\"")
             buildConfigField("String", "CLIENT_ID", "\"vintiz-android-dev\"")
         }
         create("prod") {
