@@ -77,8 +77,8 @@ jobs:
             :core:core-common:test \
             :core:core-network:testDebugUnitTest \
             :hardware:hardware-api:test \
-            :hardware:hardware-escpos-tcp:test \
-            :hardware:hardware-zpl-tcp:test \
+            :hardware:hardware-escpos-tcp:testDebugUnitTest \
+            :hardware:hardware-zpl-tcp:testDebugUnitTest \
             :hardware:hardware-sumup-rest:testDebugUnitTest \
             :domain:domain-pos:test \
             :domain:domain-inventory:test \

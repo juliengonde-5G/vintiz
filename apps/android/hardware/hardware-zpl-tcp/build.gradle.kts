@@ -1,13 +1,21 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
 }
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-}
+android {
+    namespace = "fr.vintiz.hardware.zpl.tcp"
+    compileSdk = 35
 
-kotlin { jvmToolchain(17) }
+    defaultConfig { minSdk = 26 }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+    testOptions { unitTests.all { it.useJUnitPlatform() } }
+}
 
 dependencies {
     api(project(":hardware:hardware-api"))
@@ -16,5 +24,3 @@ dependencies {
 
     testImplementation(libs.bundles.testing)
 }
-
-tasks.withType<Test> { useJUnitPlatform() }
