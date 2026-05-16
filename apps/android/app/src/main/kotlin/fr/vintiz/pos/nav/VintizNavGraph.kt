@@ -27,6 +27,8 @@ import fr.vintiz.feature.clients.ClientsScreen
 import fr.vintiz.feature.dashboard.DashboardScreen
 import fr.vintiz.feature.fiscal.FiscalExportScreen
 import fr.vintiz.feature.ia.IaScreen
+import fr.vintiz.feature.loyalty.LoyaltySubscribeScreen
+import fr.vintiz.feature.newsletter.NewsletterScreen
 import fr.vintiz.feature.inventory.InventoryScreen
 import fr.vintiz.feature.pos.PosScreen
 import fr.vintiz.feature.settings.SettingsScreen
@@ -50,6 +52,16 @@ object Routes {
     const val ZONES = "shell/zones"
     const val ADMIN = "shell/admin"
     const val FISCAL = "shell/fiscal"
+    const val NEWSLETTER = "shell/newsletter"
+    const val LOYALTY_SUBSCRIBE = "shell/loyalty/subscribe"
+
+    fun fiscalRoute(from: String? = null, to: String? = null): String {
+        val params = buildList {
+            if (!from.isNullOrBlank()) add("from=$from")
+            if (!to.isNullOrBlank()) add("to=$to")
+        }
+        return if (params.isEmpty()) FISCAL else FISCAL + "?" + params.joinToString("&")
+    }
 }
 
 @Composable
@@ -127,8 +139,39 @@ private fun Shell(rootNav: NavHostController) {
                 composable(Routes.DASHBOARD) { DashboardScreen() }
                 composable(Routes.IA) { IaScreen() }
                 composable(Routes.ZONES) { ZonesScreen() }
-                composable(Routes.ADMIN) { AdminScreen() }
-                composable(Routes.FISCAL) { FiscalExportScreen() }
+                composable(Routes.ADMIN) {
+                    AdminScreen(onExportPeriod = { from, to ->
+                        shellNav.navigate(Routes.fiscalRoute(from, to))
+                    })
+                }
+                composable(
+                    route = "${Routes.FISCAL}?from={from}&to={to}",
+                    arguments = listOf(
+                        androidx.navigation.navArgument("from") {
+                            type = androidx.navigation.NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                        androidx.navigation.navArgument("to") {
+                            type = androidx.navigation.NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                    ),
+                ) { backStackEntry ->
+                    FiscalExportScreen(
+                        initialFrom = backStackEntry.arguments?.getString("from"),
+                        initialTo = backStackEntry.arguments?.getString("to"),
+                    )
+                }
+                composable(Routes.NEWSLETTER) { NewsletterScreen() }
+                composable(Routes.LOYALTY_SUBSCRIBE) {
+                    LoyaltySubscribeScreen(onSubscribed = {
+                        shellNav.navigate(Routes.POS) {
+                            popUpTo(Routes.LOYALTY_SUBSCRIBE) { inclusive = true }
+                        }
+                    })
+                }
                 composable(BottomNavItem.Plus.route) {
                     PlusMenu(onSelect = { route ->
                         shellNav.navigate(route) {
@@ -143,7 +186,8 @@ private fun Shell(rootNav: NavHostController) {
 }
 
 private val PLUS_ROUTES = setOf(
-    Routes.DASHBOARD, Routes.IA, Routes.ZONES, Routes.ADMIN, Routes.FISCAL, "shell/plus"
+    Routes.DASHBOARD, Routes.IA, Routes.ZONES, Routes.ADMIN, Routes.FISCAL,
+    Routes.NEWSLETTER, Routes.LOYALTY_SUBSCRIBE, "shell/plus",
 )
 
 @Composable
@@ -159,6 +203,8 @@ private fun PlusMenu(onSelect: (String) -> Unit) {
             PlusItem("Plan boutique", "Zones et occupation", Routes.ZONES, onSelect)
             PlusItem("Admin", "Transactions, refund, Z-reports, users, audit", Routes.ADMIN, onSelect)
             PlusItem("Export fiscal NF525", "Génération XML/JSON DGFiP signée serveur", Routes.FISCAL, onSelect)
+            PlusItem("Newsletter", "Abonnés RGPD, export CSV, droit à l'oubli", Routes.NEWSLETTER, onSelect)
+            PlusItem("Adhésion fidélité", "Créer une carte V###### au POS", Routes.LOYALTY_SUBSCRIBE, onSelect)
         }
     }
 }

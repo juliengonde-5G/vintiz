@@ -9,6 +9,8 @@ import fr.vintiz.data.clients.ClientDto
 import fr.vintiz.data.clients.ClientsRepository
 import fr.vintiz.data.inventory.InventoryRepository
 import fr.vintiz.data.inventory.ProductDto
+import fr.vintiz.data.loyalty.CouponPreviewDto
+import fr.vintiz.data.loyalty.LoyaltyRepository
 import fr.vintiz.data.pos.PosRepository
 import fr.vintiz.data.pos.dto.CreateTransactionRequest
 import fr.vintiz.data.pos.dto.PaymentDto
@@ -38,6 +40,7 @@ class PosViewModel @Inject constructor(
     private val inventory: InventoryRepository,
     private val clients: ClientsRepository,
     private val pos: PosRepository,
+    private val loyalty: LoyaltyRepository,
     private val terminal: PaymentTerminalService,
     private val scanner: ScannerService,
     private val nfc: NfcService,
@@ -150,8 +153,30 @@ class PosViewModel @Inject constructor(
         _state.update { it.copy(selectedMethod = method) }
     }
 
+    fun onCouponCodeChange(v: String) {
+        _state.update { it.copy(couponCode = v.uppercase().trim(), couponPreview = null, error = null) }
+    }
+
+    fun validateCoupon() {
+        val code = _state.value.couponCode
+        val total = _state.value.cart.subtotal.cents
+        if (code.isBlank() || total <= 0) return
+        viewModelScope.launch {
+            when (val r = loyalty.validateCoupon(code, total, _state.value.client?.id)) {
+                is VintizResult.Success -> _state.update { it.copy(couponPreview = r.value) }
+                is VintizResult.Failure -> _state.update {
+                    it.copy(couponPreview = null, error = r.error.message)
+                }
+            }
+        }
+    }
+
+    fun clearCoupon() {
+        _state.update { it.copy(couponCode = "", couponPreview = null) }
+    }
+
     fun payCash(tenderedCents: Long) {
-        val total = _state.value.cart.subtotal
+        val total = _state.value.effectiveTotal
         val tendered = Money(tenderedCents)
         if (tendered.cents < total.cents) {
             _state.update { it.copy(error = "Montant insuffisant") }
@@ -162,7 +187,7 @@ class PosViewModel @Inject constructor(
     }
 
     fun payCard() {
-        val total = _state.value.cart.subtotal
+        val total = _state.value.effectiveTotal
         if (total.cents <= 0) return
         val foreignTxId = UUID.randomUUID().toString()
         _state.update { it.copy(paymentInProgress = true) }
@@ -211,6 +236,7 @@ class PosViewModel @Inject constructor(
             },
             client_id = _state.value.client?.id,
             client_uuid = UUID.randomUUID().toString(),
+            coupon_code = _state.value.couponPreview?.code,
         )
         viewModelScope.launch {
             when (val r = pos.commit(req)) {
@@ -236,8 +262,17 @@ data class PosUiState(
     val clientCandidates: List<ClientDto> = emptyList(),
     val selectedMethod: PaymentMethod = PaymentMethod.Cash,
     val paymentInProgress: Boolean = false,
+    val couponCode: String = "",
+    val couponPreview: CouponPreviewDto? = null,
     val lastTransactionId: String? = null,
     val lastChange: Money = Money.ZERO,
     val error: String? = null,
-)
+) {
+    /**
+     * Total panier ajusté par le coupon **côté affichage uniquement**.
+     * Le serveur recalcule au commit et fait foi (NF525).
+     */
+    val effectiveTotal: Money
+        get() = couponPreview?.let { Money(it.new_total_cents) } ?: cart.subtotal
+}
 

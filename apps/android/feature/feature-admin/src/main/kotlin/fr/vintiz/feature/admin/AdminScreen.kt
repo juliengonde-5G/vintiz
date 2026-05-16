@@ -113,7 +113,10 @@ data class AdminUiState(
 )
 
 @Composable
-fun AdminScreen(viewModel: AdminViewModel = hiltViewModel()) {
+fun AdminScreen(
+    onExportPeriod: (from: String?, to: String?) -> Unit = { _, _ -> },
+    viewModel: AdminViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(Unit) { viewModel.loadAll() }
 
@@ -126,7 +129,7 @@ fun AdminScreen(viewModel: AdminViewModel = hiltViewModel()) {
             }
             when (state.tab) {
                 0 -> TransactionsTab(state.transactions, onRefund = viewModel::startRefund)
-                1 -> ZReportsTab(state.zReports)
+                1 -> ZReportsTab(state.zReports, onExportPeriod = onExportPeriod)
                 2 -> UsersTab(state.users)
                 else -> AuditTab(state.auditLogs)
             }
@@ -169,26 +172,43 @@ private fun TransactionsTab(items: List<AdminTransactionDto>, onRefund: (AdminTr
 }
 
 @Composable
-private fun ZReportsTab(items: List<ZReportDto>) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        items(items, key = { it.id }) { z ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text("Caisse ${z.drawer_id} — ${z.opened_at}",
-                        style = MaterialTheme.typography.titleMedium)
-                    Text("Espèces ${Money(z.total_cash_cents).format()} • " +
-                        "CB ${Money(z.total_card_cents).format()} • " +
-                        "Chèque ${Money(z.total_cheque_cents).format()}",
-                        style = MaterialTheme.typography.bodySmall)
-                    val color = when {
-                        z.diff_cents > 0 -> MaterialTheme.colorScheme.primary
-                        z.diff_cents < 0 -> MaterialTheme.colorScheme.error
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+private fun ZReportsTab(
+    items: List<ZReportDto>,
+    onExportPeriod: (from: String?, to: String?) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        if (items.isNotEmpty()) {
+            val periodFrom = items.minOf { it.opened_at }.take(10)
+            val periodTo = items.maxOf { it.closed_at }.take(10)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(
+                    "Période affichée : $periodFrom → $periodTo",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                androidx.compose.material3.Button(onClick = { onExportPeriod(periodFrom, periodTo) }) {
+                    Text("Exporter période fiscale")
+                }
+            }
+            androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        }
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(items, key = { it.id }) { z ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("Caisse ${z.drawer_id} — ${z.opened_at}",
+                            style = MaterialTheme.typography.titleMedium)
+                        Text("Espèces ${Money(z.total_cash_cents).format()} • " +
+                            "CB ${Money(z.total_card_cents).format()} • " +
+                            "Chèque ${Money(z.total_cheque_cents).format()}",
+                            style = MaterialTheme.typography.bodySmall)
+                        val color = when {
+                            z.diff_cents > 0 -> MaterialTheme.colorScheme.primary
+                            z.diff_cents < 0 -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        Text("Écart : ${Money(z.diff_cents).format()}", color = color)
                     }
-                    Text("Écart : ${Money(z.diff_cents).format()}", color = color)
                 }
             }
         }

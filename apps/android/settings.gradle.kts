@@ -56,6 +56,8 @@ include(":data:data-ia")
 include(":data:data-notifications")
 include(":data:data-zones")
 include(":data:data-fiscal")
+include(":data:data-newsletter")
+include(":data:data-loyalty")
 
 // Domain
 include(":domain:domain-pos")
@@ -79,6 +81,8 @@ include(":feature:feature-zones")
 include(":feature:feature-onboarding")
 include(":feature:feature-receipt")
 include(":feature:feature-fiscal")
+include(":feature:feature-newsletter")
+include(":feature:feature-loyalty")
 
 // Benchmark / Baseline Profile
 include(":benchmark")

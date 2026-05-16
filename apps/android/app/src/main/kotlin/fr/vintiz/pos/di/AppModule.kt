@@ -33,6 +33,10 @@ import fr.vintiz.data.inventory.InventoryApi
 import fr.vintiz.data.inventory.InventoryRepository
 import fr.vintiz.data.fiscal.FiscalApi
 import fr.vintiz.data.fiscal.FiscalRepository
+import fr.vintiz.data.loyalty.LoyaltyApi
+import fr.vintiz.data.loyalty.LoyaltyRepository
+import fr.vintiz.data.newsletter.NewsletterApi
+import fr.vintiz.data.newsletter.NewsletterRepository
 import fr.vintiz.data.notifications.NotificationsApi
 import fr.vintiz.data.notifications.NotificationsRepository
 import fr.vintiz.data.zones.ZonesApi
@@ -103,6 +107,12 @@ object AppModule {
 
     @Provides @Singleton fun provideFiscalApi(r: Retrofit): FiscalApi = r.create(FiscalApi::class.java)
 
+    @Provides @Singleton fun provideNewsletterApi(r: Retrofit): NewsletterApi =
+        r.create(NewsletterApi::class.java)
+
+    @Provides @Singleton fun provideLoyaltyApi(r: Retrofit): LoyaltyApi =
+        r.create(LoyaltyApi::class.java)
+
     @Provides @Singleton
     fun provideAuthRepository(api: AuthApi, tokens: TokenStorage): AuthRepository =
         AuthRepository(api, tokens)
@@ -161,4 +171,13 @@ object AppModule {
         api: FiscalApi,
         @ApplicationContext context: Context,
     ): FiscalRepository = FiscalRepository(api, context)
+
+    @Provides @Singleton
+    fun provideNewsletterRepository(
+        api: NewsletterApi,
+        @ApplicationContext context: Context,
+    ): NewsletterRepository = NewsletterRepository(api, context)
+
+    @Provides @Singleton
+    fun provideLoyaltyRepository(api: LoyaltyApi): LoyaltyRepository = LoyaltyRepository(api)
 }

@@ -28,9 +28,18 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import fr.vintiz.data.fiscal.FiscalFormat
 
 @Composable
-fun FiscalExportScreen(viewModel: FiscalExportViewModel = hiltViewModel()) {
+fun FiscalExportScreen(
+    initialFrom: String? = null,
+    initialTo: String? = null,
+    viewModel: FiscalExportViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+
+    androidx.compose.runtime.LaunchedEffect(initialFrom, initialTo) {
+        if (!initialFrom.isNullOrBlank()) viewModel.setFrom(initialFrom)
+        if (!initialTo.isNullOrBlank()) viewModel.setTo(initialTo)
+    }
 
     Scaffold { padding ->
         Column(

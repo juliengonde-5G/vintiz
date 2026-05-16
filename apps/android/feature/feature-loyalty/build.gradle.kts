@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "fr.vintiz.feature.pos"
+    namespace = "fr.vintiz.feature.loyalty"
     compileSdk = 35
     defaultConfig { minSdk = 26 }
     compileOptions {
@@ -21,18 +21,10 @@ android {
 dependencies {
     api(project(":core:core-design"))
     implementation(project(":core:core-common"))
-    implementation(project(":domain:domain-pos"))
-    implementation(project(":domain:domain-inventory"))
-    implementation(project(":domain:domain-clients"))
-    implementation(project(":data:data-pos"))
-    implementation(project(":data:data-inventory"))
-    implementation(project(":data:data-clients"))
     implementation(project(":data:data-loyalty"))
-    implementation(project(":hardware:hardware-api"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.bundles.compose)
-    implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.bundles.lifecycle)
 
@@ -41,8 +33,4 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.timber)
-
-    testImplementation(libs.bundles.testing)
-    testImplementation(project(":core:core-testing"))
 }

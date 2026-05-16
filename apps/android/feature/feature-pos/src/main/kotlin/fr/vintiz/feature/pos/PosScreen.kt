@@ -145,11 +145,21 @@ fun PosScreen(
 
                 HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
+                CouponBar(
+                    code = state.couponCode,
+                    preview = state.couponPreview,
+                    onCodeChange = viewModel::onCouponCodeChange,
+                    onValidate = viewModel::validateCoupon,
+                    onClear = viewModel::clearCoupon,
+                )
+
+                Spacer(Modifier.height(8.dp))
+
                 Row(modifier = Modifier.fillMaxWidth()) {
                     Text("Total", modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleLarge)
                     Text(
-                        state.cart.subtotal.format(),
+                        state.effectiveTotal.format(),
                         style = MaterialTheme.typography.headlineMedium,
                     )
                 }
