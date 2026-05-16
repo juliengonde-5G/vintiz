@@ -174,6 +174,7 @@ dependencies {
     ksp("androidx.hilt:hilt-compiler:1.2.0")
 
     implementation(libs.timber)
+    implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.bundles.testing)
 }
