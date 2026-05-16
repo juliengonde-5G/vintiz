@@ -2,7 +2,9 @@ name: Android — lint + unit tests + APK debug
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'claude/**'
     paths:
       - 'apps/android/**'
       - '.github/workflows/android.yml'
