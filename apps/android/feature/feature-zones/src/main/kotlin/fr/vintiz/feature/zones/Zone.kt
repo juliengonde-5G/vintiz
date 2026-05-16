@@ -1,30 +1,56 @@
 package fr.vintiz.feature.zones
 
 import androidx.compose.ui.graphics.Color
+import fr.vintiz.data.zones.ZoneDto
+import fr.vintiz.domain.zones.ScoreBucket
+import fr.vintiz.domain.zones.Zone
+import fr.vintiz.domain.zones.ZoneShape
 
 /**
- * Modèle simplifié pour le rendu IsoCanvas. Le vrai modèle viendra
- * d'un `data:data-zones` couplé à `apps/api/app/api/admin/zones` —
- * ce screen accepte des zones en mémoire pour démo / tests.
+ * Convertit le DTO API en modèle métier domain-zones, en mappant le
+ * `color_code` hex vers un Compose Color quand l'API en fournit un.
  */
-data class Zone(
-    val id: String,
-    val name: String,
-    val posX: Int,
-    val posY: Int,
-    val width: Int,
-    val height: Int,
-    val color: Color,
-    val occupancy: Float, // 0..1
+internal fun ZoneDto.toDomain(): Zone = Zone(
+    id = id,
+    name = name,
+    description = description,
+    capacity = capacity,
+    productTypes = product_types ?: emptyList(),
+    colorHex = color_code,
+    icon = icon,
+    isWindow = is_window,
+    posX = pos_x,
+    posY = pos_y,
+    width = width,
+    height = height,
+    shape = ZoneShape.fromKey(shape),
+    nProducts = n_products,
+    occupancyPct = occupancy_pct,
+    avgScore = avg_score,
+    scoreBucket = ScoreBucket.fromKey(score_bucket),
 )
 
-object DemoZones {
-    val petitsPrix = Zone("petits_prix", "Petits prix", 0, 0, 120, 80, Color(0xFFCDE5DF), 0.75f)
-    val extra = Zone("extra", "Extra", 130, 0, 100, 80, Color(0xFFFFD5E5), 0.55f)
-    val chaussuresF = Zone("ch_f", "Chaussures F", 0, 90, 80, 60, Color(0xFFF0E6D2), 0.40f)
-    val chaussuresH = Zone("ch_h", "Chaussures H", 90, 90, 80, 60, Color(0xFFF0E6D2), 0.30f)
-    val portants = Zone("portants", "Portants", 180, 90, 80, 60, Color(0xFFE8E0CF), 0.90f)
-    val vitrine = Zone("vitrine", "Vitrine", 0, 160, 260, 40, Color(0xFFCDE5DF), 0.20f)
-
-    val all = listOf(petitsPrix, extra, chaussuresF, chaussuresH, portants, vitrine)
+/**
+ * Parse une couleur hex `"#RRGGBB"` ou `"#AARRGGBB"` ; retombe sur
+ * une teinte par défaut selon le `scoreBucket` si l'API ne fournit
+ * pas de `color_code` ou si le format est invalide.
+ */
+internal fun Zone.composeColor(): Color {
+    val hex = colorHex?.trimStart('#')
+    if (hex != null) {
+        try {
+            val value = hex.toLong(16)
+            return if (hex.length == 6) Color(0xFF000000L or value)
+            else Color(value)
+        } catch (_: NumberFormatException) {
+            // fallback below
+        }
+    }
+    return when (scoreBucket) {
+        ScoreBucket.Excellent -> Color(0xFFCDE5DF)
+        ScoreBucket.Good -> Color(0xFFE6EFEC)
+        ScoreBucket.Fair -> Color(0xFFF0E6D2)
+        ScoreBucket.Poor -> Color(0xFFFFD5E5)
+        ScoreBucket.Unknown -> Color(0xFFECEAE3)
+    }
 }

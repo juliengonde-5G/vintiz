@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "fr.vintiz.feature.zones"
+    namespace = "fr.vintiz.feature.fiscal"
     compileSdk = 35
     defaultConfig { minSdk = 26 }
     compileOptions {
@@ -21,8 +21,7 @@ android {
 dependencies {
     api(project(":core:core-design"))
     implementation(project(":core:core-common"))
-    implementation(project(":domain:domain-zones"))
-    implementation(project(":data:data-zones"))
+    implementation(project(":data:data-fiscal"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.bundles.compose)

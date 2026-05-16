@@ -25,6 +25,7 @@ import fr.vintiz.feature.auth.LoginScreen
 import fr.vintiz.feature.cahier.CahierScreen
 import fr.vintiz.feature.clients.ClientsScreen
 import fr.vintiz.feature.dashboard.DashboardScreen
+import fr.vintiz.feature.fiscal.FiscalExportScreen
 import fr.vintiz.feature.ia.IaScreen
 import fr.vintiz.feature.inventory.InventoryScreen
 import fr.vintiz.feature.pos.PosScreen
@@ -48,6 +49,7 @@ object Routes {
     const val IA = "shell/ia"
     const val ZONES = "shell/zones"
     const val ADMIN = "shell/admin"
+    const val FISCAL = "shell/fiscal"
 }
 
 @Composable
@@ -126,6 +128,7 @@ private fun Shell(rootNav: NavHostController) {
                 composable(Routes.IA) { IaScreen() }
                 composable(Routes.ZONES) { ZonesScreen() }
                 composable(Routes.ADMIN) { AdminScreen() }
+                composable(Routes.FISCAL) { FiscalExportScreen() }
                 composable(BottomNavItem.Plus.route) {
                     PlusMenu(onSelect = { route ->
                         shellNav.navigate(route) {
@@ -139,7 +142,9 @@ private fun Shell(rootNav: NavHostController) {
     }
 }
 
-private val PLUS_ROUTES = setOf(Routes.DASHBOARD, Routes.IA, Routes.ZONES, Routes.ADMIN, "shell/plus")
+private val PLUS_ROUTES = setOf(
+    Routes.DASHBOARD, Routes.IA, Routes.ZONES, Routes.ADMIN, Routes.FISCAL, "shell/plus"
+)
 
 @Composable
 private fun PlusMenu(onSelect: (String) -> Unit) {
@@ -153,6 +158,7 @@ private fun PlusMenu(onSelect: (String) -> Unit) {
             PlusItem("Compagnon IA", "Checklist hebdo, tendances", Routes.IA, onSelect)
             PlusItem("Plan boutique", "Zones et occupation", Routes.ZONES, onSelect)
             PlusItem("Admin", "Transactions, refund, Z-reports, users, audit", Routes.ADMIN, onSelect)
+            PlusItem("Export fiscal NF525", "Génération XML/JSON DGFiP signée serveur", Routes.FISCAL, onSelect)
         }
     }
 }

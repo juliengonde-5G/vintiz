@@ -54,6 +54,8 @@ include(":data:data-reports")
 include(":data:data-admin")
 include(":data:data-ia")
 include(":data:data-notifications")
+include(":data:data-zones")
+include(":data:data-fiscal")
 
 // Domain
 include(":domain:domain-pos")
@@ -61,6 +63,7 @@ include(":domain:domain-inventory")
 include(":domain:domain-clients")
 include(":domain:domain-cahier")
 include(":domain:domain-reports")
+include(":domain:domain-zones")
 
 // Feature (Compose)
 include(":feature:feature-auth")
@@ -75,6 +78,7 @@ include(":feature:feature-ia")
 include(":feature:feature-zones")
 include(":feature:feature-onboarding")
 include(":feature:feature-receipt")
+include(":feature:feature-fiscal")
 
 // Benchmark / Baseline Profile
 include(":benchmark")

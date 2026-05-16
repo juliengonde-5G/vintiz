@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Exports fiscaux NF525 temporaires (cache app/cache/). -->
+    <cache-path name="cache" path="." />
+    <!-- Étiquettes A4 / PDF fallback. -->
+    <files-path name="files" path="." />
+</paths>

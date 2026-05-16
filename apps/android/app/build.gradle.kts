@@ -103,6 +103,8 @@ dependencies {
     implementation(project(":data:data-admin"))
     implementation(project(":data:data-ia"))
     implementation(project(":data:data-notifications"))
+    implementation(project(":data:data-zones"))
+    implementation(project(":data:data-fiscal"))
     implementation(project(":hardware:hardware-api"))
     implementation(project(":hardware:hardware-escpos-tcp"))
     implementation(project(":hardware:hardware-escpos-usb"))
@@ -123,6 +125,7 @@ dependencies {
     implementation(project(":feature:feature-zones"))
     implementation(project(":feature:feature-onboarding"))
     implementation(project(":feature:feature-receipt"))
+    implementation(project(":feature:feature-fiscal"))
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

@@ -31,8 +31,12 @@ import fr.vintiz.data.ia.IaApi
 import fr.vintiz.data.ia.IaRepository
 import fr.vintiz.data.inventory.InventoryApi
 import fr.vintiz.data.inventory.InventoryRepository
+import fr.vintiz.data.fiscal.FiscalApi
+import fr.vintiz.data.fiscal.FiscalRepository
 import fr.vintiz.data.notifications.NotificationsApi
 import fr.vintiz.data.notifications.NotificationsRepository
+import fr.vintiz.data.zones.ZonesApi
+import fr.vintiz.data.zones.ZonesRepository
 import fr.vintiz.data.pos.PosApi
 import fr.vintiz.data.pos.PosRepository
 import fr.vintiz.data.reports.ReportsApi
@@ -95,6 +99,10 @@ object AppModule {
     @Provides @Singleton fun provideNotificationsApi(r: Retrofit): NotificationsApi =
         r.create(NotificationsApi::class.java)
 
+    @Provides @Singleton fun provideZonesApi(r: Retrofit): ZonesApi = r.create(ZonesApi::class.java)
+
+    @Provides @Singleton fun provideFiscalApi(r: Retrofit): FiscalApi = r.create(FiscalApi::class.java)
+
     @Provides @Singleton
     fun provideAuthRepository(api: AuthApi, tokens: TokenStorage): AuthRepository =
         AuthRepository(api, tokens)
@@ -144,4 +152,13 @@ object AppModule {
 
     @Provides @Singleton
     fun providePaymentTerminal(api: SumUpRestApi): PaymentTerminalService = SumUpRestTerminal(api)
+
+    @Provides @Singleton
+    fun provideZonesRepository(api: ZonesApi): ZonesRepository = ZonesRepository(api)
+
+    @Provides @Singleton
+    fun provideFiscalRepository(
+        api: FiscalApi,
+        @ApplicationContext context: Context,
+    ): FiscalRepository = FiscalRepository(api, context)
 }
