@@ -4,6 +4,7 @@ import fr.vintiz.core.common.VintizError
 import fr.vintiz.core.common.VintizResult
 import fr.vintiz.core.database.dao.ClientDao
 import fr.vintiz.core.database.entity.ClientCacheEntity
+import retrofit2.HttpException
 import timber.log.Timber
 import java.io.IOException
 
@@ -20,13 +21,15 @@ class ClientsRepository(
     } catch (io: IOException) {
         Timber.i("identify offline — fallback Room")
         VintizResult.Success(dao.search(query).map { it.toDto() })
+    } catch (http: HttpException) {
+        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
     }
 
     suspend fun fullClient(id: String): VintizResult<ClientFullDto> = try {
         VintizResult.Success(api.fullClient(id))
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
-    } catch (http: retrofit2.HttpException) {
+    } catch (http: HttpException) {
         VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
     }
 
@@ -41,6 +44,8 @@ class ClientsRepository(
             VintizResult.Success(match)
         } catch (io: IOException) {
             VintizResult.Failure(VintizError.Network)
+        } catch (http: HttpException) {
+            VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
         }
     }
 }

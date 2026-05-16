@@ -6,6 +6,7 @@ import fr.vintiz.core.database.dao.HardwareConfigDao
 import fr.vintiz.core.database.entity.HardwareConfigEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import retrofit2.HttpException
 import timber.log.Timber
 import java.io.IOException
 
@@ -34,6 +35,16 @@ class HardwareRepository(
         Timber.i("hardware config offline — fallback Room cache")
         val cached = current()
         if (cached != null) VintizResult.Success(cached) else VintizResult.Failure(VintizError.Network)
+    } catch (http: HttpException) {
+        Timber.w(http, "hardware config HTTP %d", http.code())
+        val cached = current()
+        if (cached != null) VintizResult.Success(cached)
+        else VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+    } catch (t: Throwable) {
+        Timber.e(t, "hardware config sync KO")
+        val cached = current()
+        if (cached != null) VintizResult.Success(cached)
+        else VintizResult.Failure(VintizError.Unknown(t.message ?: "Erreur inconnue"))
     }
 
     suspend fun push(config: HardwareConfig): VintizResult<HardwareConfig> = try {
@@ -44,6 +55,11 @@ class HardwareRepository(
         VintizResult.Success(entity.toDomain())
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
+    } catch (http: HttpException) {
+        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+    } catch (t: Throwable) {
+        Timber.e(t, "hardware config push KO")
+        VintizResult.Failure(VintizError.Unknown(t.message ?: "Erreur inconnue"))
     }
 }
 
