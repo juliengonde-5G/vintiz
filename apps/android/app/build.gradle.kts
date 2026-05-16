@@ -159,6 +159,10 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
 
+    // Material Components XML — pour le thème de base Theme.Material3.* utilisé
+    // par AndroidManifest avant que Compose ne prenne la main.
+    implementation("com.google.android.material:material:1.12.0")
+
     implementation(platform(libs.compose.bom))
     implementation(libs.bundles.compose)
     debugImplementation(libs.compose.ui.tooling)
