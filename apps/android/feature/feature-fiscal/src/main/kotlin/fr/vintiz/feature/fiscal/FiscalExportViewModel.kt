@@ -49,19 +49,8 @@ class FiscalExportViewModel @Inject constructor(
         }
     }
 
-    private fun validate(from: String?, to: String?): String? {
-        val pattern = Regex("^\\d{4}-\\d{2}-\\d{2}$")
-        if (!from.isNullOrBlank() && !pattern.matches(from)) {
-            return "Format date début invalide (YYYY-MM-DD)"
-        }
-        if (!to.isNullOrBlank() && !pattern.matches(to)) {
-            return "Format date fin invalide (YYYY-MM-DD)"
-        }
-        if (!from.isNullOrBlank() && !to.isNullOrBlank() && from > to) {
-            return "La date de début doit être avant la date de fin"
-        }
-        return null
-    }
+    private fun validate(from: String?, to: String?): String? =
+        FiscalDateValidator.validate(from, to)
 }
 
 data class FiscalExportUiState(

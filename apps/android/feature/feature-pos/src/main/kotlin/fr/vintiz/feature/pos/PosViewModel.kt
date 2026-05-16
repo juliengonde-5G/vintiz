@@ -11,6 +11,8 @@ import fr.vintiz.data.inventory.InventoryRepository
 import fr.vintiz.data.inventory.ProductDto
 import fr.vintiz.data.loyalty.CouponPreviewDto
 import fr.vintiz.data.loyalty.LoyaltyRepository
+import fr.vintiz.data.personalshopper.PersonalShopperRepository
+import fr.vintiz.data.personalshopper.PosCompanionDto
 import fr.vintiz.data.pos.PosRepository
 import fr.vintiz.data.pos.dto.CreateTransactionRequest
 import fr.vintiz.data.pos.dto.PaymentDto
@@ -41,6 +43,7 @@ class PosViewModel @Inject constructor(
     private val clients: ClientsRepository,
     private val pos: PosRepository,
     private val loyalty: LoyaltyRepository,
+    private val personalShopper: PersonalShopperRepository,
     private val terminal: PaymentTerminalService,
     private val scanner: ScannerService,
     private val nfc: NfcService,
@@ -136,7 +139,36 @@ class PosViewModel @Inject constructor(
     }
 
     fun selectClient(client: ClientDto?) {
-        _state.update { it.copy(client = client) }
+        _state.update { it.copy(client = client, companion = null) }
+        if (client != null) refreshCompanion()
+    }
+
+    /**
+     * Recharge le panneau Companion (gain points, coupons appliquables,
+     * alertes RFM, upsells) à chaque évolution du panier ou changement
+     * de client. Tolérant aux erreurs : un Companion KO n'empêche pas
+     * la vente.
+     */
+    fun refreshCompanion() {
+        val clientId = _state.value.client?.id ?: return
+        viewModelScope.launch {
+            val productIds = _state.value.cart.lines.mapNotNull { it.productId }
+            when (val r = personalShopper.companion(
+                clientId = clientId,
+                cartTotalCents = _state.value.cart.subtotal.cents,
+                items = productIds,
+            )) {
+                is VintizResult.Success -> _state.update { it.copy(companion = r.value) }
+                is VintizResult.Failure -> _state.update {
+                    it.copy(companion = null, companionError = r.error.message)
+                }
+            }
+        }
+    }
+
+    fun trackCompanionClick(productId: String) {
+        val clientId = _state.value.client?.id ?: return
+        viewModelScope.launch { personalShopper.logClick(clientId, productId) }
     }
 
     fun lookupClient(q: String) {
@@ -264,6 +296,8 @@ data class PosUiState(
     val paymentInProgress: Boolean = false,
     val couponCode: String = "",
     val couponPreview: CouponPreviewDto? = null,
+    val companion: PosCompanionDto? = null,
+    val companionError: String? = null,
     val lastTransactionId: String? = null,
     val lastChange: Money = Money.ZERO,
     val error: String? = null,

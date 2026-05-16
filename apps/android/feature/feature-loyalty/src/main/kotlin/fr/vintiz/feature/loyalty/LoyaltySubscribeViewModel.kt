@@ -75,16 +75,14 @@ class LoyaltySubscribeViewModel @Inject constructor(
         _state.value = LoyaltySubscribeUiState(config = _state.value.config)
     }
 
-    private fun validate(s: LoyaltySubscribeUiState): String? {
-        if (s.firstName.isBlank()) return "Prénom requis"
-        if (s.lastName.isBlank()) return "Nom requis"
-        val emailPattern = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
-        if (!emailPattern.matches(s.email.trim())) return "Email invalide"
-        if (s.config?.mode == "paid" && s.paymentMethod.isBlank()) {
-            return "Méthode de paiement requise pour le mode payant"
-        }
-        return null
-    }
+    private fun validate(s: LoyaltySubscribeUiState): String? =
+        LoyaltySubscribeValidator.validate(
+            firstName = s.firstName,
+            lastName = s.lastName,
+            email = s.email,
+            paymentMethod = s.paymentMethod,
+            config = s.config,
+        )
 }
 
 data class LoyaltySubscribeUiState(

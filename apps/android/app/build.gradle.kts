@@ -52,11 +52,14 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+            isDebuggable = true
             applicationIdSuffix = ".debug"
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            isDebuggable = false
+            isPseudoLocalesEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -107,6 +110,7 @@ dependencies {
     implementation(project(":data:data-fiscal"))
     implementation(project(":data:data-newsletter"))
     implementation(project(":data:data-loyalty"))
+    implementation(project(":data:data-personal-shopper"))
     implementation(project(":hardware:hardware-api"))
     implementation(project(":hardware:hardware-escpos-tcp"))
     implementation(project(":hardware:hardware-escpos-usb"))

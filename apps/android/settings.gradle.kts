@@ -58,6 +58,7 @@ include(":data:data-zones")
 include(":data:data-fiscal")
 include(":data:data-newsletter")
 include(":data:data-loyalty")
+include(":data:data-personal-shopper")
 
 // Domain
 include(":domain:domain-pos")

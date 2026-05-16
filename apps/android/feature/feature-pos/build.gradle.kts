@@ -28,6 +28,7 @@ dependencies {
     implementation(project(":data:data-inventory"))
     implementation(project(":data:data-clients"))
     implementation(project(":data:data-loyalty"))
+    implementation(project(":data:data-personal-shopper"))
     implementation(project(":hardware:hardware-api"))
 
     implementation(platform(libs.compose.bom))
