@@ -16,6 +16,7 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
+    testOptions { unitTests.all { it.useJUnitPlatform() } }
 }
 
 dependencies {
@@ -33,4 +34,6 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.bundles.testing)
 }
