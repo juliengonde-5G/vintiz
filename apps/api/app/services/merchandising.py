@@ -513,6 +513,48 @@ class MerchandisingService:
         await self.db.flush()
         return row
 
+    async def reorder_window_proposal(
+        self,
+        proposal_id,
+        product_ids: list[str],
+    ) -> WindowDisplayProposal:
+        """Réordonne les produits d'une proposition vitrine avant
+        acceptation. Le manager peut prioriser certains produits sans
+        re-générer toute la proposition.
+
+        Conserve les autres clés du `proposal` Map (theme, rationale).
+        Refuse silencieusement les ids qui ne sont pas dans la proposition
+        d'origine — évite qu'un client mal synchro corrompe l'ordre.
+        """
+        from fastapi import HTTPException
+
+        result = await self.db.execute(
+            select(WindowDisplayProposal).where(
+                WindowDisplayProposal.id == proposal_id
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Proposal not found")
+        if row.accepted_at is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Proposal already accepted, regenerate first",
+            )
+
+        existing = list(row.proposal.get("products", []))
+        by_id = {item.get("product_id"): item for item in existing if isinstance(item, dict)}
+        ordered = [by_id[pid] for pid in product_ids if pid in by_id]
+        # Append en queue les produits originaux non mentionnés
+        # (préserve l'intégralité de la sélection initiale).
+        leftovers = [p for p in existing if p.get("product_id") not in set(product_ids)]
+        new_proposal = dict(row.proposal)
+        new_proposal["products"] = ordered + leftovers
+        # Force SQLAlchemy à détecter la mutation du JSON.
+        row.proposal = new_proposal
+        await self.db.flush()
+        return row
+
 
 # ---------------------------------------------------------------------------
 # Small helpers used only by propose_weekly_window

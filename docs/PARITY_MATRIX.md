@@ -119,6 +119,7 @@ Légende :
 | Checklist hebdo | ✅ | ✅ |
 | Tendances sociales / retail | ✅ | ✅ |
 | Vitrine — proposition + accept | ✅ `/ia` zone overlays | ✅ onglet Vitrine (`TrendsRepository.windowDisplay`) |
+| Vitrine — réordonnancement produits avant accept | 🟠 (web ne le fait pas encore) | 🔵 boutons ▲▼ + `PATCH /window-display/{id}/reorder` |
 | Règles markdown CRUD | ✅ `/settings > Scoring` | ⚪ (DTOs `TrendsApi` prêts) |
 | Vision produit (analyse photo) | ✅ | ⚪ (V2) |
 | Personas IA (marketing, juridique) | ✅ | ⚪ DTOs `IaApi.persona` câblés |

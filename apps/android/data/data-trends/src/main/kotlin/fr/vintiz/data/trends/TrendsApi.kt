@@ -25,6 +25,17 @@ interface TrendsApi {
     @POST("api/v1/admin/window-display/{id}/accept")
     suspend fun acceptWindowDisplay(@Path("id") id: String): WindowProposalDto
 
+    /**
+     * Réordonne les produits de la proposition vitrine. Body :
+     * { "product_ids": ["uuid1", "uuid2", ...] }. Les ids non
+     * mentionnés sont conservés en queue par le backend.
+     */
+    @retrofit2.http.PATCH("api/v1/admin/window-display/{id}/reorder")
+    suspend fun reorderWindowDisplay(
+        @Path("id") id: String,
+        @Body body: ReorderWindowRequest,
+    ): WindowProposalDto
+
     @GET("api/v1/admin/markdown-rules")
     suspend fun markdownRules(@Query("active") active: Boolean? = null): List<MarkdownRuleDto>
 
@@ -46,6 +57,9 @@ interface TrendsApi {
     @POST("api/v1/admin/markdown-rules/run")
     suspend fun runMarkdownEngine(): MarkdownEngineRunDto
 }
+
+@JsonClass(generateAdapter = true)
+data class ReorderWindowRequest(val product_ids: List<String>)
 
 @JsonClass(generateAdapter = true)
 data class WindowProposalDto(

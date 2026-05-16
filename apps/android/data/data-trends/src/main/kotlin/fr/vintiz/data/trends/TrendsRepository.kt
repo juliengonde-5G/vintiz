@@ -30,6 +30,21 @@ class TrendsRepository(private val api: TrendsApi) {
     suspend fun acceptWindowDisplay(id: String): VintizResult<WindowProposalDto> =
         call { api.acceptWindowDisplay(id) }
 
+    suspend fun reorderWindowDisplay(
+        id: String,
+        productIds: List<String>,
+    ): VintizResult<WindowProposalDto> = try {
+        VintizResult.Success(api.reorderWindowDisplay(id, ReorderWindowRequest(productIds)))
+    } catch (io: IOException) {
+        VintizResult.Failure(VintizError.Network)
+    } catch (http: HttpException) {
+        when (http.code()) {
+            409 -> VintizResult.Failure(VintizError.Validation(
+                "proposal", "Déjà validée — régénérer d'abord"))
+            else -> VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        }
+    }
+
     suspend fun markdownRules(active: Boolean? = null): VintizResult<List<MarkdownRuleDto>> =
         call { api.markdownRules(active) }
 

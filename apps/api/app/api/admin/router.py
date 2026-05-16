@@ -1243,6 +1243,37 @@ async def accept_window_display(
     }
 
 
+@router.patch(
+    "/window-display/{proposal_id}/reorder",
+    dependencies=[Depends(manager_only)],
+)
+async def reorder_window_display(
+    proposal_id: uuid.UUID,
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Réordonne les produits d'une proposition vitrine avant acceptation.
+    Body : {"product_ids": ["uuid1", "uuid2", ...]}. Les produits non
+    mentionnés sont conservés en queue.
+    """
+    from app.services.merchandising import MerchandisingService
+
+    product_ids = body.get("product_ids", [])
+    if not isinstance(product_ids, list):
+        raise HTTPException(
+            status_code=400, detail="product_ids must be a list of strings"
+        )
+    proposal = await MerchandisingService(db).reorder_window_proposal(
+        proposal_id, [str(p) for p in product_ids]
+    )
+    await db.commit()
+    return {
+        "id": str(proposal.id),
+        "iso_week": proposal.iso_week,
+        "proposal": proposal.proposal,
+    }
+
+
 @router.post(
     "/return-to-sorting/run",
     dependencies=[Depends(manager_only)],
