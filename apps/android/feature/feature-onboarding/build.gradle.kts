@@ -23,6 +23,8 @@ dependencies {
     implementation(project(":core:core-common"))
     implementation(project(":core:core-datastore"))
     implementation(project(":data:data-hardware"))
+    implementation(project(":hardware:hardware-api"))
+    implementation(project(":hardware:hardware-sumup-rest"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.bundles.compose)

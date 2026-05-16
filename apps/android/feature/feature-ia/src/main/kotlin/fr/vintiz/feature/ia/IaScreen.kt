@@ -29,6 +29,8 @@ import fr.vintiz.core.common.VintizResult
 import fr.vintiz.data.ia.ChecklistItemDto
 import fr.vintiz.data.ia.IaRepository
 import fr.vintiz.data.ia.TrendSignalDto
+import fr.vintiz.data.trends.TrendsRepository
+import fr.vintiz.data.trends.WindowProposalDto
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,7 +39,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 @HiltViewModel
-class IaViewModel @Inject constructor(private val repo: IaRepository) : ViewModel() {
+class IaViewModel @Inject constructor(
+    private val repo: IaRepository,
+    private val trendsRepo: TrendsRepository,
+) : ViewModel() {
 
     private val _state = MutableStateFlow(IaUiState())
     val state: StateFlow<IaUiState> = _state.asStateFlow()
@@ -52,6 +57,41 @@ class IaViewModel @Inject constructor(private val repo: IaRepository) : ViewMode
                     it.copy(social = ok.value.social_signals, retail = ok.value.retail_signals)
                 }
             }
+            loadWindowDisplay()
+        }
+    }
+
+    fun loadWindowDisplay() {
+        viewModelScope.launch {
+            when (val r = trendsRepo.currentWindowDisplay()) {
+                is VintizResult.Success -> _state.update {
+                    it.copy(windowProposal = r.value, windowError = null)
+                }
+                is VintizResult.Failure -> _state.update { it.copy(windowError = r.error.message) }
+            }
+        }
+    }
+
+    fun regenerateWindowDisplay() {
+        _state.update { it.copy(windowLoading = true) }
+        viewModelScope.launch {
+            when (val r = trendsRepo.regenerateWindowDisplay()) {
+                is VintizResult.Success -> _state.update {
+                    it.copy(windowLoading = false, windowProposal = r.value, windowError = null)
+                }
+                is VintizResult.Failure -> _state.update {
+                    it.copy(windowLoading = false, windowError = r.error.message)
+                }
+            }
+        }
+    }
+
+    fun acceptWindowDisplay() {
+        val id = _state.value.windowProposal?.id ?: return
+        viewModelScope.launch {
+            (trendsRepo.acceptWindowDisplay(id) as? VintizResult.Success)?.let { ok ->
+                _state.update { it.copy(windowProposal = ok.value) }
+            }
         }
     }
 
@@ -63,6 +103,9 @@ data class IaUiState(
     val checklist: List<ChecklistItemDto> = emptyList(),
     val social: List<TrendSignalDto> = emptyList(),
     val retail: List<TrendSignalDto> = emptyList(),
+    val windowProposal: WindowProposalDto? = null,
+    val windowLoading: Boolean = false,
+    val windowError: String? = null,
 )
 
 @Composable
@@ -76,14 +119,19 @@ fun IaScreen(viewModel: IaViewModel = hiltViewModel()) {
                 style = MaterialTheme.typography.headlineLarge,
                 modifier = Modifier.padding(16.dp))
             TabRow(selectedTabIndex = state.tab) {
-                listOf("Checklist", "Tendances", "Retail").forEachIndexed { i, label ->
+                listOf("Checklist", "Tendances", "Retail", "Vitrine").forEachIndexed { i, label ->
                     Tab(selected = state.tab == i, onClick = { viewModel.selectTab(i) }, text = { Text(label) })
                 }
             }
             when (state.tab) {
                 0 -> ChecklistTab(state.checklist)
                 1 -> SignalsTab(state.social, title = "Signaux sociaux")
-                else -> SignalsTab(state.retail, title = "Signaux retail")
+                2 -> SignalsTab(state.retail, title = "Signaux retail")
+                else -> WindowTab(
+                    state = state,
+                    onRegenerate = viewModel::regenerateWindowDisplay,
+                    onAccept = viewModel::acceptWindowDisplay,
+                )
             }
         }
     }
@@ -110,6 +158,64 @@ private fun ChecklistTab(items: List<ChecklistItemDto>) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WindowTab(
+    state: IaUiState,
+    onRegenerate: () -> Unit,
+    onAccept: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Proposition vitrine",
+            style = MaterialTheme.typography.titleLarge)
+        Text(
+            "Calculée chaque lundi matin (06:00) à partir des produits " +
+                "à fort trend_score qui ne sont pas en vitrine.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            androidx.compose.material3.Button(
+                onClick = onRegenerate,
+                enabled = !state.windowLoading,
+            ) { Text(if (state.windowLoading) "Calcul…" else "Régénérer maintenant") }
+            state.windowProposal?.takeIf { it.accepted_at.isNullOrBlank() }?.let {
+                androidx.compose.material3.Button(onClick = onAccept) { Text("Valider") }
+            }
+        }
+        state.windowProposal?.let { wp ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Semaine ISO ${wp.iso_week}",
+                        style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (wp.used_llm) "Générée par Claude Haiku"
+                        else "Générée par règles déterministes",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (!wp.accepted_at.isNullOrBlank()) {
+                        Text("Validée le ${wp.accepted_at.take(16).replace("T", " à ")}",
+                            color = MaterialTheme.colorScheme.primary)
+                    } else {
+                        Text("En attente de validation",
+                            color = MaterialTheme.colorScheme.error)
+                    }
+                    val products = (wp.proposal["products"] as? List<*>)?.size ?: 0
+                    Text("Produits proposés : $products")
+                }
+            }
+        } ?: state.windowError?.let {
+            Text(it, color = MaterialTheme.colorScheme.error)
+        } ?: Text(
+            "Aucune proposition pour la semaine en cours. Cliquer Régénérer.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

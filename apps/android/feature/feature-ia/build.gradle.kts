@@ -22,6 +22,7 @@ dependencies {
     api(project(":core:core-design"))
     implementation(project(":core:core-common"))
     implementation(project(":data:data-ia"))
+    implementation(project(":data:data-trends"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.bundles.compose)

@@ -41,6 +41,8 @@ import fr.vintiz.data.notifications.NotificationsApi
 import fr.vintiz.data.notifications.NotificationsRepository
 import fr.vintiz.data.personalshopper.PersonalShopperApi
 import fr.vintiz.data.personalshopper.PersonalShopperRepository
+import fr.vintiz.data.trends.TrendsApi
+import fr.vintiz.data.trends.TrendsRepository
 import fr.vintiz.data.zones.ZonesApi
 import fr.vintiz.data.zones.ZonesRepository
 import fr.vintiz.data.pos.PosApi
@@ -118,6 +120,9 @@ object AppModule {
     @Provides @Singleton fun providePersonalShopperApi(r: Retrofit): PersonalShopperApi =
         r.create(PersonalShopperApi::class.java)
 
+    @Provides @Singleton fun provideTrendsApi(r: Retrofit): TrendsApi =
+        r.create(TrendsApi::class.java)
+
     @Provides @Singleton
     fun provideAuthRepository(api: AuthApi, tokens: TokenStorage): AuthRepository =
         AuthRepository(api, tokens)
@@ -189,4 +194,7 @@ object AppModule {
     @Provides @Singleton
     fun providePersonalShopperRepository(api: PersonalShopperApi): PersonalShopperRepository =
         PersonalShopperRepository(api)
+
+    @Provides @Singleton
+    fun provideTrendsRepository(api: TrendsApi): TrendsRepository = TrendsRepository(api)
 }

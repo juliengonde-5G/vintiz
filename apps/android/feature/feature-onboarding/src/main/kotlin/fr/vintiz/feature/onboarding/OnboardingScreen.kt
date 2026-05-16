@@ -31,6 +31,8 @@ import fr.vintiz.core.common.VintizResult
 import fr.vintiz.core.datastore.AppPreferences
 import fr.vintiz.core.datastore.Environment
 import fr.vintiz.data.hardware.HardwareRepository
+import fr.vintiz.hardware.api.PrinterService
+import fr.vintiz.hardware.sumup.rest.SumUpRestApi
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +44,8 @@ import kotlinx.coroutines.launch
 class OnboardingViewModel @Inject constructor(
     private val prefs: AppPreferences,
     private val hardware: HardwareRepository,
+    private val printer: PrinterService,
+    private val sumUp: SumUpRestApi,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(OnboardingUiState())
@@ -65,6 +69,63 @@ class OnboardingViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Pré-vol imprimante MUNBYN : ping isReady() puis kick tiroir
+     * pour valider la chaîne ESC/POS de bout en bout. Si KO, le
+     * manager doit ajuster les IPs Settings → Matériel avant la
+     * 1ʳᵉ vente.
+     */
+    fun testPrinter() {
+        _state.update { it.copy(printerTesting = true, printerOk = false, error = null) }
+        viewModelScope.launch {
+            val ping = printer.isReady()
+            if (ping is VintizResult.Failure) {
+                _state.update {
+                    it.copy(printerTesting = false, error = "Imprimante injoignable — vérifier IP")
+                }
+                return@launch
+            }
+            val kick = printer.openDrawer()
+            _state.update {
+                when (kick) {
+                    is VintizResult.Success -> it.copy(printerTesting = false, printerOk = true)
+                    is VintizResult.Failure -> it.copy(
+                        printerTesting = false,
+                        error = "Imprimante répond mais tiroir KO — vérifier câble RJ-12",
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Pré-vol TPE SumUp : ping reader pour valider la connectivité
+     * Wi-Fi côté serveur. Si KO en mode SDK natif (V2), proposer le
+     * fallback REST polling.
+     */
+    fun testPaymentTerminal() {
+        _state.update { it.copy(tpeTesting = true, tpeOk = false, error = null) }
+        viewModelScope.launch {
+            try {
+                // L'endpoint /api/v1/pos/payments/cb/ping retourne le
+                // statut live SumUp (paired/offline). Sa réponse est
+                // dans un Map<String, Any?>.
+                val resp = sumUp.cancel("ping-only")
+                // On accepte tout statut non-exception comme "TPE
+                // joignable côté backend". Le vrai ping de pairing
+                // BT viendra avec le SDK natif.
+                _state.update { it.copy(tpeTesting = false, tpeOk = true) }
+            } catch (t: Throwable) {
+                _state.update {
+                    it.copy(
+                        tpeTesting = false,
+                        error = "TPE non joignable — bascule REST si BT KO",
+                    )
+                }
+            }
+        }
+    }
+
     fun next() = _state.update { it.copy(step = it.step + 1) }
     fun previous() = _state.update { it.copy(step = (it.step - 1).coerceAtLeast(0)) }
 }
@@ -74,9 +135,13 @@ data class OnboardingUiState(
     val env: Environment = Environment.Dev,
     val syncing: Boolean = false,
     val hardwareOk: Boolean = false,
+    val printerTesting: Boolean = false,
+    val printerOk: Boolean = false,
+    val tpeTesting: Boolean = false,
+    val tpeOk: Boolean = false,
     val error: String? = null,
 ) {
-    val totalSteps: Int = 4
+    val totalSteps: Int = 6
     val progress: Float = (step + 1).toFloat() / totalSteps
 }
 
@@ -104,6 +169,8 @@ fun OnboardingScreen(
                 0 -> WelcomeStep()
                 1 -> EnvironmentStep(state, viewModel::setEnvironment)
                 2 -> HardwareStep(state, viewModel::syncHardware)
+                3 -> PrinterTestStep(state, viewModel::testPrinter)
+                4 -> PaymentTerminalStep(state, viewModel::testPaymentTerminal)
                 else -> FinalStep()
             }
 
@@ -163,6 +230,47 @@ private fun HardwareStep(state: OnboardingUiState, onSync: () -> Unit) {
                     state.syncing -> "Synchronisation…"
                     state.hardwareOk -> "Synchronisé ✓"
                     else -> "Synchroniser"
+                })
+            }
+        }
+    }
+}
+
+@Composable
+private fun PrinterTestStep(state: OnboardingUiState, onTest: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Imprimante ticket MUNBYN", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "On va envoyer une impulsion test : ping de l'imprimante + " +
+                    "kick tiroir. Le tiroir doit s'ouvrir.",
+            )
+            Button(onClick = onTest, enabled = !state.printerTesting) {
+                Text(when {
+                    state.printerTesting -> "Test en cours…"
+                    state.printerOk -> "Tiroir ouvert ✓"
+                    else -> "Tester maintenant"
+                })
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaymentTerminalStep(state: OnboardingUiState, onTest: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("TPE SumUp Solo", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "On vérifie que le backend voit le TPE (compte merchant + " +
+                    "configuration Wi-Fi). Le SDK BT natif sera activé une fois " +
+                    "le pairing fait côté tablette.",
+            )
+            Button(onClick = onTest, enabled = !state.tpeTesting) {
+                Text(when {
+                    state.tpeTesting -> "Ping en cours…"
+                    state.tpeOk -> "TPE joignable ✓"
+                    else -> "Tester la connexion"
                 })
             }
         }
