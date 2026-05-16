@@ -112,4 +112,7 @@ jobs:
           path: |
             apps/android/**/build/reports/tests/
             apps/android/**/build/reports/lint-results-*.html
+            apps/android/**/build/reports/lint-results-*.xml
+            apps/android/**/build/test-results/
           retention-days: 7
+          if-no-files-found: ignore
