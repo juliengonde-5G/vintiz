@@ -18,6 +18,7 @@ android {
 dependencies {
     api(project(":core:core-common"))
     api(project(":core:core-network"))
+    implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.timber)
     ksp("com.squareup.moshi:moshi-kotlin-codegen:1.15.1")
