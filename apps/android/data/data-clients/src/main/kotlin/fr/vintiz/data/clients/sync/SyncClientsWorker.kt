@@ -6,6 +6,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import fr.vintiz.core.common.VintizError
 import fr.vintiz.core.common.VintizResult
 import fr.vintiz.core.datastore.AppPreferences
 import fr.vintiz.data.clients.ClientsRepository
@@ -32,16 +33,33 @@ class SyncClientsWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val lastSync = prefs.lastClientsSync.first()
         Timber.d("SyncClients — lastSync=%d", lastSync)
-        return when (repo.identify("")) {
+        return when (val r = repo.identify("")) {
             is VintizResult.Success -> {
                 prefs.setLastClientsSync(System.currentTimeMillis() / 1000)
                 Result.success()
             }
-            is VintizResult.Failure -> Result.retry()
+            is VintizResult.Failure -> r.error.mapWorkerResult("SyncClients")
         }
     }
 
     companion object {
         const val UNIQUE_NAME = "sync_clients"
+    }
+}
+
+private fun VintizError.mapWorkerResult(tag: String): androidx.work.ListenableWorker.Result {
+    return when (this) {
+        is VintizError.Unauthorized -> {
+            Timber.i("%s : 401/403, attendre login", tag)
+            androidx.work.ListenableWorker.Result.success()
+        }
+        is VintizError.Http -> when (code) {
+            401, 403 -> androidx.work.ListenableWorker.Result.success()
+            in 500..599, 429 -> androidx.work.ListenableWorker.Result.retry()
+            else -> androidx.work.ListenableWorker.Result.failure()
+        }
+        is VintizError.Network, is VintizError.RateLimit ->
+            androidx.work.ListenableWorker.Result.retry()
+        else -> androidx.work.ListenableWorker.Result.failure()
     }
 }
