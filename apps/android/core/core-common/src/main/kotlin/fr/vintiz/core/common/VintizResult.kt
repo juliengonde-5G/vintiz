@@ -41,4 +41,33 @@ sealed class VintizError(open val message: String) {
         VintizError("Trop de tentatives, réessayer dans ${retryAfterSeconds}s")
     data class Unknown(override val message: String, val cause: Throwable? = null) :
         VintizError(message)
+
+    companion object {
+        /**
+         * Construit un [Http] dont la `message` n'est jamais vide.
+         * Retrofit/OkHttp renvoient souvent `HttpException.message()`
+         * en chaîne vide sur 4xx — l'UI affichait alors "⚠ " sans
+         * texte. Cette factory garantit un fallback lisible.
+         */
+        fun http(code: Int, raw: String?): Http {
+            val safe = raw?.takeIf { it.isNotBlank() } ?: defaultHttpMessage(code)
+            return Http(code, safe)
+        }
+    }
+}
+
+/**
+ * Texte par défaut pour les codes HTTP fréquents, utilisé quand le
+ * serveur renvoie une reason phrase vide.
+ */
+internal fun defaultHttpMessage(code: Int): String = when (code) {
+    400 -> "HTTP 400 — requête invalide"
+    401 -> "HTTP 401 — non authentifié"
+    403 -> "HTTP 403 — accès refusé"
+    404 -> "HTTP 404 — route inconnue"
+    409 -> "HTTP 409 — conflit (doublon ?)"
+    422 -> "HTTP 422 — corps de requête invalide"
+    429 -> "HTTP 429 — trop de tentatives"
+    in 500..599 -> "HTTP $code — erreur serveur"
+    else -> "HTTP $code"
 }

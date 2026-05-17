@@ -22,7 +22,7 @@ class ClientsRepository(
         Timber.i("identify offline — fallback Room")
         VintizResult.Success(dao.search(query).map { it.toDto() })
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     suspend fun fullClient(id: String): VintizResult<ClientFullDto> = try {
@@ -30,7 +30,7 @@ class ClientsRepository(
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     suspend fun byNfcUid(uid: String): VintizResult<ClientDto> {
@@ -45,7 +45,7 @@ class ClientsRepository(
         } catch (io: IOException) {
             VintizResult.Failure(VintizError.Network)
         } catch (http: HttpException) {
-            VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+            VintizResult.Failure(VintizError.http(http.code(), http.message()))
         }
     }
 
@@ -56,7 +56,7 @@ class ClientsRepository(
     suspend fun exportData(clientId: String): VintizResult<ByteArray> = try {
         val response = api.exportData(clientId)
         if (!response.isSuccessful) {
-            VintizResult.Failure(VintizError.Http(response.code(), response.message()))
+            VintizResult.Failure(VintizError.http(response.code(), response.message()))
         } else {
             val body = response.body()
                 ?: return VintizResult.Failure(VintizError.Unknown("Export vide"))
@@ -65,7 +65,7 @@ class ClientsRepository(
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     /**
@@ -76,7 +76,7 @@ class ClientsRepository(
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 }
 

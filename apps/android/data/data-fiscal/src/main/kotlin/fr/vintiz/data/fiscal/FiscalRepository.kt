@@ -32,7 +32,7 @@ class FiscalRepository(
     ): VintizResult<ExportFile> = try {
         val response = api.export(from = from, to = to, format = format.key)
         if (!response.isSuccessful) {
-            VintizResult.Failure(VintizError.Http(response.code(), response.message()))
+            VintizResult.Failure(VintizError.http(response.code(), response.message()))
         } else {
             val body = response.body()
                 ?: return VintizResult.Failure(VintizError.Unknown("Réponse vide du serveur"))
@@ -51,7 +51,7 @@ class FiscalRepository(
         Timber.w(io, "Téléchargement fiscal-export KO")
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     private fun parseFilename(contentDisposition: String?): String? {

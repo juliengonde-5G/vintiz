@@ -28,7 +28,7 @@ class NewsletterRepository(
     suspend fun exportCsv(): VintizResult<CsvExport> = try {
         val response = api.export()
         if (!response.isSuccessful) {
-            VintizResult.Failure(VintizError.Http(response.code(), response.message()))
+            VintizResult.Failure(VintizError.http(response.code(), response.message()))
         } else {
             val body = response.body()
                 ?: return VintizResult.Failure(VintizError.Unknown("Réponse vide"))
@@ -47,7 +47,7 @@ class NewsletterRepository(
         Timber.w(io, "Téléchargement newsletter CSV KO")
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     private fun parseFilename(contentDisposition: String?): String? {
@@ -61,6 +61,6 @@ class NewsletterRepository(
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 }

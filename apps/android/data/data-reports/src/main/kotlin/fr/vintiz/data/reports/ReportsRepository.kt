@@ -31,6 +31,6 @@ class ReportsRepository(private val api: ReportsApi) {
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: "HTTP error"))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 }

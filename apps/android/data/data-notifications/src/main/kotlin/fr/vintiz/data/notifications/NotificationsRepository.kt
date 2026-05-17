@@ -19,7 +19,7 @@ class NotificationsRepository(
         Timber.w(io, "FCM register offline — sera retenté au prochain boot")
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     suspend fun sendTest(): VintizResult<Unit> = try {
@@ -28,7 +28,7 @@ class NotificationsRepository(
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     private companion object {

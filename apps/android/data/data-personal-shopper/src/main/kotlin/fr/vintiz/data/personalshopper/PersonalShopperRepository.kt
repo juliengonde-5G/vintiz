@@ -44,7 +44,7 @@ class PersonalShopperRepository(private val api: PersonalShopperApi) {
             404 -> VintizResult.Failure(
                 VintizError.Validation("client", "Cliente sans profil — recommandation indisponible"),
             )
-            else -> VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+            else -> VintizResult.Failure(VintizError.http(http.code(), http.message()))
         }
     }
 }

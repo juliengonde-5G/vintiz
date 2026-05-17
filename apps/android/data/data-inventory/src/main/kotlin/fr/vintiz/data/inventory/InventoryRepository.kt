@@ -49,7 +49,7 @@ class InventoryRepository(
     } catch (http: HttpException) {
         val cached = dao.byBarcode(barcode)
         if (cached != null) VintizResult.Success(cached.toDto())
-        else VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        else VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     suspend fun byId(id: String): VintizResult<ProductDto> = try {
@@ -63,7 +63,7 @@ class InventoryRepository(
     } catch (http: HttpException) {
         val cached = dao.byId(id)
         if (cached != null) VintizResult.Success(cached.toDto())
-        else VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        else VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     /**
@@ -81,7 +81,7 @@ class InventoryRepository(
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     suspend fun photos(productId: String): VintizResult<List<ProductPhotoDto>> = try {
@@ -89,7 +89,7 @@ class InventoryRepository(
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     suspend fun uploadPhoto(productId: String, file: File): VintizResult<ProductPhotoDto> = try {
@@ -100,7 +100,7 @@ class InventoryRepository(
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     private fun File.guessMimeType(): String = when (extension.lowercase()) {

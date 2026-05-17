@@ -58,6 +58,6 @@ class AuthRepository(
             val retry = http.response()?.headers()?.get("Retry-After")?.toIntOrNull() ?: 60
             VintizResult.Failure(VintizError.RateLimit(retry))
         }
-        else -> VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: "HTTP error"))
+        else -> VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 }

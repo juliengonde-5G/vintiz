@@ -69,7 +69,7 @@ class PosRepository(
                     queueDao.delete(req.client_uuid)
                     VintizResult.Failure(VintizError.Idempotent)
                 }
-                else -> VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+                else -> VintizResult.Failure(VintizError.http(http.code(), http.message()))
             }
         }
 

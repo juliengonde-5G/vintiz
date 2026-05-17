@@ -21,7 +21,7 @@ class TrendsRepository(private val api: TrendsApi) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
         if (http.code() == 404) VintizResult.Success(null)
-        else VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        else VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 
     suspend fun regenerateWindowDisplay(): VintizResult<WindowProposalDto> =
@@ -41,7 +41,7 @@ class TrendsRepository(private val api: TrendsApi) {
         when (http.code()) {
             409 -> VintizResult.Failure(VintizError.Validation(
                 "proposal", "Déjà validée — régénérer d'abord"))
-            else -> VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+            else -> VintizResult.Failure(VintizError.http(http.code(), http.message()))
         }
     }
 
@@ -59,6 +59,6 @@ class TrendsRepository(private val api: TrendsApi) {
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 }

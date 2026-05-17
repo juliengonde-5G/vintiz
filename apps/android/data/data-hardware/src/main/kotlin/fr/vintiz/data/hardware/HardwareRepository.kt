@@ -39,7 +39,7 @@ class HardwareRepository(
         Timber.w(http, "hardware config HTTP %d", http.code())
         val cached = current()
         if (cached != null) VintizResult.Success(cached)
-        else VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        else VintizResult.Failure(VintizError.http(http.code(), http.message()))
     } catch (t: Throwable) {
         Timber.e(t, "hardware config sync KO")
         val cached = current()
@@ -56,7 +56,7 @@ class HardwareRepository(
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     } catch (t: Throwable) {
         Timber.e(t, "hardware config push KO")
         VintizResult.Failure(VintizError.Unknown(t.message ?: "Erreur inconnue"))

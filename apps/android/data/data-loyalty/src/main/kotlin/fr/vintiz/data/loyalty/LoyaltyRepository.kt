@@ -15,7 +15,7 @@ class LoyaltyRepository(private val api: LoyaltyApi) {
         when (http.code()) {
             409 -> VintizResult.Failure(VintizError.Validation("email", "Adresse déjà inscrite"))
             422 -> VintizResult.Failure(VintizError.Validation("body", "Données invalides"))
-            else -> VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+            else -> VintizResult.Failure(VintizError.http(http.code(), http.message()))
         }
     }
 
@@ -41,7 +41,7 @@ class LoyaltyRepository(private val api: LoyaltyApi) {
     } catch (http: HttpException) {
         when (http.code()) {
             404 -> VintizResult.Failure(VintizError.Validation("coupon", "Code introuvable"))
-            else -> VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+            else -> VintizResult.Failure(VintizError.http(http.code(), http.message()))
         }
     }
 
@@ -50,6 +50,6 @@ class LoyaltyRepository(private val api: LoyaltyApi) {
     } catch (io: IOException) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
-        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+        VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
 }
