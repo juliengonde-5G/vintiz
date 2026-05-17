@@ -186,11 +186,8 @@ fun IaScreen(viewModel: IaViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(Unit) { viewModel.loadAll() }
 
-    Scaffold { padding ->
+    Scaffold(containerColor = fr.vintiz.core.design.VzColors.Bg) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Text("Compagnon IA",
-                style = MaterialTheme.typography.headlineLarge,
-                modifier = Modifier.padding(16.dp))
             TabRow(selectedTabIndex = state.tab) {
                 listOf("Checklist", "Tendances", "Marques", "Vitrine").forEachIndexed { i, label ->
                     Tab(selected = state.tab == i, onClick = { viewModel.selectTab(i) }, text = { Text(label) })

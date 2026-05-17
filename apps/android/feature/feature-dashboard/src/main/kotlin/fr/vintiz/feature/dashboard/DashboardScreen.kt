@@ -82,8 +82,6 @@ internal fun DashboardContent(state: DashboardUiState, padding: PaddingValues) {
         modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Tableau de bord", style = MaterialTheme.typography.headlineLarge)
-
         if (state.loading) {
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()

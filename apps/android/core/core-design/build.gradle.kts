@@ -28,6 +28,9 @@ android {
 dependencies {
     implementation(platform(libs.compose.bom))
     api(libs.bundles.compose)
+    // Google Fonts downloadable typefaces (Fraunces + Manrope sans
+    // embarquer les .ttf dans res/font, cohérent charte web).
+    api("androidx.compose.ui:ui-text-google-fonts")
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.bundles.testing)

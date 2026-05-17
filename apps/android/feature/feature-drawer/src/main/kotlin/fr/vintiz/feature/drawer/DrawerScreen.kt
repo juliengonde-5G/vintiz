@@ -139,14 +139,37 @@ private fun CloseDrawerForm(state: DrawerUiState, vm: DrawerViewModel) {
 
 @Composable
 private fun ClosedDrawerReport(state: DrawerUiState, vm: DrawerViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Z-Report ${state.current?.drawer_id?.take(8) ?: "—"}",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.primary)
             ZReportContent(state.zReport, state.openingAmount, state.closingAmount)
-            Button(onClick = vm::reset, modifier = Modifier.fillMaxWidth()) {
-                Text("Nouvelle caisse")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.OutlinedButton(
+                    onClick = {
+                        state.zReport?.let { z ->
+                            val uri = ZReportPdfBuilder.build(context, z)
+                            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "application/pdf"
+                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                putExtra(android.content.Intent.EXTRA_SUBJECT,
+                                    "Z-Report Vintiz — ${z.closed_at.take(10)}")
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            val chooser = android.content.Intent.createChooser(send,
+                                "Envoyer le Z-Report")
+                            chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(chooser)
+                        }
+                    },
+                    enabled = state.zReport != null,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Exporter PDF") }
+                Button(onClick = vm::reset, modifier = Modifier.weight(1f)) {
+                    Text("Nouvelle caisse")
+                }
             }
         }
     }

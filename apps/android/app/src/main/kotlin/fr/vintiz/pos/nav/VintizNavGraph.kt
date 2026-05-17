@@ -117,21 +117,18 @@ private fun Shell(rootNav: NavHostController) {
 
     Scaffold(
         topBar = {
-            androidx.compose.material3.TopAppBar(
-                title = { Text(routeTitle(currentRoute)) },
-                navigationIcon = {
-                    if (canPop) {
-                        androidx.compose.material3.IconButton(
-                            onClick = { shellNav.popBackStack() },
-                        ) {
-                            Text("←", style = MaterialTheme.typography.titleLarge)
-                        }
-                    }
-                },
+            fr.vintiz.core.design.VzTopBar(
+                title = routeTitle(currentRoute),
+                subtitle = "Vintiz Vernon",
+                onBack = if (canPop) ({ shellNav.popBackStack() }) else null,
             )
         },
+        containerColor = fr.vintiz.core.design.VzColors.Bg,
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = fr.vintiz.core.design.VzColors.Surface,
+                tonalElevation = 4.dp,
+            ) {
                 BottomNavItem.entries.forEach { item ->
                     NavigationBarItem(
                         selected = currentRoute == item.route ||
@@ -143,8 +140,19 @@ private fun Shell(rootNav: NavHostController) {
                                 restoreState = true
                             }
                         },
-                        icon = { Text(item.icon) },
-                        label = { Text(item.label) },
+                        icon = {
+                            Text(item.icon, style = MaterialTheme.typography.titleLarge)
+                        },
+                        label = {
+                            Text(item.label, style = MaterialTheme.typography.labelMedium)
+                        },
+                        colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
+                            selectedIconColor = fr.vintiz.core.design.VzColors.Teal,
+                            selectedTextColor = fr.vintiz.core.design.VzColors.TealDeep,
+                            indicatorColor = fr.vintiz.core.design.VzColors.TealSoft,
+                            unselectedIconColor = fr.vintiz.core.design.VzColors.InkMute,
+                            unselectedTextColor = fr.vintiz.core.design.VzColors.InkMute,
+                        ),
                     )
                 }
             }

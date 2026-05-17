@@ -25,7 +25,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -236,8 +239,11 @@ private fun Color.darken(amount: Float): Color = Color(
  *   screenX = (x - y) * cos(30°) ≈ 0.866
  *   screenY = (x + y) * sin(30°) ≈ 0.5
  *
- * Hit-test : on teste si le tap appartient au polygone supérieur
- * (face haute du parallélépipède).
+ * Geste utilisateur :
+ *   - tap → sélectionner zone (hit-test polygon)
+ *   - pinch (2 doigts) → zoom 0.5x → 4x sur la vue iso
+ *   - drag → panoramique sur le plan zoomé
+ *   - double-tap (TODO V2) → reset zoom + position
  */
 @Composable
 internal fun IsoZonesCanvas(
@@ -248,19 +254,39 @@ internal fun IsoZonesCanvas(
     val outline = MaterialTheme.colorScheme.outline
     val primary = MaterialTheme.colorScheme.primary
     val bbox = remember(zones) { computeBoundingBox(zones) }
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
 
     Canvas(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(zones, bbox) {
                 detectTapGestures { tap ->
-                    val proj = isoProjector(size.width.toFloat(), size.height.toFloat(), bbox)
+                    val canvasW = size.width.toFloat()
+                    val canvasH = size.height.toFloat()
+                    // Inverser la transform graphicsLayer : tap raw → coord canvas
+                    val tx = (tap.x - offset.x - canvasW / 2f) / scale + canvasW / 2f
+                    val ty = (tap.y - offset.y - canvasH / 2f) / scale + canvasH / 2f
+                    val proj = isoProjector(canvasW, canvasH, bbox)
                     val zone = zones.firstOrNull { z ->
-                        pointInQuad(tap, proj.topFace(z))
+                        pointInQuad(Offset(tx, ty), proj.topFace(z))
                     }
                     if (zone != null) onTapZone(zone)
                 }
-            },
+            }
+            .pointerInput(Unit) {
+                androidx.compose.foundation.gestures.detectTransformGestures { _, pan, zoom, _ ->
+                    val newScale = (scale * zoom).coerceIn(0.5f, 4f)
+                    scale = newScale
+                    offset += pan
+                }
+            }
+            .graphicsLayer(
+                scaleX = scale,
+                scaleY = scale,
+                translationX = offset.x,
+                translationY = offset.y,
+            ),
     ) {
         val proj = isoProjector(size.width, size.height, bbox)
         // Tri Z : on dessine d'abord les zones du fond (plus grand x+y).
