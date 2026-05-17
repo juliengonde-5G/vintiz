@@ -11,22 +11,22 @@ import retrofit2.http.Query
 
 interface InventoryApi {
 
-    @GET("api/v1/inventory/products")
+    @GET("api/inventory/products")
     suspend fun list(
         @Query("page") page: Int = 1,
         @Query("page_size") pageSize: Int = 50,
     ): ProductPageDto
 
-    @GET("api/v1/inventory/products/search")
+    @GET("api/inventory/products/search")
     suspend fun search(
         @Query("q") q: String,
         @Query("include_sold") includeSold: Boolean = false,
     ): List<ProductDto>
 
-    @GET("api/v1/inventory/products/by-barcode/{barcode}")
+    @GET("api/inventory/products/by-barcode/{barcode}")
     suspend fun byBarcode(@Path("barcode") barcode: String): ProductDto
 
-    @GET("api/v1/inventory/products/{id}")
+    @GET("api/inventory/products/{id}")
     suspend fun byId(@Path("id") id: String): ProductDto
 
     /**
@@ -35,17 +35,17 @@ interface InventoryApi {
      * sans rien modifier — utile pour valider le format avant commit.
      */
     @Multipart
-    @POST("api/v1/inventory/products/import-csv")
+    @POST("api/inventory/products/import-csv")
     suspend fun importCsv(
         @Part file: MultipartBody.Part,
         @Query("dry_run") dryRun: Boolean = false,
     ): CsvImportResultDto
 
-    @GET("api/v1/inventory/products/{id}/photos")
+    @GET("api/inventory/products/{id}/photos")
     suspend fun photos(@Path("id") productId: String): List<ProductPhotoDto>
 
     @Multipart
-    @POST("api/v1/inventory/products/{id}/photos")
+    @POST("api/inventory/products/{id}/photos")
     suspend fun uploadPhoto(
         @Path("id") productId: String,
         @Part photo: MultipartBody.Part,

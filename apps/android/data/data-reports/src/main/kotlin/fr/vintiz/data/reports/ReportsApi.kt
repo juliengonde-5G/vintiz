@@ -6,22 +6,22 @@ import retrofit2.http.Query
 
 interface ReportsApi {
 
-    @GET("api/v1/reports/dashboard")
+    @GET("api/reports/dashboard")
     suspend fun dashboard(): DashboardDto
 
-    @GET("api/v1/reports/retail-kpis")
+    @GET("api/reports/retail-kpis")
     suspend fun retailKpis(@Query("period_days") periodDays: Int = 30): RetailKpisDto
 
-    @GET("api/v1/reports/daily")
+    @GET("api/reports/daily")
     suspend fun daily(@Query("date") date: String? = null): DailyRecapDto
 
-    @GET("api/v1/pos/z-reports")
+    @GET("api/pos/z-reports")
     suspend fun zReports(
         @Query("from") from: String? = null,
         @Query("to") to: String? = null,
     ): List<ZReportDto>
 
-    @GET("api/v1/admin/fiscal-export")
+    @GET("api/admin/fiscal-export")
     suspend fun fiscalExport(
         @Query("from") from: String,
         @Query("to") to: String,

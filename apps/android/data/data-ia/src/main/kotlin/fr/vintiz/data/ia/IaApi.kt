@@ -7,19 +7,19 @@ import retrofit2.http.Path
 
 interface IaApi {
 
-    @GET("api/v1/ai/weekly-checklist")
+    @GET("api/ai/weekly-checklist")
     suspend fun weeklyChecklist(): WeeklyChecklistDto
 
-    @GET("api/v1/ai/trends")
+    @GET("api/ai/trends")
     suspend fun trends(): TrendsDto
 
-    @POST("api/v1/ai/persona/marketing")
+    @POST("api/ai/persona/marketing")
     suspend fun marketingPersona(): PersonaReportDto
 
-    @POST("api/v1/ai/persona/juridique")
+    @POST("api/ai/persona/juridique")
     suspend fun juridiquePersona(): PersonaReportDto
 
-    @GET("api/v1/inventory/products/{id}/insights")
+    @GET("api/inventory/products/{id}/insights")
     suspend fun productInsights(@Path("id") id: String): ProductInsightsDto
 }
 

@@ -15,25 +15,25 @@ import retrofit2.http.Streaming
 
 interface PosApi {
 
-    @POST("api/v1/pos/transactions")
+    @POST("api/pos/transactions")
     suspend fun createTransaction(@Body body: CreateTransactionRequest): TransactionResponse
 
-    @POST("api/v1/pos/transactions/{id}/refund")
+    @POST("api/pos/transactions/{id}/refund")
     suspend fun refund(@Path("id") id: String): TransactionResponse
 
     @Streaming
-    @GET("api/v1/pos/transactions/{id}/escpos")
+    @GET("api/pos/transactions/{id}/escpos")
     suspend fun receiptEscPosBytes(
         @Path("id") id: String,
         @Query("kick_drawer") kickDrawer: Boolean = false,
     ): ResponseBody
 
-    @POST("api/v1/pos/drawer/open")
+    @POST("api/pos/drawer/open")
     suspend fun drawerOpen(@Body body: DrawerOpenRequest): DrawerResponse
 
-    @POST("api/v1/pos/drawer/close")
+    @POST("api/pos/drawer/close")
     suspend fun drawerClose(@Body body: DrawerCloseRequest): DrawerResponse
 
-    @GET("api/v1/pos/drawer/current")
+    @GET("api/pos/drawer/current")
     suspend fun drawerCurrent(): DrawerResponse?
 }

@@ -18,19 +18,19 @@ import retrofit2.http.POST
  */
 interface AuthApi {
 
-    @POST("api/v1/auth/login")
+    @POST("api/auth/login")
     suspend fun login(
         @Header(AuthInterceptor.SKIP_AUTH_HEADER) skipAuth: String = "true",
         @Body body: LoginRequest,
     ): TokenResponse
 
-    @POST("api/v1/auth/refresh")
+    @POST("api/auth/refresh")
     suspend fun refresh(
         @Header("Authorization") bearer: String,
         @Header(AuthInterceptor.SKIP_AUTH_HEADER) skipAuth: String = "true",
     ): TokenResponse
 
-    @POST("api/v1/pos/cashier/login")
+    @POST("api/pos/cashier/login")
     suspend fun cashierLogin(
         @Header(AuthInterceptor.SKIP_AUTH_HEADER) skipAuth: String = "true",
         @Body body: CashierLoginRequest,

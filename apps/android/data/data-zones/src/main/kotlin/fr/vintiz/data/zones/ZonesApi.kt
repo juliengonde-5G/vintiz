@@ -5,7 +5,7 @@ import retrofit2.http.GET
 
 interface ZonesApi {
 
-    @GET("api/v1/admin/store-plan")
+    @GET("api/admin/store-plan")
     suspend fun storePlan(): StorePlanResponse
 }
 

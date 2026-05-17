@@ -8,25 +8,25 @@ import retrofit2.http.Path
 
 interface CahierApi {
 
-    @GET("api/v1/cahier/{date}")
+    @GET("api/cahier/{date}")
     suspend fun day(@Path("date") date: String): CahierDayDto
 
-    @GET("api/v1/cahier/monthly-target/{year}/{month}")
+    @GET("api/cahier/monthly-target/{year}/{month}")
     suspend fun monthlyTarget(
         @Path("year") year: Int,
         @Path("month") month: Int,
     ): MonthlyTargetDto
 
-    @PUT("api/v1/cahier/monthly-target")
+    @PUT("api/cahier/monthly-target")
     suspend fun setMonthlyTarget(@Body body: MonthlyTargetDto): MonthlyTargetDto
 
-    @PUT("api/v1/cahier/daily-text")
+    @PUT("api/cahier/daily-text")
     suspend fun setDailyText(@Body body: DailyTextDto): CahierDayDto
 
-    @PUT("api/v1/cahier/signature")
+    @PUT("api/cahier/signature")
     suspend fun sign(@Body body: SignatureDto): CahierDayDto
 
-    @GET("api/v1/cahier/weekday-weights")
+    @GET("api/cahier/weekday-weights")
     suspend fun weekdayWeights(): WeekdayWeightsDto
 }
 

@@ -16,13 +16,13 @@ interface TrendsApi {
      * cron n'a pas encore tourné — l'UI propose alors un bouton
      * "Regénérer maintenant".
      */
-    @GET("api/v1/admin/window-display/current")
+    @GET("api/admin/window-display/current")
     suspend fun currentWindowDisplay(): WindowProposalDto
 
-    @POST("api/v1/admin/window-display/regenerate")
+    @POST("api/admin/window-display/regenerate")
     suspend fun regenerateWindowDisplay(): WindowProposalDto
 
-    @POST("api/v1/admin/window-display/{id}/accept")
+    @POST("api/admin/window-display/{id}/accept")
     suspend fun acceptWindowDisplay(@Path("id") id: String): WindowProposalDto
 
     /**
@@ -30,31 +30,31 @@ interface TrendsApi {
      * { "product_ids": ["uuid1", "uuid2", ...] }. Les ids non
      * mentionnés sont conservés en queue par le backend.
      */
-    @retrofit2.http.PATCH("api/v1/admin/window-display/{id}/reorder")
+    @retrofit2.http.PATCH("api/admin/window-display/{id}/reorder")
     suspend fun reorderWindowDisplay(
         @Path("id") id: String,
         @Body body: ReorderWindowRequest,
     ): WindowProposalDto
 
-    @GET("api/v1/admin/markdown-rules")
+    @GET("api/admin/markdown-rules")
     suspend fun markdownRules(@Query("active") active: Boolean? = null): List<MarkdownRuleDto>
 
-    @POST("api/v1/admin/markdown-rules")
+    @POST("api/admin/markdown-rules")
     suspend fun createMarkdownRule(@Body body: MarkdownRuleDto): MarkdownRuleDto
 
-    @PUT("api/v1/admin/markdown-rules/{id}")
+    @PUT("api/admin/markdown-rules/{id}")
     suspend fun updateMarkdownRule(
         @Path("id") id: String,
         @Body body: MarkdownRuleDto,
     ): MarkdownRuleDto
 
-    @DELETE("api/v1/admin/markdown-rules/{id}")
+    @DELETE("api/admin/markdown-rules/{id}")
     suspend fun deleteMarkdownRule(@Path("id") id: String): Map<String, Any?>
 
-    @GET("api/v1/admin/markdown-rules/preview")
+    @GET("api/admin/markdown-rules/preview")
     suspend fun previewMarkdownEngine(): MarkdownEnginePreviewDto
 
-    @POST("api/v1/admin/markdown-rules/run")
+    @POST("api/admin/markdown-rules/run")
     suspend fun runMarkdownEngine(): MarkdownEngineRunDto
 }
 

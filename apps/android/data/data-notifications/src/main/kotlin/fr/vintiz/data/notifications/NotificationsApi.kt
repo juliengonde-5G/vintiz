@@ -10,10 +10,10 @@ interface NotificationsApi {
      * Enregistre le device token FCM côté backend.
      * Endpoint à créer côté équipe API (cf. docs/MIGRATION_ANDROID_NATIVE.md §4.4).
      */
-    @POST("api/v1/notifications/fcm-token")
+    @POST("api/notifications/fcm-token")
     suspend fun registerFcmToken(@Body body: FcmTokenRequest): Map<String, Any?>
 
-    @POST("api/v1/notifications/test")
+    @POST("api/notifications/test")
     suspend fun test(): Map<String, Any?>
 }
 

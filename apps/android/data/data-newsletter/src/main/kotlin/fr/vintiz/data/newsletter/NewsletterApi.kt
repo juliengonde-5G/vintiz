@@ -11,17 +11,17 @@ import retrofit2.http.Streaming
 
 interface NewsletterApi {
 
-    @GET("api/v1/newsletter/subscribers")
+    @GET("api/newsletter/subscribers")
     suspend fun list(
         @Query("q") query: String? = null,
         @Query("limit") limit: Int = 100,
     ): List<SubscriberDto>
 
     @Streaming
-    @GET("api/v1/newsletter/subscribers/export")
+    @GET("api/newsletter/subscribers/export")
     suspend fun export(): Response<ResponseBody>
 
-    @DELETE("api/v1/newsletter/subscribers/{id}")
+    @DELETE("api/newsletter/subscribers/{id}")
     suspend fun delete(@Path("id") id: String): Map<String, Any?>
 }
 

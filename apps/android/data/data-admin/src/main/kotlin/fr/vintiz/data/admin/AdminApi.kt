@@ -10,7 +10,7 @@ import retrofit2.http.Query
 
 interface AdminApi {
 
-    @GET("api/v1/admin/transactions")
+    @GET("api/admin/transactions")
     suspend fun transactions(
         @Query("from") from: String? = null,
         @Query("to") to: String? = null,
@@ -18,30 +18,30 @@ interface AdminApi {
         @Query("limit") limit: Int = 50,
     ): List<AdminTransactionDto>
 
-    @GET("api/v1/admin/users")
+    @GET("api/admin/users")
     suspend fun users(): List<UserDto>
 
-    @POST("api/v1/admin/users")
+    @POST("api/admin/users")
     suspend fun createUser(@Body body: CreateUserRequest): UserDto
 
-    @DELETE("api/v1/admin/users/{id}")
+    @DELETE("api/admin/users/{id}")
     suspend fun deleteUser(@Path("id") id: String): Map<String, Any?>
 
-    @GET("api/v1/admin/audit-logs")
+    @GET("api/admin/audit-logs")
     suspend fun auditLogs(
         @Query("entity") entity: String? = null,
         @Query("action") action: String? = null,
         @Query("limit") limit: Int = 100,
     ): List<AuditLogDto>
 
-    @POST("api/v1/pos/transactions/{id}/refund")
+    @POST("api/pos/transactions/{id}/refund")
     suspend fun refund(
         @Path("id") id: String,
         @Body body: RefundRequest,
     ): AdminTransactionDto
 
     /** Audit CB SumUp — toutes les tentatives loggées (paid/failed/timeout). */
-    @GET("api/v1/admin/payment-attempts")
+    @GET("api/admin/payment-attempts")
     suspend fun paymentAttempts(
         @Query("limit") limit: Int = 100,
         @Query("status") status: String? = null,

@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -235,13 +237,28 @@ private fun HardwareStep(state: OnboardingUiState, onSync: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Matériel boutique", style = MaterialTheme.typography.titleLarge)
             Text("On va récupérer la config matériel depuis le serveur " +
-                "(IPs imprimante ticket, imprimante étiquette, tiroir).")
-            Button(onClick = onSync, enabled = !state.syncing) {
-                Text(when {
-                    state.syncing -> "Synchronisation…"
-                    state.hardwareOk -> "Synchronisé ✓"
-                    else -> "Synchroniser"
-                })
+                "(IPs imprimante ticket, imprimante étiquette, tiroir). " +
+                "Étape facultative — vous pouvez continuer même si elle échoue " +
+                "(l'app retentera après le login).")
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onSync, enabled = !state.syncing) {
+                    Text(when {
+                        state.syncing -> "Synchronisation…"
+                        state.hardwareOk -> "Synchronisé ✓"
+                        else -> "Synchroniser"
+                    })
+                }
+                if (state.syncing) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                }
+            }
+            state.error?.let { err ->
+                Text(
+                    "⚠ $err",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }

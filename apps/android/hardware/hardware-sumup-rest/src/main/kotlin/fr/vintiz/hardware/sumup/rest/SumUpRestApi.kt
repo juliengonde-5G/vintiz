@@ -9,13 +9,13 @@ import retrofit2.http.Path
 
 interface SumUpRestApi {
 
-    @POST("api/v1/pos/payments/cb/initiate")
+    @POST("api/pos/payments/cb/initiate")
     suspend fun initiate(@Body body: InitiateRequest): InitiateResponse
 
-    @GET("api/v1/pos/payments/cb/{checkoutId}/status")
+    @GET("api/pos/payments/cb/{checkoutId}/status")
     suspend fun status(@Path("checkoutId") checkoutId: String): StatusResponse
 
-    @DELETE("api/v1/pos/payments/cb/{checkoutId}")
+    @DELETE("api/pos/payments/cb/{checkoutId}")
     suspend fun cancel(@Path("checkoutId") checkoutId: String): Map<String, Any?>
 }
 

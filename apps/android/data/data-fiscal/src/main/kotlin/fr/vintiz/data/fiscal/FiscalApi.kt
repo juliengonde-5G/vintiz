@@ -21,7 +21,7 @@ interface FiscalApi {
      * filename suggéré, le Content-Type effectif).
      */
     @Streaming
-    @GET("api/v1/admin/fiscal-export")
+    @GET("api/admin/fiscal-export")
     suspend fun export(
         @Query("from") from: String?,
         @Query("to") to: String?,

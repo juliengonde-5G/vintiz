@@ -7,10 +7,10 @@ import retrofit2.http.PUT
 
 interface HardwareApi {
 
-    @GET("api/v1/hardware/config")
+    @GET("api/hardware/config")
     suspend fun getConfig(): HardwareConfigDto
 
-    @PUT("api/v1/hardware/config")
+    @PUT("api/hardware/config")
     suspend fun setConfig(@Body body: HardwareConfigDto): HardwareConfigDto
 }
 

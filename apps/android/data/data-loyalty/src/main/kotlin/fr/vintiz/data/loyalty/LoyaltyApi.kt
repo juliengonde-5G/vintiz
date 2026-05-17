@@ -8,16 +8,16 @@ import retrofit2.http.PUT
 
 interface LoyaltyApi {
 
-    @POST("api/v1/pos/loyalty/subscribe")
+    @POST("api/pos/loyalty/subscribe")
     suspend fun subscribe(@Body body: LoyaltySubscribeRequest): LoyaltyCardDto
 
-    @GET("api/v1/admin/loyalty/config")
+    @GET("api/admin/loyalty/config")
     suspend fun getConfig(): LoyaltyConfigDto
 
-    @PUT("api/v1/admin/loyalty/config")
+    @PUT("api/admin/loyalty/config")
     suspend fun setConfig(@Body body: LoyaltyConfigDto): LoyaltyConfigDto
 
-    @POST("api/v1/pos/coupons/validate")
+    @POST("api/pos/coupons/validate")
     suspend fun validateCoupon(@Body body: ValidateCouponRequest): CouponPreviewDto
 }
 

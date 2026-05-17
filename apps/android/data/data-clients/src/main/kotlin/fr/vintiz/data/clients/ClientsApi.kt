@@ -11,10 +11,10 @@ import retrofit2.http.Streaming
 
 interface ClientsApi {
 
-    @GET("api/v1/pos/clients/identify")
+    @GET("api/pos/clients/identify")
     suspend fun identify(@Query("q") q: String): List<ClientDto>
 
-    @GET("api/v1/crm/clients/lookup")
+    @GET("api/crm/clients/lookup")
     suspend fun lookupByEmail(@Query("email") email: String): ClientDto?
 
     /**
@@ -22,14 +22,14 @@ interface ClientsApi {
      * fidélité, goûts, RGPD, audit) renvoyées dans un seul payload
      * agrégé pour éviter 6 round-trips.
      */
-    @GET("api/v1/crm/clients/{id}/full")
+    @GET("api/crm/clients/{id}/full")
     suspend fun fullClient(@Path("id") id: String): ClientFullDto
 
     /**
      * RGPD Article 20 — export portable JSON de toutes les données
      * cliente (commandes, consents, audit). Manager only.
      */
-    @GET("api/v1/crm/clients/{id}/data-export")
+    @GET("api/crm/clients/{id}/data-export")
     @Streaming
     suspend fun exportData(@Path("id") id: String): Response<ResponseBody>
 
@@ -38,7 +38,7 @@ interface ClientsApi {
      * annulable). L'API marque la cliente, le worker côté serveur la
      * purge à expiration.
      */
-    @POST("api/v1/crm/clients/{id}/deletion-request")
+    @POST("api/crm/clients/{id}/deletion-request")
     suspend fun requestDeletion(@Path("id") id: String): ClientDeletionResponseDto
 }
 

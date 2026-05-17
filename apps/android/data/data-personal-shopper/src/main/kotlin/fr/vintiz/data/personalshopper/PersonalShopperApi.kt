@@ -13,11 +13,11 @@ interface PersonalShopperApi {
      * Recos Personal Shopper v2 pour la cliente identifiée (manager).
      * Mix embeddings produits + dernières interactions + tier fidélité.
      */
-    @GET("api/v1/crm/clients/{id}/personal-shopper-v2")
+    @GET("api/crm/clients/{id}/personal-shopper-v2")
     suspend fun forClient(@Path("id") id: String): PersonalShopperPicksDto
 
     /** Côté POS : panneau Companion gated par consent profilage. */
-    @GET("api/v1/pos/clients/{id}/companion")
+    @GET("api/pos/clients/{id}/companion")
     suspend fun companion(
         @Path("id") id: String,
         @Query("cart_total_cents") cartTotalCents: Long = 0,
@@ -25,7 +25,7 @@ interface PersonalShopperApi {
     ): PosCompanionDto
 
     /** Log d'un click recommandation (mesure CTR côté backend). */
-    @POST("api/v1/crm/personal-shopper-v2/click")
+    @POST("api/crm/personal-shopper-v2/click")
     suspend fun logClick(@Body body: ClickEventDto): Map<String, Any?>
 }
 
