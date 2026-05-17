@@ -270,15 +270,25 @@ private fun PrinterTestStep(state: OnboardingUiState, onTest: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Imprimante ticket MUNBYN", style = MaterialTheme.typography.titleLarge)
             Text(
-                "On va envoyer une impulsion test : ping de l'imprimante + " +
-                    "kick tiroir. Le tiroir doit s'ouvrir.",
+                "Optionnel : ping l'imprimante + kick tiroir. Le tiroir doit " +
+                    "s'ouvrir. Si KO, vérifier IP côté Settings après login.",
             )
-            Button(onClick = onTest, enabled = !state.printerTesting) {
-                Text(when {
-                    state.printerTesting -> "Test en cours…"
-                    state.printerOk -> "Tiroir ouvert ✓"
-                    else -> "Tester maintenant"
-                })
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onTest, enabled = !state.printerTesting) {
+                    Text(when {
+                        state.printerTesting -> "Test en cours…"
+                        state.printerOk -> "Tiroir ouvert ✓"
+                        else -> "Tester maintenant"
+                    })
+                }
+                if (state.printerTesting) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                }
+            }
+            state.error?.let { err ->
+                Text("⚠ $err", color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -290,16 +300,25 @@ private fun PaymentTerminalStep(state: OnboardingUiState, onTest: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("TPE SumUp Solo", style = MaterialTheme.typography.titleLarge)
             Text(
-                "On vérifie que le backend voit le TPE (compte merchant + " +
-                    "configuration Wi-Fi). Le SDK BT natif sera activé une fois " +
-                    "le pairing fait côté tablette.",
+                "Optionnel : ping le backend SumUp (compte merchant + " +
+                    "Wi-Fi). Le SDK BT natif sera activé après pairing tablette.",
             )
-            Button(onClick = onTest, enabled = !state.tpeTesting) {
-                Text(when {
-                    state.tpeTesting -> "Ping en cours…"
-                    state.tpeOk -> "TPE joignable ✓"
-                    else -> "Tester la connexion"
-                })
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onTest, enabled = !state.tpeTesting) {
+                    Text(when {
+                        state.tpeTesting -> "Ping en cours…"
+                        state.tpeOk -> "TPE joignable ✓"
+                        else -> "Tester la connexion"
+                    })
+                }
+                if (state.tpeTesting) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                }
+            }
+            state.error?.let { err ->
+                Text("⚠ $err", color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
     }
