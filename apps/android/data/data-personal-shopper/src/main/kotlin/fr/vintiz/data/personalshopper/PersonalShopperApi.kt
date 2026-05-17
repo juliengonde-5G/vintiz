@@ -27,7 +27,21 @@ interface PersonalShopperApi {
     /** Log d'un click recommandation (mesure CTR côté backend). */
     @POST("api/crm/personal-shopper-v2/click")
     suspend fun logClick(@Body body: ClickEventDto): Map<String, Any?>
+
+    /**
+     * Recherche libre Personal Shopper — texte → Claude Haiku extrait
+     * les filtres (catégorie, taille, couleur, marque), match inventaire.
+     * Gated cliente + consent profilage.
+     */
+    @POST("api/crm/account/personal-shopper/search")
+    suspend fun search(@Body body: PersonalShopperSearchRequest): Map<String, Any?>
 }
+
+@JsonClass(generateAdapter = true)
+data class PersonalShopperSearchRequest(
+    val email: String,
+    val q: String,
+)
 
 @JsonClass(generateAdapter = true)
 data class PersonalShopperPicksDto(

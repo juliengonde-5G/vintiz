@@ -54,7 +54,22 @@ fun PersonalShopperScreen(viewModel: PersonalShopperViewModel = hiltViewModel())
                 ClientPicker(state, viewModel::onSearchChange, viewModel::selectClient)
             } else {
                 ClientHeader(selected.fullName(), onClear = viewModel::clearClient)
+                FreeSearchBar(
+                    query = state.freeSearchQuery,
+                    busy = state.freeSearching,
+                    onChange = viewModel::onFreeSearchChange,
+                    onRun = viewModel::runFreeSearch,
+                )
+                state.freeSearchError?.let {
+                    Text("⚠ $it", color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall)
+                }
                 when {
+                    state.freeSearchResults.isNotEmpty() -> PicksGrid(
+                        picks = state.freeSearchResults,
+                        rationale = "Résultats Claude Haiku",
+                        onClick = viewModel::trackClick,
+                    )
                     state.loadingPicks -> Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center,
@@ -183,6 +198,44 @@ private fun PickCard(p: PickDto, onClick: () -> Unit) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FreeSearchBar(
+    query: String,
+    busy: Boolean,
+    onChange: (String) -> Unit,
+    onRun: () -> Unit,
+) {
+    androidx.compose.material3.Card(modifier = Modifier.fillMaxWidth()) {
+        androidx.compose.foundation.layout.Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "Recherche libre (Claude Haiku)",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                "Ex : « robe taille M en lin », « pantalon noir hiver », " +
+                    "« sac marque Sandro ». L'IA extrait les filtres et match " +
+                    "l'inventaire vendable.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            androidx.compose.material3.OutlinedTextField(
+                value = query,
+                onValueChange = onChange,
+                placeholder = { Text("Décrire ce que cherche la cliente") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            androidx.compose.material3.Button(
+                onClick = onRun,
+                enabled = !busy && query.trim().length >= 3,
+            ) { Text(if (busy) "Recherche…" else "Rechercher") }
         }
     }
 }

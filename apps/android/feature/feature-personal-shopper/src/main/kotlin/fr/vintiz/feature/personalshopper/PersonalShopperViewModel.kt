@@ -68,7 +68,33 @@ class PersonalShopperViewModel @Inject constructor(
     }
 
     fun clearClient() = _state.update {
-        it.copy(selectedClient = null, picks = null, loadingPicks = false)
+        it.copy(selectedClient = null, picks = null, loadingPicks = false,
+            freeSearchQuery = "", freeSearchResults = emptyList())
+    }
+
+    fun onFreeSearchChange(q: String) =
+        _state.update { it.copy(freeSearchQuery = q) }
+
+    /**
+     * Recherche libre Claude Haiku (PR2 sémantique). Le caissier
+     * tape "robe taille M en lin" et Claude extrait les filtres
+     * pour matcher l'inventaire.
+     */
+    fun runFreeSearch() {
+        val email = _state.value.selectedClient?.email ?: return
+        val q = _state.value.freeSearchQuery.trim()
+        if (q.length < 3) return
+        _state.update { it.copy(freeSearching = true, freeSearchError = null) }
+        viewModelScope.launch {
+            when (val r = personalShopper.searchByText(email, q)) {
+                is VintizResult.Success -> _state.update {
+                    it.copy(freeSearching = false, freeSearchResults = r.value)
+                }
+                is VintizResult.Failure -> _state.update {
+                    it.copy(freeSearching = false, freeSearchError = r.error.message)
+                }
+            }
+        }
     }
 }
 
@@ -79,4 +105,8 @@ data class PersonalShopperUiState(
     val loadingPicks: Boolean = false,
     val picks: PersonalShopperPicksDto? = null,
     val error: String? = null,
+    val freeSearchQuery: String = "",
+    val freeSearching: Boolean = false,
+    val freeSearchResults: List<PickDto> = emptyList(),
+    val freeSearchError: String? = null,
 )
