@@ -4,7 +4,6 @@ import fr.vintiz.core.common.VintizError
 import fr.vintiz.core.common.VintizResult
 import fr.vintiz.core.security.TokenStorage
 import fr.vintiz.data.auth.dto.CashierLoginRequest
-import fr.vintiz.data.auth.dto.LoginRequest
 import retrofit2.HttpException
 import timber.log.Timber
 import java.io.IOException
@@ -15,7 +14,7 @@ class AuthRepository(
 ) {
 
     suspend fun login(username: String, password: String): VintizResult<Unit> = try {
-        val token = api.login(body = LoginRequest(username = username, password = password))
+        val token = api.login(username = username, password = password)
         tokenStorage.saveAccessToken(token.access_token)
         VintizResult.Success(Unit)
     } catch (http: HttpException) {
