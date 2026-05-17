@@ -15,9 +15,6 @@ class IaRepository(private val api: IaApi) {
     suspend fun marketingPersona(): VintizResult<PersonaReportDto> =
         call { api.marketingPersona() }
 
-    suspend fun juridiquePersona(): VintizResult<PersonaReportDto> =
-        call { api.juridiquePersona() }
-
     suspend fun productInsights(productId: String): VintizResult<ProductInsightsDto> =
         call { api.productInsights(productId) }
 

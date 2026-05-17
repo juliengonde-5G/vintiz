@@ -21,7 +21,6 @@ android {
 dependencies {
     api(project(":core:core-design"))
     implementation(project(":core:core-common"))
-    implementation(project(":domain:domain-cahier"))
     implementation(project(":data:data-cahier"))
 
     implementation(platform(libs.compose.bom))

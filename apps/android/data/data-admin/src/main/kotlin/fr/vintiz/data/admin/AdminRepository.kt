@@ -11,13 +11,20 @@ class AdminRepository(private val api: AdminApi) {
         from: String? = null,
         to: String? = null,
         method: String? = null,
-        limit: Int = 50,
-    ): VintizResult<List<AdminTransactionDto>> = call { api.transactions(from, to, method, limit) }
+        limit: Int = 100,
+    ): VintizResult<List<AdminTransactionDto>> = call {
+        api.transactions(from = from, to = to, method = method, limit = limit).transactions
+    }
 
-    suspend fun users(): VintizResult<List<UserDto>> = call { api.users() }
+    suspend fun users(): VintizResult<List<AdminUserDto>> = call { api.users() }
 
-    suspend fun createUser(username: String, password: String, role: String): VintizResult<UserDto> =
-        call { api.createUser(CreateUserRequest(username, password, role)) }
+    suspend fun createUser(
+        username: String,
+        password: String,
+        role: String,
+        email: String? = null,
+    ): VintizResult<AdminUserDto> =
+        call { api.createUser(CreateUserRequest(username, password, email, role)) }
 
     suspend fun deleteUser(id: String): VintizResult<Unit> =
         call { api.deleteUser(id); Unit }
@@ -33,7 +40,7 @@ class AdminRepository(private val api: AdminApi) {
         items: List<RefundItemDto>,
         method: String,
         reason: String? = null,
-    ): VintizResult<AdminTransactionDto> = call {
+    ): VintizResult<Map<String, Any?>> = call {
         api.refund(transactionId, RefundRequest(items, method, reason))
     }
 

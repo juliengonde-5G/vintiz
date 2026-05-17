@@ -141,9 +141,36 @@ internal fun DashboardContent(state: DashboardUiState, padding: PaddingValues) {
         }
 
         Text("Top produits semaine", style = MaterialTheme.typography.titleLarge)
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        LazyColumn(
+            modifier = Modifier.height(180.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             items(data.top_products_week, key = { it.name }) { p ->
                 DashboardTopProductRow(p)
+            }
+        }
+
+        if (data.recent_transactions.isNotEmpty()) {
+            Text("Tickets récents", style = MaterialTheme.typography.titleLarge)
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(data.recent_transactions, key = { it.id }) { t ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                val date = t.created_at?.take(16)?.replace("T", " ") ?: "—"
+                                Text(t.transaction_number ?: "#${t.id.take(8)}",
+                                    style = MaterialTheme.typography.titleSmall)
+                                Text("$date • ${t.type}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text("%.2f €".format(t.total_ttc))
+                        }
+                    }
+                }
             }
         }
     }

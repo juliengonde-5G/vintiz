@@ -9,18 +9,24 @@ class CahierRepository(private val api: CahierApi) {
 
     suspend fun day(date: String): VintizResult<CahierDayDto> = call { api.day(date) }
 
-    suspend fun setMonthlyTarget(year: Int, month: Int, targetCents: Long): VintizResult<MonthlyTargetDto> =
-        call { api.setMonthlyTarget(MonthlyTargetDto(year, month, targetCents)) }
+    suspend fun setMonthlyTarget(
+        year: Int,
+        month: Int,
+        targetEur: Double,
+        notes: String? = null,
+    ): VintizResult<Unit> = call {
+        api.setMonthlyTarget(MonthlyTargetUpdateDto(year, month, targetEur, notes))
+        Unit
+    }
 
     suspend fun setDailyText(
         date: String,
         message: String? = null,
         operation: String? = null,
-    ): VintizResult<CahierDayDto> =
-        call { api.setDailyText(DailyTextDto(date, message, operation)) }
-
-    suspend fun sign(date: String, role: String, signature: String): VintizResult<CahierDayDto> =
-        call { api.sign(SignatureDto(date, role, signature)) }
+    ): VintizResult<Unit> = call {
+        api.setDailyText(DailyTextDto(date, message, operation))
+        Unit
+    }
 
     suspend fun weekdayWeights(): VintizResult<WeekdayWeightsDto> =
         call { api.weekdayWeights() }
@@ -35,12 +41,8 @@ class CahierRepository(private val api: CahierApi) {
     } catch (http: HttpException) {
         VintizResult.Failure(VintizError.http(http.code(), http.message()))
     } catch (t: Throwable) {
-        // Schéma backend Cahier diverge encore du DTO Android (champs
-        // nested EUR vs flat cents). Tant que les deux ne sont pas
-        // alignés, on rattrape JsonDataException + autres au lieu de
-        // crasher l'app.
         VintizResult.Failure(
-            VintizError.Unknown("Cahier indisponible : ${t.message ?: t::class.simpleName}")
+            VintizError.Unknown("Cahier : ${t.message ?: t::class.simpleName}")
         )
     }
 }

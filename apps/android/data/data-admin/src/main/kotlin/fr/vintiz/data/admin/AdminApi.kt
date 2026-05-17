@@ -8,6 +8,14 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
+/**
+ * Endpoints admin — alignés sur `apps/api/app/api/admin/*.py`.
+ *
+ * `/admin/transactions` retourne `{transactions: [...], count}` en
+ * EUR float (pas cents). `/admin/users` retourne une liste plate
+ * `UserOut` avec `{id, username, email, role, is_active}`. Refund
+ * vit côté `/api/pos/transactions/{id}/refund` avec un body items+method.
+ */
 interface AdminApi {
 
     @GET("api/admin/transactions")
@@ -15,14 +23,15 @@ interface AdminApi {
         @Query("from") from: String? = null,
         @Query("to") to: String? = null,
         @Query("method") method: String? = null,
-        @Query("limit") limit: Int = 50,
-    ): List<AdminTransactionDto>
+        @Query("type") type: String? = null,
+        @Query("limit") limit: Int = 100,
+    ): AdminTransactionListDto
 
     @GET("api/admin/users")
-    suspend fun users(): List<UserDto>
+    suspend fun users(): List<AdminUserDto>
 
     @POST("api/admin/users")
-    suspend fun createUser(@Body body: CreateUserRequest): UserDto
+    suspend fun createUser(@Body body: CreateUserRequest): AdminUserDto
 
     @DELETE("api/admin/users/{id}")
     suspend fun deleteUser(@Path("id") id: String): Map<String, Any?>
@@ -38,9 +47,8 @@ interface AdminApi {
     suspend fun refund(
         @Path("id") id: String,
         @Body body: RefundRequest,
-    ): AdminTransactionDto
+    ): Map<String, Any?>
 
-    /** Audit CB SumUp — toutes les tentatives loggées (paid/failed/timeout). */
     @GET("api/admin/payment-attempts")
     suspend fun paymentAttempts(
         @Query("limit") limit: Int = 100,
@@ -49,37 +57,35 @@ interface AdminApi {
 }
 
 @JsonClass(generateAdapter = true)
-data class PaymentAttemptDto(
-    val id: String,
-    val transaction_id: String? = null,
-    val drawer_id: String? = null,
-    val cashier_id: String? = null,
-    val checkout_id: String? = null,
-    val amount_cents: Long,
-    val status: String, // pending / paid / failed / cancelled / timeout
-    val card_brand: String? = null,
-    val card_last4: String? = null,
-    val error_detail: String? = null,
-    val attempted_at: String,
-    val finished_at: String? = null,
+data class AdminTransactionListDto(
+    val transactions: List<AdminTransactionDto> = emptyList(),
+    val count: Int = 0,
 )
 
 @JsonClass(generateAdapter = true)
 data class AdminTransactionDto(
     val id: String,
-    val timestamp: String,
-    val total_cents: Long,
-    val payment_method: String,
+    val transaction_number: String? = null,
+    val type: String? = null, // sale | refund | void
+    val is_invoice: Boolean = false,
+    val invoice_number: String? = null,
+    val total_ttc: Double = 0.0,
+    val total_ht: Double = 0.0,
+    val total_tva: Double = 0.0,
+    val methods: List<String> = emptyList(),
     val cashier_id: String? = null,
-    val cashier_name: String? = null,
-    val status: String,
+    val client_id: String? = null,
+    val client_company_name: String? = null,
+    val created_at: String? = null,
 )
 
 @JsonClass(generateAdapter = true)
-data class UserDto(
+data class AdminUserDto(
     val id: String,
     val username: String,
+    val email: String? = null,
     val role: String,
+    val is_active: Boolean = true,
     val has_pin: Boolean = false,
 )
 
@@ -87,19 +93,36 @@ data class UserDto(
 data class CreateUserRequest(
     val username: String,
     val password: String,
+    val email: String? = null,
     val role: String,
 )
 
 @JsonClass(generateAdapter = true)
 data class AuditLogDto(
     val id: String,
-    val timestamp: String,
+    val timestamp: String? = null,
     val user_id: String? = null,
-    val entity: String,
+    val entity: String? = null,
     val entity_id: String? = null,
-    val action: String,
+    val action: String? = null,
     val payload: Map<String, Any?>? = null,
     val client: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class PaymentAttemptDto(
+    val id: String,
+    val transaction_id: String? = null,
+    val drawer_id: String? = null,
+    val cashier_id: String? = null,
+    val checkout_id: String? = null,
+    val amount_cents: Long = 0,
+    val status: String,
+    val card_brand: String? = null,
+    val card_last4: String? = null,
+    val error_detail: String? = null,
+    val attempted_at: String? = null,
+    val finished_at: String? = null,
 )
 
 @JsonClass(generateAdapter = true)

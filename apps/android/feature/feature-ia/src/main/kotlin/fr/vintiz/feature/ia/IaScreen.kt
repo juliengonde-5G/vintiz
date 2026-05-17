@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.IconButton
@@ -32,7 +33,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import fr.vintiz.core.common.VintizResult
 import fr.vintiz.data.ia.ChecklistItemDto
 import fr.vintiz.data.ia.IaRepository
-import fr.vintiz.data.ia.TrendSignalDto
 import fr.vintiz.data.trends.TrendsRepository
 import fr.vintiz.data.trends.WindowProposalDto
 import javax.inject.Inject
@@ -54,11 +54,21 @@ class IaViewModel @Inject constructor(
     fun loadAll() {
         viewModelScope.launch {
             (repo.weeklyChecklist() as? VintizResult.Success)?.let { ok ->
-                _state.update { it.copy(checklist = ok.value.items) }
+                _state.update {
+                    it.copy(
+                        checklist = ok.value.checklist,
+                        aiSummary = ok.value.ai_summary,
+                    )
+                }
             }
             (repo.trends() as? VintizResult.Success)?.let { ok ->
                 _state.update {
-                    it.copy(social = ok.value.social_signals, retail = ok.value.retail_signals)
+                    it.copy(
+                        trends = ok.value.trends,
+                        brands = ok.value.brands,
+                        editorialIntro = ok.value.editorial_intro,
+                        season = ok.value.season,
+                    )
                 }
             }
             loadWindowDisplay()
@@ -159,8 +169,11 @@ private fun extractProductIds(wp: WindowProposalDto?): List<String> {
 data class IaUiState(
     val tab: Int = 0,
     val checklist: List<ChecklistItemDto> = emptyList(),
-    val social: List<TrendSignalDto> = emptyList(),
-    val retail: List<TrendSignalDto> = emptyList(),
+    val aiSummary: String? = null,
+    val trends: List<fr.vintiz.data.ia.TrendDto> = emptyList(),
+    val brands: List<fr.vintiz.data.ia.BrandDto> = emptyList(),
+    val editorialIntro: String? = null,
+    val season: String? = null,
     val windowProposal: WindowProposalDto? = null,
     val windowOrderedIds: List<String> = emptyList(),
     val windowOrderDirty: Boolean = false,
@@ -179,14 +192,14 @@ fun IaScreen(viewModel: IaViewModel = hiltViewModel()) {
                 style = MaterialTheme.typography.headlineLarge,
                 modifier = Modifier.padding(16.dp))
             TabRow(selectedTabIndex = state.tab) {
-                listOf("Checklist", "Tendances", "Retail", "Vitrine").forEachIndexed { i, label ->
+                listOf("Checklist", "Tendances", "Marques", "Vitrine").forEachIndexed { i, label ->
                     Tab(selected = state.tab == i, onClick = { viewModel.selectTab(i) }, text = { Text(label) })
                 }
             }
             when (state.tab) {
-                0 -> ChecklistTab(state.checklist)
-                1 -> SignalsTab(state.social, title = "Signaux sociaux")
-                2 -> SignalsTab(state.retail, title = "Signaux retail")
+                0 -> ChecklistTab(state.aiSummary, state.checklist)
+                1 -> TrendsTab(state.season, state.editorialIntro, state.trends)
+                2 -> BrandsTab(state.brands)
                 else -> WindowTab(
                     state = state,
                     onRegenerate = viewModel::regenerateWindowDisplay,
@@ -200,23 +213,100 @@ fun IaScreen(viewModel: IaViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun ChecklistTab(items: List<ChecklistItemDto>) {
+private fun ChecklistTab(aiSummary: String?, items: List<ChecklistItemDto>) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(items, key = { it.id }) { item ->
+        aiSummary?.takeIf { it.isNotBlank() }?.let {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("Résumé Claude", style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary)
+                        Text(it, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+        itemsIndexed(items) { _, item ->
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Row {
                         Text(item.title,
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium)
-                        AssistChip(onClick = {}, label = { Text(item.priority) })
+                        item.priority?.let { p ->
+                            AssistChip(onClick = {}, label = { Text(p) })
+                        }
                     }
-                    item.rationale?.let {
+                    item.description?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall)
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrendsTab(
+    season: String?,
+    editorialIntro: String?,
+    trends: List<fr.vintiz.data.ia.TrendDto>,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item {
+            Column {
+                season?.let { Text(it, style = MaterialTheme.typography.titleLarge) }
+                editorialIntro?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        itemsIndexed(trends) { _, t ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(t.title, style = MaterialTheme.typography.titleMedium)
+                    t.source?.let {
+                        Text("Source : $it", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    t.article?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    if (t.key_words.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            t.key_words.take(5).forEach { kw ->
+                                AssistChip(onClick = {}, label = { Text(kw) })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrandsTab(brands: List<fr.vintiz.data.ia.BrandDto>) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        itemsIndexed(brands) { _, b ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row {
+                        Text(b.name, modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium)
+                        b.tier?.let {
+                            AssistChip(onClick = {}, label = { Text(it) })
+                        }
+                    }
+                    b.why?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
             }
         }
@@ -358,23 +448,3 @@ private fun WindowProposalCard(
     }
 }
 
-@Composable
-private fun SignalsTab(signals: List<TrendSignalDto>, title: String) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item { Text(title, style = MaterialTheme.typography.titleLarge) }
-        items(signals, key = { it.label }) { s ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(s.label, style = MaterialTheme.typography.titleSmall)
-                        Text(s.source, style = MaterialTheme.typography.labelSmall)
-                    }
-                    Text("${(s.score * 100).toInt()} %")
-                }
-            }
-        }
-    }
-}

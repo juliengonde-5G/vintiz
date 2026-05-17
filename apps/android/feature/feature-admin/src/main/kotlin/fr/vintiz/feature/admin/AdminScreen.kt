@@ -37,10 +37,10 @@ import fr.vintiz.core.common.Money
 import fr.vintiz.core.common.VintizResult
 import fr.vintiz.data.admin.AdminRepository
 import fr.vintiz.data.admin.AdminTransactionDto
+import fr.vintiz.data.admin.AdminUserDto
 import fr.vintiz.data.admin.AuditLogDto
 import fr.vintiz.data.admin.PaymentAttemptDto
 import fr.vintiz.data.admin.RefundItemDto
-import fr.vintiz.data.admin.UserDto
 import fr.vintiz.data.reports.ReportsRepository
 import fr.vintiz.data.reports.ZReportDto
 import javax.inject.Inject
@@ -129,7 +129,7 @@ class AdminViewModel @Inject constructor(
 data class AdminUiState(
     val tab: Int = 0,
     val transactions: List<AdminTransactionDto> = emptyList(),
-    val users: List<UserDto> = emptyList(),
+    val users: List<AdminUserDto> = emptyList(),
     val zReports: List<ZReportDto> = emptyList(),
     val auditLogs: List<AuditLogDto> = emptyList(),
     val paymentAttempts: List<PaymentAttemptDto> = emptyList(),
@@ -197,13 +197,17 @@ private fun TransactionsTab(items: List<AdminTransactionDto>, onRefund: (AdminTr
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(Money(tx.total_cents).format(), style = MaterialTheme.typography.titleMedium)
-                        Text("${tx.timestamp} • ${tx.payment_method} • ${tx.cashier_name ?: "—"}",
+                        Text("%.2f €".format(tx.total_ttc),
+                            style = MaterialTheme.typography.titleMedium)
+                        val date = tx.created_at?.take(16)?.replace("T", " ") ?: "—"
+                        val method = tx.methods.firstOrNull() ?: "—"
+                        Text("$date • $method • ${tx.transaction_number ?: tx.id.take(8)}",
                             style = MaterialTheme.typography.labelSmall)
                     }
-                    Button(onClick = { onRefund(tx) }, enabled = tx.status == "completed") {
-                        Text("Refund")
-                    }
+                    Button(
+                        onClick = { onRefund(tx) },
+                        enabled = tx.type == "sale",
+                    ) { Text("Refund") }
                 }
             }
         }
@@ -256,7 +260,7 @@ private fun ZReportsTab(
 
 @Composable
 private fun UsersTab(
-    items: List<UserDto>,
+    items: List<AdminUserDto>,
     onCreate: () -> Unit,
     onDelete: (id: String) -> Unit,
 ) {
@@ -405,7 +409,8 @@ private fun RefundDialog(
     onCancel: () -> Unit,
     onConfirm: (Long, String) -> Unit,
 ) {
-    val amount = remember(tx.id) { mutableStateOf(tx.total_cents.toString()) }
+    // Pré-rempli avec le total TTC converti en cents pour le numpad refund.
+    val amount = remember(tx.id) { mutableStateOf(((tx.total_ttc * 100).toLong()).toString()) }
     val method = remember(tx.id) { mutableStateOf("cash") }
     AlertDialog(
         onDismissRequest = onCancel,
