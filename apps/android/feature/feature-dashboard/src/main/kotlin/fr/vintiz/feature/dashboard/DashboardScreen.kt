@@ -31,8 +31,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import fr.vintiz.core.common.Money
 import fr.vintiz.core.common.VintizResult
 import fr.vintiz.data.reports.DashboardDto
+import fr.vintiz.data.reports.DashboardTopProductDto
 import fr.vintiz.data.reports.ReportsRepository
-import fr.vintiz.data.reports.TopProductDto
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -100,17 +100,30 @@ internal fun DashboardContent(state: DashboardUiState, padding: PaddingValues) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             KpiCard(
                 title = "CA du jour",
-                value = Money(data.today_revenue_cents).format(),
+                value = "%.2f €".format(data.today.revenue),
                 modifier = Modifier.weight(1f),
             )
             KpiCard(
                 title = "Tickets",
-                value = data.today_transactions.toString(),
+                value = data.today.transaction_count.toString(),
                 modifier = Modifier.weight(1f),
             )
             KpiCard(
                 title = "Panier moyen",
-                value = Money(data.today_average_cart_cents).format(),
+                value = "%.2f €".format(data.today.avg_basket),
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            KpiCard(
+                title = "Stock (articles)",
+                value = data.stock.count.toString(),
+                modifier = Modifier.weight(1f),
+            )
+            KpiCard(
+                title = "Valeur stock",
+                value = "%.2f €".format(data.stock.value),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -127,9 +140,27 @@ internal fun DashboardContent(state: DashboardUiState, padding: PaddingValues) {
             }
         }
 
-        Text("Top produits", style = MaterialTheme.typography.titleLarge)
+        Text("Top produits semaine", style = MaterialTheme.typography.titleLarge)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(data.top_products, key = { it.product_id }) { p -> TopProductRow(p) }
+            items(data.top_products_week, key = { it.name }) { p ->
+                DashboardTopProductRow(p)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardTopProductRow(p: DashboardTopProductDto) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(p.name, style = MaterialTheme.typography.titleMedium)
+                Text("× ${p.quantity}", style = MaterialTheme.typography.bodySmall)
+            }
+            Text("%.2f €".format(p.revenue))
         }
     }
 }
@@ -146,7 +177,7 @@ private fun KpiCard(title: String, value: String, modifier: Modifier = Modifier)
 }
 
 @Composable
-private fun TopProductRow(p: TopProductDto) {
+private fun TopProductRowLegacy(p: DashboardTopProductDto) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -154,9 +185,9 @@ private fun TopProductRow(p: TopProductDto) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(p.name, style = MaterialTheme.typography.titleMedium)
-                Text("× ${p.sold_quantity}", style = MaterialTheme.typography.bodySmall)
+                Text("× ${p.quantity}", style = MaterialTheme.typography.bodySmall)
             }
-            Text(Money(p.revenue_cents).format())
+            Text("%.2f €".format(p.revenue))
         }
     }
 }

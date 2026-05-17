@@ -42,16 +42,31 @@ data class TransactionResponse(
     val client_uuid: String? = null,
 )
 
+/**
+ * Backend (apps/api/app/api/pos/router.py:333-368) attend un body
+ * `{opening_amount: float EUR, cashier_id?: UUID}` et renvoie
+ * `{drawer_id: str, opening_amount: float}`. Pas de cents, pas de
+ * status. Le close renvoie un payload détaillé avec totals_by_method
+ * + expected/diff.
+ */
 @JsonClass(generateAdapter = true)
-data class DrawerOpenRequest(val opening_amount_cents: Long)
+data class DrawerOpenRequest(
+    val opening_amount: Double,
+    val cashier_id: String? = null,
+)
 
 @JsonClass(generateAdapter = true)
-data class DrawerCloseRequest(val closing_amount_cents: Long)
+data class DrawerCloseRequest(
+    val closing_amount: Double,
+    val cashier_id: String? = null,
+)
 
 @JsonClass(generateAdapter = true)
 data class DrawerResponse(
-    val id: String,
-    val status: String,
-    val opening_amount_cents: Long,
-    val closing_amount_cents: Long? = null,
+    val drawer_id: String,
+    val opening_amount: Double = 0.0,
+    val closing_amount: Double? = null,
+    val status: String? = null,
+    val opened_at: String? = null,
+    val closed_at: String? = null,
 )

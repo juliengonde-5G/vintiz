@@ -29,14 +29,52 @@ interface ReportsApi {
     ): FiscalExportDto
 }
 
+/**
+ * Schéma calé sur `apps/api/app/api/reporting/router.py:365-377`.
+ * Le backend renvoie une structure nested EUR :
+ *   {today: {revenue, transaction_count, avg_basket},
+ *    stock: {count, value},
+ *    top_products_week: [{name, quantity, revenue}],
+ *    recent_transactions: [{id, transaction_number, total_ttc, type,
+ *                           created_at}]}
+ * Les montants serveur sont des FLOAT en euros, pas des cents.
+ */
 @JsonClass(generateAdapter = true)
 data class DashboardDto(
-    val today_revenue_cents: Long,
-    val today_transactions: Int,
-    val today_average_cart_cents: Long,
-    val stock_value_cents: Long,
-    val top_products: List<TopProductDto> = emptyList(),
+    val today: TodayKpisDto,
+    val stock: StockKpisDto,
+    val top_products_week: List<DashboardTopProductDto> = emptyList(),
+    val recent_transactions: List<DashboardRecentTxDto> = emptyList(),
     val weather: WeatherDto? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class TodayKpisDto(
+    val revenue: Double = 0.0,
+    val transaction_count: Int = 0,
+    val avg_basket: Double = 0.0,
+)
+
+@JsonClass(generateAdapter = true)
+data class StockKpisDto(
+    val count: Int = 0,
+    val value: Double = 0.0,
+)
+
+@JsonClass(generateAdapter = true)
+data class DashboardTopProductDto(
+    val name: String,
+    val quantity: Int,
+    val revenue: Double,
+)
+
+@JsonClass(generateAdapter = true)
+data class DashboardRecentTxDto(
+    val id: String,
+    val transaction_number: String? = null,
+    val total_ttc: Double,
+    val type: String,
+    val created_at: String? = null,
 )
 
 @JsonClass(generateAdapter = true)

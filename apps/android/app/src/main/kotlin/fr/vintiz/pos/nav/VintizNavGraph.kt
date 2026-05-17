@@ -154,7 +154,10 @@ private fun Shell(rootNav: NavHostController) {
             modifier = Modifier.fillMaxSize().padding(padding),
             verticalArrangement = Arrangement.Top,
         ) {
-            NavHost(navController = shellNav, startDestination = Routes.POS) {
+            // Start destination = Cahier du jour (vue manager matinale,
+            // briefing objectifs + signatures). Le caissier bascule
+            // ensuite sur Caisse via la bottom-nav.
+            NavHost(navController = shellNav, startDestination = Routes.CAHIER) {
                 composable(Routes.POS) { PosScreen() }
                 composable(Routes.INVENTORY) {
                     InventoryScreen(onProductClick = { id ->
@@ -323,10 +326,11 @@ private fun routeTitle(route: String): String = when {
 }
 
 private enum class BottomNavItem(val route: String, val label: String, val icon: String) {
-    Pos(Routes.POS, "Caisse", "₽"),
+    Cahier(Routes.CAHIER, "Cahier", "✎"),
+    Pos(Routes.POS, "Caisse", "€"),
     Inventory(Routes.INVENTORY, "Stock", "≡"),
     Clients(Routes.CLIENTS, "Clientes", "♥"),
-    Cahier(Routes.CAHIER, "Cahier", "✎"),
+    Dashboard(Routes.DASHBOARD, "Dashboard", "▦"),
     Plus("shell/plus", "Plus", "⋮"),
     Settings(Routes.SETTINGS, "Réglages", "⚙"),
 }

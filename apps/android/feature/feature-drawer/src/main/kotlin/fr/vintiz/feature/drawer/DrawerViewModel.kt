@@ -77,11 +77,13 @@ class DrawerViewModel @Inject constructor(
     }
 
     fun openDrawer() {
-        val amount = _state.value.openingAmountInput.toLongOrNull() ?: 0L
+        // Backend accepte EUR Decimal pas cents. L'input UI est en
+        // cents (numpad) → on divise par 100 avant d'envoyer.
+        val amount = (_state.value.openingAmountInput.toLongOrNull() ?: 0L) / 100.0
         _state.update { it.copy(submitting = true, error = null) }
         viewModelScope.launch {
             try {
-                val resp = pos.drawerOpen(DrawerOpenRequest(opening_amount_cents = amount))
+                val resp = pos.drawerOpen(DrawerOpenRequest(opening_amount = amount))
                 _state.update {
                     it.copy(
                         submitting = false,
@@ -104,14 +106,14 @@ class DrawerViewModel @Inject constructor(
     }
 
     fun closeDrawer() {
-        val amount = _state.value.closingAmountInput.toLongOrNull() ?: 0L
+        val amount = (_state.value.closingAmountInput.toLongOrNull() ?: 0L) / 100.0
         _state.update { it.copy(submitting = true, error = null) }
         viewModelScope.launch {
             try {
-                val closed = pos.drawerClose(DrawerCloseRequest(closing_amount_cents = amount))
+                val closed = pos.drawerClose(DrawerCloseRequest(closing_amount = amount))
                 // Une fois fermé, on récupère le Z-Report correspondant.
                 val zReport = try {
-                    reports.zReports().firstOrNull { it.drawer_id == closed.id }
+                    reports.zReports().firstOrNull { it.drawer_id == closed.drawer_id }
                 } catch (t: Throwable) {
                     Timber.w(t, "Z-Report fetch KO — UI affichera juste les totaux drawer")
                     null
@@ -158,8 +160,8 @@ data class DrawerUiState(
     val error: String? = null,
 ) {
     val openingAmount: Money?
-        get() = current?.opening_amount_cents?.let(::Money)
+        get() = current?.opening_amount?.let { Money((it * 100).toLong()) }
 
     val closingAmount: Money?
-        get() = current?.closing_amount_cents?.let(::Money)
+        get() = current?.closing_amount?.let { Money((it * 100).toLong()) }
 }

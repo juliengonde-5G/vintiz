@@ -18,6 +18,10 @@ class NewsletterRepository(
     data class CsvExport(val uri: Uri, val filename: String)
 
     suspend fun list(query: String? = null): VintizResult<List<SubscriberDto>> = call {
+        api.list(query).results
+    }
+
+    suspend fun summary(query: String? = null): VintizResult<SubscribersListDto> = call {
         api.list(query)
     }
 
