@@ -96,10 +96,36 @@ jobs:
             :data:data-auth-client:testDebugUnitTest
 
       - name: Android Lint POS (dev debug)
-        run: ./gradlew :app-pos:lintDevDebug
+        run: |
+          set +e
+          ./gradlew :app-pos:lintDevDebug --stacktrace --info > lint-pos.log 2>&1
+          EXIT=$?
+          set -e
+          echo "=== LAST 250 LINES OF LINT POS LOG ==="
+          tail -250 lint-pos.log
+          echo "=== END OF LINT POS LOG ==="
+          if [ -f app-pos/build/reports/lint-results-devDebug.txt ]; then
+            echo "=== LINT TEXT REPORT ==="
+            cat app-pos/build/reports/lint-results-devDebug.txt
+            echo "=== END LINT TEXT REPORT ==="
+          fi
+          exit $EXIT
 
       - name: Android Lint Client (dev debug)
-        run: ./gradlew :app-client:lintDevDebug
+        run: |
+          set +e
+          ./gradlew :app-client:lintDevDebug --stacktrace --info > lint-client.log 2>&1
+          EXIT=$?
+          set -e
+          echo "=== LAST 250 LINES OF LINT CLIENT LOG ==="
+          tail -250 lint-client.log
+          echo "=== END OF LINT CLIENT LOG ==="
+          if [ -f app-client/build/reports/lint-results-devDebug.txt ]; then
+            echo "=== LINT TEXT REPORT ==="
+            cat app-client/build/reports/lint-results-devDebug.txt
+            echo "=== END LINT TEXT REPORT ==="
+          fi
+          exit $EXIT
 
       - name: Build APK debug POS (dev flavor)
         run: ./gradlew :app-pos:assembleDevDebug --stacktrace
@@ -136,6 +162,9 @@ jobs:
             apps/android/**/build/reports/tests/
             apps/android/**/build/reports/lint-results-*.html
             apps/android/**/build/reports/lint-results-*.xml
+            apps/android/**/build/reports/lint-results-*.txt
             apps/android/**/build/test-results/
+            apps/android/lint-pos.log
+            apps/android/lint-client.log
           retention-days: 7
           if-no-files-found: ignore
