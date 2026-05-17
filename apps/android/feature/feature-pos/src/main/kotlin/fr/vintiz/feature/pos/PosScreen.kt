@@ -170,6 +170,13 @@ fun PosScreen(
 
                 HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistChip(
+                        onClick = viewModel::addBag,
+                        label = { Text("+ Sac (0,20 €)") },
+                    )
+                }
+
                 CouponBar(
                     code = state.couponCode,
                     preview = state.couponPreview,

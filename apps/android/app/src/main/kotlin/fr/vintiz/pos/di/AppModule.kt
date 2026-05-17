@@ -139,8 +139,11 @@ object AppModule {
         InventoryRepository(api, dao)
 
     @Provides @Singleton
-    fun provideClientsRepository(api: ClientsApi, dao: ClientDao): ClientsRepository =
-        ClientsRepository(api, dao)
+    fun provideClientsRepository(
+        api: ClientsApi,
+        dao: ClientDao,
+        moshi: com.squareup.moshi.Moshi,
+    ): ClientsRepository = ClientsRepository(api, dao, moshi)
 
     @Provides @Singleton
     fun provideHardwareRepository(api: HardwareApi, dao: HardwareConfigDao): HardwareRepository =

@@ -138,6 +138,23 @@ class PosViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Ajoute un sac d'emballage Vintiz au panier (raccourci caissier).
+     * Article ad-hoc sans `productId` : le backend l'accepte tel quel
+     * via `TransactionItemDto.name + unit_price_cents` (loi 2026 sur le
+     * sac jetable payant → on facture 20 cts par défaut).
+     */
+    fun addBag() {
+        val line = fr.vintiz.domain.pos.CartLine(
+            productId = null,
+            name = "Sac Vintiz",
+            unitPrice = Money(BAG_PRICE_CENTS),
+            quantity = 1,
+        )
+        _state.update { it.copy(cart = it.cart.add(line)) }
+        refreshCompanion()
+    }
+
     fun selectClient(client: ClientDto?) {
         _state.update { it.copy(client = client, companion = null) }
         if (client != null) refreshCompanion()
@@ -376,6 +393,11 @@ class PosViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    companion object {
+        /** Sac d'emballage Vintiz — facturable au caissier d'un clic. */
+        const val BAG_PRICE_CENTS = 20L
     }
 }
 

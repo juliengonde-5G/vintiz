@@ -11,8 +11,16 @@ import retrofit2.http.Streaming
 
 interface ClientsApi {
 
+    /**
+     * Backend renvoie 3 shapes selon le résultat :
+     *   - 404 si rien trouvé
+     *   - Un objet `ClientDto` seul si match unique
+     *   - `{matches: [...]}` si multi-match
+     * On expose un `Response<ResponseBody>` brut pour parser dans le
+     * repo avec un fallback gracieux (404 = liste vide).
+     */
     @GET("api/pos/clients/identify")
-    suspend fun identify(@Query("q") q: String): List<ClientDto>
+    suspend fun identify(@Query("q") q: String): Response<ResponseBody>
 
     @GET("api/crm/clients/lookup")
     suspend fun lookupByEmail(@Query("email") email: String): ClientDto?
@@ -41,6 +49,11 @@ interface ClientsApi {
     @POST("api/crm/clients/{id}/deletion-request")
     suspend fun requestDeletion(@Path("id") id: String): ClientDeletionResponseDto
 }
+
+@JsonClass(generateAdapter = true)
+data class ClientMatchesDto(
+    val matches: List<ClientDto> = emptyList(),
+)
 
 @JsonClass(generateAdapter = true)
 data class ClientDeletionResponseDto(

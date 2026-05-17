@@ -1,5 +1,6 @@
 package fr.vintiz.data.clients
 
+import com.squareup.moshi.Moshi
 import fr.vintiz.core.common.VintizError
 import fr.vintiz.core.common.VintizResult
 import fr.vintiz.core.database.dao.ClientDao
@@ -11,18 +12,56 @@ import java.io.IOException
 class ClientsRepository(
     private val api: ClientsApi,
     private val dao: ClientDao,
+    private val moshi: Moshi,
     private val now: () -> Long = { System.currentTimeMillis() },
 ) {
 
+    private val clientAdapter by lazy { moshi.adapter(ClientDto::class.java) }
+    private val matchesAdapter by lazy { moshi.adapter(ClientMatchesDto::class.java) }
+
+    /**
+     * Backend `/api/pos/clients/identify` renvoie 3 shapes possibles :
+     *   - 404 → "client_not_found" → on retourne `Success(emptyList())`
+     *   - Multi-match : `{matches: [...]}` → on extrait `.matches`
+     *   - Single match : objet ClientDto seul → on enveloppe en list(1)
+     */
     suspend fun identify(query: String): VintizResult<List<ClientDto>> = try {
-        val online = api.identify(query)
-        dao.upsertAll(online.map { it.toCache(now()) })
-        VintizResult.Success(online)
+        val response = api.identify(query)
+        when {
+            response.code() == 404 -> VintizResult.Success(emptyList())
+            !response.isSuccessful -> VintizResult.Failure(
+                VintizError.http(response.code(), response.message()),
+            )
+            else -> {
+                val json = response.body()?.string()
+                if (json.isNullOrBlank()) {
+                    VintizResult.Success(emptyList())
+                } else {
+                    val list = parseIdentifyJson(json)
+                    dao.upsertAll(list.map { it.toCache(now()) })
+                    VintizResult.Success(list)
+                }
+            }
+        }
     } catch (io: IOException) {
         Timber.i("identify offline — fallback Room")
         VintizResult.Success(dao.search(query).map { it.toDto() })
     } catch (http: HttpException) {
         VintizResult.Failure(VintizError.http(http.code(), http.message()))
+    } catch (t: Throwable) {
+        Timber.w(t, "identify parse KO")
+        VintizResult.Success(emptyList())
+    }
+
+    private fun parseIdentifyJson(json: String): List<ClientDto> {
+        // Tentative 1 : matches wrapper
+        runCatching { matchesAdapter.fromJson(json) }.getOrNull()
+            ?.takeIf { it.matches.isNotEmpty() }
+            ?.let { return it.matches }
+        // Tentative 2 : objet ClientDto seul
+        runCatching { clientAdapter.fromJson(json) }.getOrNull()
+            ?.let { return listOf(it) }
+        return emptyList()
     }
 
     suspend fun fullClient(id: String): VintizResult<ClientFullDto> = try {
@@ -36,16 +75,11 @@ class ClientsRepository(
     suspend fun byNfcUid(uid: String): VintizResult<ClientDto> {
         val cached = dao.byNfcUid(uid)
         if (cached != null) return VintizResult.Success(cached.toDto())
-        return try {
-            val matches = api.identify(uid)
-            val match = matches.firstOrNull { it.nfc_uid == uid }
-                ?: return VintizResult.Failure(VintizError.Validation("nfc", "Carte non reconnue"))
-            dao.upsertAll(listOf(match.toCache(now())))
-            VintizResult.Success(match)
-        } catch (io: IOException) {
-            VintizResult.Failure(VintizError.Network)
-        } catch (http: HttpException) {
-            VintizResult.Failure(VintizError.http(http.code(), http.message()))
+        return when (val r = identify(uid)) {
+            is VintizResult.Success -> r.value.firstOrNull { it.nfc_uid == uid }
+                ?.let { VintizResult.Success(it) }
+                ?: VintizResult.Failure(VintizError.Validation("nfc", "Carte non reconnue"))
+            is VintizResult.Failure -> r
         }
     }
 

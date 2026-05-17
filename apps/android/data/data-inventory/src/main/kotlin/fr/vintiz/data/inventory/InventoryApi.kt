@@ -52,17 +52,32 @@ interface InventoryApi {
     ): ProductPhotoDto
 }
 
+/**
+ * Backend renvoie `sale_price` en float EUR (pas cents) sur tous les
+ * endpoints inventaire (`/search`, `/by-barcode`, `/products/{id}`).
+ * On stocke aussi `sale_price` en double et on expose une property
+ * dérivée `priceCents` pour les consommateurs qui raisonnent en
+ * `Money(cents)`.
+ */
 @JsonClass(generateAdapter = true)
 data class ProductDto(
     val id: String,
     val barcode: String? = null,
     val name: String,
-    val price_cents: Long,
+    val sale_price: Double = 0.0,
     val tva_rate: Double = 20.0,
     val category: String? = null,
     val photo_url: String? = null,
     val status: String = "in_stock",
-)
+    val size: String? = null,
+    val color: String? = null,
+    val brand: String? = null,
+    val description: String? = null,
+) {
+    /** Compat property pour consommateurs en `Money(cents)`. */
+    @Suppress("PropertyName")
+    val price_cents: Long get() = (sale_price * 100).toLong()
+}
 
 @JsonClass(generateAdapter = true)
 data class ProductPageDto(
