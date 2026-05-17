@@ -44,7 +44,7 @@ class ClientAuthRepositoryTest {
         val result = repo.requestOtp("cliente@vintiz.fr")
         assertThat(result).isInstanceOf(VintizResult.Success::class.java)
         assertThat(storage.token).isNull()
-        assertThat(storage.email).isNull()
+        assertThat(storage.storedEmail).isNull()
     }
 
     @Test
@@ -58,7 +58,7 @@ class ClientAuthRepositoryTest {
         val result = repo.verifyOtp("cliente@vintiz.fr", "123456")
         assertThat(result).isInstanceOf(VintizResult.Success::class.java)
         assertThat(storage.token).isEqualTo("eyJabc")
-        assertThat(storage.email).isEqualTo("cliente@vintiz.fr")
+        assertThat(storage.storedEmail).isEqualTo("cliente@vintiz.fr")
         assertThat(storage.membership).isEqualTo("V000042")
     }
 
@@ -99,7 +99,7 @@ class ClientAuthRepositoryTest {
         storage.saveMembershipNumber("V000001")
         ClientAuthRepository(api, storage).logout()
         assertThat(storage.token).isNull()
-        assertThat(storage.email).isNull()
+        assertThat(storage.storedEmail).isNull()
         assertThat(storage.membership).isNull()
     }
 }
