@@ -20,7 +20,7 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    targetProjectPath = ":app"
+    targetProjectPath = ":app-pos"
     experimentalProperties["android.experimental.self-instrumenting"] = true
 }
 

@@ -18,8 +18,8 @@ Pour l'audit sécurité, voir
 | Compte | Coût | Qui crée | Action |
 |---|---|---|---|
 | Google Play Console (Vintiz SAS) | 25 € one-time | Julien | Créer compte développeur entreprise, identité Vintiz SAS. |
-| Firebase Project "vintiz-pos-prod" | Gratuit | Julien | Activer FCM + Crashlytics + Analytics. Télécharger `google-services.json` → coller dans `apps/android/app/prod/`. |
-| Firebase Project "vintiz-pos-dev" | Gratuit | Julien | Idem → `apps/android/app/dev/`. |
+| Firebase Project "vintiz-pos-prod" | Gratuit | Julien | Activer FCM + Crashlytics + Analytics. Télécharger `google-services.json` → coller dans `apps/android/app-pos/prod/`. |
+| Firebase Project "vintiz-pos-dev" | Gratuit | Julien | Idem → `apps/android/app-pos/dev/`. |
 | SumUp Developer Portal | Gratuit | Julien | Récupérer App ID + Affiliate Key Android (distinct du web). |
 | MDM (Headwind / ScaleFusion / Miradore free) | Gratuit < 25 devices | Julien | Optionnel mais recommandé pour le mode kiosque tablette caisse. |
 

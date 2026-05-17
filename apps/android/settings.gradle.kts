@@ -22,7 +22,11 @@ dependencyResolutionManagement {
 
 rootProject.name = "vintiz-android"
 
-include(":app")
+// Apps (POS staff + Client B2C)
+// :app a été renommé en :app-pos pour faire de la place au :app-client
+// (app cliente Android native, plan docs/PLAN_ANDROID_CLIENT_APP.md).
+include(":app-pos")
+include(":app-client")
 
 // Core (transverse)
 include(":core:core-design")
@@ -61,6 +65,8 @@ include(":data:data-newsletter")
 include(":data:data-loyalty")
 include(":data:data-personal-shopper")
 include(":data:data-trends")
+// Data — app cliente (Sprint A : magic-link OTP JSON)
+include(":data:data-auth-client")
 
 // Domain
 include(":domain:domain-pos")
@@ -88,6 +94,10 @@ include(":feature:feature-newsletter")
 include(":feature:feature-loyalty")
 include(":feature:feature-personal-shopper")
 include(":feature:feature-drawer")
+
+// Feature — app cliente (Sprint A)
+include(":feature:feature-client-onboarding")
+include(":feature:feature-client-shell")
 
 // Benchmark / Baseline Profile
 include(":benchmark")

@@ -85,7 +85,7 @@ ancres stables.
 |---|---|---|
 | **7.1** Versions des libs à jour | ✅ | Kotlin 2.1.0, AGP 8.7.3, Compose BOM 2025.05.00, OkHttp 4.12.0, Retrofit 2.11.0, Hilt 2.53, Room 2.6.1 — tous récents (cf. `libs.versions.toml`). |
 | **7.2** Compilation debug désactivée en release | ⚠️ Action requise | `applicationIdSuffix = ".debug"` posé sur `debug` mais pas de `isDebuggable=false` explicite sur `release`. AGP 8 le force par défaut mais à ajouter pour la lisibilité du build. |
-| **7.3** ProGuard / R8 minify | ✅ | `release { isMinifyEnabled = true; isShrinkResources = true }` (`apps/android/app/build.gradle.kts`). |
+| **7.3** ProGuard / R8 minify | ✅ | `release { isMinifyEnabled = true; isShrinkResources = true }` (`apps/android/app-pos/build.gradle.kts`). |
 | **7.4** Logs Timber gated debug-only | ✅ | `if (BuildConfig.DEBUG) Timber.plant(Timber.DebugTree())` (`VintizApp.onCreate`). Aucun `Log.d` en dur dans le code applicatif. |
 | **7.5** Pas de TODO sensibles non résolus | ✅ | `grep -rn TODO\|FIXME` dans `apps/android/` retourne 0 résultat critique. |
 
@@ -163,6 +163,6 @@ alerte si HMAC invalide. À planifier en parallèle de la migration
 SQLCipher.
 
 **Cert-pinning prod (CYBER-5.1)** — `BuildConfig.API_PIN_SHA256` à
-renseigner dans le flavor prod (`apps/android/app/build.gradle.kts`)
+renseigner dans le flavor prod (`apps/android/app-pos/build.gradle.kts`)
 puis passé au `HttpClientFactory`. À faire une fois le certificat
 public d'`api.vintiz.fr` figé et la rotation 1×/an documentée.

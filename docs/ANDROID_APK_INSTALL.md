@@ -104,7 +104,7 @@ pointer sur prod sans rebuild :
 ```
 
 Si tu veux quand même un APK debug **pointant sur prod**, modifie
-temporairement `apps/android/app/build.gradle.kts` flavor `dev` →
+temporairement `apps/android/app-pos/build.gradle.kts` flavor `dev` →
 poser `API_BASE_URL = "\"https://api.vintiz.fr/\""` et rebuild. **Ne
 pas committer ce hack.**
 

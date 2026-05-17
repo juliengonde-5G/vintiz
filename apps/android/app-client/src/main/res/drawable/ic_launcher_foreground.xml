@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Foreground du launcher icon Vintiz : monogramme VZ teal officiel
+  (croppé depuis apps/web/public/logo-teal.png, sans le mot "VINTIZ"
+  qui serait coupé par la mask circulaire / squircle du launcher).
+  Le monogramme occupe ~70% du canvas, ce qui le cale dans le safe
+  zone (66%) avec un léger overflow esthétique.
+-->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/vintiz_monogram"
+    android:gravity="center" />
