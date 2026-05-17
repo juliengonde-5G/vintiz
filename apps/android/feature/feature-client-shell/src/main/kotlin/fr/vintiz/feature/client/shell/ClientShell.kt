@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 
@@ -60,13 +61,13 @@ fun ClientShell(
             startDestination = ClientShellRoutes.COMPTE,
             modifier = Modifier.padding(padding),
         ) {
-            androidx.navigation.compose.composable(ClientShellRoutes.BOUTIQUE) {
+            composable(ClientShellRoutes.BOUTIQUE) {
                 BoutiqueHomeScreen()
             }
-            androidx.navigation.compose.composable(ClientShellRoutes.COMPTE) {
+            composable(ClientShellRoutes.COMPTE) {
                 AccountHomeScreen(onLogout = onLogout)
             }
-            androidx.navigation.compose.composable(ClientShellRoutes.SHOPPER) {
+            composable(ClientShellRoutes.SHOPPER) {
                 ShopperHomeScreen()
             }
         }
