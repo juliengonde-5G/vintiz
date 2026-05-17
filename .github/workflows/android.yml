@@ -99,7 +99,20 @@ jobs:
         run: ./gradlew :app-pos:lintDevDebug
 
       - name: Android Lint Client (dev debug)
-        run: ./gradlew :app-client:lintDevDebug
+        run: |
+          set +e
+          ./gradlew :app-client:lintDevDebug --stacktrace --info > lint-client.log 2>&1
+          EXIT=$?
+          set -e
+          echo "=== LAST 300 LINES OF LINT CLIENT LOG ==="
+          tail -300 lint-client.log
+          echo "=== END OF LINT CLIENT LOG ==="
+          if [ -f app-client/build/reports/lint-results-devDebug.txt ]; then
+            echo "=== LINT TEXT REPORT ==="
+            cat app-client/build/reports/lint-results-devDebug.txt
+            echo "=== END LINT TEXT REPORT ==="
+          fi
+          exit $EXIT
 
       - name: Build APK debug POS (dev flavor)
         run: ./gradlew :app-pos:assembleDevDebug --stacktrace
