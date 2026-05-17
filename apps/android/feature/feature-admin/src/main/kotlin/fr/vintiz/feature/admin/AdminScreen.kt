@@ -365,7 +365,7 @@ private fun PaymentAttemptsTab(items: List<PaymentAttemptDto>) {
                         Text(Money(a.amount_cents).format(),
                             style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "${a.attempted_at.take(16).replace("T", " à ")} • " +
+                            "${a.attempted_at?.take(16)?.replace("T", " à ") ?: "—"} • " +
                                 "${a.card_brand ?: "—"} ${a.card_last4 ?: ""} " +
                                 (if (a.error_detail != null) "• ${a.error_detail}" else ""),
                             style = MaterialTheme.typography.labelSmall,
