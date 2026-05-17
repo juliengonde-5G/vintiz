@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Foreground du launcher icon : logo Vintiz (monogramme VZ teal sur
-  fond transparent). Le canvas adaptive icon est 108x108 dp avec un
-  safe zone central de 66x66 dp ; on inset le bitmap pour le caler
-  dans le safe zone et éviter que la mask circulaire / squircle du
-  launcher Android rogne le monogramme.
+  Foreground du launcher icon Vintiz : monogramme VZ teal officiel
+  (croppé depuis apps/web/public/logo-teal.png, sans le mot "VINTIZ"
+  qui serait coupé par la mask circulaire / squircle du launcher).
+  Le monogramme occupe ~70% du canvas, ce qui le cale dans le safe
+  zone (66%) avec un léger overflow esthétique.
 -->
-<inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:inset="20%">
-    <bitmap android:src="@drawable/vintiz_logo"
-        android:gravity="center" />
-</inset>
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/vintiz_monogram"
+    android:gravity="center" />
