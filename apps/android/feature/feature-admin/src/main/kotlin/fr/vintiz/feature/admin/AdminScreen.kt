@@ -92,8 +92,9 @@ class AdminViewModel @Inject constructor(
             val item = RefundItemDto(amount_cents = amountCents)
             when (val r = admin.refund(tx.id, listOf(item), method, reason = null)) {
                 is VintizResult.Success -> {
+                    val refundId = r.value["id"] as? String ?: tx.id
                     _state.update {
-                        it.copy(refundCandidate = null, lastRefundId = r.value.id)
+                        it.copy(refundCandidate = null, lastRefundId = refundId)
                     }
                     loadAll()
                 }
