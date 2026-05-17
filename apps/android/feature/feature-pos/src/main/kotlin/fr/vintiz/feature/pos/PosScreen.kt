@@ -122,7 +122,7 @@ fun PosScreen(
                 ) {
                     items(state.cart.lines.size) { index ->
                         val line = state.cart.lines[index]
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(
@@ -130,19 +130,40 @@ fun PosScreen(
                                     RoundedCornerShape(8.dp),
                                 )
                                 .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(line.name, fontWeight = FontWeight.Medium)
-                                Text(
-                                    "${line.quantity} × ${line.unitPrice.format()}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(line.name, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "${line.quantity} × ${line.unitPrice.format()}" +
+                                            if (line.discountPercent > 0)
+                                                " · -${line.discountPercent}%" else "",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Text(line.lineTotal.format())
+                                Spacer(Modifier.width(8.dp))
+                                TextButton(onClick = { viewModel.removeLine(index) }) { Text("×") }
                             }
-                            Text(line.lineTotal.format())
-                            Spacer(Modifier.width(8.dp))
-                            TextButton(onClick = { viewModel.removeLine(index) }) { Text("×") }
+                            var showDiscount by remember { mutableStateOf(false) }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(onClick = { showDiscount = !showDiscount }) {
+                                    Text(if (line.discountPercent > 0) "-${line.discountPercent}%" else "-%")
+                                }
+                                if (showDiscount) {
+                                    listOf(0, 5, 10, 15, 20, 30).forEach { p ->
+                                        AssistChip(
+                                            onClick = {
+                                                viewModel.applyDiscount(index, p)
+                                                showDiscount = false
+                                            },
+                                            label = { Text(if (p == 0) "0" else "-$p%") },
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -168,6 +189,26 @@ fun PosScreen(
                     )
                 }
 
+                if (state.pendingCreditCents > 0) {
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Avoir appliqué : -${fr.vintiz.core.common.Money(state.pendingCreditCents).format()}",
+                            modifier = Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        TextButton(onClick = viewModel::clearPendingCredit) {
+                            Text("Annuler avoir")
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Text("Reste à payer", modifier = Modifier.weight(1f))
+                        Text(state.remainingAfterCredit.format(),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+
                 Spacer(Modifier.height(16.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -183,11 +224,12 @@ fun PosScreen(
 
                 var chequeDialog by remember { mutableStateOf(false) }
                 var creditDialog by remember { mutableStateOf(false) }
+                var cashDialog by remember { mutableStateOf(false) }
 
                 Button(
                     onClick = {
                         when (state.selectedMethod) {
-                            PaymentMethod.Cash -> viewModel.payCash(state.effectiveTotal.cents)
+                            PaymentMethod.Cash -> cashDialog = true
                             PaymentMethod.Card -> viewModel.payCard()
                             PaymentMethod.Cheque -> chequeDialog = true
                             PaymentMethod.Credit -> creditDialog = true
@@ -197,6 +239,17 @@ fun PosScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (state.paymentInProgress) "Paiement en cours…" else "Encaisser")
+                }
+
+                if (cashDialog) {
+                    CashTenderDialog(
+                        totalCents = state.remainingAfterCredit.cents,
+                        onConfirm = { tendered ->
+                            cashDialog = false
+                            viewModel.payCash(tendered)
+                        },
+                        onDismiss = { cashDialog = false },
+                    )
                 }
 
                 if (chequeDialog) {
@@ -327,6 +380,74 @@ private fun CreditDialog(
                     onConfirm(cents)
                 },
                 enabled = clientLabel != null && (input.toDoubleOrNull() ?: 0.0) > 0.0,
+            ) { Text("Valider") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+    )
+}
+
+@Composable
+private fun CashTenderDialog(
+    totalCents: Long,
+    onConfirm: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val totalEur = totalCents / 100.0
+    var tendered by remember(totalCents) {
+        mutableStateOf(String.format("%.2f", totalEur).replace(",", "."))
+    }
+    val tenderedEur = tendered.replace(",", ".").toDoubleOrNull() ?: 0.0
+    val changeEur = tenderedEur - totalEur
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Paiement espèces") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Total : %.2f €".format(totalEur),
+                    style = MaterialTheme.typography.titleMedium)
+                OutlinedTextField(
+                    value = tendered,
+                    onValueChange = {
+                        tendered = it.replace(",", ".").filter { c -> c.isDigit() || c == '.' }
+                    },
+                    label = { Text("Montant reçu (€)") },
+                    singleLine = true,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(5.0, 10.0, 20.0, 50.0).forEach { p ->
+                        AssistChip(
+                            onClick = {
+                                val v = kotlin.math.ceil(totalEur / p) * p
+                                tendered = String.format("%.2f", v).replace(",", ".")
+                            },
+                            label = { Text("%.0f €".format(p)) },
+                        )
+                    }
+                    AssistChip(
+                        onClick = {
+                            tendered = String.format("%.2f", totalEur).replace(",", ".")
+                        },
+                        label = { Text("Compte") },
+                    )
+                }
+                when {
+                    tenderedEur < totalEur -> Text(
+                        "Manque %.2f €".format(totalEur - tenderedEur),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    changeEur > 0.0 -> Text(
+                        "Rendu : %.2f €".format(changeEur),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    else -> Text("Compte juste", color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm((tenderedEur * 100).toLong()) },
+                enabled = tenderedEur >= totalEur,
             ) { Text("Valider") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },

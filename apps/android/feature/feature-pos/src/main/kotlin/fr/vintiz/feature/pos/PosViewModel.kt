@@ -216,28 +216,50 @@ class PosViewModel @Inject constructor(
         _state.update { it.copy(couponCode = "", couponPreview = null) }
     }
 
-    fun payCash(tenderedCents: Long) {
+    /**
+     * Reste à payer après application du `pendingCreditCents` (jambe
+     * avoir partielle). Si pas de pending credit → effectiveTotal.
+     */
+    private val remainingTotal: Money
+        get() = Money(
+            (_state.value.effectiveTotal.cents - _state.value.pendingCreditCents)
+                .coerceAtLeast(0)
+        )
+
+    /** Construit un PaymentSplit qui intègre le pendingCredit si présent. */
+    private fun splitWithPendingCredit(secondLeg: PaymentLeg): PaymentSplit {
         val total = _state.value.effectiveTotal
+        val split = PaymentSplit(total)
+        val pending = _state.value.pendingCreditCents
+        return if (pending > 0) {
+            split.add(PaymentLeg(PaymentMethod.Credit, Money(pending))).add(secondLeg)
+        } else {
+            split.add(secondLeg)
+        }
+    }
+
+    fun payCash(tenderedCents: Long) {
+        val remaining = remainingTotal
         val tendered = Money(tenderedCents)
-        if (tendered.cents < total.cents) {
+        if (tendered.cents < remaining.cents) {
             _state.update { it.copy(error = "Montant insuffisant") }
             return
         }
-        val split = PaymentSplit(total).add(PaymentLeg(PaymentMethod.Cash, total))
-        commit(split, change = split.computeChange(tendered), paidByCash = true)
+        val split = splitWithPendingCredit(PaymentLeg(PaymentMethod.Cash, remaining))
+        commit(split, change = Money(tendered.cents - remaining.cents), paidByCash = true)
     }
 
     fun payCard() {
-        val total = _state.value.effectiveTotal
-        if (total.cents <= 0) return
+        val remaining = remainingTotal
+        if (remaining.cents <= 0) return
         val foreignTxId = UUID.randomUUID().toString()
         _state.update { it.copy(paymentInProgress = true) }
         viewModelScope.launch {
-            val outcome = terminal.pay(total, foreignTxId, "Vente Vintiz")
+            val outcome = terminal.pay(remaining, foreignTxId, "Vente Vintiz")
             when (outcome) {
                 is PaymentOutcome.Paid -> {
-                    val split = PaymentSplit(total).add(
-                        PaymentLeg(PaymentMethod.Card, total, checkoutId = outcome.checkoutId)
+                    val split = splitWithPendingCredit(
+                        PaymentLeg(PaymentMethod.Card, remaining, checkoutId = outcome.checkoutId),
                     )
                     commit(split, change = Money.ZERO, paidByCash = false)
                 }
@@ -260,24 +282,29 @@ class PosViewModel @Inject constructor(
      * Le serveur valide le format si une regex est configurée.
      */
     fun payCheque(reference: String) {
-        val total = _state.value.effectiveTotal
-        if (total.cents <= 0) return
+        val remaining = remainingTotal
+        if (remaining.cents <= 0) return
         val ref = reference.trim()
         if (ref.isBlank()) {
             _state.update { it.copy(error = "Référence chèque requise") }
             return
         }
-        val split = PaymentSplit(total).add(
-            PaymentLeg(PaymentMethod.Cheque, total, chequeRef = ref)
+        val split = splitWithPendingCredit(
+            PaymentLeg(PaymentMethod.Cheque, remaining, chequeRef = ref),
         )
         commit(split, change = Money.ZERO, paidByCash = false)
     }
 
     /**
-     * Paiement par avoir (store credit). MVP : on accepte le montant
-     * sous la responsabilité du caissier qui vérifie le solde de la
-     * cliente sur le panneau Companion. Le serveur tranchera : si le
-     * solde réel est insuffisant, le commit échoue avec un 400.
+     * Annule la jambe avoir en cours (revient à un panier classique).
+     */
+    fun clearPendingCredit() = _state.update { it.copy(pendingCreditCents = 0L, error = null) }
+
+    /**
+     * Paiement par avoir (store credit). Si le montant couvre le total,
+     * on commit directement. Sinon, on stocke la jambe avoir dans
+     * `pendingCreditCents` et le caissier complète avec cash/CB/chèque
+     * sur le `remainingTotal` qui devient visible dans l'UI.
      */
     fun payCredit(amountCents: Long) {
         val total = _state.value.effectiveTotal
@@ -291,15 +318,19 @@ class PosViewModel @Inject constructor(
             _state.update { it.copy(error = "Montant avoir invalide") }
             return
         }
-        val split = PaymentSplit(total).add(PaymentLeg(PaymentMethod.Credit, amount))
-        // Si l'avoir ne couvre pas tout, on attend que le caissier finisse
-        // en cash ou CB (multi-leg). Pour MVP : on exige avoir = total.
         if (amount.cents < total.cents) {
+            // Multi-leg : on stocke l'avoir partiel, l'UI affichera
+            // "Reste à payer" sur la ligne Encaisser.
             _state.update {
-                it.copy(error = "Avoir partiel non géré V1 — utiliser cash/CB pour le reste")
+                it.copy(
+                    pendingCreditCents = amount.cents,
+                    error = null,
+                    selectedMethod = PaymentMethod.Cash,
+                )
             }
             return
         }
+        val split = PaymentSplit(total).add(PaymentLeg(PaymentMethod.Credit, amount))
         commit(split, change = Money.ZERO, paidByCash = false)
     }
 
@@ -363,6 +394,8 @@ data class PosUiState(
     val lastTransactionId: String? = null,
     val lastChange: Money = Money.ZERO,
     val lastPaidByCash: Boolean = false,
+    /** Jambe avoir partielle déjà acceptée, en attente d'une 2e méthode. */
+    val pendingCreditCents: Long = 0L,
     val error: String? = null,
 ) {
     /**
@@ -371,5 +404,9 @@ data class PosUiState(
      */
     val effectiveTotal: Money
         get() = couponPreview?.let { Money(it.new_total_cents) } ?: cart.subtotal
+
+    /** Reste à payer pour la 2e méthode quand un avoir partiel est posé. */
+    val remainingAfterCredit: Money
+        get() = Money((effectiveTotal.cents - pendingCreditCents).coerceAtLeast(0))
 }
 
