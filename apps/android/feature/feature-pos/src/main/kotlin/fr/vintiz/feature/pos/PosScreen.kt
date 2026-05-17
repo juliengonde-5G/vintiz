@@ -39,7 +39,6 @@ import fr.vintiz.feature.receipt.ReceiptDialog
 
 @Composable
 fun PosScreen(
-    onLogout: () -> Unit,
     viewModel: PosViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()

@@ -139,13 +139,7 @@ private fun Shell(rootNav: NavHostController) {
             verticalArrangement = Arrangement.Top,
         ) {
             NavHost(navController = shellNav, startDestination = Routes.POS) {
-                composable(Routes.POS) {
-                    PosScreen(onLogout = {
-                        rootNav.navigate(Routes.LOGIN) {
-                            popUpTo(Routes.SHELL) { inclusive = true }
-                        }
-                    })
-                }
+                composable(Routes.POS) { PosScreen() }
                 composable(Routes.INVENTORY) {
                     InventoryScreen(onProductClick = { id ->
                         shellNav.navigate(Routes.inventoryDetail(id))
@@ -187,7 +181,13 @@ private fun Shell(rootNav: NavHostController) {
                     )
                 }
                 composable(Routes.CAHIER) { CahierScreen() }
-                composable(Routes.SETTINGS) { SettingsScreen() }
+                composable(Routes.SETTINGS) {
+                    SettingsScreen(onLogout = {
+                        rootNav.navigate(Routes.LOGIN) {
+                            popUpTo(Routes.SHELL) { inclusive = true }
+                        }
+                    })
+                }
                 composable(Routes.DASHBOARD) { DashboardScreen() }
                 composable(Routes.IA) { IaScreen() }
                 composable(Routes.ZONES) { ZonesScreen() }

@@ -42,6 +42,7 @@ import kotlinx.coroutines.launch
 class SettingsViewModel @Inject constructor(
     private val hardware: HardwareRepository,
     private val prefs: AppPreferences,
+    private val tokenStorage: fr.vintiz.core.security.TokenStorage,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState())
@@ -94,6 +95,15 @@ class SettingsViewModel @Inject constructor(
             _state.update { it.copy(cameraScannerEnabled = enabled) }
         }
     }
+
+    /**
+     * Efface le JWT manager + le PIN caissière dans le Keystore, puis
+     * remonte le callback navigation pour repartir sur LOGIN.
+     */
+    fun logout(onDone: () -> Unit) {
+        tokenStorage.clearAll()
+        onDone()
+    }
 }
 
 data class SettingsUiState(
@@ -106,7 +116,10 @@ data class SettingsUiState(
 )
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(
+    onLogout: () -> Unit = {},
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsState()
     Scaffold { padding ->
         Column(
@@ -171,6 +184,23 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
 
             state.error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error)
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Session", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Déconnecte la caisse : efface le JWT manager et le PIN " +
+                            "caissière en cours. Au prochain démarrage, login complet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(onClick = { viewModel.logout(onLogout) }) {
+                        Text("Déconnexion")
+                    }
+                }
             }
         }
     }
