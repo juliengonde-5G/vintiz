@@ -30,6 +30,9 @@ class InventoryRepository(
     } catch (io: IOException) {
         Timber.i("search offline — fallback Room")
         VintizResult.Success(dao.search(query).map { it.toDto() })
+    } catch (http: HttpException) {
+        Timber.w(http, "search HTTP %d — fallback Room", http.code())
+        VintizResult.Success(dao.search(query).map { it.toDto() })
     }
 
     /**
@@ -43,6 +46,10 @@ class InventoryRepository(
         val cached = dao.byBarcode(barcode)
         if (cached != null) VintizResult.Success(cached.toDto())
         else VintizResult.Failure(VintizError.Network)
+    } catch (http: HttpException) {
+        val cached = dao.byBarcode(barcode)
+        if (cached != null) VintizResult.Success(cached.toDto())
+        else VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
     }
 
     suspend fun byId(id: String): VintizResult<ProductDto> = try {
@@ -53,6 +60,10 @@ class InventoryRepository(
         val cached = dao.byId(id)
         if (cached != null) VintizResult.Success(cached.toDto())
         else VintizResult.Failure(VintizError.Network)
+    } catch (http: HttpException) {
+        val cached = dao.byId(id)
+        if (cached != null) VintizResult.Success(cached.toDto())
+        else VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
     }
 
     /**

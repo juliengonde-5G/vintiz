@@ -119,3 +119,50 @@ ancres stables.
 - Audit infrastructure (Caddy / Postgres / firewall VPS) — voir `docs/DEPLOIEMENT.md`.
 - Audit fiscal NF525 par organisme certificateur — l'app n'altère pas la chaîne de hash, l'audit serveur (`apps/api`) reste valide.
 - Audit PCI SumUp — réalisé par SumUp sur leur SDK Android natif, à brancher quand le module `hardware-sumup-sdk` sera implémenté.
+
+## Mise à jour — Audit du 2026-05-17
+
+Sweep complet relancé suite à l'introduction de la queue offline et de
+la fiche cliente complète. Voir commits `f74c4aa` (RGPD + IP printers).
+
+### Points corrigés depuis la version précédente
+
+- **CYBER-3.5 (validation IP imprimantes)** : `String.isPrivateLanTarget()`
+  (`apps/android/hardware/hardware-api/src/main/kotlin/fr/vintiz/hardware/api/NetworkSafety.kt`)
+  refuse toute connexion socket TCP en dehors des blocs RFC 1918,
+  loopback, link-local et `*.local`. Appelé avant ouverture socket
+  dans `TcpEscPosPrinter` et `TcpZebraPrinter`. Couvert par
+  `NetworkSafetyTest` (7 cas).
+- **JURIDIQUE-RGPD-Article-17/20** : `ClientDetailScreen.RgpdTab` expose
+  désormais les boutons "Exporter (JSON)" et "Demander suppression"
+  reliés aux endpoints `/crm/clients/{id}/data-export` et
+  `/deletion-request`. Manager peut traiter ces droits directement
+  depuis la boutique.
+
+### Points résiduels non bloquants
+
+**Chiffrement Room (CYBER-2.1 / JURIDIQUE-RGPD-CNIL)** — La base
+`vintiz.db` (PII cache clientes + queue ventes offline) est encore en
+clair sur disque. Mitigation actuelle :
+- `allowBackup=false` + `data_extraction_rules.xml` excluent la DB des
+  backups Google Drive.
+- TTL PII 30j respecté par `PurgePiiWorker`.
+
+Migration vers SQLCipher prévue dans un sprint dédié : besoin de
+gérer la passphrase via Keystore + migration une fois (versionnement
+Room schemas). Risque de migration cassant la DB → préférer un sprint
+isolé avec tests instrumentés.
+
+**Scellage queue offline (NF525-§3.2)** — `QueuedTransactionEntity.payloadJson`
+reste éditable avant POST. Le serveur signe à l'arrivée (`fiscal.py`),
+mais une altération locale entre l'enqueue et le POST n'est pas
+détectable. Mitigation : ajouter une colonne `local_hmac` calculée à
+`enqueue()` via HMAC-SHA256 + clé Keystore, vérifiée par
+`DrainTransactionsWorker` avant POST. Refuser le drain et lever une
+alerte si HMAC invalide. À planifier en parallèle de la migration
+SQLCipher.
+
+**Cert-pinning prod (CYBER-5.1)** — `BuildConfig.API_PIN_SHA256` à
+renseigner dans le flavor prod (`apps/android/app/build.gradle.kts`)
+puis passé au `HttpClientFactory`. À faire une fois le certificat
+public d'`api.vintiz.fr` figé et la rotation 1×/an documentée.
