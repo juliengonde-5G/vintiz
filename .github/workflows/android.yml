@@ -104,14 +104,11 @@ jobs:
           ./gradlew :app-client:lintDevDebug --stacktrace --info > lint-client.log 2>&1
           EXIT=$?
           set -e
-          echo "=== LAST 300 LINES OF LINT CLIENT LOG ==="
-          tail -300 lint-client.log
-          echo "=== END OF LINT CLIENT LOG ==="
-          if [ -f app-client/build/reports/lint-results-devDebug.txt ]; then
-            echo "=== LINT TEXT REPORT ==="
-            cat app-client/build/reports/lint-results-devDebug.txt
-            echo "=== END LINT TEXT REPORT ==="
-          fi
+          echo "=== KOTLIN COMPILER ERRORS ==="
+          grep -E "^e: |error: |Caused by:|FAILED|Compilation error" lint-client.log || echo "(no error/e: lines)"
+          echo "=== LAST 80 LINES ==="
+          tail -80 lint-client.log
+          echo "=== END ==="
           exit $EXIT
 
       - name: Build APK debug POS (dev flavor)
