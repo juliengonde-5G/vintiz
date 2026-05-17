@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Background : crème vz-bg off-white pour faire contraster le monogramme
+  teal du foreground. Cohérent avec la charte (DESIGN_SYSTEM.md) :
+  fond clair + monogramme teal = combinaison logo-teal canonique.
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#0B7A6A" />
+    <solid android:color="#F6F5F1" />
 </shape>

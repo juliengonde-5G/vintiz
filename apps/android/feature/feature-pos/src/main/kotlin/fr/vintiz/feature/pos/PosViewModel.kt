@@ -254,6 +254,55 @@ class PosViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Paiement chèque — la référence (n° du chèque + banque éventuelle)
+     * est journalisée sur le PaymentLeg mais ne contraint pas le commit.
+     * Le serveur valide le format si une regex est configurée.
+     */
+    fun payCheque(reference: String) {
+        val total = _state.value.effectiveTotal
+        if (total.cents <= 0) return
+        val ref = reference.trim()
+        if (ref.isBlank()) {
+            _state.update { it.copy(error = "Référence chèque requise") }
+            return
+        }
+        val split = PaymentSplit(total).add(
+            PaymentLeg(PaymentMethod.Cheque, total, chequeRef = ref)
+        )
+        commit(split, change = Money.ZERO, paidByCash = false)
+    }
+
+    /**
+     * Paiement par avoir (store credit). MVP : on accepte le montant
+     * sous la responsabilité du caissier qui vérifie le solde de la
+     * cliente sur le panneau Companion. Le serveur tranchera : si le
+     * solde réel est insuffisant, le commit échoue avec un 400.
+     */
+    fun payCredit(amountCents: Long) {
+        val total = _state.value.effectiveTotal
+        if (total.cents <= 0) return
+        if (_state.value.client == null) {
+            _state.update { it.copy(error = "Cliente requise pour utiliser un avoir") }
+            return
+        }
+        val amount = Money(amountCents.coerceIn(0, total.cents))
+        if (amount.cents <= 0) {
+            _state.update { it.copy(error = "Montant avoir invalide") }
+            return
+        }
+        val split = PaymentSplit(total).add(PaymentLeg(PaymentMethod.Credit, amount))
+        // Si l'avoir ne couvre pas tout, on attend que le caissier finisse
+        // en cash ou CB (multi-leg). Pour MVP : on exige avoir = total.
+        if (amount.cents < total.cents) {
+            _state.update {
+                it.copy(error = "Avoir partiel non géré V1 — utiliser cash/CB pour le reste")
+            }
+            return
+        }
+        commit(split, change = Money.ZERO, paidByCash = false)
+    }
+
     private fun commit(split: PaymentSplit, change: Money, paidByCash: Boolean) {
         val cart = _state.value.cart
         if (cart.isEmpty) return

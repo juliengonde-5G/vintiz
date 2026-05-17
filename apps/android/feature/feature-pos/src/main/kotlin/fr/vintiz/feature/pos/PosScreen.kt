@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -25,6 +26,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -168,31 +172,54 @@ fun PosScreen(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PaymentMethod.entries.forEach { method ->
-                        val supported = method == PaymentMethod.Cash || method == PaymentMethod.Card
                         AssistChip(
-                            enabled = supported,
                             onClick = { viewModel.pickPaymentMethod(method) },
-                            label = { Text(method.label() + if (!supported) " (bientôt)" else "") },
+                            label = { Text(method.label()) },
                         )
                     }
                 }
 
                 Spacer(Modifier.height(12.dp))
 
-                val payable = state.selectedMethod == PaymentMethod.Cash ||
-                    state.selectedMethod == PaymentMethod.Card
+                var chequeDialog by remember { mutableStateOf(false) }
+                var creditDialog by remember { mutableStateOf(false) }
+
                 Button(
                     onClick = {
                         when (state.selectedMethod) {
                             PaymentMethod.Cash -> viewModel.payCash(state.effectiveTotal.cents)
                             PaymentMethod.Card -> viewModel.payCard()
-                            else -> Unit
+                            PaymentMethod.Cheque -> chequeDialog = true
+                            PaymentMethod.Credit -> creditDialog = true
                         }
                     },
-                    enabled = !state.cart.isEmpty && !state.paymentInProgress && payable,
+                    enabled = !state.cart.isEmpty && !state.paymentInProgress,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (state.paymentInProgress) "Paiement en cours…" else "Encaisser")
+                }
+
+                if (chequeDialog) {
+                    ChequeDialog(
+                        onConfirm = { ref ->
+                            chequeDialog = false
+                            viewModel.payCheque(ref)
+                        },
+                        onDismiss = { chequeDialog = false },
+                    )
+                }
+                if (creditDialog) {
+                    CreditDialog(
+                        defaultAmountCents = state.effectiveTotal.cents,
+                        clientLabel = state.client?.let {
+                            "${it.first_name} ${it.last_name} (${it.loyalty_points} pts)"
+                        },
+                        onConfirm = { amount ->
+                            creditDialog = false
+                            viewModel.payCredit(amount)
+                        },
+                        onDismiss = { creditDialog = false },
+                    )
                 }
 
                 state.error?.let { err ->
@@ -237,4 +264,71 @@ private fun PaymentMethod.label(): String = when (this) {
     PaymentMethod.Card -> "CB"
     PaymentMethod.Cheque -> "Chèque"
     PaymentMethod.Credit -> "Avoir"
+}
+
+@Composable
+private fun ChequeDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var ref by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Paiement chèque") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Numéro / référence du chèque (banque + n°).",
+                    style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = ref,
+                    onValueChange = { ref = it },
+                    label = { Text("Référence") },
+                    singleLine = true,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(ref) },
+                enabled = ref.isNotBlank(),
+            ) { Text("Valider") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+    )
+}
+
+@Composable
+private fun CreditDialog(
+    defaultAmountCents: Long,
+    clientLabel: String?,
+    onConfirm: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var input by remember { mutableStateOf(String.format("%.2f", defaultAmountCents / 100.0).replace(",", ".")) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Paiement par avoir") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(clientLabel ?: "Cliente non identifiée — sélectionner d'abord.",
+                    style = MaterialTheme.typography.bodyMedium)
+                Text("Solde réel vérifié côté serveur. Si insuffisant, refus.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it.replace(",", ".").filter { c -> c.isDigit() || c == '.' } },
+                    label = { Text("Montant (€)") },
+                    singleLine = true,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val cents = (input.toDoubleOrNull()?.times(100))?.toLong() ?: 0L
+                    onConfirm(cents)
+                },
+                enabled = clientLabel != null && (input.toDoubleOrNull() ?: 0.0) > 0.0,
+            ) { Text("Valider") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+    )
 }
