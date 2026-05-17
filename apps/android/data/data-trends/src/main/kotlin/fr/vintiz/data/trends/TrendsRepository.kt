@@ -48,7 +48,6 @@ class TrendsRepository(private val api: TrendsApi) {
         // attendues (schéma DTO désynchronisé, NPE Moshi, etc.).
         VintizResult.Failure(VintizError.Unknown(t.message ?: t::class.simpleName ?: "Erreur inconnue"))
     }
-}
 
     suspend fun markdownRules(active: Boolean? = null): VintizResult<List<MarkdownRuleDto>> =
         call { api.markdownRules(active) }
@@ -65,5 +64,7 @@ class TrendsRepository(private val api: TrendsApi) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
         VintizResult.Failure(VintizError.http(http.code(), http.message()))
+    } catch (t: Throwable) {
+        VintizResult.Failure(VintizError.Unknown(t.message ?: t::class.simpleName ?: "Erreur inconnue"))
     }
 }

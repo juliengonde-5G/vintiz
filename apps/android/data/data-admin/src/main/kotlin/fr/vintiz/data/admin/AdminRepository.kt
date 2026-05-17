@@ -48,7 +48,6 @@ class AdminRepository(private val api: AdminApi) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
         VintizResult.Failure(VintizError.http(http.code(), http.message()))
-    }
     } catch (t: Throwable) {
         // Anti-crash : JsonDataException ou autres exceptions non
         // attendues (schéma DTO désynchronisé, NPE Moshi, etc.).

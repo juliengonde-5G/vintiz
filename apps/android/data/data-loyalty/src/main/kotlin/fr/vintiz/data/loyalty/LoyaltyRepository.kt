@@ -18,11 +18,8 @@ class LoyaltyRepository(private val api: LoyaltyApi) {
             else -> VintizResult.Failure(VintizError.http(http.code(), http.message()))
         }
     } catch (t: Throwable) {
-        // Anti-crash : JsonDataException ou autres exceptions non
-        // attendues (schéma DTO désynchronisé, NPE Moshi, etc.).
         VintizResult.Failure(VintizError.Unknown(t.message ?: t::class.simpleName ?: "Erreur inconnue"))
     }
-}
 
     suspend fun getConfig(): VintizResult<LoyaltyConfigDto> = call { api.getConfig() }
 
@@ -48,6 +45,8 @@ class LoyaltyRepository(private val api: LoyaltyApi) {
             404 -> VintizResult.Failure(VintizError.Validation("coupon", "Code introuvable"))
             else -> VintizResult.Failure(VintizError.http(http.code(), http.message()))
         }
+    } catch (t: Throwable) {
+        VintizResult.Failure(VintizError.Unknown(t.message ?: t::class.simpleName ?: "Erreur inconnue"))
     }
 
     private suspend inline fun <T> call(block: suspend () -> T): VintizResult<T> = try {
@@ -56,5 +55,7 @@ class LoyaltyRepository(private val api: LoyaltyApi) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
         VintizResult.Failure(VintizError.http(http.code(), http.message()))
+    } catch (t: Throwable) {
+        VintizResult.Failure(VintizError.Unknown(t.message ?: t::class.simpleName ?: "Erreur inconnue"))
     }
 }
