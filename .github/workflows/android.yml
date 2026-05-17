@@ -71,7 +71,7 @@ jobs:
           chmod +x gradlew
           ./gradlew --version
 
-      - name: Unit tests
+      - name: Unit tests (POS — modules existants)
         run: |
           ./gradlew \
             :core:core-common:test \
@@ -90,27 +90,40 @@ jobs:
             :feature:feature-fiscal:testDebugUnitTest \
             :feature:feature-loyalty:testDebugUnitTest
 
-      - name: Android Lint (dev debug)
-        run: ./gradlew :app:lintDevDebug
+      - name: Unit tests (Client — Sprint A)
+        run: |
+          ./gradlew \
+            :data:data-auth-client:testDebugUnitTest
 
-      - name: Build APK debug (dev flavor)
-        run: ./gradlew :app:assembleDevDebug --stacktrace
+      - name: Android Lint POS (dev debug)
+        run: ./gradlew :app-pos:lintDevDebug
+
+      - name: Android Lint Client (dev debug)
+        run: ./gradlew :app-client:lintDevDebug
+
+      - name: Build APK debug POS (dev flavor)
+        run: ./gradlew :app-pos:assembleDevDebug --stacktrace
+
+      - name: Build APK debug Client (dev flavor)
+        run: ./gradlew :app-client:assembleDevDebug --stacktrace
 
       - name: Rename APK avec SHA court
         run: |
           SHA=${GITHUB_SHA::7}
           mkdir -p artifacts
-          cp app/build/outputs/apk/dev/debug/app-dev-debug.apk \
+          cp app-pos/build/outputs/apk/dev/debug/app-pos-dev-debug.apk \
              "artifacts/vintiz-pos-dev-${SHA}.apk"
+          cp app-client/build/outputs/apk/dev/debug/app-client-dev-debug.apk \
+             "artifacts/vintiz-client-dev-${SHA}.apk"
           ls -la artifacts/
 
-      - name: Upload APK debug en artifact
+      - name: Upload APKs debug en artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vintiz-pos-dev-debug-${{ github.sha }}
+          name: vintiz-apks-dev-debug-${{ github.sha }}
           path: apps/android/artifacts/*.apk
           retention-days: 30
-          # L'artifact est téléchargeable depuis :
+          # Téléchargeable depuis :
           # https://github.com/juliengonde-5G/vintiz/actions/runs/<run_id>
           # Onglet "Summary" → section "Artifacts" en bas.
 
