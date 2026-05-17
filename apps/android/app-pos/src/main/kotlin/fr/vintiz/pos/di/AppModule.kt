@@ -94,6 +94,9 @@ object AppModule {
     @Provides @Singleton
     fun provideRetrofit(factory: HttpClientFactory): Retrofit = factory.retrofit
 
+    @Provides @Singleton
+    fun provideMoshi(factory: HttpClientFactory): com.squareup.moshi.Moshi = factory.moshi
+
     @Provides @Singleton fun provideAuthApi(r: Retrofit): AuthApi = r.create(AuthApi::class.java)
     @Provides @Singleton fun providePosApi(r: Retrofit): PosApi = r.create(PosApi::class.java)
     @Provides @Singleton fun provideInventoryApi(r: Retrofit): InventoryApi = r.create(InventoryApi::class.java)
