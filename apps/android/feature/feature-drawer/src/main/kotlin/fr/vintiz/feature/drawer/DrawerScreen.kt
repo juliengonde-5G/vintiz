@@ -141,7 +141,7 @@ private fun CloseDrawerForm(state: DrawerUiState, vm: DrawerViewModel) {
 private fun ClosedDrawerReport(state: DrawerUiState, vm: DrawerViewModel) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Z-Report ${state.current?.id?.take(8) ?: "—"}",
+            Text("Z-Report ${state.current?.drawer_id?.take(8) ?: "—"}",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.primary)
             ZReportContent(state.zReport, state.openingAmount, state.closingAmount)
