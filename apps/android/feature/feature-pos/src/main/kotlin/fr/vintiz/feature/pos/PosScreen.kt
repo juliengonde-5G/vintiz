@@ -169,24 +169,28 @@ fun PosScreen(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PaymentMethod.entries.forEach { method ->
+                        val supported = method == PaymentMethod.Cash || method == PaymentMethod.Card
                         AssistChip(
+                            enabled = supported,
                             onClick = { viewModel.pickPaymentMethod(method) },
-                            label = { Text(method.label()) },
+                            label = { Text(method.label() + if (!supported) " (bientôt)" else "") },
                         )
                     }
                 }
 
                 Spacer(Modifier.height(12.dp))
 
+                val payable = state.selectedMethod == PaymentMethod.Cash ||
+                    state.selectedMethod == PaymentMethod.Card
                 Button(
                     onClick = {
                         when (state.selectedMethod) {
-                            PaymentMethod.Cash -> viewModel.payCash(state.cart.subtotal.cents)
+                            PaymentMethod.Cash -> viewModel.payCash(state.effectiveTotal.cents)
                             PaymentMethod.Card -> viewModel.payCard()
-                            else -> { /* cheque / avoir à venir */ }
+                            else -> Unit
                         }
                     },
-                    enabled = !state.cart.isEmpty && !state.paymentInProgress,
+                    enabled = !state.cart.isEmpty && !state.paymentInProgress && payable,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (state.paymentInProgress) "Paiement en cours…" else "Encaisser")
