@@ -3,6 +3,7 @@ package fr.vintiz.feature.zones
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -275,7 +276,7 @@ internal fun IsoZonesCanvas(
                 }
             }
             .pointerInput(Unit) {
-                androidx.compose.foundation.gestures.detectTransformGestures { _, pan, zoom, _ ->
+                detectTransformGestures { _, pan, zoom, _ ->
                     val newScale = (scale * zoom).coerceIn(0.5f, 4f)
                     scale = newScale
                     offset += pan
