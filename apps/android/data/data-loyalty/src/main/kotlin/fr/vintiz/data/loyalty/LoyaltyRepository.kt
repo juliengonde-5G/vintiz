@@ -17,7 +17,12 @@ class LoyaltyRepository(private val api: LoyaltyApi) {
             422 -> VintizResult.Failure(VintizError.Validation("body", "Données invalides"))
             else -> VintizResult.Failure(VintizError.http(http.code(), http.message()))
         }
+    } catch (t: Throwable) {
+        // Anti-crash : JsonDataException ou autres exceptions non
+        // attendues (schéma DTO désynchronisé, NPE Moshi, etc.).
+        VintizResult.Failure(VintizError.Unknown(t.message ?: t::class.simpleName ?: "Erreur inconnue"))
     }
+}
 
     suspend fun getConfig(): VintizResult<LoyaltyConfigDto> = call { api.getConfig() }
 

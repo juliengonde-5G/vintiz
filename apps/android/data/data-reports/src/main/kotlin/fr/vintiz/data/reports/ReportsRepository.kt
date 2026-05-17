@@ -33,4 +33,9 @@ class ReportsRepository(private val api: ReportsApi) {
     } catch (http: HttpException) {
         VintizResult.Failure(VintizError.http(http.code(), http.message()))
     }
+    } catch (t: Throwable) {
+        // Anti-crash : JsonDataException ou autres exceptions non
+        // attendues (schéma DTO désynchronisé, NPE Moshi, etc.).
+        VintizResult.Failure(VintizError.Unknown(t.message ?: t::class.simpleName ?: "Erreur inconnue"))
+    }
 }

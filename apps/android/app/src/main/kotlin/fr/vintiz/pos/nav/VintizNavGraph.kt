@@ -107,13 +107,29 @@ fun VintizNavGraph(startDestination: String = Routes.LOGIN) {
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun Shell(rootNav: NavHostController) {
     val shellNav = rememberNavController()
     val current by shellNav.currentBackStackEntryAsState()
     val currentRoute = current?.destination?.route ?: Routes.POS
+    val canPop = shellNav.previousBackStackEntry != null
 
     Scaffold(
+        topBar = {
+            androidx.compose.material3.TopAppBar(
+                title = { Text(routeTitle(currentRoute)) },
+                navigationIcon = {
+                    if (canPop) {
+                        androidx.compose.material3.IconButton(
+                            onClick = { shellNav.popBackStack() },
+                        ) {
+                            Text("←", style = MaterialTheme.typography.titleLarge)
+                        }
+                    }
+                },
+            )
+        },
         bottomBar = {
             NavigationBar {
                 BottomNavItem.entries.forEach { item ->
@@ -278,6 +294,32 @@ private fun PlusItem(title: String, subtitle: String, route: String, onSelect: (
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+/**
+ * Titre court affiché dans le TopAppBar pour chaque route Shell. Permet
+ * au caissier / manager de savoir où il est, et débloque le bouton
+ * "←" Précédent quand la nav stack a une entrée précédente.
+ */
+private fun routeTitle(route: String): String = when {
+    route == Routes.POS -> "Caisse"
+    route == Routes.INVENTORY -> "Stock"
+    route.startsWith(Routes.INVENTORY_DETAIL) -> "Fiche produit"
+    route == Routes.INVENTORY_IMPORT -> "Import CSV"
+    route == Routes.CLIENTS -> "Clientes"
+    route.startsWith(Routes.CLIENT_DETAIL) -> "Fiche cliente"
+    route == Routes.CAHIER -> "Cahier du jour"
+    route == Routes.SETTINGS -> "Réglages"
+    route == Routes.DASHBOARD -> "Dashboard"
+    route == Routes.IA -> "Compagnon IA"
+    route == Routes.ZONES -> "Plan boutique"
+    route == Routes.ADMIN -> "Admin"
+    route.startsWith(Routes.FISCAL) -> "Export fiscal"
+    route == Routes.NEWSLETTER -> "Newsletter"
+    route == Routes.LOYALTY_SUBSCRIBE -> "Carte fidélité"
+    route == Routes.PERSONAL_SHOPPER -> "Personal Shopper"
+    route == Routes.DRAWER -> "Tiroir caisse"
+    else -> "Vintiz"
 }
 
 private enum class BottomNavItem(val route: String, val label: String, val icon: String) {

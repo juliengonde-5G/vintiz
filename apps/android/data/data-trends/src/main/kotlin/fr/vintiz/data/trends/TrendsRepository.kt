@@ -43,7 +43,12 @@ class TrendsRepository(private val api: TrendsApi) {
                 "proposal", "Déjà validée — régénérer d'abord"))
             else -> VintizResult.Failure(VintizError.http(http.code(), http.message()))
         }
+    } catch (t: Throwable) {
+        // Anti-crash : JsonDataException ou autres exceptions non
+        // attendues (schéma DTO désynchronisé, NPE Moshi, etc.).
+        VintizResult.Failure(VintizError.Unknown(t.message ?: t::class.simpleName ?: "Erreur inconnue"))
     }
+}
 
     suspend fun markdownRules(active: Boolean? = null): VintizResult<List<MarkdownRuleDto>> =
         call { api.markdownRules(active) }

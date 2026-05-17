@@ -34,5 +34,13 @@ class CahierRepository(private val api: CahierApi) {
         VintizResult.Failure(VintizError.Network)
     } catch (http: HttpException) {
         VintizResult.Failure(VintizError.http(http.code(), http.message()))
+    } catch (t: Throwable) {
+        // Schéma backend Cahier diverge encore du DTO Android (champs
+        // nested EUR vs flat cents). Tant que les deux ne sont pas
+        // alignés, on rattrape JsonDataException + autres au lieu de
+        // crasher l'app.
+        VintizResult.Failure(
+            VintizError.Unknown("Cahier indisponible : ${t.message ?: t::class.simpleName}")
+        )
     }
 }
