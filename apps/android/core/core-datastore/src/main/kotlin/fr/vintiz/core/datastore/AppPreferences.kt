@@ -64,6 +64,13 @@ class AppPreferences(private val context: Context) {
         context.dataStore.edit { it[KEY_LAST_CLIENTS_SYNC] = epochSeconds }
     }
 
+    val onboardingCompleted: Flow<Boolean> = context.dataStore.data
+        .map { prefs -> prefs[KEY_ONBOARDING_DONE] ?: false }
+
+    suspend fun setOnboardingCompleted(done: Boolean) {
+        context.dataStore.edit { it[KEY_ONBOARDING_DONE] = done }
+    }
+
     private companion object {
         val KEY_ENV: Preferences.Key<String> = stringPreferencesKey("env")
         val KEY_PRINTER: Preferences.Key<String> = stringPreferencesKey("printer_backend")
@@ -71,11 +78,15 @@ class AppPreferences(private val context: Context) {
         val KEY_CAMERA_SCAN: Preferences.Key<Boolean> = booleanPreferencesKey("camera_scan_enabled")
         val KEY_LAST_PRODUCTS_SYNC: Preferences.Key<Long> = longPreferencesKey("last_products_sync")
         val KEY_LAST_CLIENTS_SYNC: Preferences.Key<Long> = longPreferencesKey("last_clients_sync")
+        val KEY_ONBOARDING_DONE: Preferences.Key<Boolean> = booleanPreferencesKey("onboarding_done")
     }
 }
 
 enum class Environment(val key: String, val baseUrl: String) {
-    Dev("dev", "https://api.dev.vintiz.fr/"),
+    // Le flavor dev pointe sur prod tant que api.dev.vintiz.fr n'est
+    // pas provisionné (cf. app/build.gradle.kts:30). À repointer ici si
+    // un env dev dédié est déployé.
+    Dev("dev", "https://api.vintiz.fr/"),
     Prod("prod", "https://api.vintiz.fr/");
 
     companion object {

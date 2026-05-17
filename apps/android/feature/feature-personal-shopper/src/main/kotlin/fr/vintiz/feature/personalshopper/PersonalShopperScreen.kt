@@ -49,10 +49,11 @@ fun PersonalShopperScreen(viewModel: PersonalShopperViewModel = hiltViewModel())
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            if (state.selectedClient == null) {
+            val selected = state.selectedClient
+            if (selected == null) {
                 ClientPicker(state, viewModel::onSearchChange, viewModel::selectClient)
             } else {
-                ClientHeader(state.selectedClient!!.fullName(), onClear = viewModel::clearClient)
+                ClientHeader(selected.fullName(), onClear = viewModel::clearClient)
                 when {
                     state.loadingPicks -> Box(
                         modifier = Modifier.fillMaxWidth(),

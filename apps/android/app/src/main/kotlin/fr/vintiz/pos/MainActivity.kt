@@ -28,15 +28,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Décision synchrone (cheap sur DataStore en mémoire) :
-        // si la clé environment n'a jamais été posée, on lance l'onboarding.
+        // Flag explicite posé par OnboardingScreen quand l'utilisateur
+        // termine la dernière étape. Une réinstallation efface le flag
+        // et relance l'onboarding.
         val startRoute = runBlocking {
-            val env = prefs.environment.first()
-            // Heuristic : si on a déjà posé un backend explicite, on suppose
-            // que l'onboarding a déjà été parcouru. Sinon, première install.
-            val backend = prefs.printerBackend.first()
-            if (env.key == "dev" && backend.key == "network") Routes.ONBOARDING
-            else Routes.LOGIN
+            if (prefs.onboardingCompleted.first()) Routes.LOGIN else Routes.ONBOARDING
         }
 
         setContent {

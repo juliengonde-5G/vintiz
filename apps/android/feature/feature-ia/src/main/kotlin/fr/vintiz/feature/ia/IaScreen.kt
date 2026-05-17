@@ -297,7 +297,8 @@ private fun WindowProposalCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (accepted) {
-                Text("Validée le ${wp.accepted_at!!.take(16).replace("T", " à ")}",
+                val ts = wp.accepted_at?.take(16)?.replace("T", " à ") ?: "—"
+                Text("Validée le $ts",
                     color = MaterialTheme.colorScheme.primary)
             } else {
                 Text("En attente de validation",

@@ -128,6 +128,14 @@ class OnboardingViewModel @Inject constructor(
 
     fun next() = _state.update { it.copy(step = it.step + 1) }
     fun previous() = _state.update { it.copy(step = (it.step - 1).coerceAtLeast(0)) }
+
+    /**
+     * Persiste le flag onboardingCompleted=true ; MainActivity le lit
+     * au prochain lancement pour sauter direct sur Login.
+     */
+    fun markOnboardingDone() {
+        viewModelScope.launch { prefs.setOnboardingCompleted(true) }
+    }
 }
 
 data class OnboardingUiState(
@@ -152,7 +160,10 @@ fun OnboardingScreen(
 ) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(state.step) {
-        if (state.step >= state.totalSteps) onFinished()
+        if (state.step >= state.totalSteps) {
+            viewModel.markOnboardingDone()
+            onFinished()
+        }
     }
     Scaffold { padding ->
         Column(
