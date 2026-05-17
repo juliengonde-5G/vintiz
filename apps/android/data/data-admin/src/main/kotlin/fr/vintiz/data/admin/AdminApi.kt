@@ -9,7 +9,7 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 /**
- * Endpoints admin — alignés sur `apps/api/app/api/admin/*.py`.
+ * Endpoints admin — alignés sur apps/api/app/api/admin/ (router.py + users.py).
  *
  * `/admin/transactions` retourne `{transactions: [...], count}` en
  * EUR float (pas cents). `/admin/users` retourne une liste plate
