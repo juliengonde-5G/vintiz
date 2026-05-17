@@ -151,7 +151,13 @@ data class OnboardingUiState(
     val tpeOk: Boolean = false,
     val error: String? = null,
 ) {
-    val totalSteps: Int = 6
+    // 3 étapes pré-login uniquement (Welcome / Environment / Final).
+    // Hardware sync, printer test et TPE test exigent un JWT manager,
+    // donc ne peuvent pas tourner avant login : on les déplace dans
+    // Settings → Matériel (accessible post-login) + le worker
+    // SyncHardwareConfigWorker se déclenche automatiquement après la
+    // 1ʳᵉ requête authentifiée.
+    val totalSteps: Int = 3
     val progress: Float = (step + 1).toFloat() / totalSteps
 }
 
@@ -181,9 +187,6 @@ fun OnboardingScreen(
             when (state.step) {
                 0 -> WelcomeStep()
                 1 -> EnvironmentStep(state, viewModel::setEnvironment)
-                2 -> HardwareStep(state, viewModel::syncHardware)
-                3 -> PrinterTestStep(state, viewModel::testPrinter)
-                4 -> PaymentTerminalStep(state, viewModel::testPaymentTerminal)
                 else -> FinalStep()
             }
 
