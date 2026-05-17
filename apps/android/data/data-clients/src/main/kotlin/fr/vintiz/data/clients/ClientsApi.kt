@@ -1,9 +1,13 @@
 package fr.vintiz.data.clients
 
 import com.squareup.moshi.JsonClass
+import okhttp3.ResponseBody
+import retrofit2.Response
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 interface ClientsApi {
 
@@ -20,7 +24,29 @@ interface ClientsApi {
      */
     @GET("api/v1/crm/clients/{id}/full")
     suspend fun fullClient(@Path("id") id: String): ClientFullDto
+
+    /**
+     * RGPD Article 20 — export portable JSON de toutes les données
+     * cliente (commandes, consents, audit). Manager only.
+     */
+    @GET("api/v1/crm/clients/{id}/data-export")
+    @Streaming
+    suspend fun exportData(@Path("id") id: String): Response<ResponseBody>
+
+    /**
+     * RGPD Article 17 — demande de suppression soft (fenêtre 30 j
+     * annulable). L'API marque la cliente, le worker côté serveur la
+     * purge à expiration.
+     */
+    @POST("api/v1/crm/clients/{id}/deletion-request")
+    suspend fun requestDeletion(@Path("id") id: String): ClientDeletionResponseDto
 }
+
+@JsonClass(generateAdapter = true)
+data class ClientDeletionResponseDto(
+    val status: String,
+    val purge_at: String? = null,
+)
 
 @JsonClass(generateAdapter = true)
 data class ClientDto(

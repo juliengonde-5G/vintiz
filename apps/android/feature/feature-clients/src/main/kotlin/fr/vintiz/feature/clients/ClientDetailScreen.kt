@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -51,14 +53,30 @@ fun ClientDetailScreen(
                 state.error != null -> Text(state.error!!,
                     modifier = Modifier.padding(16.dp),
                     color = MaterialTheme.colorScheme.error)
-                state.full != null -> ClientFullBody(state.full!!, state.tab, viewModel::selectTab)
+                state.full != null -> ClientFullBody(
+                    full = state.full!!,
+                    tab = state.tab,
+                    rgpdBusy = state.rgpdBusy,
+                    rgpdMessage = state.rgpdMessage,
+                    onSelectTab = viewModel::selectTab,
+                    onExport = viewModel::exportData,
+                    onRequestDeletion = viewModel::requestDeletion,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ClientFullBody(full: ClientFullDto, tab: Int, onSelectTab: (Int) -> Unit) {
+private fun ClientFullBody(
+    full: ClientFullDto,
+    tab: Int,
+    rgpdBusy: Boolean,
+    rgpdMessage: String?,
+    onSelectTab: (Int) -> Unit,
+    onExport: () -> Unit,
+    onRequestDeletion: () -> Unit,
+) {
     val c = full.client
     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("${c.first_name} ${c.last_name.uppercase()}",
@@ -80,7 +98,7 @@ private fun ClientFullBody(full: ClientFullDto, tab: Int, onSelectTab: (Int) -> 
         1 -> PurchasesTab(full.recent_transactions)
         2 -> LoyaltyTab(full)
         3 -> TastesTab(full.tastes)
-        4 -> RgpdTab(full.consents)
+        4 -> RgpdTab(full.consents, rgpdBusy, rgpdMessage, onExport, onRequestDeletion)
         else -> AuditTab(full.recent_audit)
     }
 }
@@ -159,7 +177,13 @@ private fun TastesTab(tastes: List<String>) {
 }
 
 @Composable
-private fun RgpdTab(consents: List<ClientConsentDto>) {
+private fun RgpdTab(
+    consents: List<ClientConsentDto>,
+    busy: Boolean,
+    message: String?,
+    onExport: () -> Unit,
+    onRequestDeletion: () -> Unit,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -168,7 +192,7 @@ private fun RgpdTab(consents: List<ClientConsentDto>) {
             Text("Consentements RGPD", style = MaterialTheme.typography.titleLarge)
             Text(
                 "Modifications via l'espace client cliente.vintiz.fr/account/rgpd. " +
-                    "L'app ne fait que lecture.",
+                    "L'app affiche en lecture + déclenche les droits Articles 17/20.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -188,6 +212,32 @@ private fun RgpdTab(consents: List<ClientConsentDto>) {
                         label = { Text(if (c.granted) "Accordé" else "Refusé") },
                     )
                 }
+            }
+        }
+        item {
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(8.dp))
+            Text("Droits cliente", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Article 20 : export portable des données personnelles. " +
+                    "Article 17 : demande de suppression (fenêtre 30j annulable).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onExport, enabled = !busy) {
+                    Text("Exporter (JSON)")
+                }
+                TextButton(onClick = onRequestDeletion, enabled = !busy) {
+                    Text("Demander suppression")
+                }
+            }
+            message?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary)
             }
         }
     }

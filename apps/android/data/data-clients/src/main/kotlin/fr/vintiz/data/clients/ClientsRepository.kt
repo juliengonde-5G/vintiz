@@ -48,6 +48,36 @@ class ClientsRepository(
             VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
         }
     }
+
+    /**
+     * RGPD Article 20 — récupère l'export JSON et le retourne en bytes.
+     * L'écran appelant peut le partager via FileProvider Intent.
+     */
+    suspend fun exportData(clientId: String): VintizResult<ByteArray> = try {
+        val response = api.exportData(clientId)
+        if (!response.isSuccessful) {
+            VintizResult.Failure(VintizError.Http(response.code(), response.message()))
+        } else {
+            val body = response.body()
+                ?: return VintizResult.Failure(VintizError.Unknown("Export vide"))
+            VintizResult.Success(body.bytes())
+        }
+    } catch (io: IOException) {
+        VintizResult.Failure(VintizError.Network)
+    } catch (http: HttpException) {
+        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+    }
+
+    /**
+     * RGPD Article 17 — demande de suppression soft.
+     */
+    suspend fun requestDeletion(clientId: String): VintizResult<ClientDeletionResponseDto> = try {
+        VintizResult.Success(api.requestDeletion(clientId))
+    } catch (io: IOException) {
+        VintizResult.Failure(VintizError.Network)
+    } catch (http: HttpException) {
+        VintizResult.Failure(VintizError.Http(http.code(), http.message() ?: ""))
+    }
 }
 
 internal fun ClientDto.toCache(now: Long): ClientCacheEntity = ClientCacheEntity(

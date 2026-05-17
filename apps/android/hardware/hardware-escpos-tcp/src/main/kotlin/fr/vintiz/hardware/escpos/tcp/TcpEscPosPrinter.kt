@@ -4,6 +4,7 @@ import fr.vintiz.core.common.VintizError
 import fr.vintiz.core.common.VintizResult
 import fr.vintiz.hardware.api.EscPosBytes
 import fr.vintiz.hardware.api.PrinterService
+import fr.vintiz.hardware.api.isPrivateLanTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -41,6 +42,12 @@ class TcpEscPosPrinter(
     }
 
     override suspend fun isReady(): VintizResult<Boolean> = withContext(Dispatchers.IO) {
+        if (!host.isPrivateLanTarget()) {
+            Timber.w("MUNBYN host refusé (hors LAN privé) : %s", host)
+            return@withContext VintizResult.Failure(
+                VintizError.Validation("printer.host", "Host imprimante hors LAN ($host)")
+            )
+        }
         runCatching {
             socketFactory.newSocket().use { socket ->
                 socket.connect(InetSocketAddress(host, port), connectTimeoutMs)
@@ -63,6 +70,11 @@ class TcpEscPosPrinter(
 
     private suspend fun sendWithRetry(payload: ByteArray): VintizResult<Unit> =
         withContext(Dispatchers.IO) {
+            if (!host.isPrivateLanTarget()) {
+                return@withContext VintizResult.Failure(
+                    VintizError.Validation("printer.host", "Host imprimante hors LAN ($host)")
+                )
+            }
             var lastError: Throwable? = null
             for (attempt in 0 until RETRIES.size) {
                 try {

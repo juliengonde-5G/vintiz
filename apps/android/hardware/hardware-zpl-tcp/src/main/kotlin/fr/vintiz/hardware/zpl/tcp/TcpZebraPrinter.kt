@@ -3,6 +3,7 @@ package fr.vintiz.hardware.zpl.tcp
 import fr.vintiz.core.common.VintizError
 import fr.vintiz.core.common.VintizResult
 import fr.vintiz.hardware.api.LabelPrinterService
+import fr.vintiz.hardware.api.isPrivateLanTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -33,6 +34,11 @@ class TcpZebraPrinter(
     }
 
     override suspend fun isReady(): VintizResult<Boolean> = withContext(Dispatchers.IO) {
+        if (!host.isPrivateLanTarget()) {
+            return@withContext VintizResult.Failure(
+                VintizError.Validation("label.host", "Host Zebra hors LAN ($host)")
+            )
+        }
         runCatching {
             socketFactory.newSocket().use { socket ->
                 socket.connect(InetSocketAddress(host, port), connectTimeoutMs)
@@ -48,6 +54,11 @@ class TcpZebraPrinter(
     }
 
     override suspend fun printZpl(zpl: String): VintizResult<Unit> = withContext(Dispatchers.IO) {
+        if (!host.isPrivateLanTarget()) {
+            return@withContext VintizResult.Failure(
+                VintizError.Validation("label.host", "Host Zebra hors LAN ($host)")
+            )
+        }
         var lastError: Throwable? = null
         for (attempt in 0 until RETRIES.size) {
             try {
