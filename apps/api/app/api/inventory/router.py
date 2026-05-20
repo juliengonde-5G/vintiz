@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.product import Category, Product, ProductStatus
 from app.models.inventory import Supplier, Order
+from app.models.store import StoreZone
 from app.models.user import User
 from app.services.batch import BatchService
 from app.services.photo import PhotoService
@@ -30,6 +31,37 @@ from app.schemas.common import PaginatedResponse
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
+# Statuses that mean "physically on the shop floor" (en magasin / en rayon) as
+# opposed to held in the back stock. Drives the inventory stock/magasin split
+# and the automatic stamping of the shelf date.
+FLOOR_STATUSES = {
+    ProductStatus.display,
+    ProductStatus.displayed,
+    ProductStatus.discounted,
+    ProductStatus.deep_discounted,
+}
+
+
+def _stamp_lifecycle_dates(product: Product) -> None:
+    """Backfill the intake / shelf anchors so the inventory dates are never
+    blank for products created or moved through the normal flow.
+
+    - ``received_at`` (entrée en stock) is stamped the first time we see the
+      product if it isn't already set.
+    - When a product sits on the floor, ``displayed_at`` and ``shelf_date``
+      (mise en rayon) are stamped once. ``shelf_date`` is what scoring and
+      the labels read, so we keep the two in sync.
+    """
+    now = datetime.now(timezone.utc)
+    if product.received_at is None:
+        product.received_at = now
+    if product.status in FLOOR_STATUSES:
+        if product.displayed_at is None:
+            product.displayed_at = now
+        if product.shelf_date is None:
+            product.shelf_date = now
+
+
 # ---------------------------------------------------------------------------
 # Products
 # ---------------------------------------------------------------------------
@@ -42,15 +74,35 @@ async def list_products(
     page_size: int = Query(20, ge=1, le=100),
     category_id: uuid.UUID | None = None,
     status: str | None = None,
+    location: str | None = Query(
+        None,
+        description="Filtre localisation : 'stock' (réserve) ou 'magasin' (en rayon)",
+    ),
     search: str | None = None,
 ):
-    """List products with pagination, filtering, and search."""
+    """List products with pagination, filtering, and search.
+
+    ``location`` is a coarse split over the life-cycle statuses: ``stock``
+    matches the back-room states, ``magasin`` matches everything physically on
+    the floor. It coexists with the finer ``status`` filter.
+    """
     query = select(Product)
 
     if category_id:
         query = query.where(Product.category_id == category_id)
     if status:
         query = query.where(Product.status == status)
+    if location == "stock":
+        query = query.where(
+            Product.status.in_([
+                ProductStatus.stock,
+                ProductStatus.received,
+                ProductStatus.sorted,
+                ProductStatus.tagged,
+            ])
+        )
+    elif location == "magasin":
+        query = query.where(Product.status.in_(FLOOR_STATUSES))
     if search:
         pattern = f"%{search}%"
         query = query.where(
@@ -70,6 +122,19 @@ async def list_products(
     query = query.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
     products = result.scalars().all()
+
+    # Resolve zone names in a single query so the inventory table can show
+    # the boutique placement ("Emplacement") without an N+1.
+    zone_ids = {p.zone_id for p in products if p.zone_id is not None}
+    zone_names: dict = {}
+    if zone_ids:
+        zrows = await db.execute(
+            select(StoreZone.id, StoreZone.name).where(StoreZone.id.in_(zone_ids))
+        )
+        zone_names = {zid: zname for zid, zname in zrows.all()}
+    for p in products:
+        # Transient attribute read by ProductResponse (from_attributes).
+        p.zone_name = zone_names.get(p.zone_id)
 
     pages = (total + page_size - 1) // page_size
 
@@ -187,11 +252,15 @@ async def create_product(
         size=product_in.size,
         color=product_in.color,
         brand=product_in.brand,
+        condition=product_in.condition,
         purchase_price=product_in.purchase_price,
         sale_price=product_in.sale_price,
         status=status_enum,
         week_number=product_in.week_number,
     )
+    # Stamp entrée-stock (and mise-en-rayon when created directly on the floor)
+    # so the inventory dates are populated from the very first save.
+    _stamp_lifecycle_dates(product)
     db.add(product)
     await db.flush()
     await db.refresh(product)
@@ -434,7 +503,22 @@ async def update_product(
 
     update_data = product_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
+        # Coerce the incoming status string to the enum so the FLOOR_STATUSES
+        # membership test below (and the column itself) compare correctly.
+        if field == "status" and isinstance(value, str):
+            try:
+                value = ProductStatus(value)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"status invalide : {value}",
+                )
         setattr(product, field, value)
+
+    # Moving a product onto the floor (mise en rayon) stamps the shelf date
+    # automatically when the caller didn't provide one — keeps scoring,
+    # labels and the inventory "Mise en rayon" column consistent.
+    _stamp_lifecycle_dates(product)
 
     await db.flush()
     await db.refresh(product)

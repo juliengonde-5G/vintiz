@@ -24,7 +24,7 @@ import { usePosPayment } from '@/hooks/usePosPayment';
 import { api } from '@/lib/api';
 import { useConnectivity } from '@/lib/connectivity';
 import { isPosWizardEnabled } from '@/lib/feature-flags';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, mediaUrl } from '@/lib/format';
 import { useLandscapeLock } from '@/lib/orientation';
 import {
   count as queueCount,
@@ -1719,7 +1719,7 @@ export default function POSPage() {
                       {product.photo_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={product.photo_url}
+                          src={mediaUrl(product.photo_url)}
                           alt={product.name}
                           className="w-full h-full object-cover"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}

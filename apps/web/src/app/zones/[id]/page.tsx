@@ -11,7 +11,7 @@ import SectionHeader from '@/components/ui/SectionHeader';
 import EmptyState from '@/components/ui/EmptyState';
 import Sparkline from '@/components/ui/Sparkline';
 import { api } from '@/lib/api';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, mediaUrl } from '@/lib/format';
 
 type Zone = {
   id: string;
@@ -369,7 +369,7 @@ export default function ZoneDetailPage() {
                     <div className="rounded-2xl bg-white p-4 shadow-vz-soft hover:shadow-vz-soft transition-all flex gap-3">
                       {p.photo_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.photo_url} alt={p.name} className="h-16 w-16 rounded-xl object-cover flex-shrink-0" />
+                        <img src={mediaUrl(p.photo_url)} alt={p.name} className="h-16 w-16 rounded-xl object-cover flex-shrink-0" />
                       ) : (
                         <div className="h-16 w-16 rounded-xl bg-vz-bg flex-shrink-0" />
                       )}

@@ -17,6 +17,27 @@
 const NBSP = ' ';
 const NNBSP = ' ';
 
+// Same resolution rule as lib/api.ts. Uploaded product photos are served by
+// the API at ``/uploads/...`` ; the admin app runs on a different origin so a
+// raw relative ``<img src>`` would 404. ``mediaUrl`` prefixes the API origin
+// for those paths only, leaving Next public assets (``/zones/…``,
+// ``/logo-teal.png``) and absolute / data / blob URLs untouched.
+const MEDIA_API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+/**
+ * Resolve a stored media path to a browser-loadable URL.
+ *
+ *   mediaUrl('/uploads/products/ab/cd.jpg') → 'http://api…/uploads/products/ab/cd.jpg'
+ *   mediaUrl('/zones/standard-1.jpeg')      → '/zones/standard-1.jpeg'   (unchanged)
+ *   mediaUrl('https://cdn/x.jpg')           → 'https://cdn/x.jpg'        (unchanged)
+ *   mediaUrl(null)                          → ''
+ */
+export function mediaUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.startsWith('/uploads/')) return `${MEDIA_API_BASE}${url}`;
+  return url;
+}
+
 export type CurrencyOptions = {
   /** Number of decimals (default 2). Use 0 for KPI tiles, 2 for prices. */
   decimals?: number;

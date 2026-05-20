@@ -1017,6 +1017,54 @@ async def generate_legal_persona_removed(
 
 
 # ---------------------------------------------------------------------------
+# Persona Gestion de magasin — audit du module d'entrée produit
+# ---------------------------------------------------------------------------
+
+@router.get("/persona/store-ops")
+async def get_store_ops_persona(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Audit du module d'entrée produit par la persona Responsable de magasin.
+
+    Renvoie le rapport caché de la semaine s'il existe (régénéré au besoin),
+    sinon le construit à la volée. Les métriques reflètent l'état temps réel
+    de l'inventaire (photo, analyse IA, zone, dates) ; la narration est
+    générée par Claude avec un repli déterministe.
+    """
+    from app.services.store_ops_audit import build_store_ops_report
+
+    cached = await _get_setting(db, "ai_store_ops_persona_cache")
+    if cached:
+        try:
+            data = json.loads(cached)
+            now = datetime.now(timezone.utc)
+            if data.get("week") == now.isocalendar()[1] and data.get("year") == now.year:
+                return data
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    result = await build_store_ops_report(db)
+    await _set_setting(db, "ai_store_ops_persona_cache", json.dumps(result, ensure_ascii=False))
+    await db.commit()
+    return result
+
+
+@router.post("/persona/store-ops/regenerate")
+async def regenerate_store_ops_persona(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Régénération manuelle de l'audit Responsable de magasin (manager)."""
+    from app.services.store_ops_audit import build_store_ops_report
+
+    result = await build_store_ops_report(db)
+    await _set_setting(db, "ai_store_ops_persona_cache", json.dumps(result, ensure_ascii=False))
+    await db.commit()
+    return result
+
+
+# ---------------------------------------------------------------------------
 # AI Companion — briefing / chat / tasks
 # ---------------------------------------------------------------------------
 

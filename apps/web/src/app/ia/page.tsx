@@ -8,7 +8,7 @@ import Button from '@/components/ui/Button';
 import CompanionHero from '@/components/ai/CompanionHero';
 import RecosDuJourTab from '@/components/ia/RecosDuJourTab';
 import { api } from '@/lib/api';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, mediaUrl } from '@/lib/format';
 
 interface TrendItem {
   product_id: string;
@@ -562,6 +562,13 @@ export default function IAPage() {
             <span>📣</span>
             <span>Rapport marketing</span>
           </Link>
+          <Link
+            href="/ia/gestion-magasin"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl min-h-[48px] whitespace-nowrap bg-white border border-vz-line text-vz-ink font-medium hover:bg-vz-bg-alt transition-all"
+          >
+            <span>🏬</span>
+            <span>Audit boutique</span>
+          </Link>
         </div>
 
         {/* RECOS DU JOUR TAB (L2.5) */}
@@ -808,7 +815,7 @@ export default function IAPage() {
                                       <div className="aspect-square rounded-lg overflow-hidden bg-vz-bg-alt flex items-center justify-center">
                                         {p.photo_url ? (
                                           // eslint-disable-next-line @next/next/no-img-element
-                                          <img src={p.photo_url} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                          <img src={mediaUrl(p.photo_url)} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                                         ) : (
                                           <span className="text-[10px] text-vz-ink-mute">Sans visuel</span>
                                         )}

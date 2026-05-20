@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AccountShell from "@/components/account/AccountShell";
+import { mediaUrl } from "@/lib/media";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -93,7 +94,7 @@ export default function AccountSelectionPage() {
                 className="aspect-[4/5] flex items-end p-3"
                 style={{
                   background: it.photo_url
-                    ? `url(${it.photo_url}) center/cover`
+                    ? `url(${mediaUrl(it.photo_url)}) center/cover`
                     : FALLBACK_GRADIENTS[i % FALLBACK_GRADIENTS.length],
                 }}
               >
