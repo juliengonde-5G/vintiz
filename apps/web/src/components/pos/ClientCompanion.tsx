@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { mediaUrl } from '@/lib/format';
 
 interface Suggestion {
   product_id: string;
@@ -208,7 +209,7 @@ export default function ClientCompanion({
                       <div className="aspect-square bg-gray-100">
                         {s.photo_url ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={s.photo_url} alt="" className="w-full h-full object-cover" />
+                          <img src={mediaUrl(s.photo_url)} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-2xl text-gray-300">
                             👗

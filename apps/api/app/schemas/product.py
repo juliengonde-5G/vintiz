@@ -27,6 +27,7 @@ class ProductCreate(BaseModel):
     size: str | None = None
     color: str | None = None
     brand: str | None = None
+    condition: str | None = None
     purchase_price: float = 0
     sale_price: float = 0
     status: str = "stock"
@@ -39,6 +40,7 @@ class ProductUpdate(BaseModel):
     size: str | None = None
     color: str | None = None
     brand: str | None = None
+    condition: str | None = None
     photo_url: str | None = None
     purchase_price: float | None = None
     sale_price: float | None = None
@@ -57,13 +59,23 @@ class ProductResponse(BaseModel):
     size: str | None
     color: str | None
     brand: str | None
+    condition: str | None = None
     photo_url: str | None
     purchase_price: float
     sale_price: float
     status: str
     week_number: int | None
     trend_score: float | None
+    # Life-cycle anchors. ``received_at`` = entrée en stock, ``shelf_date`` /
+    # ``displayed_at`` = mise en rayon. Surfaced so the inventory table can
+    # distinguish "en stock" vs "en magasin" and show both dates.
+    received_at: datetime | None = None
+    displayed_at: datetime | None = None
     shelf_date: datetime | None = None
+    zone_id: uuid.UUID | None = None
+    # Resolved zone name (boutique placement). Populated by the list endpoint
+    # which joins store_zones; defaults to None elsewhere.
+    zone_name: str | None = None
     description: str | None = None
     created_at: datetime
     updated_at: datetime

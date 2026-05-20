@@ -7,6 +7,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { api } from '@/lib/api';
+import { mediaUrl } from '@/lib/format';
 
 interface Product {
   id: string;
@@ -189,7 +190,7 @@ export default function AdminSelectionPage() {
                     <div className="w-12 h-16 rounded bg-vz-bg-alt flex-shrink-0 overflow-hidden">
                       {p?.photo_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.photo_url} alt={p.name} className="w-full h-full object-cover" />
+                        <img src={mediaUrl(p.photo_url)} alt={p.name} className="w-full h-full object-cover" />
                       ) : null}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -249,7 +250,7 @@ export default function AdminSelectionPage() {
                     <div className="aspect-[4/5] bg-vz-bg-alt rounded mb-2 overflow-hidden">
                       {p.photo_url && (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.photo_url} alt={p.name} className="w-full h-full object-cover" />
+                        <img src={mediaUrl(p.photo_url)} alt={p.name} className="w-full h-full object-cover" />
                       )}
                     </div>
                     <p className="text-xs font-medium text-black truncate">{p.brand || '—'}</p>

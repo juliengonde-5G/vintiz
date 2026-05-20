@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import AccountShell from "@/components/account/AccountShell";
 import AiBadge from "@/components/AiBadge";
 import AiDisclaimer from "@/components/AiDisclaimer";
+import { mediaUrl } from "@/lib/media";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -440,7 +441,7 @@ function ProductGrid({
             <div className="aspect-square bg-gray-100 relative">
               {item.photo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={item.photo_url} alt={item.name} className="w-full h-full object-cover" />
+                <img src={mediaUrl(item.photo_url)} alt={item.name} className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-4xl text-gray-300">
                   👗

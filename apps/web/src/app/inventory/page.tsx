@@ -10,14 +10,32 @@ import Badge from '@/components/ui/Badge';
 import Card from '@/components/ui/Card';
 import LabelBatchBar from '@/components/inventory/LabelBatchBar';
 import { api } from '@/lib/api';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, mediaUrl } from '@/lib/format';
 
 const statusLabels: Record<string, { label: string; variant: 'stock' | 'display' | 'sold' | 'returned' }> = {
   stock: { label: 'En stock', variant: 'stock' },
-  display: { label: 'En vitrine', variant: 'display' },
+  received: { label: 'Réceptionné', variant: 'stock' },
+  sorted: { label: 'Trié', variant: 'stock' },
+  tagged: { label: 'Étiqueté', variant: 'stock' },
+  display: { label: 'En rayon', variant: 'display' },
+  displayed: { label: 'En rayon', variant: 'display' },
+  discounted: { label: 'Démarqué', variant: 'display' },
+  deep_discounted: { label: 'Démarqué -', variant: 'display' },
   sold: { label: 'Vendu', variant: 'sold' },
-  returned: { label: 'Retourne', variant: 'returned' },
+  returned: { label: 'Retourné', variant: 'returned' },
+  returned_to_sorting: { label: 'Retour tri', variant: 'returned' },
+  donated: { label: 'Donné', variant: 'returned' },
 };
+
+// Coarse "où est l'article" view used by the Stock / Magasin split.
+const FLOOR_STATUSES = new Set(['display', 'displayed', 'discounted', 'deep_discounted']);
+const STOCK_STATUSES = new Set(['stock', 'received', 'sorted', 'tagged']);
+
+function locationOf(status: string): { label: string; tone: string } | null {
+  if (FLOOR_STATUSES.has(status)) return { label: 'Magasin', tone: 'bg-vz-teal-soft text-vz-teal-deep' };
+  if (STOCK_STATUSES.has(status)) return { label: 'Stock', tone: 'bg-amber-100 text-amber-700' };
+  return null;
+}
 
 interface Category {
   id: string;
@@ -38,6 +56,7 @@ interface Product {
   status: string;
   trend_score: number | null;
   week_number: number | null;
+  received_at: string | null;
   shelf_date: string | null;
   zone_name: string | null;
   photo_url?: string | null;
@@ -58,6 +77,7 @@ export default function InventoryPage() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState<'' | 'stock' | 'magasin'>('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -81,6 +101,7 @@ export default function InventoryPage() {
       if (search) params.set('search', search);
       if (categoryFilter) params.set('category_id', categoryFilter);
       if (statusFilter) params.set('status', statusFilter);
+      if (locationFilter) params.set('location', locationFilter);
 
       const res = await api.get(`/api/inventory/products?${params}`);
       if (res.ok) {
@@ -98,7 +119,7 @@ export default function InventoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, search, categoryFilter, statusFilter]);
+  }, [currentPage, search, categoryFilter, statusFilter, locationFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -218,6 +239,28 @@ export default function InventoryPage() {
           <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
         )}
 
+        {/* Localisation segmented control — Stock (réserve) vs Magasin (rayon) */}
+        <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 mb-4">
+          {([
+            { key: '', label: 'Tous' },
+            { key: 'stock', label: 'En stock' },
+            { key: 'magasin', label: 'En magasin' },
+          ] as const).map((opt) => (
+            <button
+              key={opt.key || 'all'}
+              type="button"
+              onClick={() => { setLocationFilter(opt.key); setCurrentPage(1); }}
+              className={`min-h-[40px] px-4 rounded-lg text-sm font-medium transition-colors ${
+                locationFilter === opt.key
+                  ? 'bg-vz-teal text-white'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <div className="flex-1">
@@ -250,9 +293,9 @@ export default function InventoryPage() {
           >
             <option value="">Tous les statuts</option>
             <option value="stock">En stock</option>
-            <option value="display">En vitrine</option>
+            <option value="display">En rayon</option>
             <option value="sold">Vendu</option>
-            <option value="returned">Retourne</option>
+            <option value="returned">Retourné</option>
           </select>
         </div>
 
@@ -288,6 +331,8 @@ export default function InventoryPage() {
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600 text-right">Prix achat</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600 text-right">Prix vente</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Statut</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-600">Localisation</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-600">Entrée stock</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Mise en rayon</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Emplacement</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600 text-right">Score</th>
@@ -319,7 +364,7 @@ export default function InventoryPage() {
                         <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0">
                           {p.photo_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={p.photo_url} alt={p.name}
+                            <img src={mediaUrl(p.photo_url)} alt={p.name}
                               className="w-full h-full object-cover"
                               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                           ) : (
@@ -341,6 +386,19 @@ export default function InventoryPage() {
                       <td className="px-4 py-3">
                         <Badge variant={s.variant}>{s.label}</Badge>
                       </td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const loc = locationOf(p.status);
+                          return loc ? (
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${loc.tone}`}>
+                              {loc.label}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{formatShelfDate(p.received_at)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{formatShelfDate(p.shelf_date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{p.zone_name || '-'}</td>
                       <td className="px-4 py-3 text-sm text-right">

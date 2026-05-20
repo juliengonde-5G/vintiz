@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { mediaUrl } from '@/lib/format';
 
 interface Photo {
   id: string;
@@ -164,7 +165,7 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={photo.url}
+                src={mediaUrl(photo.url)}
                 alt={`Photo ${idx + 1}`}
                 className="w-16 h-16 object-cover rounded border border-gray-200"
               />

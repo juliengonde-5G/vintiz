@@ -6,6 +6,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
+import { mediaUrl } from '@/lib/format';
 
 interface InstaPost {
   produit_id?: string;
@@ -220,7 +221,7 @@ export default function MarketingReportPage() {
                         <div className="aspect-square rounded-vz-lg overflow-hidden bg-vz-bg-alt mb-3">
                           {hero?.photo_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={hero.photo_url} alt={hero.name} className="w-full h-full object-cover" />
+                            <img src={mediaUrl(hero.photo_url)} alt={hero.name} className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-xs text-vz-ink-mute p-3 text-center">
                               {dm.post_de_la_semaine.visual_brief || 'Visuel à générer'}
