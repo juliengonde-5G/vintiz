@@ -31,7 +31,7 @@ apps/
   web/          Next.js 14 — Interface d'administration (back-office)
   site/         Next.js 14 — Site vitrine public + espace client
 docker/         Dockerfiles + docker-compose{,-prod}.yml + Caddyfile
-scripts/        seed_data.py, seed_test_products.py, deploy.sh, diag.sh, reset-prod.sh, smoke_prod.sh
+scripts/        seed_data.py, seed_test_products.py, deploy.sh, diag.sh, purge_databases.py, smoke_prod.sh
 docs/           Documentation technique et utilisateur
 .github/        Workflow auto-deploy (deploy.yml)
 .claude/        Hooks Claude Code (session-start) + settings.json

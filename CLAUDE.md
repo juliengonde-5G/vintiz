@@ -20,7 +20,7 @@ scripts/
   seed_test_products.py       15 produits de test POS + codes-barres PNG
   deploy.sh                   Déploiement prod (rebuild + migrations + smoke tests)
   diag.sh                     Diagnostic auto Docker/local (PostgreSQL, API, tables)
-  reset-prod.sh               Remise à zéro DB prod (idempotent, documenté)
+  purge_databases.py          Purge one-shot des données opérationnelles (--dry-run / --confirm)
   backup.sh                   Backup PostgreSQL
   smoke_prod.sh               Smoke-test post-deploy (read-only, OpenAPI + endpoints)
 docs/
