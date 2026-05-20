@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.product import Category, Product, ProductStatus
 from app.models.inventory import Supplier, Order
+from app.models.brand_tier import BrandTier
 from app.models.store import StoreZone
 from app.models.user import User
 from app.services.batch import BatchService
@@ -538,6 +539,51 @@ async def delete_product(
         raise HTTPException(status_code=404, detail="Product not found")
     product.status = ProductStatus.returned
     await db.flush()
+
+
+# ---------------------------------------------------------------------------
+# Brands — autocomplete source for the product-intake form
+# ---------------------------------------------------------------------------
+
+# Curated well-known labels so the intake brand field offers sensible
+# suggestions even before the catalogue / brand_tiers are populated.
+KNOWN_BRANDS = [
+    "Sandro", "Maje", "Claudie Pierlot", "Sézane", "ba&sh", "The Kooples",
+    "Zadig & Voltaire", "IRO", "Isabel Marant", "Comptoir des Cotonniers",
+    "Gérard Darel", "American Vintage", "Sessùn", "Vanessa Bruno", "Bash",
+    "COS", "Arket", "& Other Stories", "Massimo Dutti", "Zara", "Mango",
+    "Levi's", "Petit Bateau", "Antik Batik", "Bel Air", "Des Petits Hauts",
+    "Chanel", "Dior", "Hermès", "Louis Vuitton", "Gucci", "Prada",
+    "Saint Laurent", "Céline", "Balenciaga", "Burberry", "Max Mara",
+    "Moncler", "Lacoste", "Ralph Lauren", "Tommy Hilfiger", "Nike", "Adidas",
+]
+
+
+@router.get("/brands")
+async def list_brands(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Distinct brand names for the intake autocomplete.
+
+    Union of: brands already used in the catalogue, the manager-editable
+    ``brand_tiers`` table, and a curated well-known list — deduplicated
+    case-insensitively and sorted alphabetically.
+    """
+    catalog_rows = await db.execute(
+        select(Product.brand).where(Product.brand.is_not(None)).distinct()
+    )
+    catalog = [b for (b,) in catalog_rows.all() if b and b.strip()]
+
+    tier_rows = await db.execute(select(BrandTier.name))
+    tiers = [n.title() for (n,) in tier_rows.all() if n and n.strip()]
+
+    seen: dict[str, str] = {}
+    for brand in [*catalog, *tiers, *KNOWN_BRANDS]:
+        key = brand.strip().lower()
+        if key and key not in seen:
+            seen[key] = brand.strip()
+    return sorted(seen.values(), key=lambda s: s.lower())
 
 
 # ---------------------------------------------------------------------------

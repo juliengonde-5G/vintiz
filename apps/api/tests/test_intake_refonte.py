@@ -249,3 +249,66 @@ async def test_store_ops_routes_registered():
     paths = {r.path for r in app.routes if hasattr(r, "path")}
     assert "/api/ai/persona/store-ops" in paths
     assert "/api/ai/persona/store-ops/regenerate" in paths
+
+
+# ---------------------------------------------------------------------------
+# Pricing engine — brand awareness + justification
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_condition_accepts_codes_and_ai_strings():
+    from app.services.ai_pricing import _normalize_condition
+
+    assert _normalize_condition("excellent") == "neuf"
+    assert _normalize_condition("neuf") == "neuf"
+    assert _normalize_condition("très bon état") == "tres_bon"
+    assert _normalize_condition("tres_bon") == "tres_bon"
+    assert _normalize_condition("correct") == "correct"
+    assert _normalize_condition("bon") == "bon"
+    assert _normalize_condition(None) is None
+
+
+def test_fallback_brand_factor_classifies_known_labels():
+    from app.services.ai_pricing import _fallback_brand_factor
+
+    factor, label = _fallback_brand_factor("Chanel")
+    assert label == "premium" and factor > 1.0
+    factor, label = _fallback_brand_factor("Sandro Paris")
+    assert label == "mid" and factor > 1.0
+    assert _fallback_brand_factor("Marque Inconnue") == (1.0, None)
+    assert _fallback_brand_factor(None) == (1.0, None)
+
+
+def test_build_justification_mentions_new_price_anchor():
+    from app.services.ai_pricing import _build_justification
+
+    text = _build_justification(
+        suggested=45.0, brand="Sandro", brand_label="mid", cond_code="tres_bon",
+        new_price=120.0, resale_from_new=54.0, grid_suggestion=30.0,
+        avg_sold_price=None, sales_count=0,
+    )
+    assert "120" in text and "Sandro" in text and "45" in text
+
+
+@pytest.mark.anyio
+async def test_get_brand_tier_substring_match():
+    from app.models.brand_tier import BrandTier, BrandTierLevel
+    from app.services import brand_tiers
+
+    eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with eng.begin() as conn:
+        await conn.run_sync(
+            lambda c: Base.metadata.create_all(c, tables=[BrandTier.__table__])
+        )
+    Session = async_sessionmaker(eng, expire_on_commit=False)
+    brand_tiers.invalidate_cache()
+    try:
+        async with Session() as s:
+            s.add(BrandTier(name="sandro", tier=BrandTierLevel.mid))
+            await s.commit()
+            assert await brand_tiers.get_brand_tier(s, "SANDRO PARIS S.A.S.") == "mid"
+            assert await brand_tiers.get_brand_tier(s, "Inconnue") is None
+            assert await brand_tiers.get_brand_tier(s, None) is None
+    finally:
+        brand_tiers.invalidate_cache()
+        await eng.dispose()

@@ -22,20 +22,13 @@ import Sidebar from '@/components/layout/Sidebar';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
+import StorePlanPicker, { type PlanZone } from '@/components/inventory/StorePlanPicker';
 import { api } from '@/lib/api';
 import { mediaUrl } from '@/lib/format';
 
 interface Category {
   id: string;
   name: string;
-}
-
-interface ZoneStat {
-  zone_id: string;
-  zone_name: string;
-  product_count: number;
-  capacity: number;
-  occupancy_percent: number;
 }
 
 interface VisionResult {
@@ -57,7 +50,12 @@ interface PriceSuggestion {
   suggested_price: number;
   price_range: { min: number; max: number };
   reasoning: string[];
-  market_data: { avg_sold_price: number | null; recent_sales_count: number };
+  justification?: string;
+  market_data: {
+    avg_sold_price: number | null;
+    recent_sales_count: number;
+    new_price_estimate?: number | null;
+  };
 }
 
 interface ZoneSuggestion {
@@ -157,6 +155,7 @@ export default function NewProductWizard() {
 
   // Form
   const [categories, setCategories] = useState<Category[]>([]);
+  const [brands, setBrands] = useState<string[]>([]);
   const [form, setForm] = useState({ name: '', brand: '', category_id: '', color: '', size: '', condition: '' });
   const [price, setPrice] = useState('');
   // Surfaced on the exit screen so the operator knows the photo didn't attach.
@@ -170,7 +169,7 @@ export default function NewProductWizard() {
   const [created, setCreated] = useState<CreatedProduct | null>(null);
   const [saving, setSaving] = useState(false);
   const [destination, setDestination] = useState<'rayon' | 'stock'>('rayon');
-  const [zones, setZones] = useState<ZoneStat[]>([]);
+  const [planZones, setPlanZones] = useState<PlanZone[]>([]);
   const [zoneSuggestion, setZoneSuggestion] = useState<ZoneSuggestion | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState('');
 
@@ -183,6 +182,9 @@ export default function NewProductWizard() {
   useEffect(() => {
     api.get('/api/inventory/categories').then(async (res) => {
       if (res.ok) setCategories(await res.json());
+    }).catch(() => {});
+    api.get('/api/inventory/brands').then(async (res) => {
+      if (res.ok) setBrands(await res.json());
     }).catch(() => {});
   }, []);
 
@@ -233,7 +235,8 @@ export default function NewProductWizard() {
     try {
       const params = new URLSearchParams({ category_id: form.category_id });
       if (form.brand) params.set('brand', form.brand);
-      if (vision?.etat) params.set('condition', vision.etat);
+      const cond = form.condition || vision?.etat;
+      if (cond) params.set('condition', cond);
       const res = await api.post(`/api/ai/pricing/suggest?${params}`, {});
       if (res.ok) {
         const data: PriceSuggestion = await res.json();
@@ -243,7 +246,7 @@ export default function NewProductWizard() {
     } catch { /* graceful — manual price still possible */ }
     setPricingLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.category_id, form.brand, vision?.etat]);
+  }, [form.category_id, form.brand, form.condition, vision?.etat]);
 
   useEffect(() => {
     if (step === 'price') void fetchPrice();
@@ -312,13 +315,13 @@ export default function NewProductWizard() {
   const validatePrice = async () => {
     const product = await createOrUpdate();
     if (!product) return;
-    // Prepare the zone step.
+    // Prepare the zone step: load the boutique plan + the AI zone suggestion.
     try {
       const [zres, sres] = await Promise.all([
-        api.get('/api/ai/mapping/zones'),
+        api.get('/api/admin/zones'),
         api.get(`/api/inventory/products/${product.id}/suggest-zone`),
       ]);
-      if (zres.ok) setZones(await zres.json());
+      if (zres.ok) setPlanZones(await zres.json());
       if (sres.ok) {
         const sug: ZoneSuggestion = await sres.json();
         setZoneSuggestion(sug);
@@ -342,8 +345,8 @@ export default function NewProductWizard() {
       if (res.ok) {
         const updated: CreatedProduct = await res.json();
         // The PUT response (ProductResponse) doesn't resolve the zone name —
-        // backfill it from the zone list so the exit screen can show it.
-        const zoneName = zones.find((z) => z.zone_id === selectedZoneId)?.zone_name ?? null;
+        // backfill it from the plan so the exit screen can show it.
+        const zoneName = planZones.find((z) => z.id === selectedZoneId)?.name ?? null;
         setCreated({ ...updated, zone_name: destination === 'rayon' ? zoneName : null });
       } else {
         const d = await res.json().catch(() => ({}));
@@ -410,7 +413,7 @@ export default function NewProductWizard() {
     setPriceSuggestion(null);
     setCreated(null);
     setDestination('rayon');
-    setZones([]);
+    setPlanZones([]);
     setZoneSuggestion(null);
     setSelectedZoneId('');
     setLabelUrl('');
@@ -564,7 +567,19 @@ export default function NewProductWizard() {
             <Card title="Étape 1 — Nom, marque, catégorie">
               <div className="space-y-4">
                 <Input label="Nom du produit" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex : Robe fleurie Sandro" required />
-                <Input label="Marque" value={form.brand} onChange={(e) => set('brand', e.target.value)} placeholder="Ex : Sandro, Maje…" />
+                <div>
+                  <Input
+                    label="Marque"
+                    value={form.brand}
+                    onChange={(e) => set('brand', e.target.value)}
+                    placeholder="Saisir ou choisir une marque…"
+                    list="brands-list"
+                    autoComplete="off"
+                  />
+                  <datalist id="brands-list">
+                    {brands.map((b) => <option key={b} value={b} />)}
+                  </datalist>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-black mb-1.5">Catégorie</label>
                   <select
@@ -651,14 +666,32 @@ export default function NewProductWizard() {
                       </button>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">Fourchette {priceSuggestion.price_range.min.toFixed(2)} – {priceSuggestion.price_range.max.toFixed(2)} €</p>
+                    {priceSuggestion.market_data?.new_price_estimate ? (
+                      <p className="text-xs text-gray-500 mt-0.5">Prix neuf estimé : ~{Math.round(priceSuggestion.market_data.new_price_estimate)} €</p>
+                    ) : null}
+                    {priceSuggestion.justification && (
+                      <div className="mt-2 p-2 rounded-lg bg-white/70 border border-vz-teal-soft">
+                        <p className="text-[11px] uppercase tracking-wide text-vz-ink-mute mb-0.5">Justification</p>
+                        <p className="text-xs text-gray-700 leading-snug">{priceSuggestion.justification}</p>
+                      </div>
+                    )}
                     {priceSuggestion.reasoning.length > 0 && (
-                      <ul className="mt-2 space-y-0.5">
-                        {priceSuggestion.reasoning.map((r, i) => <li key={i} className="text-xs text-gray-400">• {r}</li>)}
-                      </ul>
+                      <details className="mt-2">
+                        <summary className="text-xs text-vz-teal cursor-pointer">Détail du calcul</summary>
+                        <ul className="mt-1 space-y-0.5">
+                          {priceSuggestion.reasoning.map((r, i) => <li key={i} className="text-xs text-gray-400">• {r}</li>)}
+                        </ul>
+                      </details>
                     )}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">Pas assez de données marché — saisissez le prix manuellement.</p>
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
+                    <p className="text-sm text-amber-800">Pas assez de données pour suggérer un prix.</p>
+                    {priceSuggestion?.justification && (
+                      <p className="text-xs text-amber-700 mt-1">{priceSuggestion.justification}</p>
+                    )}
+                    <p className="text-xs text-amber-700 mt-1">Saisissez le prix manuellement ci-dessous.</p>
+                  </div>
                 )}
 
                 <div>
@@ -709,22 +742,23 @@ export default function NewProductWizard() {
                       </div>
                     )}
                     <div>
-                      <label className="block text-sm font-medium text-black mb-1.5">Zone du magasin</label>
-                      {zones.length === 0 ? (
+                      <label className="block text-sm font-medium text-black mb-1.5">Touchez la zone de mise en vente sur le plan</label>
+                      {planZones.length === 0 ? (
                         <p className="text-sm text-gray-500">Aucune zone configurée. Le produit ira en rayon sans zone précise.</p>
                       ) : (
-                        <select
-                          value={selectedZoneId}
-                          onChange={(e) => setSelectedZoneId(e.target.value)}
-                          className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
-                        >
-                          <option value="">Sans zone précise</option>
-                          {zones.map((z) => (
-                            <option key={z.zone_id} value={z.zone_id}>
-                              {z.zone_name} — {z.occupancy_percent}% occupée
-                            </option>
-                          ))}
-                        </select>
+                        <StorePlanPicker
+                          zones={planZones}
+                          selectedZoneId={selectedZoneId}
+                          suggestedZoneId={zoneSuggestion?.primary_zone_id}
+                          onSelect={(id) => setSelectedZoneId(id)}
+                        />
+                      )}
+                      {planZones.length > 0 && (
+                        <p className="text-sm mt-2">
+                          {selectedZoneId
+                            ? <>Zone choisie : <span className="font-medium text-vz-teal">{planZones.find((z) => z.id === selectedZoneId)?.name}</span></>
+                            : <span className="text-amber-600">Aucune zone sélectionnée — touchez une zone pour que l&apos;article soit localisable.</span>}
+                        </p>
                       )}
                     </div>
                   </>
@@ -734,15 +768,11 @@ export default function NewProductWizard() {
                   <p className="text-sm text-gray-500">L&apos;article reste en réserve. Vous pourrez le mettre en rayon plus tard depuis l&apos;inventaire.</p>
                 )}
 
-                {destination === 'rayon' && zones.length > 0 && !selectedZoneId && (
-                  <p className="text-xs text-amber-600">Choisissez une zone pour que l&apos;article soit localisable en boutique.</p>
-                )}
-
                 <div className="flex gap-3 pt-2">
                   <Button variant="outline" onClick={() => setStep('price')}>Précédent</Button>
                   <Button
                     className="flex-1"
-                    disabled={saving || (destination === 'rayon' && zones.length > 0 && !selectedZoneId)}
+                    disabled={saving || (destination === 'rayon' && planZones.length > 0 && !selectedZoneId)}
                     onClick={validateZone}
                   >
                     {saving ? 'Validation…' : 'Valider et éditer l\'étiquette'}
@@ -793,18 +823,39 @@ export default function NewProductWizard() {
                   )}
                 </div>
 
-                {/* Label preview */}
-                <div className="border-2 border-dashed border-vz-line rounded-xl p-3 min-h-[120px] flex items-center justify-center">
-                  {labelLoading ? (
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-vz-teal" />
-                  ) : labelUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={labelUrl} alt="Étiquette" className="max-h-64 mx-auto" />
-                  ) : (
-                    <p className="text-sm text-gray-400">{printMsg || 'Étiquette indisponible'}</p>
+                {/* Étiquette — rendu HTML local, toujours affiché (indépendant
+                    du réseau). L'aperçu imprimante Labelary vient en bonus. */}
+                <div className="mx-auto w-56 border-2 border-vz-ink rounded-lg p-3 bg-white text-center">
+                  <p className="font-display text-lg font-bold tracking-wide text-vz-ink">VINTIZ</p>
+                  <hr className="my-1.5 border-vz-line" />
+                  <p className="text-sm font-medium text-vz-ink leading-tight">{created.name}</p>
+                  <p className="text-xs text-vz-ink-mute">
+                    {[form.brand, form.size && `T.${form.size}`].filter(Boolean).join(' · ') || '—'}
+                  </p>
+                  {form.condition && (
+                    <p className="text-xs text-vz-ink-mute">{CONDITIONS.find((c) => c.code === form.condition)?.label}</p>
                   )}
+                  <p className="text-2xl font-bold text-vz-teal my-1">{Number(created.sale_price).toFixed(2)} €</p>
+                  <p className="font-mono text-[10px] text-vz-ink-mute break-all">{created.barcode}</p>
+                  <p className="text-[10px] text-vz-ink-mute mt-1">
+                    {created.status === 'display' || created.status === 'displayed'
+                      ? `Rayon ${formatDate(created.shelf_date)}`
+                      : `Stock ${formatDate(created.received_at)}`}
+                  </p>
                 </div>
-                {printMsg && labelUrl && <p className="text-sm text-vz-teal">{printMsg}</p>}
+
+                {/* Aperçu imprimante (Labelary) — facultatif */}
+                {labelLoading ? (
+                  <p className="text-xs text-gray-400">Chargement de l&apos;aperçu imprimante…</p>
+                ) : labelUrl ? (
+                  <details>
+                    <summary className="text-xs text-vz-teal cursor-pointer">Voir l&apos;aperçu imprimante</summary>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={labelUrl} alt="Aperçu étiquette imprimante" className="max-h-64 mx-auto mt-2" />
+                  </details>
+                ) : printMsg ? (
+                  <p className="text-xs text-gray-400">{printMsg}</p>
+                ) : null}
 
                 <div className="flex flex-col sm:flex-row gap-2 justify-center">
                   <Button onClick={printLabel} disabled={printing}>

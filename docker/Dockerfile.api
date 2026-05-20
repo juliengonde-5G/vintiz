@@ -23,7 +23,12 @@ COPY --from=builder /build /app
 # Include seed script so it is available inside the container
 COPY scripts/ /app/scripts/
 
-RUN chown -R app:app /app
+# Create the product-photo upload dir BEFORE chown + before the named volume
+# mounts on top of it. A Docker named volume mounted at /app/uploads inherits
+# the ownership of this image directory on first init; without it the volume
+# would be created root-owned and the non-root `app` user could not write
+# (uploads would silently 500). See docker-compose.prod.yml `uploads_data`.
+RUN mkdir -p /app/uploads && chown -R app:app /app
 USER app
 
 EXPOSE 8000
