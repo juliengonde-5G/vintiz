@@ -62,18 +62,35 @@ def generate_invoice_pdf(
     ``payments`` eagerly so this function does not perform any DB I/O. Pass the
     ``ReceiptTemplate`` snapshot when available — the title and footer are
     surfaced verbatim, and ``show_tva_breakdown`` toggles the per-rate detail.
+
+    Styled with the Vintiz charte « Sauge Néo » : VINTIZ wordmark logo, teal
+    accents, off-white panels, on an A4 page.
     """
+    from pathlib import Path
+
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import mm
     from reportlab.platypus import (
+        Image as RLImage,
         Paragraph,
         SimpleDocTemplate,
         Spacer,
         Table,
         TableStyle,
     )
+
+    # ---- Charte v3 « Sauge Néo » ----
+    TEAL = colors.HexColor("#0B7A6A")
+    INK = colors.HexColor("#0E0E0C")
+    INK_SOFT = colors.HexColor("#4A4A47")
+    INK_MUTE = colors.HexColor("#8B8B86")
+    CREAM = colors.HexColor("#F6F5F1")
+    LINE = colors.HexColor("#D5D3CC")
+    WHITE = colors.white
+
+    CONTENT_W = 174 * mm  # A4 (210) minus 2×18 mm margins
 
     shop = _shop_info()
 
@@ -83,45 +100,107 @@ def generate_invoice_pdf(
         pagesize=A4,
         leftMargin=18 * mm,
         rightMargin=18 * mm,
-        topMargin=18 * mm,
-        bottomMargin=18 * mm,
+        topMargin=16 * mm,
+        bottomMargin=16 * mm,
         title=_invoice_label(transaction),
     )
 
     styles = getSampleStyleSheet()
+    wordmark = ParagraphStyle(
+        "Wordmark", parent=styles["Title"], fontName="Helvetica-Bold",
+        fontSize=26, leading=28, textColor=TEAL, spaceAfter=0,
+    )
     title_style = ParagraphStyle(
-        "InvoiceTitle",
-        parent=styles["Title"],
-        fontSize=20,
-        leading=24,
-        spaceAfter=2,
+        "InvoiceTitle", parent=styles["Title"], fontName="Helvetica-Bold",
+        fontSize=22, leading=24, textColor=TEAL, alignment=2, spaceAfter=0,
     )
-    h2 = ParagraphStyle("H2", parent=styles["Heading2"], fontSize=11, spaceAfter=2)
-    body = ParagraphStyle(
-        "Body", parent=styles["Normal"], fontSize=9, leading=12
+    meta_style = ParagraphStyle(
+        "Meta", parent=styles["Normal"], fontSize=9, leading=13,
+        textColor=INK_SOFT, alignment=2,
     )
+    body = ParagraphStyle("Body", parent=styles["Normal"], fontSize=9, leading=12, textColor=INK)
+    body_soft = ParagraphStyle("BodySoft", parent=body, textColor=INK_SOFT)
     body_small = ParagraphStyle(
-        "BodySmall", parent=styles["Normal"], fontSize=8, leading=10
+        "BodySmall", parent=styles["Normal"], fontSize=7.5, leading=10, textColor=INK_MUTE
     )
-    body_right = ParagraphStyle(
-        "BodyRight", parent=body, alignment=2  # right
-    )
+    body_right = ParagraphStyle("BodyRight", parent=body, alignment=2)
+    th = ParagraphStyle("TH", parent=body, fontName="Helvetica-Bold", textColor=WHITE)
+    th_right = ParagraphStyle("THRight", parent=th, alignment=2)
+
+    def _rule(color=TEAL, weight=1.2):
+        t = Table([[""]], colWidths=[CONTENT_W], rowHeights=[1])
+        t.setStyle(TableStyle([("LINEABOVE", (0, 0), (-1, 0), weight, color)]))
+        return t
 
     story: list = []
 
     # ------------------------------------------------------------------
-    # Header — seller block + invoice meta
+    # Header band — logo (or wordmark) + FACTURE title + meta
+    # ------------------------------------------------------------------
+    logo_path = Path(__file__).resolve().parent.parent / "assets" / "receipt-logo.png"
+    logo_flow: Any = None
+    if logo_path.exists():
+        try:
+            from PIL import Image as PILImage
+
+            with PILImage.open(logo_path) as im:
+                iw, ih = im.size
+            ratio = (ih / iw) if iw else 0.3
+            lw = 42 * mm
+            lh = lw * ratio
+            if lh > 18 * mm:  # clamp height
+                lh = 18 * mm
+                lw = lh / ratio if ratio else 42 * mm
+            logo_flow = RLImage(str(logo_path), width=lw, height=lh)
+            logo_flow.hAlign = "LEFT"
+        except Exception:  # noqa: BLE001 — never fail the invoice on a bad asset
+            logo_flow = None
+    if logo_flow is None:
+        logo_flow = Paragraph("VINTIZ", wordmark)
+
+    title_text = (template.title if template and template.title else "FACTURE")
+    header = Table(
+        [[logo_flow, Paragraph(title_text, title_style)]],
+        colWidths=[94 * mm, 80 * mm],
+    )
+    header.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    story.append(header)
+
+    invoice_label = _invoice_label(transaction)
+    issued_at = transaction.created_at or datetime.utcnow()
+    meta_html = " &nbsp;·&nbsp; ".join(
+        [
+            f"N° <b>{invoice_label}</b>",
+            f"Date : {issued_at.strftime('%d/%m/%Y')}",
+            f"Ticket lié : #{transaction.transaction_number}",
+        ]
+    )
+    story.append(Spacer(1, 2 * mm))
+    story.append(Paragraph(meta_html, meta_style))
+    story.append(Spacer(1, 3 * mm))
+    story.append(_rule())
+    story.append(Spacer(1, 5 * mm))
+
+    # ------------------------------------------------------------------
+    # Émetteur + Facturé à (side by side, buyer on a cream panel)
     # ------------------------------------------------------------------
     seller_lines = [
+        "<font color='#0B7A6A'><b>ÉMETTEUR</b></font>",
         f"<b>{shop.get('name', 'Vintiz')}</b>",
         shop.get("tagline", ""),
         shop.get("address_line1", ""),
     ]
     if shop.get("address_line2"):
         seller_lines.append(shop["address_line2"])
-    seller_lines.append(
-        f"{shop.get('postal_code', '')} {shop.get('city', '')}".strip()
-    )
+    seller_lines.append(f"{shop.get('postal_code', '')} {shop.get('city', '')}".strip())
     if shop.get("country"):
         seller_lines.append(shop["country"])
     if shop.get("phone"):
@@ -136,43 +215,7 @@ def generate_invoice_pdf(
         seller_lines.append(f"APE : {shop['ape']}")
     seller_html = "<br/>".join(line for line in seller_lines if line)
 
-    invoice_label = _invoice_label(transaction)
-    issued_at = transaction.created_at or datetime.utcnow()
-    invoice_meta = [
-        f"<b>{(template.title if template else 'FACTURE')}</b>",
-        f"N° {invoice_label}",
-        f"Date : {issued_at.strftime('%d/%m/%Y')}",
-        f"Ticket lié : #{transaction.transaction_number}",
-    ]
-    invoice_meta_html = "<br/>".join(invoice_meta)
-
-    header = Table(
-        [
-            [
-                Paragraph(seller_html, body),
-                Paragraph(invoice_meta_html, body_right),
-            ]
-        ],
-        colWidths=[110 * mm, 60 * mm],
-    )
-    header.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LINEBELOW", (0, 0), (-1, 0), 0.4, colors.HexColor("#0B7A6A")),
-                ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
-            ]
-        )
-    )
-    story.append(header)
-    story.append(Spacer(1, 6 * mm))
-    story.append(Paragraph("<b>FACTURE</b>", title_style))
-    story.append(Spacer(1, 4 * mm))
-
-    # ------------------------------------------------------------------
-    # Buyer block
-    # ------------------------------------------------------------------
-    buyer_lines = ["<b>Facturé à</b>"]
+    buyer_lines = ["<font color='#0B7A6A'><b>FACTURÉ À</b></font>"]
     if transaction.client_company_name:
         buyer_lines.append(f"<b>{transaction.client_company_name}</b>")
     if transaction.client_billing_address:
@@ -181,20 +224,41 @@ def generate_invoice_pdf(
                 buyer_lines.append(line.strip())
     if transaction.client_siret:
         buyer_lines.append(f"SIRET : {transaction.client_siret}")
+    if len(buyer_lines) == 1:
+        buyer_lines.append("<i>Client comptant</i>")
     buyer_html = "<br/>".join(buyer_lines)
-    story.append(Paragraph(buyer_html, body))
-    story.append(Spacer(1, 6 * mm))
+
+    parties = Table(
+        [[Paragraph(seller_html, body_soft), Paragraph(buyer_html, body)]],
+        colWidths=[90 * mm, 84 * mm],
+    )
+    parties.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BACKGROUND", (1, 0), (1, 0), CREAM),
+                ("BOX", (1, 0), (1, 0), 0.5, LINE),
+                ("LEFTPADDING", (0, 0), (0, 0), 0),
+                ("LEFTPADDING", (1, 0), (1, 0), 8),
+                ("RIGHTPADDING", (1, 0), (1, 0), 8),
+                ("TOPPADDING", (1, 0), (1, 0), 8),
+                ("BOTTOMPADDING", (1, 0), (1, 0), 8),
+            ]
+        )
+    )
+    story.append(parties)
+    story.append(Spacer(1, 7 * mm))
 
     # ------------------------------------------------------------------
     # Items table
     # ------------------------------------------------------------------
     item_rows: list[list[Any]] = [
         [
-            Paragraph("<b>Désignation</b>", body),
-            Paragraph("<b>Qté</b>", body_right),
-            Paragraph("<b>P.U. HT</b>", body_right),
-            Paragraph("<b>Remise</b>", body_right),
-            Paragraph("<b>Total HT</b>", body_right),
+            Paragraph("Désignation", th),
+            Paragraph("Qté", th_right),
+            Paragraph("P.U. HT", th_right),
+            Paragraph("Remise", th_right),
+            Paragraph("Total HT", th_right),
         ]
     ]
     vat_rate = float(shop.get("vat_rate_percent") or 20.0)
@@ -225,79 +289,73 @@ def generate_invoice_pdf(
 
     items_table = Table(
         item_rows,
-        colWidths=[80 * mm, 15 * mm, 25 * mm, 20 * mm, 30 * mm],
+        colWidths=[79 * mm, 13 * mm, 26 * mm, 22 * mm, 34 * mm],
         repeatRows=1,
     )
-    items_table.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, 0),
-                    colors.HexColor("#ECEAE3"),
-                ),
-                ("LINEBELOW", (0, 0), (-1, 0), 0.4, colors.HexColor("#0E0E0C")),
-                ("LINEBELOW", (0, 1), (-1, -1), 0.2, colors.HexColor("#D5D3CC")),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ]
-        )
-    )
+    item_style = [
+        ("BACKGROUND", (0, 0), (-1, 0), TEAL),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LINEBELOW", (0, 1), (-1, -1), 0.4, LINE),
+    ]
+    # Zebra striping on body rows for legibility.
+    for r in range(1, len(item_rows)):
+        if r % 2 == 0:
+            item_style.append(("BACKGROUND", (0, r), (-1, r), CREAM))
+    items_table.setStyle(TableStyle(item_style))
     story.append(items_table)
     story.append(Spacer(1, 6 * mm))
 
     # ------------------------------------------------------------------
-    # Totals + VAT breakdown
+    # Totals + VAT breakdown (right-aligned, TTC on a teal band)
     # ------------------------------------------------------------------
     total_ht = float(transaction.total_ht or 0)
     total_tva = float(transaction.total_tva or 0)
     total_ttc = float(transaction.total_ttc or 0)
 
-    totals_rows = [
-        ["Total HT", _format_eur(total_ht)],
-    ]
+    totals_rows = [["Total HT", _format_eur(total_ht)]]
     show_breakdown = bool(template and template.show_tva_breakdown) or True
     if show_breakdown:
-        totals_rows.append(
-            [f"TVA {vat_rate:g} %", _format_eur(total_tva)]
-        )
+        totals_rows.append([f"TVA {vat_rate:g} %", _format_eur(total_tva)])
     totals_rows.append(["Total TTC", _format_eur(total_ttc)])
 
-    totals_table = Table(
-        totals_rows,
-        colWidths=[40 * mm, 30 * mm],
-        hAlign="RIGHT",
-    )
+    totals_table = Table(totals_rows, colWidths=[44 * mm, 34 * mm], hAlign="RIGHT")
     totals_table.setStyle(
         TableStyle(
             [
                 ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("TEXTCOLOR", (0, 0), (-1, -2), INK_SOFT),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                # TTC band
+                ("BACKGROUND", (0, -1), (-1, -1), TEAL),
+                ("TEXTCOLOR", (0, -1), (-1, -1), WHITE),
                 ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-                ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.HexColor("#0B7A6A")),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("FONTSIZE", (0, -1), (-1, -1), 11),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ]
         )
     )
     story.append(totals_table)
-    story.append(Spacer(1, 8 * mm))
+    story.append(Spacer(1, 9 * mm))
 
     # ------------------------------------------------------------------
     # Payment + footer
     # ------------------------------------------------------------------
     payments = transaction.payments or []
     if payments:
-        pay_lines = ["<b>Règlement</b>"]
+        pay_lines = ["<font color='#0B7A6A'><b>RÈGLEMENT</b></font>"]
         for p in payments:
             pay_lines.append(
                 f"{_payment_method_label(p.method)} : {_format_eur(float(p.amount))}"
             )
         story.append(Paragraph("<br/>".join(pay_lines), body))
-        story.append(Spacer(1, 4 * mm))
+        story.append(Spacer(1, 5 * mm))
 
     if template and template.footer:
         story.append(Paragraph(template.footer, body_small))
@@ -306,11 +364,15 @@ def generate_invoice_pdf(
         story.append(Paragraph(template.conditions_retour, body_small))
         story.append(Spacer(1, 2 * mm))
 
+    story.append(Spacer(1, 2 * mm))
+    story.append(_rule(color=LINE, weight=0.5))
+    story.append(Spacer(1, 2 * mm))
+
     # NF525 fiscal mention — required even when not legally compulsory yet for
     # the merchant tier; lets the auditor confirm the receipt is signed.
     nf_mention = (
         "Logiciel de caisse certifié NF525 — émission infalsifiable. "
-        f"Empreinte SHA-256 : {transaction.hash_chain[:16]}…"
+        f"Empreinte SHA-256 : {(transaction.hash_chain or '')[:16]}…"
     )
     story.append(Paragraph(nf_mention, body_small))
 
