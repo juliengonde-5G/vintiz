@@ -773,8 +773,10 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Tabs — scrollable, sticky on tablet+ for navigation persistence */}
-        <div className="sticky top-0 z-10 -mx-3 sm:-mx-4 md:-mx-6 lg:-mx-8 bg-vz-bg/95 backdrop-blur-sm border-b border-vz-line mb-5">
+        {/* Tabs — scrollable, sticky. On mobile it pins below the floating
+            hamburger (top-16) so the first tab isn't hidden behind it; on
+            desktop there's no hamburger so it pins flush to the top. */}
+        <div className="sticky top-16 md:top-0 z-10 -mx-3 sm:-mx-4 md:-mx-6 lg:-mx-8 bg-vz-bg/95 backdrop-blur-sm border-b border-vz-line mb-5">
           <div
             className="flex gap-2 px-3 sm:px-4 md:px-6 lg:px-8 py-2 overflow-x-auto"
             style={{ scrollbarWidth: 'thin' }}

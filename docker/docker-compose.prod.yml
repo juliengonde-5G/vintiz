@@ -61,11 +61,14 @@ services:
     restart: unless-stopped
     env_file:
       - ../.env
-    # Product photo uploads live on disk under /app/uploads. Without this named
-    # volume the folder is part of the ephemeral container layer and every
-    # redeploy (deploy.sh rebuilds the image) wipes the boutique's photos.
+    # Persisted on disk, outside the ephemeral container layer so a redeploy
+    # (deploy.sh rebuilds the image) doesn't wipe them:
+    #   - /app/uploads : product photos
+    #   - /app/data    : runtime settings (Brevo/SMTP keys via /settings >
+    #     Communication, hardware config) → app_config.json + hardware.json
     volumes:
       - uploads_data:/app/uploads
+      - vintiz_data:/app/data
     depends_on:
       db:
         condition: service_healthy
@@ -116,3 +119,4 @@ volumes:
   caddy_data:
   caddy_config:
   uploads_data:
+  vintiz_data:
