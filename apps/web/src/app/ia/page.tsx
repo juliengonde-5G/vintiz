@@ -723,8 +723,7 @@ export default function IAPage() {
                   </h2>
                   {trendsMode && (
                     <p className="text-sm text-vz-ink-mute mt-1">
-                      Semaine {trendsMode.week} — {trendsMode.year} · Édité par <em>Camille Berthier</em> ·
-                      Actualisé le {new Date(trendsMode.generated_at).toLocaleDateString('fr-FR')}
+                      Semaine {trendsMode.week} — {trendsMode.year} · Actualisé le {new Date(trendsMode.generated_at).toLocaleDateString('fr-FR')}
                     </p>
                   )}
                 </div>

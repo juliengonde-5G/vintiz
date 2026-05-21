@@ -284,6 +284,12 @@ export default function POSPage() {
   );
   const remaining = cartTotalAfterLoyalty - totalPaid;
 
+  // Cash under-payment guard : when an espèces line is present, the cash
+  // physically received (``cashGiven``) must cover the cash amount due. Blocks
+  // validation otherwise so a cashier can't close a ticket with too little cash.
+  const cashLine = payments.find((p) => p.method === 'especes');
+  const cashShort = !!cashLine && (parseFloat(cashGiven || '0') + 1e-6) < cashLine.amount;
+
   // ── Cashier identification ──────────────────────────────────────
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -949,6 +955,12 @@ export default function POSPage() {
     setSubmitting(true);
     setError('');
     try {
+      // Cash must cover the cash amount due before the ticket can close.
+      if (cashShort) {
+        setError('Montant en espèces reçu insuffisant pour couvrir le ticket.');
+        setSubmitting(false);
+        return;
+      }
       // If CB was initiated, ensure it's confirmed
       if (payments.some(p => p.method === 'carte') && cbStatus !== 'paid') {
         setError('Le paiement CB n\'a pas encore été confirmé par le TPE.');
@@ -2033,8 +2045,16 @@ export default function POSPage() {
                     </span>
                   </div>
 
-                  {/* Monnaie à rendre */}
-                  {numpadTarget?.type === 'cash' && parseFloat(cashGiven) > 0 && payments[numpadTarget.index] && (
+                  {/* Monnaie à rendre / montant reçu insuffisant */}
+                  {cashLine && cashShort && (
+                    <div className="mt-2 flex items-center justify-between p-3 bg-red-50 rounded-xl border border-red-200">
+                      <span className="text-sm font-semibold text-red-800">Montant reçu insuffisant</span>
+                      <span className="font-mono text-lg font-bold text-red-700">
+                        Manque {formatCurrency(cashLine.amount - (parseFloat(cashGiven) || 0))}
+                      </span>
+                    </div>
+                  )}
+                  {numpadTarget?.type === 'cash' && parseFloat(cashGiven) > 0 && payments[numpadTarget.index] && !cashShort && (
                     <div className="mt-2 flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-200">
                       <span className="text-sm font-semibold text-green-800">Monnaie à rendre</span>
                       <span className="font-mono text-xl font-bold text-green-700">
@@ -2214,10 +2234,10 @@ export default function POSPage() {
               Annuler
             </button>
             <button
-              disabled={remaining > 0.01 || submitting}
+              disabled={remaining > 0.01 || cashShort || submitting}
               onClick={handleValidate}
               className={`flex-1 py-3 rounded-xl text-lg font-bold transition-colors min-h-[52px] flex items-center justify-center gap-3 ${
-                remaining > 0.01 || submitting
+                remaining > 0.01 || cashShort || submitting
                   ? 'bg-vz-line text-vz-ink-mute cursor-not-allowed'
                   : 'bg-vz-teal text-white hover:bg-vz-teal-deep active:bg-vz-teal-deep shadow-lg'
               }`}

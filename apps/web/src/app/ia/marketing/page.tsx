@@ -134,6 +134,11 @@ export default function MarketingReportPage() {
     <div className="min-h-screen bg-vz-bg">
       <Sidebar />
       <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8 max-w-5xl">
+        {/* Mobile sticky top bar */}
+        <div className="md:hidden sticky top-0 z-30 -mx-4 mb-4 px-4 py-2 bg-white/90 backdrop-blur border-b border-gray-200 flex items-center gap-3 text-sm">
+          <Link href="/ia" className="text-vz-teal font-medium">← IA</Link>
+          <span className="font-semibold text-vz-ink">Rapport marketing</span>
+        </div>
         <Link href="/ia" className="inline-flex items-center gap-2 text-sm text-vz-teal hover:text-vz-teal-deep mb-4">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <polyline points="15 18 9 12 15 6" />
@@ -209,9 +214,6 @@ export default function MarketingReportPage() {
                     </h2>
                   </div>
                 </div>
-                {dm.persona && (
-                  <p className="text-sm text-vz-ink-mute mb-4 italic">— {dm.persona}</p>
-                )}
 
                 {dm.post_de_la_semaine && (
                   <Card>
