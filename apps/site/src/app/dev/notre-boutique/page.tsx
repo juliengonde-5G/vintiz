@@ -48,17 +48,16 @@ export default function NotreBoutique() {
       <section className="max-w-7xl mx-auto px-6 py-20 grid lg:grid-cols-2 gap-12 items-start">
         <h2 className="font-mockSerif text-5xl md:text-6xl text-vz-teal">Notre concept</h2>
         <div className="space-y-5 text-black/85 leading-relaxed font-mockSerif text-xl italic">
-          <p>
-            Vintiz est née d&apos;une idée simple : proposer une seconde main chic
-            et tendance, où chaque pièce est choisie pour sa qualité et son
-            style.
+          <p className="text-vz-teal">
+            Vintiz est une boutique pensée pour répondre aux attentes d&apos;une
+            clientèle qui cherche à s&apos;habiller avec une mode responsable tout en
+            prenant soin de son porte-monnaie.
           </p>
           <div className="not-italic font-sans text-base text-black/80 space-y-4 pt-2">
             <p>
-              Vintiz, c&apos;est l&apos;envie de consommer autrement sans renoncer au
-              plaisir de s&apos;habiller avec style. C&apos;est une boutique où l&apos;on vient
-              chercher des pièces coup de cœur, dans une ambiance chaleureuse, le
-              tout avec une vision plus consciente de la mode.
+              Nous défendons une vision plus engagée de la mode. C&apos;est une boutique
+              où l&apos;on vient chercher des pièces coup de cœur, dans une ambiance
+              chaleureuse, avec une vision plus consciente de la mode.
             </p>
           </div>
           <div className="pt-2 not-italic">
@@ -72,8 +71,8 @@ export default function NotreBoutique() {
         </div>
       </section>
 
-      {/* UNE MODE QUI A DU SENS — 1 */}
-      <section className="bg-vz-bg">
+      {/* DES PRIX JUSTES POUR UNE MODE ACCESSIBLE */}
+      <section className="bg-vz-bg-alt">
         <div className="grid lg:grid-cols-2">
           <div className="relative aspect-[4/5] bg-stone-200">
             <Image
@@ -85,41 +84,37 @@ export default function NotreBoutique() {
             />
           </div>
           <div className="flex flex-col justify-center px-8 md:px-16 py-16 text-center lg:text-left">
-            <h2 className="font-mockSerif text-5xl text-vz-teal leading-tight">
-              Une mode qui
-              <br />a du sens
+            <h2 className="font-mockSerif text-4xl md:text-5xl text-vz-teal leading-tight">
+              Des prix justes pour une mode accessible
             </h2>
             <p className="mt-6 text-base md:text-lg text-black/80 leading-relaxed max-w-lg">
-              Une gamme de vêtements, accessoires et chaussures de seconde main
-              soigneusement sélectionnés pour leur qualité, leur style et leur
-              intemporalité.
+              La boutique a été pensée pour permettre à chacun de se faire plaisir
+              sans trop dépenser.
             </p>
             <p className="mt-4 text-base md:text-lg text-black/80 leading-relaxed max-w-lg">
-              En choisissant Vintiz, vous incarnez une vision moderne de la mode :
-              durable, qualitative et accessible pour se faire plaisir tout en
-              minimisant son impact environnemental.
+              Une promesse simple : des articles en très bon état, à des tarifs
+              justes et accessibles.
             </p>
           </div>
         </div>
       </section>
 
-      {/* UNE MODE QUI A DU SENS — 2 / SOLIDARITÉ TEXTILES */}
+      {/* L'EXPERTISE DE SOLIDARITÉ TEXTILES */}
       <section className="bg-vz-bg">
         <div className="grid lg:grid-cols-2">
           <div className="flex flex-col justify-center px-8 md:px-16 py-16 lg:order-1 text-center lg:text-left">
-            <h2 className="font-mockSerif text-5xl text-vz-teal leading-tight">
-              Une mode qui
-              <br />a du sens
+            <h2 className="font-mockSerif text-4xl md:text-5xl text-vz-teal leading-tight">
+              L&apos;expertise de Solidarité Textiles
             </h2>
             <p className="mt-6 text-base md:text-lg text-black/80 leading-relaxed max-w-lg">
-              Les vêtements, chaussures et accessoires sont soigneusement
-              sélectionnés pour leur qualité par notre partenaire Solidarité
-              Textiles, centre de tri textile situé au Houlme.
+              Les articles proposés en boutique sont fournis par notre partenaire
+              exclusif Solidarité Textiles, association de tri textile avec déjà
+              30 ans d&apos;existence.
             </p>
             <p className="mt-4 text-base md:text-lg text-black/80 leading-relaxed max-w-lg">
-              Les vêtements sont collectés dans des bornes de collecte réparties
-              sur la Métropole Rouen Normandie, puis triés manuellement par des
-              salariés en insertion.
+              Les pièces sont sélectionnées manuellement pour leur qualité, par des
+              opérateurs de tri en insertion. L&apos;association favorise
+              l&apos;accompagnement des salariés vers l&apos;emploi durable.
             </p>
             <Link
               href="https://solidaritetextiles.com"
@@ -147,10 +142,10 @@ export default function NotreBoutique() {
             NOTÉ 4,7/5 <span aria-hidden>★</span> SUR GOOGLE
           </p>
           <h2 className="mt-3 font-mockSerif text-3xl md:text-4xl text-vz-teal flex items-center justify-center gap-2">
-            Ce que pensent nos clientes <span aria-hidden>💖</span>
+            Ce que pensent nos client.es <span aria-hidden>💖</span>
           </h2>
           <p className="mt-2 text-sm text-black/70">
-            Chez Jade &amp; Lisa, la satisfaction client est notre priorité !
+            Votre satisfaction est notre priorité !
           </p>
 
           <div className="mt-10 grid md:grid-cols-3 gap-8">

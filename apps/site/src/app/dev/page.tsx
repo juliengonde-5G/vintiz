@@ -30,12 +30,11 @@ export default function DevHome() {
               <span className="italic">une mode qui fait sens.</span>
             </h1>
             <p className="mt-6 text-base md:text-lg text-black/80 leading-relaxed max-w-xl">
-              La boutique de seconde main à Vernon pour celle et ceux qui aiment
-              la mode chic et tendance.
+              Votre destination slow fashion à Vernon.
               <br />
-              Une gamme de vêtements, accessoires et chaussures de seconde main
-              soigneusement sélectionnés pour leur qualité, leur style et leur
-              intemporalité.
+              Bienvenue dans la boutique de seconde main premium pour celles et ceux
+              qui aiment la mode chic et tendance. Retrouvez des vêtements, chaussures
+              et accessoires soigneusement sélectionnés pour leur qualité et leur style.
             </p>
             <Link
               href="/dev/notre-boutique"
@@ -97,10 +96,9 @@ export default function DevHome() {
 
       {/* CITATION */}
       <section className="bg-vz-bg py-14">
-        <p className="max-w-4xl mx-auto px-6 text-center font-mockSerif text-2xl md:text-3xl lg:text-4xl text-vz-teal leading-snug">
-          Vintiz incarne une vision moderne de la mode :<br />
-          durable, qualitative et accessible pour se faire plaisir<br />
-          tout en minimisant son impact environnemental.
+        <p className="max-w-4xl mx-auto px-6 text-center font-mockSerif text-3xl md:text-4xl lg:text-5xl text-vz-teal leading-snug">
+          Vintiz : affirmez votre style,<br />
+          faites briller vos valeurs.
         </p>
       </section>
 
@@ -127,9 +125,11 @@ export default function DevHome() {
           </div>
           <div className="pt-6 lg:pt-20 text-center lg:text-left">
             <p className="text-base md:text-lg text-black/80 leading-relaxed">
-              Vintiz la boutique de seconde main chic et tendance qui propose une
-              sélection de vêtements, chaussures et accessoires de qualité et à
-              petits prix pour se faire plaisir tout en respectant la planète.
+              La mission de Vintiz est claire : proposer une expérience shopping
+              personnalisée, grâce à des articles de qualité, en excellent état,
+              avec une sélection de marques renouvelée régulièrement. Des vêtements,
+              chaussures et accessoires à petits prix pour se faire plaisir tout en
+              respectant la planète.
             </p>
             <p className="mt-6 text-base md:text-lg text-black/80 leading-relaxed">
               Nous sélectionnons soigneusement les pièces de seconde main auprès
