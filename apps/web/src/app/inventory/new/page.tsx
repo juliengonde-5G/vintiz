@@ -857,25 +857,23 @@ export default function NewProductWizard() {
                   )}
                 </div>
 
-                {/* Étiquette — rendu HTML local, toujours affiché (indépendant
-                    du réseau). L'aperçu imprimante Labelary vient en bonus. */}
-                <div className="mx-auto w-56 border-2 border-vz-ink rounded-lg p-3 bg-white text-center">
-                  <p className="font-display text-lg font-bold tracking-wide text-vz-ink">VINTIZ</p>
+                {/* Étiquette 25×52 — rendu HTML local (toujours affiché, indépendant
+                    du réseau). Mêmes champs que l'impression Zebra : code-barres,
+                    réf, nom, semaine. L'aperçu imprimante Labelary vient en bonus. */}
+                <div className="mx-auto w-44 border-2 border-vz-ink rounded-lg p-3 bg-white text-center">
+                  {/* Code-barres (visuel décoratif) + valeur scannable */}
+                  <div
+                    aria-hidden
+                    className="h-9 w-full mb-1 rounded-sm"
+                    style={{
+                      backgroundImage:
+                        'repeating-linear-gradient(90deg,#0E0E0C 0,#0E0E0C 2px,transparent 2px,transparent 4px,#0E0E0C 4px,#0E0E0C 5px,transparent 5px,transparent 8px)',
+                    }}
+                  />
+                  <p className="font-mono text-[11px] font-medium text-vz-ink break-all leading-tight">{created.barcode}</p>
                   <hr className="my-1.5 border-vz-line" />
                   <p className="text-sm font-medium text-vz-ink leading-tight">{created.name}</p>
-                  <p className="text-xs text-vz-ink-mute">
-                    {[form.brand, form.size && `T.${form.size}`].filter(Boolean).join(' · ') || '—'}
-                  </p>
-                  {form.condition && (
-                    <p className="text-xs text-vz-ink-mute">{CONDITIONS.find((c) => c.code === form.condition)?.label}</p>
-                  )}
-                  <p className="text-2xl font-bold text-vz-teal my-1">{Number(created.sale_price).toFixed(2)} €</p>
-                  <p className="font-mono text-[10px] text-vz-ink-mute break-all">{created.barcode}</p>
-                  <p className="text-[10px] text-vz-ink-mute mt-1">
-                    {created.status === 'display' || created.status === 'displayed'
-                      ? `Rayon ${formatDate(created.shelf_date)}`
-                      : `Stock ${formatDate(created.received_at)}`}
-                  </p>
+                  <p className="text-xs text-vz-ink-mute mt-1">Semaine {getWeekNumber()}</p>
                 </div>
 
                 {/* Aperçu imprimante (Labelary) — facultatif */}
