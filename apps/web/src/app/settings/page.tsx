@@ -46,7 +46,17 @@ interface HardwareConfig {
     usb_product_label?: string | null;
   };
   cash_drawer: { enabled: boolean; model: string; kick_on_cash: boolean; kick_pin: number; on_time_ms: number; off_time_ms: number };
-  label_printer: { enabled: boolean; model: string; host: string; port: number; label_width_mm: number; label_height_mm: number };
+  label_printer: {
+    enabled: boolean; model: string; host: string; port: number;
+    label_width_mm: number; label_height_mm: number;
+    connection?: 'network' | 'cloud';
+    cloud_api_key?: string;
+    cloud_tenant?: string;
+    cloud_serial?: string;
+    cloud_endpoint?: string;
+    cloud_api_key_set?: boolean;
+    cloud_api_key_hint?: string;
+  };
   barcode_scanner: { enabled: boolean; model: string; mode: string; suffix: string; min_length: number };
   payment_terminal: { enabled: boolean; model: string; mode: string };
 }
@@ -594,19 +604,21 @@ export default function SettingsPage() {
   const testLabelPrinter = async () => {
     if (!hardware) return;
     setError(''); setMessage('');
+    const isCloud = (hardware.label_printer.connection || 'network') === 'cloud';
     const host = hardware.label_printer.host?.trim();
     const port = hardware.label_printer.port || 9100;
-    if (!host) {
+    if (!isCloud && !host) {
       setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: "Renseignez d'abord l'adresse IP de l'imprimante." } }));
       return;
     }
-    // Test the IP currently typed in the form (no need to save first); the
-    // backend falls back to the persisted config when host is omitted.
+    // Network mode tests the IP typed in the form (no save needed). Cloud
+    // mode uses the persisted Zebra Data Services credentials, so save the
+    // form first — the test endpoint reads the stored config in that mode.
     setHwTests((s) => ({ ...s, label_printer: { status: 'running' } }));
     try {
-      const res = await api.post('/api/hardware/label/test', { host, port });
+      const res = await api.post('/api/hardware/label/test', isCloud ? {} : { host, port });
       if (res.ok) {
-        setHwTests((s) => ({ ...s, label_printer: { status: 'success', message: `Étiquette de test envoyée à ${host}:${port}` } }));
+        setHwTests((s) => ({ ...s, label_printer: { status: 'success', message: isCloud ? 'Étiquette de test envoyée via le cloud Zebra (Weblink)' : `Étiquette de test envoyée à ${host}:${port}` } }));
       } else {
         const e = await res.json().catch(() => ({}));
         setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: e.detail || `Échec du test (HTTP ${res.status})` } }));
@@ -1623,7 +1635,7 @@ export default function SettingsPage() {
 
                 <Card title="Imprimante d&apos;étiquettes — Zebra ZD421d">
                   <p className="text-xs text-vz-ink-mute mb-3">
-                    ZPL II sur Ethernet (port 9100). Format Vintiz 80×120 mm, thermique direct 203 dpi.
+                    Format Vintiz 80×120 mm, thermique direct 203 dpi. Deux modes : <strong>réseau local</strong> (ZPL en TCP 9100, l&apos;API doit joindre l&apos;imprimante) ou <strong>cloud</strong> (Weblink + SendFileToPrinter : l&apos;imprimante se connecte à Zebra Data Services, idéal si l&apos;API tourne hors site).
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="flex items-center gap-3 sm:col-span-2">
@@ -1636,21 +1648,61 @@ export default function SettingsPage() {
                       />
                       <label htmlFor="lp-enabled" className="text-sm font-medium text-black">Activer l&apos;imprimante Zebra</label>
                     </div>
-                    <Input
-                      label="Adresse IP"
-                      value={hardware.label_printer.host}
-                      onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, host: e.target.value } })}
-                      placeholder="192.168.1.100"
-                    />
-                    <div>
-                      <label className="block text-sm font-medium text-black mb-1.5">Port TCP</label>
-                      <input
-                        type="number"
-                        value={hardware.label_printer.port}
-                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, port: parseInt(e.target.value) || 9100 } })}
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-black mb-1.5">Mode de connexion</label>
+                      <select
+                        value={hardware.label_printer.connection || 'network'}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, connection: e.target.value as 'network' | 'cloud' } })}
                         className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
-                      />
+                      >
+                        <option value="network">Réseau local (TCP 9100)</option>
+                        <option value="cloud">Cloud Zebra (Weblink + SendFileToPrinter)</option>
+                      </select>
                     </div>
+                    {(hardware.label_printer.connection || 'network') === 'network' ? (
+                      <>
+                        <Input
+                          label="Adresse IP"
+                          value={hardware.label_printer.host}
+                          onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, host: e.target.value } })}
+                          placeholder="192.168.1.100"
+                        />
+                        <div>
+                          <label className="block text-sm font-medium text-black mb-1.5">Port TCP</label>
+                          <input
+                            type="number"
+                            value={hardware.label_printer.port}
+                            onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, port: parseInt(e.target.value) || 9100 } })}
+                            className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Input
+                          label="Clé API Zebra Data Services"
+                          type="password"
+                          value={hardware.label_printer.cloud_api_key || ''}
+                          onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, cloud_api_key: e.target.value } })}
+                          placeholder={hardware.label_printer.cloud_api_key_set ? `•••• ${hardware.label_printer.cloud_api_key_hint || ''}` : 'clé API'}
+                        />
+                        <Input
+                          label="Tenant"
+                          value={hardware.label_printer.cloud_tenant || ''}
+                          onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, cloud_tenant: e.target.value } })}
+                          placeholder="n° de tenant"
+                        />
+                        <Input
+                          label="N° de série imprimante"
+                          value={hardware.label_printer.cloud_serial || ''}
+                          onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, cloud_serial: e.target.value } })}
+                          placeholder="ex. D2J123456789"
+                        />
+                        <div className="sm:col-span-2 text-xs text-vz-ink-mute">
+                          L&apos;imprimante doit d&apos;abord être enrôlée auprès de Zebra Data Services (Weblink). Laissez la clé API vide pour conserver celle déjà enregistrée. Enregistrez avant de tester.
+                        </div>
+                      </>
+                    )}
                     <div>
                       <label className="block text-sm font-medium text-black mb-1.5">Largeur étiquette (mm)</label>
                       <input

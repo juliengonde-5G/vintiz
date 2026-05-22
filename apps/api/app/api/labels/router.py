@@ -27,7 +27,7 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.security import RoleChecker
 from app.models.product import Product
-from app.services import zebra_printer
+from app.services import zebra_cloud, zebra_printer
 from app.services.hardware_config import load_config
 from app.services.label_preview import (
     PreviewUnavailable,
@@ -54,27 +54,56 @@ class BatchPrintRequest(BaseModel):
     copies: int = Field(default=1, ge=1, le=20)
 
 
-def _resolve_printer() -> tuple[str, int]:
-    """Read host/port from the persisted hardware config.
-
-    Returns the tuple ready to pass to ``zebra_printer.send_zpl``.
-    Raises 400 if the printer is disabled or its IP isn't set — the UI
-    should be showing the offline pill in that state anyway.
-    """
+def _label_config() -> dict:
+    """Return the label-printer config, or raise 400 if it's disabled."""
     cfg = load_config()["label_printer"]
     if not cfg.get("enabled"):
         raise HTTPException(
             status_code=400,
             detail="Imprimante étiquettes désactivée dans les paramètres",
         )
-    host = (cfg.get("host") or "").strip()
-    port = int(cfg.get("port") or zebra_printer.DEFAULT_PORT)
-    if not host:
+    return cfg
+
+
+def _validate_transport(cfg: dict) -> str:
+    """Check the configured transport is usable; return its name.
+
+    Fails fast with a 400 (operator-fixable) so a batch doesn't burn a
+    per-item retry on a misconfiguration. Returns ``"cloud"`` or
+    ``"network"``.
+    """
+    connection = (cfg.get("connection") or "network").strip().lower()
+    if connection == "cloud":
+        try:
+            zebra_cloud.resolve_credentials(cfg)
+        except zebra_cloud.CloudConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return "cloud"
+    if not (cfg.get("host") or "").strip():
         raise HTTPException(
             status_code=400,
             detail="Adresse IP imprimante non configurée (ZEBRA_PRINTER_IP)",
         )
-    return host, port
+    return "network"
+
+
+async def _dispatch_zpl(cfg: dict, zpl: str) -> str:
+    """Send a ZPL job via the configured transport. Returns a target label.
+
+    Raises ``zebra_printer.PrinterUnreachable`` (→ 502 at the call site) for
+    transport failures; ``CloudPrintError`` is a subclass so the cloud path
+    is covered by the same handler. Assumes ``_validate_transport`` already
+    ran, so config is complete.
+    """
+    connection = (cfg.get("connection") or "network").strip().lower()
+    if connection == "cloud":
+        serial = await zebra_cloud.send_zpl(zpl, cfg)
+        return f"cloud:{serial}"
+    host = (cfg.get("host") or "").strip()
+    port = int(cfg.get("port") or zebra_printer.DEFAULT_PORT)
+    # Run the blocking socket send off the event loop.
+    await asyncio.to_thread(zebra_printer.send_zpl, zpl, host=host, port=port)
+    return host
 
 
 async def _fetch_product(
@@ -104,16 +133,17 @@ async def print_label(
     unreachable, with the underlying error in ``detail``.
     """
     product = await _fetch_product(db, product_id)
-    host, port = _resolve_printer()
+    cfg = _label_config()
+    _validate_transport(cfg)
     zpl = build_label_zpl(product_to_label_data(product), copies=max(copies, 1))
     try:
-        zebra_printer.send_zpl(zpl, host=host, port=port)
+        target = await _dispatch_zpl(cfg, zpl)
     except zebra_printer.PrinterUnreachable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {
         "status": "printed",
         "product_id": str(product.id),
-        "printer_ip": host,
+        "printer_ip": target,
         "copies": max(copies, 1),
     }
 
@@ -139,7 +169,8 @@ async def print_batch(
     if not payload.product_ids:
         raise HTTPException(status_code=400, detail="Aucun produit sélectionné")
 
-    host, port = _resolve_printer()
+    cfg = _label_config()
+    _validate_transport(cfg)
 
     printed: list[str] = []
     errors: list[dict[str, str]] = []
@@ -149,7 +180,7 @@ async def print_batch(
             zpl = build_label_zpl(
                 product_to_label_data(product), copies=payload.copies
             )
-            zebra_printer.send_zpl(zpl, host=host, port=port)
+            await _dispatch_zpl(cfg, zpl)
             printed.append(str(product.id))
         except HTTPException as exc:
             errors.append({"product_id": str(product_id), "error": exc.detail})
@@ -211,9 +242,31 @@ async def printer_status():
     flag a slow network.
     """
     cfg = load_config()["label_printer"]
+    enabled = bool(cfg.get("enabled"))
+    connection = (cfg.get("connection") or "network").strip().lower()
+
+    if connection == "cloud":
+        # No cheap live probe for the Weblink relay — report whether the
+        # cloud credentials are complete. The UI pill reflects "configured",
+        # with the detail clarifying it's not a live link check.
+        try:
+            _, _, serial, _ = zebra_cloud.resolve_credentials(cfg)
+            configured, detail = True, None
+        except zebra_cloud.CloudConfigError as exc:
+            serial, configured, detail = (cfg.get("cloud_serial") or "?"), False, str(exc)
+        return {
+            "online": enabled and configured,
+            "ip": f"cloud:{serial}",
+            "port": None,
+            "latency_ms": None,
+            "enabled": enabled,
+            "connection": "cloud",
+            "detail": detail or "Mode cloud (Weblink) — état basé sur la config, pas un ping live",
+            "model": cfg.get("model", "Zebra ZD421d"),
+        }
+
     host = (cfg.get("host") or "").strip()
     port = int(cfg.get("port") or zebra_printer.DEFAULT_PORT)
-    enabled = bool(cfg.get("enabled"))
     snapshot = zebra_printer.ping(host=host, port=port)
     return {
         "online": snapshot.online,
@@ -221,6 +274,7 @@ async def printer_status():
         "port": snapshot.port,
         "latency_ms": snapshot.latency_ms,
         "enabled": enabled,
+        "connection": "network",
         "detail": snapshot.detail,
         "model": cfg.get("model", "Zebra ZD421d"),
     }
@@ -324,12 +378,13 @@ async def test_print():
 
     Used by the Hardware settings tab when changing the printer IP.
     """
-    host, port = _resolve_printer()
+    cfg = _label_config()
+    _validate_transport(cfg)
     try:
-        zebra_printer.send_test_label(host=host, port=port)
+        target = await _dispatch_zpl(cfg, zebra_printer.build_test_label_zpl())
     except zebra_printer.PrinterUnreachable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return {"status": "printed", "printer_ip": host}
+    return {"status": "printed", "printer_ip": target}
 
 
 # ---------------------------------------------------------------------------

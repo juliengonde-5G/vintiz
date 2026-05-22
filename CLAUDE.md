@@ -58,7 +58,7 @@ docs/
 | Site public | Next.js 14 App Router + Tailwind CSS — landing + SEO + GA4 |
 | Barcode | python-barcode + Pillow (Code 128) |
 | Imprimante ticket | **MUNBYN 047P** ESC/POS 80 mm — réseau (port 9100) **ou** USB-OTG via WebUSB sur tablette Android |
-| Imprimante étiquettes | **Zebra ZD421d** ZPL II thermique direct 25×52 mm (réseau, port 9100) — preview Labelary |
+| Imprimante étiquettes | **Zebra ZD421d** ZPL II thermique direct 25×52 mm — réseau local (TCP 9100) **ou** cloud (Weblink + SendFileToPrinter) — preview Labelary |
 | Douchette | **Inateck BCST-35** USB HID (champ POS auto-focus) ou Inateck 160B |
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 kické par l'imprimante ESC/POS (`ESC p m`) |
 | TPE | **SumUp Solo** Wi-Fi (push direct possible via `SUMUP_READER_ID`) |
@@ -142,6 +142,20 @@ RECEIPT_PRINTER_HOST=             # IP de la MUNBYN 047P-WiFi
 RECEIPT_PRINTER_PORT=9100
 ZEBRA_PRINTER_IP=                 # IP de la Zebra ZD421d (legacy: LABEL_PRINTER_HOST fallback)
 ZEBRA_PRINTER_PORT=9100
+# Zebra — choix du transport d'impression étiquettes :
+#   network (défaut) = ZPL en TCP 9100 sur le LAN (l'API doit joindre l'IP).
+#   cloud            = Weblink + API SendFileToPrinter. L'imprimante se
+#                      connecte en SORTIE à Zebra Data Services ; le backend
+#                      pousse le ZPL par REST. À utiliser quand l'API tourne
+#                      hors site (cloud) et ne peut pas ouvrir de socket vers
+#                      la boutique. Le MQTT natif Zebra ne sait PAS imprimer
+#                      (gestion/notifs only) — d'où Weblink. Voir
+#                      app/services/zebra_cloud.py pour l'enrôlement.
+ZEBRA_CONNECTION=network          # network | cloud
+ZEBRA_CLOUD_API_KEY=              # clé API Zebra Data Services (mode cloud)
+ZEBRA_CLOUD_TENANT=               # n° de tenant Zebra (mode cloud)
+ZEBRA_CLOUD_SERIAL=               # n° de série de l'imprimante enrôlée (mode cloud)
+ZEBRA_CLOUD_ENDPOINT=             # optionnel: override (défaut api.zebra.com/v2/devices/printers/send)
 VINTIZ_HARDWARE_CONFIG=           # chemin custom du fichier hardware.json (défaut: data/hardware.json)
 
 # Email transactional (P4-003) — gateway unifié Brevo > SMTP > simulation.
@@ -620,7 +634,7 @@ Matériel supporté :
 | Tablette caisse | iPad (Safari) | — | — |
 | Douchette code-barres | **Inateck BCST-35** ou **160B** | USB HID (clavier) | Auto-focus champ POS |
 | Imprimante ticket | **MUNBYN 047P-WiFi** ESC/POS 80 mm | Réseau (port 9100) | `app/services/escpos_service.py` |
-| Imprimante étiquettes | **Zebra ZD421d** ZPL II 25×52 mm | Réseau (port 9100) | `app/services/zebra_printer.py` + `zebra_zpl.py` |
+| Imprimante étiquettes | **Zebra ZD421d** ZPL II 25×52 mm | Réseau LAN (port 9100) **ou** cloud Weblink | `app/services/zebra_printer.py` (TCP) + `zebra_cloud.py` (Weblink/SendFileToPrinter) + `zebra_zpl.py` |
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 | Branché sur imprimante (kick `ESC p m`) | inclus dans `escpos_service` |
 | TPE | **SumUp Solo** | Wi-Fi / compte SumUp | `app/services/sumup_service.py` |
 

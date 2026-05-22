@@ -86,14 +86,15 @@ def ping(
     return PrinterStatus(online=True, ip=host, port=port, latency_ms=latency_ms)
 
 
-def send_test_label(*, host: str, port: int = DEFAULT_PORT) -> int:
-    """Send a tiny ZPL test page so the operator can validate the wiring.
+def build_test_label_zpl() -> str:
+    """Return the ZPL for a tiny test page used by the /settings test button.
 
-    Prints "VINTIZ • Test impression" + the current date — enough to
-    confirm the printer is reachable and configured correctly without
-    bothering with a real product fixture.
+    Prints "VINTIZ • Test impression" + the model — enough to confirm the
+    printer is reachable and configured without a real product fixture.
+    Shared by both transports (local TCP and the cloud SendFileToPrinter
+    path) so the test output is identical regardless of how it's sent.
     """
-    test_zpl = (
+    return (
         "^XA^CI28^PW640^LL400^LH0,0"
         "^FO0,60^FB640,1,0,C,0^A0N,80,80^FDVINTIZ^FS"
         "^FO20,160^GB600,2,2^FS"
@@ -101,7 +102,11 @@ def send_test_label(*, host: str, port: int = DEFAULT_PORT) -> int:
         "^FO0,260^FB640,1,0,C,0^A0N,28,28^FDZebra ZD421d • ZPL^FS"
         "^PQ1^XZ"
     )
-    return send_zpl(test_zpl, host=host, port=port)
+
+
+def send_test_label(*, host: str, port: int = DEFAULT_PORT) -> int:
+    """Send a tiny ZPL test page so the operator can validate the wiring."""
+    return send_zpl(build_test_label_zpl(), host=host, port=port)
 
 
 def query_error_status(

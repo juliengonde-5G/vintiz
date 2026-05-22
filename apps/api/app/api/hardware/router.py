@@ -62,9 +62,9 @@ COMPATIBILITY_MATRIX = [
         "category": "label_printer",
         "label": "Imprimante d'etiquettes",
         "model": "Zebra ZD421d",
-        "connection": "Ethernet (ZPL II, port 9100)",
+        "connection": "Ethernet local (ZPL TCP 9100) ou cloud (Weblink + SendFileToPrinter)",
         "supported": True,
-        "notes": "Etiquettes Vintiz 80x120 mm (thermique direct 203 dpi). Apercu via Labelary.",
+        "notes": "Etiquettes Vintiz 80x120 mm (thermique direct 203 dpi). Apercu via Labelary. Mode cloud : l'imprimante se connecte a Zebra Data Services, le backend pousse le ZPL par API (utile quand l'API tourne hors site).",
     },
     {
         "category": "payment_terminal",
@@ -83,9 +83,26 @@ async def get_compatibility(current_user: User = Depends(get_current_user)):
     return {"items": COMPATIBILITY_MATRIX}
 
 
+def _mask_label_secrets(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of the config with the Zebra cloud API key masked.
+
+    The key is a secret persisted in ``hardware.json``; we never echo it
+    back to the browser. Instead we expose a boolean + last-4 hint so the
+    UI can show "configurée" without revealing the value.
+    """
+    lp = dict(cfg.get("label_printer") or {})
+    key = lp.get("cloud_api_key") or ""
+    lp["cloud_api_key"] = ""
+    lp["cloud_api_key_set"] = bool(key)
+    lp["cloud_api_key_hint"] = key[-4:] if key else ""
+    out = dict(cfg)
+    out["label_printer"] = lp
+    return out
+
+
 @router.get("/config")
 async def get_config(current_user: User = Depends(get_current_user)):
-    return load_config()
+    return _mask_label_secrets(load_config())
 
 
 @router.put("/config")
@@ -94,7 +111,17 @@ async def update_config(
     current_user: User = Depends(get_current_user),
 ):
     payload = {k: v for k, v in update.model_dump(exclude_none=True).items()}
-    return save_config(payload)
+    lp = payload.get("label_printer")
+    if isinstance(lp, dict):
+        # Drop the read-only mask helpers if the UI echoes them back.
+        lp.pop("cloud_api_key_set", None)
+        lp.pop("cloud_api_key_hint", None)
+        # A blank api key means "leave the stored one untouched": never let
+        # an empty field (or the masked placeholder) wipe the saved secret.
+        if not (lp.get("cloud_api_key") or "").strip():
+            lp.pop("cloud_api_key", None)
+    save_config(payload)
+    return _mask_label_secrets(load_config())
 
 
 class TestPrintRequest(BaseModel):
@@ -211,10 +238,25 @@ async def label_test(
     Kept under /hardware/label/test for legacy compatibility with the
     settings UI, but the actual driver is now ``zebra_printer``. The
     canonical endpoint going forward is ``POST /api/labels/test-print``.
+
+    Honours the configured transport: in ``cloud`` mode the test label is
+    pushed via Zebra's SendFileToPrinter API; the host/port override only
+    applies to the local TCP path.
     """
-    from app.services import zebra_printer
+    from app.services import zebra_cloud, zebra_printer
 
     cfg = load_config()["label_printer"]
+    connection = (cfg.get("connection") or "network").strip().lower()
+
+    if connection == "cloud":
+        try:
+            serial = await zebra_cloud.send_zpl(zebra_printer.build_test_label_zpl(), cfg)
+        except zebra_cloud.CloudConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except zebra_printer.PrinterUnreachable as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return {"success": True, "target": f"cloud:{serial}"}
+
     host = req.host or cfg.get("host") or ""
     port = int(req.port or cfg.get("port") or zebra_printer.DEFAULT_PORT)
     if not host:
