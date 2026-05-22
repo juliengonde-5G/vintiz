@@ -25,6 +25,7 @@ import Card from '@/components/ui/Card';
 import StorePlanPicker, { type PlanZone } from '@/components/inventory/StorePlanPicker';
 import { api } from '@/lib/api';
 import { mediaUrl } from '@/lib/format';
+import { downscaleImage } from '@/lib/image-resize';
 
 interface Category {
   id: string;
@@ -195,7 +196,10 @@ export default function NewProductWizard() {
   const set = (field: string, value: string) => setForm((p) => ({ ...p, [field]: value }));
 
   // --- Step 1-2: photo capture + auto AI analysis ---
-  const handleFile = async (file: File) => {
+  const handleFile = async (rawFile: File) => {
+    // Force a sane capture format: phone cameras emit 4–12 MB full-res JPEGs
+    // that exceed the upload caps and slow the double send (Vision + upload).
+    const file = await downscaleImage(rawFile);
     setPhotoFile(file);
     setError('');
     const reader = new FileReader();

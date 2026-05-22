@@ -782,7 +782,7 @@ async def reorder_product_photos(
 # the body of this handler.
 UPLOAD_ROOT = Path(__file__).resolve().parents[3] / "uploads" / "products"
 ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
-MAX_PHOTO_BYTES = 7 * 1024 * 1024  # 7 MB
+MAX_PHOTO_BYTES = 20 * 1024 * 1024  # 20 MB — safety net; the tablet downscales before upload
 _SUFFIX_TO_MEDIA_TYPE = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",

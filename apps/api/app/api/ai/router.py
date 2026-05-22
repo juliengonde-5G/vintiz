@@ -78,8 +78,8 @@ async def analyze_photo(
         raise HTTPException(status_code=400, detail="Le fichier doit etre une image")
 
     image_data = await file.read()
-    if len(image_data) > 10 * 1024 * 1024:  # 10MB limit
-        raise HTTPException(status_code=400, detail="Image trop volumineuse (max 10 Mo)")
+    if len(image_data) > 20 * 1024 * 1024:  # 20MB safety net (tablet downscales first)
+        raise HTTPException(status_code=400, detail="Image trop volumineuse (max 20 Mo)")
 
     media_type = file.content_type or "image/jpeg"
 

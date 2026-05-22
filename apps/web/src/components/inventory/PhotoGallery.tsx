@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { mediaUrl } from '@/lib/format';
+import { downscaleImage } from '@/lib/image-resize';
 
 interface Photo {
   id: string;
@@ -70,10 +71,11 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
     setBusy(false);
   };
 
-  const uploadFile = async (file: File) => {
+  const uploadFile = async (rawFile: File) => {
     setBusy(true);
     setError('');
     try {
+      const file = await downscaleImage(rawFile);
       const formData = new FormData();
       formData.append('file', file);
       const res = await api.upload(
@@ -292,8 +294,8 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
           className="block w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-vz-teal file:text-white hover:file:bg-vz-teal-deep disabled:opacity-50"
         />
         <p className="text-xs text-gray-400">
-          JPG / PNG / WEBP, 5 Mo max. Stockage local pour l&apos;instant ;
-          bascule Scaleway prévue.
+          JPG / PNG / WEBP. Les photos sont automatiquement optimisées avant
+          envoi. Stockage local pour l&apos;instant ; bascule Scaleway prévue.
         </p>
       </div>
 
