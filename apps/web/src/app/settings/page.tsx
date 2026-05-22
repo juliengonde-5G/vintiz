@@ -517,10 +517,17 @@ export default function SettingsPage() {
       }
       return;
     }
-    // Network path (legacy / fixed station)
+    // Network path (legacy / fixed station). Test the IP currently typed in
+    // the form; the backend falls back to the persisted config when omitted.
+    const host = hardware.receipt_printer.host?.trim();
+    const port = hardware.receipt_printer.port || 9100;
+    if (!host) {
+      setError("Renseignez d'abord l'adresse IP de l'imprimante ticket.");
+      return;
+    }
     try {
-      const res = await api.post('/api/hardware/receipt/test', {});
-      if (res.ok) setMessage('Ticket de test envoyé à la MUNBYN');
+      const res = await api.post('/api/hardware/receipt/test', { host, port });
+      if (res.ok) setMessage(`Ticket de test envoyé à ${host}:${port}`);
       else {
         const e = await res.json().catch(() => ({}));
         setError(e.detail || 'Échec du test imprimante');
@@ -585,15 +592,28 @@ export default function SettingsPage() {
   };
 
   const testLabelPrinter = async () => {
+    if (!hardware) return;
     setError(''); setMessage('');
+    const host = hardware.label_printer.host?.trim();
+    const port = hardware.label_printer.port || 9100;
+    if (!host) {
+      setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: "Renseignez d'abord l'adresse IP de l'imprimante." } }));
+      return;
+    }
+    // Test the IP currently typed in the form (no need to save first); the
+    // backend falls back to the persisted config when host is omitted.
+    setHwTests((s) => ({ ...s, label_printer: { status: 'running' } }));
     try {
-      const res = await api.post('/api/hardware/label/test', {});
-      if (res.ok) setMessage('Etiquette de test envoyee a la SATO CT4-LX');
-      else {
+      const res = await api.post('/api/hardware/label/test', { host, port });
+      if (res.ok) {
+        setHwTests((s) => ({ ...s, label_printer: { status: 'success', message: `Étiquette de test envoyée à ${host}:${port}` } }));
+      } else {
         const e = await res.json().catch(() => ({}));
-        setError(e.detail || 'Echec du test SATO');
+        setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: e.detail || `Échec du test (HTTP ${res.status})` } }));
       }
-    } catch { setError('Erreur de connexion'); }
+    } catch {
+      setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: 'Erreur de connexion au serveur Vintiz' } }));
+    }
   };
 
   const loadCategories = async () => {
@@ -1650,8 +1670,22 @@ export default function SettingsPage() {
                       />
                     </div>
                   </div>
-                  <div className="flex gap-2 mt-4">
-                    <Button onClick={testLabelPrinter} variant="secondary">Imprimer une étiquette de test</Button>
+                  <div className="flex flex-wrap items-center gap-3 mt-4">
+                    <Button
+                      onClick={testLabelPrinter}
+                      variant="secondary"
+                      disabled={hwTests.label_printer?.status === 'running'}
+                    >
+                      {hwTests.label_printer?.status === 'running' ? 'Envoi en cours…' : 'Imprimer une étiquette de test'}
+                    </Button>
+                    {hwTests.label_printer && hwTests.label_printer.status !== 'running' && (
+                      <span
+                        className={`text-sm ${hwTests.label_printer.status === 'success' ? 'text-vz-teal' : 'text-red-600'}`}
+                      >
+                        {hwTests.label_printer.status === 'success' ? '✓ ' : '✕ '}
+                        {hwTests.label_printer.message}
+                      </span>
+                    )}
                   </div>
                 </Card>
 
