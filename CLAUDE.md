@@ -406,9 +406,11 @@ GET    /api/admin/predictive/audience?period_days=90  Snapshot debug dominant ta
 - **Photo vitrine auto** : à chaque upload, une copie détourée (fond
   supprimé + canvas off-white charte + logo Vintiz) est générée en back et
   stockée dans la fiche (`ProductPhoto.processed_url`,
-  `Product.storefront_photo_url`). Backend : Photoroom puis fallback rembg
-  local. Proposée en fin d'assistant d'ajout ; régénérable depuis la galerie
-  photos. C'est l'image destinée au site vitrine.
+  `Product.storefront_photo_url`). Backend : Photoroom (`PHOTOROOM_API_KEY`,
+  défaut, sans dépendance) ; repli rembg local **optionnel** (extra
+  `pip install -e ".[rembg]"`, embarque onnxruntime). Sans backend, la copie
+  vitrine est ignorée (statut `skipped`). Proposée en fin d'assistant d'ajout ;
+  régénérable depuis la galerie photos. C'est l'image destinée au site vitrine.
 
 ### 2. POS (Caisse) — prêt pour matériel
 - Interface tactile compacte iPad 1024×768 (tout sur 1 écran sans scroll,
