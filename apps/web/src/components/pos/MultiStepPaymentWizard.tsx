@@ -26,6 +26,10 @@ interface Props {
   hasClient: boolean;
   /** Live remaining avoir balance for the selected client (gates avoir). */
   avoirBalance?: number;
+  /** Disable the card tile (SumUp unconfigured or TPE offline). */
+  cardDisabled?: boolean;
+  /** Reason surfaced under the disabled card tile. */
+  cardDisabledReason?: string;
   /** Cancel the entire wizard — wipes local tenders, doesn't commit. */
   onClose: () => void;
   /** Called when the cashier confirms — array of tenders summing to total. */
@@ -67,6 +71,8 @@ export default function MultiStepPaymentWizard({
   totalTtc,
   hasClient,
   avoirBalance,
+  cardDisabled,
+  cardDisabledReason,
   onClose,
   onCommit,
   onCardCheckout,
@@ -240,11 +246,13 @@ export default function MultiStepPaymentWizard({
           <PaymentMethodSelector
             remainingAmount={remaining}
             disabled={{
+              card: cardDisabled,
               avoir:
                 !hasClient ||
                 (avoirBalance !== undefined && avoirBalance < remaining - 0.001),
             }}
             disabledReasons={{
+              card: cardDisabledReason,
               avoir: !hasClient
                 ? 'Sélectionne un client'
                 : 'Solde insuffisant',

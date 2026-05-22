@@ -344,6 +344,34 @@ async def test_cannot_refund_a_refund(session):
 
 
 @pytest.mark.anyio
+async def test_refund_idempotent_replay_same_client_uuid(session):
+    """A retried refund with the same client_uuid must not double-refund."""
+    user = await _make_user(session)
+    client = await _make_client(session)
+    # Sell 2 units so a *real* second refund would succeed (and double-credit)
+    # if idempotence were missing — the replay must instead return the first.
+    sale = await _make_sale(session, user, client, items=[("Lot", 20.0, 2)])
+    item = sale.items[0]
+    svc = RefundService(session)
+    cu = uuid.uuid4()
+
+    first = await svc.refund_transaction(
+        original_tx_id=sale.id, items=[RefundLineInput(item.id, 1)],
+        refund_method="avoir", user_id=user.id, cashier_id=None,
+        reason="dup", client_uuid=cu,
+    )
+    second = await svc.refund_transaction(
+        original_tx_id=sale.id, items=[RefundLineInput(item.id, 1)],
+        refund_method="avoir", user_id=user.id, cashier_id=None,
+        reason="dup", client_uuid=cu,
+    )
+
+    assert second.id == first.id  # replay returned the original refund
+    await session.refresh(client)
+    assert float(client.avoir_credit) == pytest.approx(20.0)  # credited once, not twice
+
+
+@pytest.mark.anyio
 async def test_invalid_refund_method_rejected(session):
     from app.core.exceptions import RefundError
 

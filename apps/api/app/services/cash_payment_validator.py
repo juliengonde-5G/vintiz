@@ -43,12 +43,19 @@ def cap_for(is_tourist: bool) -> Decimal:
     return CASH_CAP_TOURIST_EUR if is_tourist else CASH_CAP_RESIDENT_EUR
 
 
+_CASH_METHOD_ALIASES = {"cash", "especes", "espèces"}
+
+
 def sum_cash_payments(payments: Iterable[object]) -> Decimal:
-    """Somme les paiements de méthode ``cash`` quel que soit le DTO source.
+    """Somme les paiements espèces quel que soit le DTO source.
 
     Accepte des objets exposant ``method`` (str ou Enum) et ``amount``
     (numérique). Les autres méthodes (``card``, ``cheque``, ``transfer``,
     ``avoir``) sont ignorées.
+
+    ⚠️ Le POS envoie le vocabulaire FR (``especes``) tandis que l'ORM/Enum
+    utilise ``cash`` : on accepte les deux, sinon le plafond légal serait
+    silencieusement contourné (le total cash calculé resterait à 0).
     """
     total = Decimal("0")
     for p in payments:
@@ -60,7 +67,7 @@ def sum_cash_payments(payments: Iterable[object]) -> Decimal:
             if hasattr(method_raw, "value")
             else str(method_raw)
         ).lower()
-        if method != "cash":
+        if method not in _CASH_METHOD_ALIASES:
             continue
         amount = getattr(p, "amount", None)
         if amount is None:
