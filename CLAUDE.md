@@ -58,7 +58,7 @@ docs/
 | Site public | Next.js 14 App Router + Tailwind CSS — landing + SEO + GA4 |
 | Barcode | python-barcode + Pillow (Code 128) |
 | Imprimante ticket | **MUNBYN 047P** ESC/POS 80 mm — réseau (port 9100) **ou** USB-OTG via WebUSB sur tablette Android |
-| Imprimante étiquettes | **Zebra ZD421d** ZPL II thermique direct 80×120 mm (réseau, port 9100) — preview Labelary |
+| Imprimante étiquettes | **Zebra ZD421d** ZPL II thermique direct 25×52 mm (réseau, port 9100) — preview Labelary |
 | Douchette | **Inateck BCST-35** USB HID (champ POS auto-focus) ou Inateck 160B |
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 kické par l'imprimante ESC/POS (`ESC p m`) |
 | TPE | **SumUp Solo** Wi-Fi (push direct possible via `SUMUP_READER_ID`) |
@@ -620,7 +620,7 @@ Matériel supporté :
 | Tablette caisse | iPad (Safari) | — | — |
 | Douchette code-barres | **Inateck BCST-35** ou **160B** | USB HID (clavier) | Auto-focus champ POS |
 | Imprimante ticket | **MUNBYN 047P-WiFi** ESC/POS 80 mm | Réseau (port 9100) | `app/services/escpos_service.py` |
-| Imprimante étiquettes | **Zebra ZD421d** ZPL II 80×120 mm | Réseau (port 9100) | `app/services/zebra_printer.py` + `zebra_zpl.py` |
+| Imprimante étiquettes | **Zebra ZD421d** ZPL II 25×52 mm | Réseau (port 9100) | `app/services/zebra_printer.py` + `zebra_zpl.py` |
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 | Branché sur imprimante (kick `ESC p m`) | inclus dans `escpos_service` |
 | TPE | **SumUp Solo** | Wi-Fi / compte SumUp | `app/services/sumup_service.py` |
 

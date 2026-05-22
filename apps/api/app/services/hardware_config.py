@@ -67,8 +67,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "host": os.getenv("ZEBRA_PRINTER_IP", os.getenv("LABEL_PRINTER_HOST", "")),
         "port": int(os.getenv("ZEBRA_PRINTER_PORT", os.getenv("LABEL_PRINTER_PORT", "9100"))),
         "dpi": 203,
-        "label_width_mm": 80,
-        "label_height_mm": 120,
+        "label_width_mm": 25,
+        "label_height_mm": 52,
     },
     # Barcode scanner — Inateck BCST-35 2D (HID keyboard mode by default)
     "barcode_scanner": {
