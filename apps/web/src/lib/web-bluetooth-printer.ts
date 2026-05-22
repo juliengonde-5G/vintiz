@@ -89,8 +89,15 @@ export async function requestZebraDevice(): Promise<{ device: BluetoothDevice; i
   if (!navigator.bluetooth) {
     throw new Error('Web Bluetooth indisponible — utilisez Chrome Android sur HTTPS');
   }
+  // The Zebra Parser Service is usually NOT included in the BLE advertisement
+  // packet, so filtering on it (`filters: [{ services: [...] }]`) frequently
+  // shows an EMPTY chooser — the printer never appears and the operator
+  // thinks BLE is broken. We instead accept all devices and declare the
+  // Parser Service as optional so we can still resolve it once connected. The
+  // operator picks the Zebra from the list (it advertises as its serial,
+  // e.g. "D8J252505036").
   const device = await navigator.bluetooth.requestDevice({
-    filters: [{ services: [ZEBRA_PARSER_SERVICE] }],
+    acceptAllDevices: true,
     optionalServices: [ZEBRA_PARSER_SERVICE],
   });
   return { device, info: { id: device.id, name: device.name || 'Zebra' } };
@@ -130,21 +137,51 @@ export async function sendZpl(device: BluetoothDevice, zpl: string): Promise<voi
   if (!device.gatt) {
     throw new Error('GATT indisponible sur ce périphérique Bluetooth');
   }
-  const server = device.gatt.connected ? device.gatt : await device.gatt.connect();
+  // Each step is wrapped so a failure says exactly WHERE it broke — there's no
+  // dev console on a cashier tablet, so the on-screen message is the only clue.
+  let server: BluetoothRemoteGATTServer;
   try {
-    const service = await server.getPrimaryService(ZEBRA_PARSER_SERVICE);
-    const characteristic = await service.getCharacteristic(ZEBRA_WRITE_CHARACTERISTIC);
+    server = device.gatt.connected ? device.gatt : await device.gatt.connect();
+  } catch (e) {
+    throw new Error(`[1/4] Connexion GATT impossible : ${errText(e)}`);
+  }
+  try {
+    let service: BluetoothRemoteGATTService;
+    try {
+      service = await server.getPrimaryService(ZEBRA_PARSER_SERVICE);
+    } catch (e) {
+      throw new Error(
+        `[2/4] Service Zebra Parser introuvable — l'imprimante n'expose pas le service BLE d'impression (vérifier qu'elle est appairée et que la BLE est activée) : ${errText(e)}`,
+      );
+    }
+    let characteristic: BluetoothRemoteGATTCharacteristic;
+    try {
+      characteristic = await service.getCharacteristic(ZEBRA_WRITE_CHARACTERISTIC);
+    } catch (e) {
+      throw new Error(`[3/4] Caractéristique d'écriture introuvable : ${errText(e)}`);
+    }
     const bytes = new TextEncoder().encode(zpl);
+    const total = Math.max(1, Math.ceil(bytes.byteLength / CHUNK_SIZE));
+    let chunk = 0;
     for (let offset = 0; offset < bytes.byteLength; offset += CHUNK_SIZE) {
+      chunk += 1;
       const slice = bytes.slice(offset, offset + CHUNK_SIZE);
-      if (characteristic.writeValueWithoutResponse) {
-        await characteristic.writeValueWithoutResponse(slice);
-      } else {
-        await characteristic.writeValue(slice);
+      try {
+        if (characteristic.writeValueWithoutResponse) {
+          await characteristic.writeValueWithoutResponse(slice);
+        } else {
+          await characteristic.writeValue(slice);
+        }
+      } catch (e) {
+        throw new Error(`[4/4] Écriture BLE échouée au bloc ${chunk}/${total} : ${errText(e)}`);
       }
       await new Promise((resolve) => setTimeout(resolve, INTER_CHUNK_DELAY_MS));
     }
   } finally {
     try { server.disconnect(); } catch { /* already disconnected */ }
   }
+}
+
+function errText(e: unknown): string {
+  return e instanceof Error ? `${e.name}: ${e.message}` : String(e);
 }
