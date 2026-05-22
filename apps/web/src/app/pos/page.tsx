@@ -20,7 +20,7 @@ import InvoiceClientForm, {
 import LoyaltyCustomerCard, { type CustomerBrief } from '@/components/pos/LoyaltyCustomerCard';
 import MultiStepPaymentWizard from '@/components/pos/MultiStepPaymentWizard';
 import ReceiptPreviewCard from '@/components/pos/ReceiptPreviewCard';
-import { usePosPayment } from '@/hooks/usePosPayment';
+import { usePosPayment, type SumUpPaymentDetails } from '@/hooks/usePosPayment';
 import { api } from '@/lib/api';
 import { useConnectivity } from '@/lib/connectivity';
 import { isPosWizardEnabled } from '@/lib/feature-flags';
@@ -85,6 +85,24 @@ interface ClientDetail {
   loyalty: { points: number; membership_number: string } | null;
   avoir_balance?: number;
   purchases: { id: string; transaction_number: number; total_ttc: number; created_at: string }[];
+}
+
+
+/** Pull the SumUp identifiers out of a /cb/{id}/status response so they can
+ * be persisted on the Payment row (enables API-driven card refunds). */
+function extractCbDetails(
+  s: Record<string, unknown>,
+  checkoutId?: string,
+): SumUpPaymentDetails {
+  return {
+    sumup_checkout_id: (s.checkout_id as string) || checkoutId,
+    sumup_transaction_id: s.sumup_transaction_id as string | undefined,
+    sumup_transaction_code: s.sumup_transaction_code as string | undefined,
+    sumup_auth_code: s.sumup_auth_code as string | undefined,
+    sumup_card_brand: s.sumup_card_brand as string | undefined,
+    sumup_card_last4: s.sumup_card_last4 as string | undefined,
+    sumup_environment: s.environment as string | undefined,
+  };
 }
 
 
@@ -230,6 +248,11 @@ export default function POSPage() {
     cashierId: cashier?.id ?? null,
     drawerId: drawer?.drawer_id ?? null,
   });
+
+  // SumUp identifiers captured when a card payment reaches PAID — merged onto
+  // the carte payment line so the API persists them on the Payment row (lets a
+  // later refund be issued through the SumUp API instead of manually).
+  const [cbDetails, setCbDetails] = useState<SumUpPaymentDetails | null>(null);
 
   // Which cart item has its discount strip expanded (compact layout: hide by
   // default to fit more items on Lenovo landscape).
@@ -666,10 +689,13 @@ export default function POSPage() {
   const initiateCBPayment = async (amount: number) => {
     stopCbPolling();
     setCbStatus('pending');
+    setCbDetails(null);
     try {
       const res = await api.post('/api/pos/payments/cb/initiate', {
         amount: parseFloat(amount.toFixed(2)),
         description: `Vente Vintiz #${Date.now()}`,
+        // Reconciliation key so the SumUp transaction can be looked up later.
+        foreign_transaction_id: generateClientUuid(),
       });
       if (res.ok) {
         const data = await res.json();
@@ -683,6 +709,7 @@ export default function POSPage() {
               const s = await statusRes.json();
               if (s.status === 'PAID') {
                 stopCbPolling();
+                setCbDetails(extractCbDetails(s, data.checkout_id));
                 setCbStatus('paid');
               } else if (s.status === 'FAILED') {
                 stopCbPolling();
@@ -710,6 +737,7 @@ export default function POSPage() {
     }
     setCbCheckoutId(null);
     setCbStatus('idle');
+    setCbDetails(null);
     // Remove the carte payment line
     setPayments(prev => prev.filter(p => p.method !== 'carte'));
   };
@@ -728,6 +756,7 @@ export default function POSPage() {
       if (res.ok) {
         const s = await res.json();
         if (s.status === 'PAID') {
+          setCbDetails(extractCbDetails(s, cbCheckoutId));
           setCbStatus('paid');
           return;
         }
@@ -896,7 +925,11 @@ export default function POSPage() {
           unit_price: item.price,
           discount_percent: item.discount,
         })),
-        payments: tenders.map((p) => ({ method: p.method, amount: p.amount })),
+        payments: tenders.map((p) => ({
+          method: p.method,
+          amount: p.amount,
+          ...(p.method === 'carte' && cbDetails ? cbDetails : {}),
+        })),
         redeem_loyalty_discount: redeemPoints ? loyaltyDiscount : 0,
         client_uuid: posPayment.clientUuid,
       };
@@ -976,7 +1009,11 @@ export default function POSPage() {
           unit_price: item.price,
           discount_percent: item.discount,
         })),
-        payments: payments.map(p => ({ method: p.method, amount: p.amount })),
+        payments: payments.map(p => ({
+          method: p.method,
+          amount: p.amount,
+          ...(p.method === 'carte' && cbDetails ? cbDetails : {}),
+        })),
         redeem_loyalty_discount: redeemPoints ? loyaltyDiscount : 0,
         client_uuid: clientUuid,
       };
@@ -2271,7 +2308,22 @@ export default function POSPage() {
             posPayment.cancel();
             setShowPayment(false);
           }}
-          onCardCheckout={posPayment.runCardCheckout}
+          // Disable the card tile when SumUp is unconfigured or the Solo
+          // pinged offline — otherwise the cashier waits through the polling
+          // banner only to see it fail.
+          cardDisabled={!!sumupStatus && (!sumupStatus.configured || !sumupStatus.ready)}
+          cardDisabledReason={
+            sumupStatus && !sumupStatus.configured
+              ? 'SumUp non configuré'
+              : 'TPE hors ligne'
+          }
+          onCardCheckout={async (amount, onStatus) => {
+            const outcome = await posPayment.runCardCheckout(amount, onStatus);
+            if (outcome.status === 'paid' && outcome.sumup) {
+              setCbDetails(outcome.sumup);
+            }
+            return outcome;
+          }}
           onCommit={async (tenders) => {
             // Map wizard tenders (cash | card | cheque | avoir) to the legacy
             // ``payments`` shape (especes | carte | cheque | avoir).

@@ -46,7 +46,16 @@ class CashMovement(Base):
         UUID(as_uuid=True), ForeignKey("cash_drawers.id"), nullable=False
     )
     direction: Mapped[CashMovementDirection] = mapped_column(
-        Enum(CashMovementDirection, name="cash_movement_direction"),
+        # Les LABELS de l'enum PG (migration 0035) sont "in"/"out" — soit les
+        # VALEURS de l'enum, pas ses noms (inflow/outflow). Sans
+        # values_callable, SQLAlchemy persiste le NOM ("inflow") que le type
+        # PG rejette → 500 sur chaque mouvement de caisse. Même convention que
+        # EventType/EventSource (app/models/events.py).
+        Enum(
+            CashMovementDirection,
+            name="cash_movement_direction",
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
     )
     amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)

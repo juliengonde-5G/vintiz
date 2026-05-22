@@ -126,8 +126,15 @@ def save_config(config: dict[str, Any], path: Path = DEFAULT_PATH) -> dict[str, 
             current[section].update(values)
         else:
             current[section] = values
-    with path.open("w", encoding="utf-8") as fh:
+    # Atomic write: dump to a temp file in the same dir then os.replace, so a
+    # crash mid-write can never truncate app_config.json (which load_config
+    # would then silently reset to DEFAULT_CONFIG, wiping SumUp/Brevo keys).
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8") as fh:
         json.dump(current, fh, indent=2, ensure_ascii=False)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
     return current
 
 

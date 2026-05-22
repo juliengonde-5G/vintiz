@@ -29,11 +29,39 @@ import type { PaymentStatus } from '@/components/pos/PaymentStatusBanner';
  * cart or commit the transaction; the parent owns those.
  */
 
+/** SumUp identifiers captured at PAID time, persisted on the Payment row so
+ * a later card refund can be issued through the SumUp API. */
+export interface SumUpPaymentDetails {
+  sumup_checkout_id?: string;
+  sumup_transaction_id?: string;
+  sumup_transaction_code?: string;
+  sumup_auth_code?: string;
+  sumup_card_brand?: string;
+  sumup_card_last4?: string;
+  sumup_environment?: string;
+}
+
 export interface CardCheckoutOutcome {
   status: PaymentStatus;
   detail?: string;
   checkout_id?: string;
   attempt_id?: string;
+  sumup?: SumUpPaymentDetails;
+}
+
+function extractSumUpDetails(
+  data: Record<string, unknown>,
+  checkoutId?: string,
+): SumUpPaymentDetails {
+  return {
+    sumup_checkout_id: (data.checkout_id as string) || checkoutId,
+    sumup_transaction_id: data.sumup_transaction_id as string | undefined,
+    sumup_transaction_code: data.sumup_transaction_code as string | undefined,
+    sumup_auth_code: data.sumup_auth_code as string | undefined,
+    sumup_card_brand: data.sumup_card_brand as string | undefined,
+    sumup_card_last4: data.sumup_card_last4 as string | undefined,
+    sumup_environment: data.environment as string | undefined,
+  };
 }
 
 interface UsePosPaymentOptions {
@@ -133,6 +161,10 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
         const res = await api.post('/api/pos/payments/cb/initiate', {
           amount,
           description: 'Vente Vintiz',
+          // Idempotence / reconciliation key — ties this checkout to the
+          // sale's client_uuid so a retried initiate references the same
+          // intended payment and the SumUp txn can be looked up later.
+          foreign_transaction_id: clientUuidRef.current,
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
@@ -189,6 +221,34 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
       const startedAt = Date.now();
       while (!cancelledRef.current) {
         if (Date.now() - startedAt > timeoutMs) {
+          // One final status read before giving up. A backgrounded tab pauses
+          // polling but the timer keeps running, so the card may have been
+          // PAID while we weren't looking — don't cancel a real payment.
+          try {
+            if (checkoutId) {
+              const finalRes = await api.get(
+                `/api/pos/payments/cb/${checkoutId}/status`,
+              );
+              if (finalRes.ok) {
+                const finalData = await finalRes.json();
+                if ((finalData.status || '').toUpperCase() === 'PAID') {
+                  attemptId = await logAttempt(
+                    { method: 'card', amount, status: 'succeeded', sumup_checkout_id: checkoutId },
+                    attemptId,
+                  );
+                  onStatus('paid');
+                  return {
+                    status: 'paid',
+                    checkout_id: checkoutId,
+                    attempt_id: attemptId,
+                    sumup: extractSumUpDetails(finalData, checkoutId),
+                  };
+                }
+              }
+            }
+          } catch {
+            /* fall through to the timeout/cancel path */
+          }
           // Hard timeout — try to cancel server-side and report to caller.
           try {
             if (checkoutId) {
@@ -244,6 +304,7 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
                 status: 'paid',
                 checkout_id: checkoutId,
                 attempt_id: attemptId,
+                sumup: extractSumUpDetails(data, checkoutId),
               };
             }
             if (raw === 'FAILED') {

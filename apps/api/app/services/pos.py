@@ -223,6 +223,19 @@ class PosService:
                 method=method_enum,
                 amount=float(pay.amount),
             )
+            # Persist SumUp identifiers on card tenders so a later refund can
+            # be issued via the SumUp API. The attributes are optional on the
+            # DTO (only the POS card flow sets them); guard with getattr so
+            # other callers (seed scripts, offline replay) keep working.
+            if method_enum == PaymentMethod.card:
+                for _attr in (
+                    "sumup_checkout_id", "sumup_transaction_id",
+                    "sumup_transaction_code", "sumup_auth_code",
+                    "sumup_card_brand", "sumup_card_last4", "sumup_environment",
+                ):
+                    _val = getattr(pay, _attr, None)
+                    if _val:
+                        setattr(payment, _attr, _val)
             self.db.add(payment)
             if method_enum == PaymentMethod.avoir:
                 avoir_total += Decimal(str(pay.amount))

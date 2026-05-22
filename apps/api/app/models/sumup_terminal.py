@@ -10,10 +10,12 @@ lets the manager:
 - mark one as default (used when the POS doesn't pick a specific reader)
 - record the last heartbeat status so the back-office shows red/amber/green
 
-The env vars stay valid as a one-shot fallback when the table is empty —
-that keeps the existing single-terminal deployment working without any
-config change. As soon as a row is seeded (migration 0035 does this from
-the env at first boot) the DB takes precedence.
+The env vars (``SUMUP_READER_ID``) / app_config stay valid as a fallback
+when the table has no default terminal — that keeps the existing
+single-terminal deployment working without any config change. As soon as a
+default terminal is declared here, ``SumUpService.resolve_reader_from_registry``
+makes the DB take precedence for the push. (The table is NOT auto-seeded
+from env — declare terminals from ``/settings > Paiement``.)
 """
 
 from __future__ import annotations

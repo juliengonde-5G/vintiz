@@ -55,6 +55,24 @@ def test_sum_cash_empty():
     assert sum_cash_payments([]) == Decimal("0")
 
 
+def test_sum_cash_counts_french_especes():
+    """Le POS envoie 'especes' (FR) ; doit compter comme cash, sinon le
+    plafond légal serait silencieusement contourné."""
+    payments = [
+        FakePayment("especes", Decimal("600")),
+        FakePayment("carte", Decimal("500")),
+        FakePayment("especes", Decimal("700")),
+    ]
+    assert sum_cash_payments(payments) == Decimal("1300")
+
+
+def test_validate_over_cap_with_especes_is_blocked():
+    """Régression : une vente 'especes' > 1000 € doit dépasser le plafond."""
+    result = validate([FakePayment("especes", Decimal("1500"))], is_tourist=False)
+    assert result.over_cap is True
+    assert result.cash_total_eur == Decimal("1500")
+
+
 def test_sum_cash_handles_str_method_uppercase():
     payments = [FakePayment("CASH", Decimal("42"))]
     assert sum_cash_payments(payments) == Decimal("42")

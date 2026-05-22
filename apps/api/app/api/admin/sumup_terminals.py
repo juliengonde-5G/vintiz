@@ -21,6 +21,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, get_or_404
@@ -123,8 +124,18 @@ async def create_sumup_terminal(
         notes=payload.notes,
     )
     db.add(row)
-    await db.flush()
-    await db.commit()
+    try:
+        await db.flush()
+        await db.commit()
+    except IntegrityError:
+        # Concurrent create with the same reader_id slipped past the
+        # app-level check above and hit the UNIQUE constraint. Surface the
+        # friendly 409 instead of a raw 500.
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Un terminal avec ce reader_id existe déjà ({reader_id}).",
+        )
     return _serialize(row)
 
 
@@ -187,7 +198,25 @@ async def delete_sumup_terminal(
 ):
     """Hard delete: the terminal won't appear anymore in the POS picker."""
     row = await get_or_404(db, SumUpTerminal, terminal_id, detail="Terminal introuvable")
+    was_default = bool(row.is_default)
     await db.delete(row)
+    await db.flush()
+    # If we just removed the default terminal, promote another one so the POS
+    # never ends up with zero default (which would silently fall back to the
+    # env reader or to no push at all).
+    if was_default:
+        replacement = (
+            await db.execute(
+                select(SumUpTerminal)
+                .order_by(
+                    (SumUpTerminal.status == SumUpTerminalStatus.active).desc(),
+                    SumUpTerminal.label,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if replacement is not None:
+            replacement.is_default = True
     await db.commit()
     return None
 

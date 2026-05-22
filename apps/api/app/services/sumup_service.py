@@ -27,21 +27,28 @@ SUMUP_API_BASE = "https://api.sumup.com/v0.1"
 # PII redaction for persisted SumUp error payloads
 # ---------------------------------------------------------------------------
 
-# PAN (Primary Account Number) : 13 à 19 chiffres consécutifs.
+# PAN (Primary Account Number).
 # Visa 16, Mastercard 16, Amex 15, Maestro 12-19, Discover 16-19.
-# On garde les non-digits autour pour éviter de matcher des timestamps,
-# mais on traite les espaces/dashes typiques de PAN affichés (4-4-4-4).
-_PAN_RE = re.compile(
-    r"(?<!\d)(?:\d[\s\-]?){13,19}(?!\d)"
-)
-# CVV / CVC / CVV2 / CSC : 3 ou 4 chiffres précédés d'un libellé connu.
+# Deux passes complémentaires :
+#  - _PAN_RUN_RE : une suite continue de >=13 chiffres (couvre aussi les
+#    runs de 20+ chiffres qu'un {13,19} borné laissait fuiter).
+#  - _PAN_FMT_RE : un PAN groupé par 4 (4-4-4-4 espaces ou tirets). On
+#    exige des groupes de 4 pour NE PAS avaler un timestamp ou un n° de
+#    tél écrit en groupes de 2/3 ("2026 05 22 12 30 45 999").
+_PAN_RUN_RE = re.compile(r"(?<!\d)\d{13,}(?!\d)")
+_PAN_FMT_RE = re.compile(r"(?<!\d)\d{4}(?:[ \-]\d{4}){2,4}(?!\d)")
+# CVV / CVC / CVV2 / CSC : chiffres précédés d'un libellé connu. On consomme
+# >=3 chiffres (pas {3,4}) pour ne pas laisser fuiter le 5e chiffre d'une
+# valeur malformée.
 _CVV_RE = re.compile(
-    r"(?i)\b(cvv2?|cvc2?|csc|card_security_code|security_code)\b\s*[:=]?\s*\d{3,4}"
+    r"(?i)\b(cvv2?|cvc2?|csc|card_security_code|security_code)\b\s*[:=]?\s*\d{3,}"
 )
-# Authorization headers et Bearer tokens.
+# Authorization headers et Bearer tokens. La classe de la valeur exclut les
+# retours-ligne ([ \t] et pas \s) pour ne pas avaler les lignes de
+# diagnostic qui suivent un header dans un body multi-lignes.
 _BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{8,}")
 _AUTH_HEADER_RE = re.compile(
-    r"(?i)\bauthorization\b\s*[:=]\s*[A-Za-z0-9._\-+/=\s]{8,}"
+    r"(?i)\bauthorization\b\s*[:=]\s*[A-Za-z0-9._\-+/= \t]{8,}"
 )
 # API keys SumUp / Stripe / Anthropic / etc. (préfixes connus suivis de
 # 24+ caractères de payload).
@@ -67,7 +74,8 @@ def redact_sumup_error(text: str | None, max_len: int = 300) -> str:
     if not text:
         return ""
     safe = str(text)
-    safe = _PAN_RE.sub("<PAN_REDACTED>", safe)
+    safe = _PAN_FMT_RE.sub("<PAN_REDACTED>", safe)
+    safe = _PAN_RUN_RE.sub("<PAN_REDACTED>", safe)
     safe = _CVV_RE.sub(
         lambda m: f"{m.group(1)} <CVV_REDACTED>", safe
     )
@@ -154,7 +162,11 @@ class SumUpService:
     def describe(self) -> dict:
         masked = ""
         if self.merchant_code:
-            masked = self.merchant_code[:2] + "***" + self.merchant_code[-2:]
+            masked = (
+                self.merchant_code[:2] + "***" + self.merchant_code[-2:]
+                if len(self.merchant_code) > 4
+                else "***"
+            )
         reader_masked = ""
         if self.reader_id:
             reader_masked = self.reader_id[:4] + "***" + self.reader_id[-2:] if len(self.reader_id) > 6 else "***"
@@ -166,10 +178,54 @@ class SumUpService:
             "merchant_code_masked": masked,
             "reader_id_set": bool(self.reader_id),
             "reader_id_masked": reader_masked,
+            # On expose seulement la présence d'un return_url, jamais sa
+            # valeur : /payments/cb/config est lisible par tout le staff
+            # (pas seulement les managers) et l'URL peut porter un token.
             "return_url_set": bool(self.return_url),
-            "return_url": self.return_url,
+            "affiliate_set": bool(self.affiliate_app_id and self.affiliate_key),
             "api_base": SUMUP_API_BASE,
         }
+
+    async def resolve_reader_from_registry(self, db) -> None:
+        """Override ``reader_id`` from the default ``SumUpTerminal`` row.
+
+        The multi-terminal registry (``/settings > Paiement``) is the source
+        of truth for which Solo the POS pushes to: the default *active*
+        terminal wins over the env / app_config ``reader_id``. Falls back to
+        any default row, then leaves the env value untouched. Never raises —
+        a registry lookup must not be able to break a checkout.
+        """
+        try:
+            from sqlalchemy import select
+
+            from app.models.sumup_terminal import (
+                SumUpTerminal,
+                SumUpTerminalStatus,
+            )
+
+            row = (
+                await db.execute(
+                    select(SumUpTerminal)
+                    .where(
+                        SumUpTerminal.is_default.is_(True),
+                        SumUpTerminal.status == SumUpTerminalStatus.active,
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                row = (
+                    await db.execute(
+                        select(SumUpTerminal)
+                        .where(SumUpTerminal.is_default.is_(True))
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+            if row and row.reader_id:
+                self.reader_id = row.reader_id
+        except Exception:  # noqa: BLE001
+            # Registry is optional — keep the env/app_config reader_id.
+            pass
 
     async def ping_reader(self) -> dict:
         """Probe the configured SumUp reader and return a structured status.
@@ -367,19 +423,25 @@ class SumUpService:
                 "error_detail": "SumUp non configuré (SUMUP_API_KEY manquant) — paiement CB indisponible.",
             }
 
-        # Prefer the Readers API if a reader is configured.
+        # Prefer the Readers API if a reader is configured. A Solo shop wants
+        # the TPE to ring — we do NOT silently fall back to a payment-link
+        # checkout on reader error (that would leave the cashier polling a
+        # link the customer never sees). _push_to_reader always returns a
+        # dict now (PENDING or FAILED), so this return is unconditional.
         if self.reader_id and self.merchant_code:
-            pushed = await self._push_to_reader(amount, currency, description, ref)
-            if pushed is not None:
-                return pushed
-            # _push_to_reader returned None → fall through to classic checkout
+            return await self._push_to_reader(
+                amount, currency, description, ref,
+                foreign_transaction_id=foreign_transaction_id,
+            )
 
-        # Classic Checkouts API (customer pays via link/app).
+        # Classic Checkouts API (customer pays via link/app). ``merchant_code``
+        # is the documented payee field — sending the merchant code in
+        # ``pay_to_email`` made SumUp reject every link-mode checkout (422).
         payload = {
             "checkout_reference": ref,
             "amount": round(amount, 2),
             "currency": currency,
-            "pay_to_email": self.merchant_code or "",
+            "merchant_code": self.merchant_code or "",
             "description": description,
         }
         try:
@@ -474,8 +536,14 @@ class SumUpService:
             if resp.status_code in (200, 201, 202):
                 data = resp.json() if resp.content else {}
                 inner = data.get("data") or {}
+                client_txn_id = inner.get("client_transaction_id") or ref
+                # The Readers API does NOT create a Checkout resource — its
+                # result must be fetched from the Transactions API, not
+                # GET /checkouts/{id}. We tag the id with a ``reader:`` prefix
+                # so get_checkout_status / cancel_checkout route correctly.
                 return {
-                    "checkout_id": inner.get("client_transaction_id") or ref,
+                    "checkout_id": f"reader:{client_txn_id}",
+                    "client_transaction_id": client_txn_id,
                     "checkout_reference": ref,
                     "amount": amount,
                     "currency": currency,
@@ -500,8 +568,21 @@ class SumUpService:
                 "error_detail": redact_sumup_error(resp.text),
                 "error_friendly": _friendly_error(resp.status_code, resp.text),
             }
-        except Exception:
-            return None
+        except httpx.HTTPError as exc:
+            # Network error pushing to the Solo — surface a clear FAILED
+            # rather than None (which used to silently switch to a payment
+            # link the cashier never expects).
+            return {
+                "checkout_id": f"ERR-{ref}",
+                "checkout_reference": ref,
+                "amount": amount,
+                "currency": currency,
+                "status": "FAILED",
+                "environment": self.environment,
+                "mode": "reader",
+                "error_detail": redact_sumup_error(f"network error: {exc}"),
+                "error_friendly": "TPE injoignable — vérifiez le Wi-Fi/4G du Solo et réessayez",
+            }
 
     # ------------------------------------------------------------------
     # Poll status
@@ -526,6 +607,11 @@ class SumUpService:
                 "error": "SumUp non configuré (SUMUP_API_KEY manquant)",
             }
 
+        # Solo / Readers API push : the id is a client_transaction_id, not a
+        # Checkout resource. Resolve it via the Transactions API.
+        if checkout_id.startswith("reader:"):
+            return await self._reader_checkout_status(checkout_id[len("reader:"):])
+
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(
@@ -534,7 +620,7 @@ class SumUpService:
                 )
             if resp.status_code == 200:
                 data = resp.json()
-                status = data.get("status", "PENDING")
+                status = _normalize_txn_status(data.get("status", "PENDING"))
                 result = {
                     "checkout_id": checkout_id,
                     "status": status,
@@ -569,6 +655,69 @@ class SumUpService:
                 "error": redact_sumup_error(str(e)),
             }
 
+    async def _reader_checkout_status(self, client_transaction_id: str) -> dict:
+        """Resolve a Solo (Readers API) checkout via the Transactions API.
+
+        The Readers API returns a ``client_transaction_id``, not a Checkout
+        resource — so we poll ``GET /v2.1/merchants/{m}/transactions
+        ?client_transaction_id=…`` instead of ``/checkouts/{id}``.
+
+        While the customer hasn't tapped yet the transaction doesn't exist
+        (404 / empty) → we report ``PENDING`` so the cashier keeps polling.
+        Transient SumUp errors also map to ``PENDING`` so we never flash a
+        false "Carte refusée" on a tap that's actually in progress; the
+        front-end's own 90 s timeout bounds the wait.
+        """
+        base = {
+            "checkout_id": f"reader:{client_transaction_id}",
+            "environment": self.environment,
+            "mode": "reader",
+        }
+        if not self.merchant_code:
+            return {**base, "status": "FAILED",
+                    "error": "SUMUP_MERCHANT_CODE manquant pour résoudre le TPE"}
+        url = (
+            f"https://api.sumup.com/v2.1/merchants/{self.merchant_code}/transactions"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    url,
+                    params={"client_transaction_id": client_transaction_id},
+                    headers=self._headers,
+                )
+        except httpx.HTTPError:
+            return {**base, "status": "PENDING"}
+
+        if resp.status_code == 404:
+            return {**base, "status": "PENDING"}  # not tapped yet
+        if resp.status_code in (401, 403):
+            return {
+                **base, "status": "FAILED", "http_status": resp.status_code,
+                "error_friendly": _friendly_error(resp.status_code, resp.text),
+            }
+        if resp.status_code != 200:
+            return {**base, "status": "PENDING"}  # transient — let the front timeout
+
+        data = resp.json() or {}
+        # The endpoint may return the txn directly or wrapped in items[].
+        txn = data
+        if isinstance(data, dict) and isinstance(data.get("items"), list):
+            txn = (data["items"] or [{}])[0] or {}
+        raw_status = (txn.get("status") or "").upper()
+        norm = _normalize_txn_status(raw_status)
+        result = {**base, "status": norm, "sumup_status": raw_status}
+        if norm == "PAID":
+            card = txn.get("card") or {}
+            result.update({
+                "sumup_transaction_id": txn.get("id"),
+                "sumup_transaction_code": txn.get("transaction_code"),
+                "sumup_auth_code": txn.get("auth_code"),
+                "sumup_card_brand": card.get("type") or card.get("scheme"),
+                "sumup_card_last4": card.get("last_4_digits"),
+            })
+        return result
+
     # ------------------------------------------------------------------
     # Cancel
     # ------------------------------------------------------------------
@@ -587,23 +736,38 @@ class SumUpService:
         if not self.is_configured:
             return False
 
-        # Peek at the current status before issuing DELETE. If the checkout
-        # is already PAID at SumUp, refuse the cancel and let the cashier
-        # finalise the sale manually.
+        # Solo / Readers API push : there is no Checkout to DELETE — the
+        # correct abort is the reader ``terminate`` endpoint (only effective
+        # while the TPE is still waiting for the card; documented no-op once
+        # tapped). Route there instead of hitting /checkouts/{id}.
+        if checkout_id.startswith("reader:"):
+            outcome = await self.terminate_reader_checkout()
+            return bool(outcome.get("ok"))
+
+        # Classic checkout. Peek before DELETE: only cancel when we have a
+        # CLEAN 200 confirming the checkout is NOT yet PAID. If the peek
+        # can't confirm the state (network error / non-200), refuse rather
+        # than blindly DELETE a checkout that might have just been paid —
+        # cancelling a PAID checkout debits the customer with no Vintiz sale.
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 peek = await client.get(
                     f"{SUMUP_API_BASE}/checkouts/{checkout_id}",
                     headers=self._headers,
                 )
-                if peek.status_code == 200:
-                    current = (peek.json() or {}).get("status", "")
-                    if current == "PAID":
-                        _log.warning(
-                            "cancel_checkout refused (production): %s already PAID at SumUp",
-                            checkout_id,
-                        )
-                        return False
+                if peek.status_code != 200:
+                    _log.warning(
+                        "cancel_checkout refused: cannot confirm status of %s (HTTP %s)",
+                        checkout_id, peek.status_code,
+                    )
+                    return False
+                current = (peek.json() or {}).get("status", "")
+                if _normalize_txn_status(current) == "PAID":
+                    _log.warning(
+                        "cancel_checkout refused (production): %s already PAID at SumUp",
+                        checkout_id,
+                    )
+                    return False
                 resp = await client.delete(
                     f"{SUMUP_API_BASE}/checkouts/{checkout_id}",
                     headers=self._headers,
@@ -827,6 +991,25 @@ _ERROR_CODES_FR: dict[str, str] = {
     "NOT_FOUND": "Transaction introuvable côté SumUp",
     "MISSING_FIELD": "Données invalides envoyées à SumUp — voir détail",
 }
+
+
+def _normalize_txn_status(raw: str | None) -> str:
+    """Normalise a SumUp status to the POS vocabulary (PAID/FAILED/CANCELLED/PENDING).
+
+    The Checkouts API uses PENDING/PAID/FAILED/EXPIRED while the
+    Transactions API (reader push) uses SUCCESSFUL/FAILED/CANCELLED/PENDING.
+    The front-end only understands PAID/FAILED/CANCELLED — so we collapse
+    both vocabularies here, otherwise a 'SUCCESSFUL' card payment would
+    never flip the cashier UI to paid and would hang until the 90 s timeout.
+    """
+    s = (raw or "").upper()
+    if s in ("PAID", "SUCCESSFUL"):
+        return "PAID"
+    if s in ("FAILED", "REFUSED", "DECLINED", "EXPIRED"):
+        return "FAILED"
+    if s in ("CANCELLED", "CANCELED"):
+        return "CANCELLED"
+    return "PENDING"
 
 
 def _friendly_error(http_status: int, body_text: str) -> str:

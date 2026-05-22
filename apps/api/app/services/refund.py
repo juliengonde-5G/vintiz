@@ -131,10 +131,27 @@ class RefundService:
         user_id: uuid.UUID,
         cashier_id: uuid.UUID | None,
         reason: str | None,
+        client_uuid: uuid.UUID | None = None,
     ) -> Transaction:
         method = (refund_method or "").strip().lower()
         if method not in _VALID_REFUND_METHODS:
             raise RefundError(f"Invalid refund method: {refund_method!r}")
+
+        # Idempotence: a retried / double-clicked refund POST replays the
+        # same client_uuid. Return the already-created refund instead of
+        # issuing a second one (which would double-credit the customer and,
+        # for card, fire a second SumUp refund).
+        if client_uuid is not None:
+            existing = (
+                await self.db.execute(
+                    select(Transaction).where(
+                        Transaction.client_uuid == client_uuid,
+                        Transaction.transaction_type == TransactionType.refund,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return existing
 
         original = await self._load_original(original_tx_id)
 
@@ -205,6 +222,7 @@ class RefundService:
             cashier_id=cashier_id,
             client_id=original.client_id,
             original_transaction_id=original.id,
+            client_uuid=client_uuid,
             refund_reason=(reason or None),
             total_ht=float(total_ht),
             total_tva=float(total_tva),

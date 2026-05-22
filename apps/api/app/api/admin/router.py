@@ -415,6 +415,12 @@ class SumUpConfigUpdate(BaseModel):
     merchant_code: str | None = None
     reader_id: str | None = None
     return_url: str | None = None
+    # Affiliate (developer) keys — required for the reader push to carry
+    # affiliate.foreign_transaction_id (reconciliation / refund lookup).
+    # Without them the reader checkout still works but can't be looked up
+    # by foreign id. https://developer.sumup.com/affiliate-keys
+    affiliate_app_id: str | None = None
+    affiliate_key: str | None = None
 
 
 @router.get("/sumup-config", dependencies=[Depends(manager_only)])
@@ -435,6 +441,8 @@ async def get_sumup_config():
             "merchant_code_masked": mask_secret(persisted.get("merchant_code", "")),
             "reader_id_masked": mask_secret(persisted.get("reader_id", "")),
             "return_url": persisted.get("return_url", ""),
+            "affiliate_app_id_masked": mask_secret(persisted.get("affiliate_app_id", "")),
+            "affiliate_key_masked": mask_secret(persisted.get("affiliate_key", "")),
         },
     }
 
@@ -464,6 +472,8 @@ async def update_sumup_config(payload: SumUpConfigUpdate):
             "merchant_code_masked": mask_secret(persisted.get("merchant_code", "")),
             "reader_id_masked": mask_secret(persisted.get("reader_id", "")),
             "return_url": persisted.get("return_url", ""),
+            "affiliate_app_id_masked": mask_secret(persisted.get("affiliate_app_id", "")),
+            "affiliate_key_masked": mask_secret(persisted.get("affiliate_key", "")),
         },
     }
 
