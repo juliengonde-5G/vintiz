@@ -33,6 +33,7 @@ docs/
   PREDICTIVE_ENGINE.md        Moteur prédictif (cahier de travail)
   MANUEL_BOUTIQUE.md          Guide utilisateur/manager
   UX_DESIGN.md                Brief design (heuristiques, parcours, états)
+  ZEBRA_INSTALLATION.md       Mise en service Zebra ZD421d (réseau local + cloud Weblink)
   test_barcodes/*.png         Barcodes Code 128 (régénérés par seed_test_products)
 .github/workflows/
   deploy.yml                  Auto-deploy SSH sur push main
