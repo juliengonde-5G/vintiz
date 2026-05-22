@@ -720,16 +720,33 @@ async def add_product_photo(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
+    # Auto-generate the branded storefront copy here too, so a photo added by
+    # URL gets the same background-removed vitrine as a file upload. Best-effort:
+    # if the source can't be fetched or no backend is configured, the status
+    # records why and the raw photo still serves.
+    source = await storefront_photo.fetch_source_bytes(request.url)
+    if source is None:
+        processed_url, processing_status = None, "failed"
+    else:
+        blob, media_type = source
+        processed_url, processing_status = await storefront_photo.generate_and_persist(
+            product_id, blob, media_type
+        )
+
     photo = await PhotoService(db).add_photo(
         product_id=product_id,
         url=request.url,
         ai_analyzed_at=request.ai_analyzed_at,
         ai_confidence=request.ai_confidence,
+        processed_url=processed_url,
+        processing_status=processing_status,
     )
     await db.commit()
     return {
         "id": str(photo.id),
         "url": photo.url,
+        "processed_url": photo.processed_url,
+        "processing_status": photo.processing_status,
         "is_primary": photo.is_primary,
         "order_index": photo.order_index,
     }
