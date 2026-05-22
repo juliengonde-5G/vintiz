@@ -59,7 +59,7 @@ docs/
 | Site public | Next.js 14 App Router + Tailwind CSS — landing + SEO + GA4 |
 | Barcode | python-barcode + Pillow (Code 128) |
 | Imprimante ticket | **MUNBYN 047P** ESC/POS 80 mm — réseau (port 9100) **ou** USB-OTG via WebUSB sur tablette Android |
-| Imprimante étiquettes | **Zebra ZD421d** ZPL II thermique direct 25×52 mm — réseau local (TCP 9100) **ou** cloud (Weblink + SendFileToPrinter) — preview Labelary |
+| Imprimante étiquettes | **Zebra ZD421d** ZPL II thermique direct 25×52 mm — réseau local (TCP 9100), cloud (Weblink + SendFileToPrinter) **ou** Bluetooth LE (Web Bluetooth tablette) — preview Labelary |
 | Douchette | **Inateck BCST-35** USB HID (champ POS auto-focus) ou Inateck 160B |
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 kické par l'imprimante ESC/POS (`ESC p m`) |
 | TPE | **SumUp Solo** Wi-Fi (push direct possible via `SUMUP_READER_ID`) |
@@ -152,7 +152,13 @@ ZEBRA_PRINTER_PORT=9100
 #                      la boutique. Le MQTT natif Zebra ne sait PAS imprimer
 #                      (gestion/notifs only) — d'où Weblink. Voir
 #                      app/services/zebra_cloud.py pour l'enrôlement.
-ZEBRA_CONNECTION=network          # network | cloud
+#   bluetooth        = Web Bluetooth (BLE) depuis la tablette Chrome Android.
+#                      Le serveur ne peut pas joindre une imprimante BLE :
+#                      les endpoints d'impression renvoient 400 et la
+#                      tablette récupère le ZPL (GET /api/labels/{id}/zpl)
+#                      pour l'écrire sur le service BLE Parser de la Zebra.
+#                      Voir apps/web/src/lib/web-bluetooth-printer.ts.
+ZEBRA_CONNECTION=network          # network | cloud | bluetooth
 ZEBRA_CLOUD_API_KEY=              # clé API Zebra Data Services (mode cloud)
 ZEBRA_CLOUD_TENANT=               # n° de tenant Zebra (mode cloud)
 ZEBRA_CLOUD_SERIAL=               # n° de série de l'imprimante enrôlée (mode cloud)
@@ -635,7 +641,7 @@ Matériel supporté :
 | Tablette caisse | iPad (Safari) | — | — |
 | Douchette code-barres | **Inateck BCST-35** ou **160B** | USB HID (clavier) | Auto-focus champ POS |
 | Imprimante ticket | **MUNBYN 047P-WiFi** ESC/POS 80 mm | Réseau (port 9100) | `app/services/escpos_service.py` |
-| Imprimante étiquettes | **Zebra ZD421d** ZPL II 25×52 mm | Réseau LAN (port 9100) **ou** cloud Weblink | `app/services/zebra_printer.py` (TCP) + `zebra_cloud.py` (Weblink/SendFileToPrinter) + `zebra_zpl.py` |
+| Imprimante étiquettes | **Zebra ZD421d** ZPL II 25×52 mm | Réseau LAN (9100), cloud Weblink **ou** Bluetooth LE | `zebra_printer.py` (TCP) + `zebra_cloud.py` (Weblink) + `web-bluetooth-printer.ts` (BLE front) + `zebra_zpl.py` |
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 | Branché sur imprimante (kick `ESC p m`) | inclus dans `escpos_service` |
 | TPE | **SumUp Solo** | Wi-Fi / compte SumUp | `app/services/sumup_service.py` |
 

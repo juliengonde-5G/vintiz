@@ -10,6 +10,7 @@ l'API Vintiz** :
 |---|---|---|
 | **Réseau local** | L'API tourne sur le **même réseau** que l'imprimante (ex. serveur en boutique). | L'API ouvre une connexion TCP directe vers l'IP de l'imprimante, port 9100. |
 | **Cloud (Weblink)** | L'API tourne **hors site** (cloud / VPS) et ne peut pas joindre l'imprimante derrière la box. | L'imprimante se connecte **en sortie** à Zebra Data Services ; l'API pousse le ZPL via l'API REST `SendFileToPrinter`. |
+| **Bluetooth** | Tout local, sans compte cloud ni Internet, depuis la **tablette de caisse**. | La tablette (Chrome Android) récupère le ZPL et l'écrit sur l'imprimante en **Bluetooth LE** (Web Bluetooth). |
 
 > **Pourquoi pas le MQTT ?** Le MQTT natif des imprimantes Zebra ne sert
 > qu'à la **gestion / supervision** : il **ne peut pas** recevoir de
@@ -121,7 +122,53 @@ ZEBRA_CLOUD_ENDPOINT=https://api.zebra.com/v2/devices/printers/send
 
 ---
 
-## 3. Détails techniques (référence)
+## 3. Mode Bluetooth (Web Bluetooth, depuis la tablette)
+
+À utiliser pour une solution **100 % locale** : pas de compte cloud, pas
+besoin d'Internet pour imprimer. C'est la **tablette de caisse** qui parle
+à l'imprimante en Bluetooth LE (le serveur, lui, ne peut pas atteindre une
+imprimante Bluetooth).
+
+### Pré-requis
+- L'imprimante doit avoir l'**option Bluetooth LE** (BLE) installée.
+- Tablette sous **Android + Chrome** (Web Bluetooth ne marche **pas** sur
+  iPad/Safari).
+- L'app servie en **HTTPS** (déjà le cas en prod).
+
+> Le navigateur ne sait utiliser que le **Bluetooth LE**, pas le Bluetooth
+> « Classic ». Zebra fournit justement un service BLE (« Parser Service »)
+> qui reçoit le ZPL — c'est lui qu'on utilise.
+
+### Mise en service
+1. Activer le Bluetooth de l'imprimante (et de la tablette).
+2. Dans Vintiz : **/settings → Matériel → Imprimante d'étiquettes**.
+   - Mode de connexion : **Bluetooth (tablette, Web Bluetooth)**.
+   - Cliquer **Coupler l'imprimante Bluetooth** → choisir la Zebra dans le
+     sélecteur du navigateur (il faut un clic, c'est une contrainte du
+     navigateur). Le nom de l'imprimante s'enregistre alors.
+   - Cocher **Activer l'imprimante Zebra**, **Enregistrer**.
+3. Cliquer **Imprimer une étiquette de test** : la tablette envoie le ZPL
+   directement en Bluetooth.
+
+### À savoir
+- Chaque impression se fait **depuis la tablette** : si tu imprimes depuis
+  un autre poste / le téléphone, ça ne passera pas par ce Bluetooth.
+- L'appairage est mémorisé par le navigateur, mais selon la version de
+  Chrome il peut être redemandé après un certain temps (re-cliquer
+  « Coupler » suffit).
+- Le ZPL est envoyé en petits morceaux (limite BLE) — c'est un peu plus
+  lent que le réseau, négligeable pour une étiquette.
+
+Variable d'environnement équivalente (optionnel) :
+
+```env
+ZEBRA_CONNECTION=bluetooth
+# bt_device_name est renseigné à l'appairage via /settings → Matériel.
+```
+
+---
+
+## 4. Détails techniques (référence)
 
 ### Contrat API SendFileToPrinter
 
@@ -142,6 +189,8 @@ Réponse 2xx = job accepté et relayé à l'imprimante via Weblink.
 |---|---|
 | `app/services/zebra_cloud.py` | Transport cloud (SendFileToPrinter) |
 | `app/services/zebra_printer.py` | Transport réseau local (ZPL TCP 9100) |
+| `apps/web/src/lib/web-bluetooth-printer.ts` | Transport Bluetooth LE (Web Bluetooth, côté tablette) |
+| `apps/web/src/lib/print-label.ts` | Aiguillage front network/cloud/bluetooth |
 | `app/services/zebra_zpl.py` | Génération du ZPL d'une étiquette produit |
 | `app/services/hardware_config.py` | Config persistée (`data/hardware.json`) |
 | `app/api/labels/router.py` | Endpoints d'impression (dispatch network/cloud) |
@@ -149,13 +198,16 @@ Réponse 2xx = job accepté et relayé à l'imprimante via Weblink.
 
 ---
 
-## 4. Dépannage
+## 5. Dépannage
 
 | Symptôme | Piste |
 |---|---|
 | **Réseau** : « Imprimante injoignable » | Mauvaise IP (vérifier l'étiquette FEED), imprimante éteinte / pas sur le réseau, IP non fixée (a changé au reboot). L'API doit être sur le même réseau. |
 | **Cloud** : test renvoie une erreur 4xx | Clé API / tenant / n° de série incorrects, ou imprimante pas (ou plus) enrôlée Weblink. Vérifier qu'elle est « online » dans le portail Zebra. |
 | **Cloud** : rien ne sort, pas d'erreur | L'imprimante a perdu sa connexion sortante (coupure réseau). Vérifier le réglage `weblink.ip.conn1.location` et la connectivité Internet de la box. |
+| **Bluetooth** : « Web Bluetooth indisponible » | Pas sur Chrome Android (iPad/Safari non supporté), ou page pas en HTTPS. |
+| **Bluetooth** : l'imprimante n'apparaît pas dans le sélecteur | Option BLE absente ou Bluetooth désactivé, imprimante déjà connectée à un autre appareil, ou trop loin de la tablette. |
+| **Bluetooth** : appairage perdu après un moment | Normal selon la version de Chrome — re-cliquer « Coupler l'imprimante Bluetooth ». |
 | Étiquette blanche | Rouleau à l'envers (gratter le côté pour repérer le thermosensible) ou mauvais format. |
 | Aperçu OK mais impression décalée | Calibrer le capteur d'écart (gap) via la procédure de calibration Zebra (appui FEED au démarrage). |
 

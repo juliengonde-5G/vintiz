@@ -248,6 +248,14 @@ async def label_test(
     cfg = load_config()["label_printer"]
     connection = (cfg.get("connection") or "network").strip().lower()
 
+    if connection == "bluetooth":
+        # The server can't reach a BLE printer — the tablet runs the test
+        # via Web Bluetooth (GET /api/hardware/label/test-zpl).
+        raise HTTPException(
+            status_code=400,
+            detail="Mode Bluetooth : lancez le test depuis la tablette (Web Bluetooth)",
+        )
+
     if connection == "cloud":
         try:
             serial = await zebra_cloud.send_zpl(zebra_printer.build_test_label_zpl(), cfg)
@@ -268,3 +276,24 @@ async def label_test(
     except zebra_printer.PrinterUnreachable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"success": True, "host": host, "port": port}
+
+
+@router.get("/label/test-zpl")
+async def label_test_zpl(
+    current_user: User = Depends(get_current_user),
+):
+    """Return raw ZPL bytes for a test label.
+
+    Used by the Bluetooth (Web Bluetooth) path on the cashier tablet: the
+    front fetches this and writes it to the Zebra's BLE Parser service —
+    the equivalent of ``/receipt/test-escpos`` for the WebUSB path.
+    """
+    from fastapi.responses import Response
+
+    from app.services import zebra_printer
+
+    return Response(
+        content=zebra_printer.build_test_label_zpl(),
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )

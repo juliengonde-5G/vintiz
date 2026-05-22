@@ -182,17 +182,9 @@ export default function ProductDetailPage() {
   const handlePrintZebra = async () => {
     setSatoSending(true);
     setSatoMsg('');
-    try {
-      const res = await api.post(`/api/labels/print/${productId}`, {});
-      if (res.ok) {
-        setSatoMsg('Étiquette envoyée à l\'imprimante Zebra');
-      } else {
-        const e = await res.json().catch(() => ({}));
-        setSatoMsg(e.detail || 'Échec de l\'impression Zebra');
-      }
-    } catch {
-      setSatoMsg('Erreur réseau — imprimante injoignable');
-    }
+    const { printProductLabel } = await import('@/lib/print-label');
+    const result = await printProductLabel(productId);
+    setSatoMsg(result.ok ? 'Étiquette envoyée à l\'imprimante Zebra' : result.message);
     setSatoSending(false);
   };
 

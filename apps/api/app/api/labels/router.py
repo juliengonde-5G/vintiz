@@ -79,6 +79,14 @@ def _validate_transport(cfg: dict) -> str:
         except zebra_cloud.CloudConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return "cloud"
+    if connection == "bluetooth":
+        # The server can't reach a BLE printer — the tablet prints client-side
+        # via Web Bluetooth (GET /api/labels/{id}/zpl). Reject server-side
+        # print attempts with a clear message rather than failing obscurely.
+        raise HTTPException(
+            status_code=400,
+            detail="Mode Bluetooth : l'impression se fait depuis la tablette (Web Bluetooth), pas côté serveur",
+        )
     if not (cfg.get("host") or "").strip():
         raise HTTPException(
             status_code=400,
@@ -245,6 +253,21 @@ async def printer_status():
     enabled = bool(cfg.get("enabled"))
     connection = (cfg.get("connection") or "network").strip().lower()
 
+    if connection == "bluetooth":
+        # No server-side probe possible — the BLE link lives on the tablet.
+        # Report "ready when enabled"; the pairing happens client-side.
+        name = (cfg.get("bt_device_name") or "").strip()
+        return {
+            "online": enabled,
+            "ip": name or "Bluetooth",
+            "port": None,
+            "latency_ms": None,
+            "enabled": enabled,
+            "connection": "bluetooth",
+            "detail": "Appairage depuis la tablette (Web Bluetooth)",
+            "model": cfg.get("model", "Zebra ZD421d"),
+        }
+
     if connection == "cloud":
         # No cheap live probe for the Weblink relay — report whether the
         # cloud credentials are complete. The UI pill reflects "configured",
@@ -385,6 +408,31 @@ async def test_print():
     except zebra_printer.PrinterUnreachable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"status": "printed", "printer_ip": target}
+
+
+@router.get(
+    "/{product_id}/zpl",
+    dependencies=[Depends(manager_only)],
+)
+async def product_label_zpl(
+    product_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    copies: int = 1,
+):
+    """Return the raw ZPL for a product label (text/plain).
+
+    Used by the **Bluetooth** transport: the server can't reach a BLE
+    printer, so the cashier tablet fetches this ZPL and writes it to the
+    Zebra's BLE Parser service via Web Bluetooth. Mirrors the receipt
+    printer's ``/escpos`` endpoint for the WebUSB path.
+    """
+    product = await _fetch_product(db, product_id)
+    zpl = build_label_zpl(product_to_label_data(product), copies=max(copies, 1))
+    return Response(
+        content=zpl,
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # ---------------------------------------------------------------------------

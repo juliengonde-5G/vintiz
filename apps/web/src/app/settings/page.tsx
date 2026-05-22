@@ -49,13 +49,14 @@ interface HardwareConfig {
   label_printer: {
     enabled: boolean; model: string; host: string; port: number;
     label_width_mm: number; label_height_mm: number;
-    connection?: 'network' | 'cloud';
+    connection?: 'network' | 'cloud' | 'bluetooth';
     cloud_api_key?: string;
     cloud_tenant?: string;
     cloud_serial?: string;
     cloud_endpoint?: string;
     cloud_api_key_set?: boolean;
     cloud_api_key_hint?: string;
+    bt_device_name?: string;
   };
   barcode_scanner: { enabled: boolean; model: string; mode: string; suffix: string; min_length: number };
   payment_terminal: { enabled: boolean; model: string; mode: string };
@@ -601,10 +602,72 @@ export default function SettingsPage() {
     else setError(result.message);
   };
 
+  const pairBluetoothPrinter = async () => {
+    setError(''); setMessage('');
+    if (!hardware) return;
+    try {
+      const { requestZebraDevice, isWebBluetoothSupported } = await import('@/lib/web-bluetooth-printer');
+      if (!isWebBluetoothSupported()) {
+        setError('Web Bluetooth indisponible — utilisez Chrome Android sur HTTPS.');
+        return;
+      }
+      const { info } = await requestZebraDevice();
+      const next = {
+        ...hardware,
+        label_printer: {
+          ...hardware.label_printer,
+          connection: 'bluetooth' as const,
+          bt_device_name: info.name,
+        },
+      };
+      setHardware(next);
+      await api.put('/api/hardware/config', { label_printer: next.label_printer });
+      setMessage(`Imprimante Bluetooth couplée : ${info.name}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Échec du couplage Bluetooth : ${msg}`);
+    }
+  };
+
   const testLabelPrinter = async () => {
     if (!hardware) return;
     setError(''); setMessage('');
-    const isCloud = (hardware.label_printer.connection || 'network') === 'cloud';
+    const conn = hardware.label_printer.connection || 'network';
+
+    if (conn === 'bluetooth') {
+      // BLE path: fetch the test ZPL and write it to the Zebra over Web
+      // Bluetooth (Chrome Android tablet). The server can't reach a BLE
+      // printer, so this never touches the network print endpoint.
+      setHwTests((s) => ({ ...s, label_printer: { status: 'running' } }));
+      try {
+        const { isWebBluetoothSupported, findPairedZebra, requestZebraDevice, sendZpl } =
+          await import('@/lib/web-bluetooth-printer');
+        if (!isWebBluetoothSupported()) {
+          setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: 'Web Bluetooth indisponible — Chrome Android requis.' } }));
+          return;
+        }
+        let device = await findPairedZebra({ name: hardware.label_printer.bt_device_name });
+        if (!device) {
+          const paired = await requestZebraDevice();
+          device = paired.device;
+        }
+        const res = await api.get('/api/hardware/label/test-zpl');
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: e.detail || 'ZPL de test indisponible' } }));
+          return;
+        }
+        const zpl = await res.text();
+        await sendZpl(device, zpl);
+        setHwTests((s) => ({ ...s, label_printer: { status: 'success', message: 'Étiquette de test envoyée (Bluetooth)' } }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: `Échec Bluetooth : ${msg}` } }));
+      }
+      return;
+    }
+
+    const isCloud = conn === 'cloud';
     const host = hardware.label_printer.host?.trim();
     const port = hardware.label_printer.port || 9100;
     if (!isCloud && !host) {
@@ -1652,14 +1715,15 @@ export default function SettingsPage() {
                       <label className="block text-sm font-medium text-black mb-1.5">Mode de connexion</label>
                       <select
                         value={hardware.label_printer.connection || 'network'}
-                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, connection: e.target.value as 'network' | 'cloud' } })}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, connection: e.target.value as 'network' | 'cloud' | 'bluetooth' } })}
                         className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       >
                         <option value="network">Réseau local (TCP 9100)</option>
                         <option value="cloud">Cloud Zebra (Weblink + SendFileToPrinter)</option>
+                        <option value="bluetooth">Bluetooth (tablette, Web Bluetooth)</option>
                       </select>
                     </div>
-                    {(hardware.label_printer.connection || 'network') === 'network' ? (
+                    {(hardware.label_printer.connection || 'network') === 'network' && (
                       <>
                         <Input
                           label="Adresse IP"
@@ -1677,7 +1741,8 @@ export default function SettingsPage() {
                           />
                         </div>
                       </>
-                    ) : (
+                    )}
+                    {hardware.label_printer.connection === 'cloud' && (
                       <>
                         <Input
                           label="Clé API Zebra Data Services"
@@ -1702,6 +1767,25 @@ export default function SettingsPage() {
                           L&apos;imprimante doit d&apos;abord être enrôlée auprès de Zebra Data Services (Weblink). Laissez la clé API vide pour conserver celle déjà enregistrée. Enregistrez avant de tester.
                         </div>
                       </>
+                    )}
+                    {hardware.label_printer.connection === 'bluetooth' && (
+                      <div className="sm:col-span-2">
+                        {hardware.label_printer.bt_device_name ? (
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-sm text-vz-ink">Imprimante couplée : <strong>{hardware.label_printer.bt_device_name}</strong></span>
+                            <button type="button" onClick={pairBluetoothPrinter} className="text-xs text-vz-teal underline">
+                              Coupler une autre
+                            </button>
+                          </div>
+                        ) : (
+                          <Button onClick={pairBluetoothPrinter} variant="secondary" size="sm">
+                            Coupler l&apos;imprimante Bluetooth
+                          </Button>
+                        )}
+                        <p className="text-xs text-vz-ink-mute mt-2">
+                          Web Bluetooth (BLE) depuis la tablette — Chrome Android requis (pas iPad/Safari). L&apos;impression se fait depuis la tablette, pas le serveur. L&apos;imprimante doit avoir l&apos;option Bluetooth LE.
+                        </p>
+                      </div>
                     )}
                     <div>
                       <label className="block text-sm font-medium text-black mb-1.5">Largeur étiquette (mm)</label>

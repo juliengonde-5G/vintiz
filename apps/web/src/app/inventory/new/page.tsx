@@ -397,16 +397,9 @@ export default function NewProductWizard() {
     if (!created) return;
     setPrinting(true);
     setPrintMsg('');
-    try {
-      const res = await api.post(`/api/labels/print/${created.id}`, {});
-      if (res.ok) setPrintMsg('Étiquette envoyée à l\'imprimante Zebra');
-      else {
-        const e = await res.json().catch(() => ({}));
-        setPrintMsg(e.detail || 'Imprimante injoignable');
-      }
-    } catch {
-      setPrintMsg('Imprimante injoignable');
-    }
+    const { printProductLabel } = await import('@/lib/print-label');
+    const result = await printProductLabel(created.id);
+    setPrintMsg(result.ok ? 'Étiquette envoyée à l\'imprimante Zebra' : result.message);
     setPrinting(false);
   };
 

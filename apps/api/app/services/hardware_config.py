@@ -61,19 +61,22 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Label printer — Zebra ZD421d, ZPL II, 4 inch direct thermal
     #
     # ``connection`` selects the transport:
-    #   network = ZPL over TCP 9100 on the LAN. Only works when the API can
-    #             reach the printer's IP (API + printer on the same network).
-    #   cloud   = Weblink + Zebra's SendFileToPrinter API. The printer dials
-    #             out to Zebra Data Services and we push ZPL via REST. Use
-    #             this when the API runs off-site (cloud) and the printer is
-    #             on the boutique LAN behind NAT. See services/zebra_cloud.py
-    #             for the one-time enrolment steps. The cloud_* fields below
-    #             carry the credentials in that mode.
+    #   network   = ZPL over TCP 9100 on the LAN. Only works when the API can
+    #               reach the printer's IP (API + printer on the same network).
+    #   cloud     = Weblink + Zebra's SendFileToPrinter API. The printer dials
+    #               out to Zebra Data Services and we push ZPL via REST. Use
+    #               this when the API runs off-site (cloud) and the printer is
+    #               on the boutique LAN behind NAT. See services/zebra_cloud.py.
+    #   bluetooth = Web Bluetooth (BLE) from the cashier tablet. The SERVER
+    #               can't reach a BLE printer, so server-side print endpoints
+    #               return 400 in this mode; the tablet fetches the raw ZPL
+    #               (GET /api/labels/{id}/zpl) and writes it to the Zebra's BLE
+    #               Parser service. ``bt_device_name`` is a reconnection hint.
     "label_printer": {
         "enabled": False,
         "model": "Zebra ZD421d",
         "protocol": "zpl",
-        "connection": os.getenv("ZEBRA_CONNECTION", "network"),  # network | cloud
+        "connection": os.getenv("ZEBRA_CONNECTION", "network"),  # network | cloud | bluetooth
         "host": os.getenv("ZEBRA_PRINTER_IP", os.getenv("LABEL_PRINTER_HOST", "")),
         "port": int(os.getenv("ZEBRA_PRINTER_PORT", os.getenv("LABEL_PRINTER_PORT", "9100"))),
         "dpi": 203,
@@ -84,6 +87,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "cloud_tenant": os.getenv("ZEBRA_CLOUD_TENANT", ""),
         "cloud_serial": os.getenv("ZEBRA_CLOUD_SERIAL", ""),
         "cloud_endpoint": os.getenv("ZEBRA_CLOUD_ENDPOINT", ""),  # blank → default
+        # Bluetooth mode — name of the paired BLE printer (reconnection hint)
+        "bt_device_name": "",
     },
     # Barcode scanner — Inateck BCST-35 2D (HID keyboard mode by default)
     "barcode_scanner": {

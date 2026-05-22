@@ -6,9 +6,10 @@ import { api } from '@/lib/api';
 interface PrinterStatus {
   online: boolean;
   ip: string;
-  port: number;
+  port: number | null;
   latency_ms: number | null;
   enabled: boolean;
+  connection?: 'network' | 'cloud' | 'bluetooth';
   detail: string | null;
   model: string;
 }
@@ -51,7 +52,9 @@ export default function LabelBatchBar({ selectedIds, onCleared, onToast }: Label
 
   if (selectedIds.length === 0) return null;
 
-  const printable = status?.online && status?.enabled;
+  // In Bluetooth mode there's no server-side reachability probe — the BLE
+  // link lives on the tablet — so "enabled" is enough to allow printing.
+  const printable = status?.enabled && (status?.connection === 'bluetooth' ? true : status?.online);
 
   const handleA4Sheet = async () => {
     // Mode dégradé : récupère la planche A4 via fetch (avec le JWT
@@ -81,6 +84,28 @@ export default function LabelBatchBar({ selectedIds, onCleared, onToast }: Label
   const handleBatch = async () => {
     setSending(true);
     try {
+      // Bluetooth: the server can't reach a BLE printer, so print each label
+      // client-side over Web Bluetooth. One GATT connection per label keeps
+      // it simple and matches the per-product ZPL endpoint.
+      if (status?.connection === 'bluetooth') {
+        const { printProductLabel } = await import('@/lib/print-label');
+        let printed = 0;
+        let failed = 0;
+        let lastError = '';
+        for (const id of selectedIds) {
+          const result = await printProductLabel(id);
+          if (result.ok) printed += 1;
+          else { failed += 1; lastError = result.message; }
+        }
+        if (failed === 0) {
+          onToast(`${printed} étiquette${printed > 1 ? 's' : ''} envoyée${printed > 1 ? 's' : ''} (Bluetooth)`, 'success');
+          onCleared();
+        } else {
+          onToast(`${printed} OK, ${failed} échec${failed > 1 ? 's' : ''}${lastError ? ` — ${lastError}` : ''}`, 'error');
+        }
+        return;
+      }
+
       const res = await api.post('/api/labels/print/batch', {
         product_ids: selectedIds,
         copies: 1,
@@ -169,13 +194,22 @@ function PrinterPill({ status }: { status: PrinterStatus | null }) {
       </span>
     );
   }
-  const ok = status.online && status.enabled;
+  const isBluetooth = status.connection === 'bluetooth';
+  const isCloud = status.connection === 'cloud';
+  const ok = status.enabled && (isBluetooth ? true : status.online);
   const dotClass = ok ? 'bg-green-500' : 'bg-red-500';
-  const labelText = ok
-    ? `${status.model} • ${status.ip}${status.latency_ms != null ? ` (${status.latency_ms} ms)` : ''}`
-    : status.enabled
-      ? `Imprimante hors ligne (${status.ip || 'IP ?'})`
-      : 'Imprimante désactivée';
+  let labelText: string;
+  if (!status.enabled) {
+    labelText = 'Imprimante désactivée';
+  } else if (isBluetooth) {
+    labelText = `${status.model} • Bluetooth`;
+  } else if (isCloud) {
+    labelText = ok ? `${status.model} • Cloud` : `${status.model} • Cloud (config incomplète)`;
+  } else if (ok) {
+    labelText = `${status.model} • ${status.ip}${status.latency_ms != null ? ` (${status.latency_ms} ms)` : ''}`;
+  } else {
+    labelText = `Imprimante hors ligne (${status.ip || 'IP ?'})`;
+  }
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-vz-ink-soft" title={status.detail ?? undefined}>
       <span className={`w-2 h-2 rounded-full ${dotClass}`} />

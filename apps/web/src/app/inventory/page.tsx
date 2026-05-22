@@ -185,15 +185,9 @@ export default function InventoryPage() {
   const handlePrintOne = async (id: string) => {
     setPrintingId(id);
     try {
-      const res = await api.post(`/api/labels/print/${id}`, {});
-      const body = await res.json().catch(() => ({} as Record<string, unknown>));
-      if (res.ok) {
-        showToast('Étiquette envoyée à l\'imprimante', 'success');
-      } else {
-        showToast((body.detail as string) || 'Imprimante hors ligne', 'error');
-      }
-    } catch {
-      showToast('Imprimante hors ligne', 'error');
+      const { printProductLabel } = await import('@/lib/print-label');
+      const result = await printProductLabel(id);
+      showToast(result.ok ? 'Étiquette envoyée à l\'imprimante' : result.message, result.ok ? 'success' : 'error');
     } finally {
       setPrintingId(null);
     }
