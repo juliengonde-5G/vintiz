@@ -7,6 +7,8 @@ import { mediaUrl } from '@/lib/format';
 interface Photo {
   id: string;
   url: string;
+  processed_url: string | null;
+  processing_status: string | null;
   order_index: number;
   is_primary: boolean;
   ai_confidence: number | null;
@@ -121,6 +123,27 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
     setBusy(false);
   };
 
+  const regenerateStorefront = async (photoId: string) => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api.post(
+        `/api/inventory/products/${productId}/photos/${photoId}/storefront`,
+        {},
+      );
+      if (res.ok) {
+        await load();
+        notify();
+      } else {
+        const err = await res.json().catch(() => null);
+        setError(err?.detail || 'Génération de la photo vitrine impossible.');
+      }
+    } catch {
+      setError('Erreur réseau.');
+    }
+    setBusy(false);
+  };
+
   const move = async (idx: number, direction: 'up' | 'down') => {
     const target = direction === 'up' ? idx - 1 : idx + 1;
     if (target < 0 || target >= photos.length) return;
@@ -169,13 +192,42 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
                 alt={`Photo ${idx + 1}`}
                 className="w-16 h-16 object-cover rounded border border-gray-200"
               />
+              {/* Vitrine copy (background removed) — shown next to the raw shot. */}
+              {photo.processed_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={mediaUrl(photo.processed_url)}
+                  alt={`Photo vitrine ${idx + 1}`}
+                  title="Photo vitrine (fond détouré)"
+                  className="w-16 h-16 object-contain rounded border border-vz-teal/40 bg-white"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded border border-dashed border-gray-200 flex items-center justify-center text-[10px] text-gray-400 text-center px-1">
+                  pas de vitrine
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-500 truncate">{photo.url}</p>
-                {photo.is_primary && (
-                  <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-vz-teal text-white">
-                    Principale
-                  </span>
-                )}
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  {photo.is_primary && (
+                    <span className="inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-vz-teal text-white">
+                      Principale
+                    </span>
+                  )}
+                  {photo.processed_url && (
+                    <span className="inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-vz-teal-soft text-vz-teal">
+                      Vitrine
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => regenerateStorefront(photo.id)}
+                  disabled={busy}
+                  className="mt-1 text-xs text-vz-teal hover:underline disabled:opacity-40"
+                >
+                  {photo.processed_url ? 'Régénérer la vitrine' : 'Générer la photo vitrine'}
+                </button>
               </div>
               <div className="flex flex-col gap-1">
                 <button

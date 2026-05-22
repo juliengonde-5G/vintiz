@@ -160,6 +160,10 @@ export default function NewProductWizard() {
   const [price, setPrice] = useState('');
   // Surfaced on the exit screen so the operator knows the photo didn't attach.
   const [photoUploadFailed, setPhotoUploadFailed] = useState(false);
+  // Branded background-removed copy generated in back at upload, shown on the
+  // exit screen as the photo destined for the public storefront.
+  const [storefrontUrl, setStorefrontUrl] = useState<string | null>(null);
+  const [storefrontStatus, setStorefrontStatus] = useState<string | null>(null);
 
   // Pricing
   const [priceSuggestion, setPriceSuggestion] = useState<PriceSuggestion | null>(null);
@@ -307,6 +311,11 @@ export default function NewProductWizard() {
       fd.append('file', photoFile);
       const res = await api.upload(`/api/inventory/products/${productId}/photos/upload`, fd);
       setPhotoUploadFailed(!res.ok);
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        setStorefrontUrl(data?.processed_url ?? null);
+        setStorefrontStatus(data?.processing_status ?? null);
+      }
     } catch {
       setPhotoUploadFailed(true);
     }
@@ -406,6 +415,8 @@ export default function NewProductWizard() {
     setPhotoFile(null);
     setPhotoPreview(null);
     setPhotoUploadFailed(false);
+    setStorefrontUrl(null);
+    setStorefrontStatus(null);
     submittingRef.current = false;
     setVision(null);
     setForm({ name: '', brand: '', category_id: '', color: '', size: '', condition: '' });
@@ -804,6 +815,29 @@ export default function NewProductWizard() {
                     >
                       Réessayer
                     </button>
+                  </div>
+                )}
+
+                {/* Photo vitrine générée automatiquement (fond détouré + logo). */}
+                {storefrontUrl && (
+                  <div className="mx-auto max-w-xs text-left">
+                    <p className="text-[11px] uppercase tracking-wide text-vz-ink-mute mb-1">Photo vitrine générée</p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={mediaUrl(storefrontUrl)}
+                      alt="Photo vitrine détourée"
+                      className="w-full rounded-xl border border-vz-line bg-white"
+                    />
+                    <p className="text-[11px] text-vz-ink-mute mt-1">
+                      Fond détouré + logo Vintiz — c&apos;est cette image qui sera utilisée sur le site vitrine.
+                    </p>
+                  </div>
+                )}
+                {!storefrontUrl && storefrontStatus && storefrontStatus !== 'done' && !photoUploadFailed && (
+                  <div className="mx-auto max-w-xs p-2.5 rounded-xl bg-vz-bg-alt text-vz-ink-soft text-xs">
+                    {storefrontStatus === 'skipped'
+                      ? 'Photo vitrine non générée (détourage indisponible sur ce serveur). Vous pourrez la régénérer depuis la fiche produit.'
+                      : 'La photo vitrine n\'a pas pu être générée. Réessayez depuis la fiche produit.'}
                   </div>
                 )}
 

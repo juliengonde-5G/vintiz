@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # AI
     ANTHROPIC_API_KEY: str | None = None
 
+    # Storefront photo — background removal. Photoroom is the primary backend;
+    # if the key is unset we fall back to a local rembg cutout (when installed),
+    # otherwise the storefront copy is simply skipped.
+    PHOTOROOM_API_KEY: str | None = None
+
     # SMTP transactional email (fallback when Brevo is not configured)
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587

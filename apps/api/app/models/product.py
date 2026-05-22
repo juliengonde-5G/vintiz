@@ -83,6 +83,10 @@ class Product(Base):
     # rows by PhotoService so existing call sites that read photo_url keep
     # working unchanged. Multi-photo support lives in the photos relation.
     photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Branded, background-removed copy of the primary photo — the image the
+    # public storefront uses. Mirrors the primary ProductPhoto.processed_url,
+    # maintained by PhotoService alongside photo_url.
+    storefront_photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     purchase_price: Mapped[float] = mapped_column(
         Numeric(10, 2), nullable=False, default=0
     )
@@ -169,6 +173,13 @@ class ProductPhoto(Base):
         UUID(as_uuid=True), ForeignKey("products.id"), nullable=False
     )
     url: Mapped[str] = mapped_column(Text, nullable=False)
+    # Background-removed, branded copy used by the storefront (generated
+    # automatically at upload by StorefrontPhotoService). NULL until/unless a
+    # background-removal backend is available.
+    processed_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Generation outcome: ``done`` | ``skipped`` | ``failed`` | ``pending``
+    # (NULL for legacy rows / photos added by URL without processing).
+    processing_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     ai_analyzed_at: Mapped[datetime | None] = mapped_column(

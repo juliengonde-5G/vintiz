@@ -54,11 +54,13 @@ class PhotoService:
     async def _resync_primary(self, product: Product) -> None:
         """Pick the lowest-order photo as primary and mirror to Product.photo_url.
 
-        Called after any mutation. Resets order_index to be contiguous.
+        Called after any mutation. Resets order_index to be contiguous and
+        mirrors the primary's storefront copy onto Product.storefront_photo_url.
         """
         photos = await self._list_photos_sorted(product.id)
         if not photos:
             product.photo_url = None
+            product.storefront_photo_url = None
             return
         explicit_primary = next((p for p in photos if p.is_primary), None)
         primary = explicit_primary or photos[0]
@@ -67,6 +69,7 @@ class PhotoService:
             photo.order_index = idx
             photo.is_primary = photo is primary
         product.photo_url = primary.url
+        product.storefront_photo_url = primary.processed_url
 
     # ------------------------------------------------------------------
     # Public API
@@ -82,6 +85,8 @@ class PhotoService:
         url: str,
         ai_analyzed_at: datetime | None = None,
         ai_confidence: float | None = None,
+        processed_url: str | None = None,
+        processing_status: str | None = None,
     ) -> ProductPhoto:
         if not url or not url.strip():
             raise HTTPException(status_code=400, detail="url is required")
@@ -96,8 +101,40 @@ class PhotoService:
             is_primary=(next_order == 0),
             ai_analyzed_at=ai_analyzed_at,
             ai_confidence=ai_confidence,
+            processed_url=processed_url,
+            processing_status=processing_status,
         )
         self.db.add(photo)
+        await self.db.flush()
+        await self._resync_primary(product)
+        await self.db.flush()
+        await self.db.refresh(photo)
+        return photo
+
+    async def set_processed(
+        self,
+        product_id: uuid.UUID,
+        photo_id: uuid.UUID,
+        processed_url: str | None,
+        processing_status: str,
+    ) -> ProductPhoto:
+        """Attach (or clear) the storefront copy of a photo.
+
+        Used after asynchronous / retried background removal. Re-mirrors the
+        primary's processed_url onto Product.storefront_photo_url.
+        """
+        product = await self._load_product(product_id)
+        result = await self.db.execute(
+            select(ProductPhoto).where(
+                ProductPhoto.id == photo_id,
+                ProductPhoto.product_id == product_id,
+            )
+        )
+        photo = result.scalar_one_or_none()
+        if photo is None:
+            raise HTTPException(status_code=404, detail="Photo not found")
+        photo.processed_url = processed_url
+        photo.processing_status = processing_status
         await self.db.flush()
         await self._resync_primary(product)
         await self.db.flush()
@@ -175,6 +212,8 @@ def _serialize(photo: ProductPhoto) -> dict:
         "id": str(photo.id),
         "product_id": str(photo.product_id),
         "url": photo.url,
+        "processed_url": photo.processed_url,
+        "processing_status": photo.processing_status,
         "order_index": photo.order_index,
         "is_primary": photo.is_primary,
         "ai_analyzed_at": photo.ai_analyzed_at.isoformat() if photo.ai_analyzed_at else None,

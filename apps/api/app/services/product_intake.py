@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product import Category, Gender, Product, ProductStatus
-from app.services import ai_vision
+from app.services import ai_vision, storefront_photo
 from app.services.photo import PhotoService
 from app.services.scoring_service import compute_score
 
@@ -247,6 +247,23 @@ async def create_from_photo(
     await db.refresh(product)
 
     # --- 4. Photo (also mirrors onto Product.photo_url) ---
+    # Best-effort branded storefront copy (background removed). Never fatal:
+    # the original photo always attaches even if processing is unavailable.
+    processed_url: str | None = None
+    processing_status: str | None = None
+    try:
+        source = await storefront_photo.fetch_source_bytes(photo_url)
+        if source is not None:
+            blob, media_type = source
+            processed_url, processing_status = await storefront_photo.generate_and_persist(
+                product.id, blob, media_type
+            )
+        else:
+            processing_status = "failed"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Storefront copy failed for %s: %s", str(product.id), exc)
+        processing_status = "failed"
+
     photo_service = PhotoService(db)
     confidence = vision_payload.get("confiance")
     await photo_service.add_photo(
@@ -254,6 +271,8 @@ async def create_from_photo(
         url=photo_url,
         ai_confidence=float(confidence) if confidence is not None else None,
         ai_analyzed_at=datetime.now(timezone.utc) if vision_used else None,
+        processed_url=processed_url,
+        processing_status=processing_status,
     )
 
     # --- 5. Scoring (v3 — 5 criteria) ---
@@ -301,6 +320,7 @@ async def create_from_photo(
             "purchase_price": float(product.purchase_price),
             "status": product.status.value if hasattr(product.status, "value") else str(product.status),
             "photo_url": product.photo_url,
+            "storefront_photo_url": product.storefront_photo_url,
             "trend_score": product.trend_score,
             "is_test": product.is_test,
         },

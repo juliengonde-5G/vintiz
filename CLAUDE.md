@@ -119,6 +119,12 @@ LOG_JSON=false                    # true en prod pour Loki / Datadog
 # IA (sans cette clé, fallback sur données statiques)
 ANTHROPIC_API_KEY=sk-ant-...
 
+# Photo vitrine — détourage automatique du fond (background removal).
+# Photoroom est le backend prioritaire ; sans clé, fallback sur rembg local
+# (hors-ligne, s'il est installé), sinon la copie vitrine est simplement
+# ignorée (la photo originale reste). Voir app/services/storefront_photo.py.
+PHOTOROOM_API_KEY=                # clé API Photoroom
+
 # Météo Vernon (sans cette clé, widget météo indisponible)
 OPENWEATHER_API_KEY=votre-cle-openweather
 
@@ -227,6 +233,7 @@ GET    /api/inventory/products/{id}/score    Score détaillé
 GET    /api/inventory/products/{id}/photos   Liste multi-photos
 POST   /api/inventory/products/{id}/photos   Ajouter une photo (url + AI fields)
 POST   /api/inventory/products/{id}/photos/{pid}/primary  Définir la photo primaire
+POST   /api/inventory/products/{id}/photos/{pid}/storefront Régénérer la photo vitrine (fond détouré + logo)
 POST   /api/inventory/products/{id}/photos/reorder        Réordonner (drag/drop)
 DELETE /api/inventory/products/{id}/photos/{pid}          Supprimer une photo
 POST   /api/inventory/products/import-csv    Import en masse CSV (multipart, ?dry_run=true)
@@ -396,6 +403,12 @@ GET    /api/admin/predictive/audience?period_days=90  Snapshot debug dominant ta
 - Date de mise en rayon, emplacement zone
 - Édition inline prix / zone / statut
 - Bouton "Générer étiquette" → PNG téléchargeable/imprimable
+- **Photo vitrine auto** : à chaque upload, une copie détourée (fond
+  supprimé + canvas off-white charte + logo Vintiz) est générée en back et
+  stockée dans la fiche (`ProductPhoto.processed_url`,
+  `Product.storefront_photo_url`). Backend : Photoroom puis fallback rembg
+  local. Proposée en fin d'assistant d'ajout ; régénérable depuis la galerie
+  photos. C'est l'image destinée au site vitrine.
 
 ### 2. POS (Caisse) — prêt pour matériel
 - Interface tactile compacte iPad 1024×768 (tout sur 1 écran sans scroll,

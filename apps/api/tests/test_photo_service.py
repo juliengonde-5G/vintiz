@@ -263,3 +263,66 @@ async def test_ai_fields_persist(session):
     # SQLite drops tzinfo; assert on the naive equivalent.
     assert photo.ai_analyzed_at.replace(tzinfo=None) == now.replace(tzinfo=None)
     assert photo.ai_confidence == 0.92
+
+
+# ---------------------------------------------------------------------------
+# Storefront (background-removed) copy mirroring
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_add_photo_mirrors_processed_url_to_product(session):
+    p = await _make_product(session)
+    svc = PhotoService(session)
+
+    photo = await svc.add_photo(
+        p.id,
+        "https://cdn/a.jpg",
+        processed_url="https://cdn/a_storefront.png",
+        processing_status="done",
+    )
+    assert photo.processed_url == "https://cdn/a_storefront.png"
+    assert photo.processing_status == "done"
+    await session.refresh(p)
+    assert p.storefront_photo_url == "https://cdn/a_storefront.png"
+
+    serialized = (await svc.list_photos(p.id))[0]
+    assert serialized["processed_url"] == "https://cdn/a_storefront.png"
+    assert serialized["processing_status"] == "done"
+
+
+@pytest.mark.anyio
+async def test_set_processed_updates_and_mirrors(session):
+    p = await _make_product(session)
+    svc = PhotoService(session)
+    a = await svc.add_photo(p.id, "https://cdn/a.jpg", processing_status="skipped")
+    await session.refresh(p)
+    assert p.storefront_photo_url is None
+
+    await svc.set_processed(p.id, a.id, "https://cdn/a_storefront.png", "done")
+    await session.refresh(p)
+    assert p.storefront_photo_url == "https://cdn/a_storefront.png"
+
+
+@pytest.mark.anyio
+async def test_storefront_url_follows_primary(session):
+    p = await _make_product(session)
+    svc = PhotoService(session)
+    a = await svc.add_photo(
+        p.id, "https://cdn/a.jpg", processed_url="https://cdn/a_sf.png", processing_status="done"
+    )
+    b = await svc.add_photo(
+        p.id, "https://cdn/b.jpg", processed_url="https://cdn/b_sf.png", processing_status="done"
+    )
+    await session.refresh(p)
+    assert p.storefront_photo_url == "https://cdn/a_sf.png"
+
+    # Promote b → primary; storefront mirror must follow.
+    await svc.set_primary(p.id, b.id)
+    await session.refresh(p)
+    assert p.storefront_photo_url == "https://cdn/b_sf.png"
+
+    # Delete the (now primary) b → falls back to a's storefront copy.
+    await svc.delete_photo(p.id, b.id)
+    await session.refresh(p)
+    assert p.storefront_photo_url == "https://cdn/a_sf.png"

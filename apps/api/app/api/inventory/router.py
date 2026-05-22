@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.product import Category, Product, ProductStatus
+from app.models.product import Category, Product, ProductPhoto, ProductStatus
 from app.models.inventory import Supplier, Order
 from app.models.brand_tier import BrandTier
 from app.models.store import StoreZone
@@ -20,6 +20,7 @@ from app.models.user import User
 from app.services.batch import BatchService
 from app.services.photo import PhotoService
 from app.services.product_lifecycle import ProductLifecycleService
+from app.services import storefront_photo
 from app.schemas.product import (
     CategoryCreate,
     CategoryResponse,
@@ -765,6 +766,16 @@ async def reorder_product_photos(
 UPLOAD_ROOT = Path(__file__).resolve().parents[3] / "uploads" / "products"
 ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_PHOTO_BYTES = 7 * 1024 * 1024  # 7 MB
+_SUFFIX_TO_MEDIA_TYPE = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
+
+
+def _media_type_for(suffix: str) -> str:
+    return _SUFFIX_TO_MEDIA_TYPE.get(suffix.lower(), "image/jpeg")
 
 
 @router.post(
@@ -811,13 +822,71 @@ async def upload_product_photo(
     os.chmod(target_path, 0o644)
 
     public_url = f"/uploads/products/{product_id}/{fname}"
-    photo = await PhotoService(db).add_photo(product_id=product_id, url=public_url)
+
+    # Auto-generate the branded, background-removed storefront copy. Synchronous
+    # so the new-product flow can present it on its final screen; best-effort so
+    # a missing backend or a processing error never fails the upload.
+    processed_url, processing_status = await storefront_photo.generate_and_persist(
+        product_id, blob, _media_type_for(suffix)
+    )
+
+    photo = await PhotoService(db).add_photo(
+        product_id=product_id,
+        url=public_url,
+        processed_url=processed_url,
+        processing_status=processing_status,
+    )
     await db.commit()
     return {
         "id": str(photo.id),
         "url": photo.url,
+        "processed_url": photo.processed_url,
+        "processing_status": photo.processing_status,
         "is_primary": photo.is_primary,
         "order_index": photo.order_index,
+    }
+
+
+@router.post("/products/{product_id}/photos/{photo_id}/storefront")
+async def regenerate_storefront_photo(
+    product_id: uuid.UUID,
+    photo_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """(Re)generate the branded storefront copy of an existing photo.
+
+    Lets the operator retry a failed/skipped generation or refresh the cutout
+    for a photo that was added by URL. Sourced from the stored original image.
+    """
+    result = await db.execute(
+        select(ProductPhoto).where(
+            ProductPhoto.id == photo_id,
+            ProductPhoto.product_id == product_id,
+        )
+    )
+    photo = result.scalar_one_or_none()
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    source = await storefront_photo.fetch_source_bytes(photo.url)
+    if source is None:
+        await PhotoService(db).set_processed(product_id, photo_id, None, "failed")
+        await db.commit()
+        raise HTTPException(status_code=422, detail="Original image unavailable")
+
+    blob, media_type = source
+    processed_url, processing_status = await storefront_photo.generate_and_persist(
+        product_id, blob, media_type
+    )
+    updated = await PhotoService(db).set_processed(
+        product_id, photo_id, processed_url, processing_status
+    )
+    await db.commit()
+    return {
+        "id": str(updated.id),
+        "processed_url": updated.processed_url,
+        "processing_status": updated.processing_status,
     }
 
 

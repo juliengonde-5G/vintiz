@@ -61,6 +61,8 @@ class ProductResponse(BaseModel):
     brand: str | None
     condition: str | None = None
     photo_url: str | None
+    # Branded background-removed copy of the primary photo for the storefront.
+    storefront_photo_url: str | None = None
     purchase_price: float
     sale_price: float
     status: str
