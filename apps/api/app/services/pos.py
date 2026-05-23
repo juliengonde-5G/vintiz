@@ -197,6 +197,7 @@ class PosService:
             item = TransactionItem(
                 transaction_id=transaction.id,
                 product_id=product.id if product else None,
+                product_name=(product.name if product else _name),
                 quantity=quantity,
                 unit_price=float(unit_price),
                 discount_percent=discount,
@@ -346,7 +347,11 @@ class PosService:
                 {
                     "id": str(item.id),
                     "product_id": str(item.product_id) if item.product_id else None,
-                    "name": product_names.get(str(item.product_id), "Article") if item.product_id else "Article",
+                    "name": (
+                        getattr(item, "product_name", None)
+                        or (product_names.get(str(item.product_id)) if item.product_id else None)
+                        or "Article"
+                    ),
                     "quantity": item.quantity,
                     "unit_price": float(item.unit_price),
                     "discount_percent": float(item.discount_percent),

@@ -221,6 +221,8 @@ export default function ReceiptInvoiceStudio() {
   const invoices = rows.filter((r) => r.kind === 'invoice');
 
   return (
+    <div className="space-y-6">
+    <BrandingLogoCard />
     <Card>
       <div className="mb-4 flex items-end justify-between">
         <div>
@@ -262,6 +264,133 @@ export default function ReceiptInvoiceStudio() {
           />
         </div>
       )}
+    </Card>
+    </div>
+  );
+}
+
+function BrandingLogoCard() {
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [printOnTicket, setPrintOnTicket] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [flash, setFlash] = useState('');
+
+  const reload = useCallback(async () => {
+    try {
+      const res = await api.get('/api/admin/branding/logo');
+      setLogoUrl(res.ok ? `/api/admin/branding/logo?t=${Date.now()}` : null);
+    } catch {
+      setLogoUrl(null);
+    }
+    try {
+      const shopRes = await api.get('/api/admin/shop-info');
+      if (shopRes.ok) {
+        const s = await shopRes.json();
+        setPrintOnTicket(!!s.print_logo_on_ticket);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const upload = async (file: File): Promise<void> => {
+    setBusy(true);
+    setFlash('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.upload('/api/admin/branding/logo', fd);
+      if (res.ok) {
+        setFlash('Logo enregistré.');
+        await reload();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(`Erreur : ${d.detail || res.statusText}`);
+      }
+    } catch {
+      alert('Erreur réseau.');
+    }
+    setBusy(false);
+  };
+
+  const remove = async (): Promise<void> => {
+    if (!window.confirm('Supprimer le logo ?')) return;
+    setBusy(true);
+    try {
+      await api.delete('/api/admin/branding/logo');
+      await reload();
+    } catch { /* ignore */ }
+    setBusy(false);
+  };
+
+  const toggleTicket = async (v: boolean): Promise<void> => {
+    setPrintOnTicket(v);
+    try {
+      await api.put('/api/admin/shop-info', { print_logo_on_ticket: v });
+    } catch { /* ignore */ }
+  };
+
+  return (
+    <Card>
+      <h2 className="font-display text-lg font-semibold text-vz-ink">
+        Logo de la société
+      </h2>
+      <p className="mb-4 text-sm text-vz-ink-mute">
+        Affiché sur la facture PDF (et, en option, en tête du ticket de caisse).
+        PNG/JPG, fond transparent recommandé.
+      </p>
+      {flash && (
+        <p className="mb-3 rounded-lg bg-vz-teal-soft px-4 py-3 text-sm text-vz-teal-deep">
+          {flash}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-5">
+        <div className="flex h-24 w-44 items-center justify-center rounded-xl border border-vz-line bg-[length:14px_14px] bg-[linear-gradient(45deg,#0000000a_25%,transparent_25%,transparent_75%,#0000000a_75%),linear-gradient(45deg,#0000000a_25%,#fff_25%,#fff_75%,#0000000a_75%)] p-2">
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
+          ) : (
+            <span className="text-xs text-vz-ink-mute">Aucun logo</span>
+          )}
+        </div>
+        <div className="space-y-2">
+          <label className="inline-block cursor-pointer rounded-lg bg-vz-teal px-4 py-2 text-sm font-medium text-white hover:bg-vz-teal-deep">
+            {busy ? 'Envoi…' : 'Téléverser un logo'}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              disabled={busy}
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void upload(f);
+                e.target.value = '';
+              }}
+            />
+          </label>
+          {logoUrl && (
+            <button
+              type="button"
+              onClick={() => void remove()}
+              disabled={busy}
+              className="ml-2 rounded-lg border border-vz-line px-3 py-2 text-sm text-vz-accent hover:bg-vz-bg-alt"
+            >
+              Supprimer
+            </button>
+          )}
+          <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-vz-ink-soft">
+            <input
+              type="checkbox"
+              checked={printOnTicket}
+              onChange={(e) => void toggleTicket(e.target.checked)}
+              className="h-4 w-4 accent-vz-teal"
+            />
+            Imprimer le logo en tête du ticket de caisse
+          </label>
+        </div>
+      </div>
     </Card>
   );
 }

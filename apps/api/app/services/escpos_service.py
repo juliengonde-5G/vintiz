@@ -35,7 +35,9 @@ _LOGO_PATH = Path(
 # 80 mm paper with margin on both sides. The 047P's print zone is 576
 # dots — anything wider than that is silently clipped on the right.
 _LOGO_TARGET_WIDTH = 320
-_logo_raster_cache: bytes | None = None
+# Cache keyed by resolved logo path so a re-uploaded company logo isn't masked
+# by a stale raster.
+_logo_raster_cache: dict[str, bytes] = {}
 _logo_raster_lock = threading.Lock()
 
 # Per-host serialization: two concurrent ESC/POS streams on the same printer
@@ -104,36 +106,36 @@ def _encode(text: str) -> bytes:
         return text.encode("ascii", errors="replace")
 
 
-def _build_logo_raster() -> bytes:
-    """Convert the Vintiz receipt logo PNG into an ESC/POS raster command.
+def _build_logo_raster(logo_path: str | None = None) -> bytes:
+    """Convert the company logo PNG into an ESC/POS raster command.
 
     Uses ``GS v 0 m xL xH yL yH d…`` (raster bit image) which is the
     most widely supported image command on ESC/POS clones. The PNG is
     composited on white, converted to 1-bit at ``_LOGO_TARGET_WIDTH``
-    dots wide, then packed MSB-first 8 pixels per byte. Cached for the
-    lifetime of the process.
+    dots wide, then packed MSB-first 8 pixels per byte. Cached per path.
 
-    Returns ``b""`` on any failure (missing file, Pillow not available,
-    image bigger than the buffer) so the receipt still prints without
-    the logo — better than failing the whole job because the asset
-    moved.
+    ``logo_path`` overrides the default asset (used by the configurable
+    company logo). Returns ``b""`` on any failure so the receipt still
+    prints without the logo.
     """
-    global _logo_raster_cache  # noqa: PLW0603 — module-level cache
+    path = Path(logo_path) if logo_path else _LOGO_PATH
+    key = str(path)
     with _logo_raster_lock:
-        if _logo_raster_cache is not None:
-            return _logo_raster_cache
+        cached = _logo_raster_cache.get(key)
+        if cached is not None:
+            return cached
         try:
             from PIL import Image  # local import — only needed once
         except ImportError:
             _log.warning("Pillow not available, receipt logo disabled")
-            _logo_raster_cache = b""
+            _logo_raster_cache[key] = b""
             return b""
-        if not _LOGO_PATH.exists():
-            _log.warning("Receipt logo missing at %s", _LOGO_PATH)
-            _logo_raster_cache = b""
+        if not path.exists():
+            _log.warning("Receipt logo missing at %s", path)
+            _logo_raster_cache[key] = b""
             return b""
         try:
-            im = Image.open(_LOGO_PATH).convert("RGBA")
+            im = Image.open(path).convert("RGBA")
             ratio = _LOGO_TARGET_WIDTH / im.size[0]
             target_h = int(im.size[1] * ratio)
             bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
@@ -149,11 +151,11 @@ def _build_logo_raster() -> bytes:
             x_l, x_h = width_bytes & 0xFF, (width_bytes >> 8) & 0xFF
             y_l, y_h = target_h & 0xFF, (target_h >> 8) & 0xFF
             header = GS + b"v0" + bytes([0, x_l, x_h, y_l, y_h])
-            _logo_raster_cache = header + inverted
-            return _logo_raster_cache
+            _logo_raster_cache[key] = header + inverted
+            return _logo_raster_cache[key]
         except Exception as exc:  # noqa: BLE001 — never fail the receipt
             _log.warning("Receipt logo conversion failed: %s", exc)
-            _logo_raster_cache = b""
+            _logo_raster_cache[key] = b""
             return b""
 
 
@@ -190,6 +192,44 @@ def _line(text: str = "") -> bytes:
     return _encode(text) + LF
 
 
+def _shop_info() -> dict[str, Any]:
+    """Persisted boutique metadata (name, address, logo…). Sync read from the
+    app_config JSON file — safe to call from this sync builder."""
+    try:
+        from app.services.app_config import get_section
+
+        return get_section("shop_info") or {}
+    except Exception:  # noqa: BLE001 — never fail the receipt on a config read
+        return {}
+
+
+def _wrap(text: str, width: int) -> list[str]:
+    """Wrap a string to ``width`` columns without splitting words."""
+    text = text or ""
+    if len(text) <= width:
+        return [text]
+    out: list[str] = []
+    cur = ""
+    for word in text.split():
+        if not cur:
+            cur = word
+        elif len(cur) + 1 + len(word) <= width:
+            cur += " " + word
+        else:
+            out.append(cur)
+            cur = word
+    if cur:
+        out.append(cur)
+    # Hard-split any single word longer than the width.
+    final: list[str] = []
+    for chunk in out:
+        while len(chunk) > width:
+            final.append(chunk[:width])
+            chunk = chunk[width:]
+        final.append(chunk)
+    return final or [""]
+
+
 def _row(left: str, right: str, width: int = 42) -> bytes:
     """Build a left/right justified row fitting the paper width."""
     left = left[: width - 1]
@@ -197,20 +237,46 @@ def _row(left: str, right: str, width: int = 42) -> bytes:
     return _encode(left + (" " * space) + right) + LF
 
 
-def build_receipt(transaction: Any, *, width: int = 42, cut: bool = True) -> bytes:
-    """Produce an ESC/POS byte stream for a completed Vintiz transaction."""
+def build_receipt(
+    transaction: Any,
+    *,
+    template: Any | None = None,
+    shop: dict[str, Any] | None = None,
+    width: int = 42,
+    cut: bool = True,
+) -> bytes:
+    """Produce an ESC/POS byte stream for a completed Vintiz transaction.
+
+    Unified with the back-office configuration: the header (shop name +
+    address), the footer and the return conditions come from the persisted
+    ``shop_info`` and the resolved ticket ``ReceiptTemplate`` — the same model
+    the dashboard receipt text and the studio preview use. Hardcoded constants
+    are only the last-resort fallback when nothing is configured.
+    """
     out = bytearray()
     out += INIT
 
+    shop = shop if shop is not None else _shop_info()
+    store_name = (
+        (template.title if template and getattr(template, "title", None) else "")
+        or shop.get("name")
+        or STORE_NAME
+    )
+    store_info = shop.get("tagline") or STORE_INFO
+    addr_parts = [
+        shop.get("address_line1", ""),
+        f"{shop.get('postal_code', '')} {shop.get('city', '')}".strip(),
+    ]
+    store_address = ", ".join(p for p in addr_parts if p) or STORE_ADDRESS
+
     # Logo : the `GS v 0` raster command is OFF by default because
     # several MUNBYN 047P firmware revisions don't recognise it and
-    # print the raw bytes as garbled ASCII at the top of the ticket
-    # (verified in boutique 2026-05-14). Set
-    # ``RECEIPT_PRINT_RASTER_LOGO=true`` to opt-in once your printer
-    # has been verified to support GS v 0. The text "VINTIZ" header
-    # below stays in bold + double size and serves as the wordmark.
-    if os.getenv("RECEIPT_PRINT_RASTER_LOGO", "false").lower() in {"1", "true", "yes"}:
-        logo = _build_logo_raster()
+    # print the raw bytes as garbled ASCII at the top of the ticket.
+    # Opt-in via the env flag OR the persisted ``shop_info.print_logo_on_ticket``
+    # once the printer is verified. The text wordmark below always shows.
+    env_logo = os.getenv("RECEIPT_PRINT_RASTER_LOGO", "false").lower() in {"1", "true", "yes"}
+    if env_logo or bool(shop.get("print_logo_on_ticket")):
+        logo = _build_logo_raster(shop.get("logo_path") or None)
         if logo:
             out += ALIGN_CENTER
             out += logo
@@ -218,11 +284,13 @@ def build_receipt(transaction: Any, *, width: int = 42, cut: bool = True) -> byt
 
     # Header (centered, bold, double size for store name)
     out += ALIGN_CENTER + BOLD_ON + DOUBLE_ON
-    out += _line(STORE_NAME)
+    for hline in _wrap(store_name.upper(), max(8, width // 2)):
+        out += _line(hline)
     out += DOUBLE_OFF
-    out += _line(STORE_INFO)
+    out += _line(store_info)
     out += BOLD_OFF
-    out += _line(STORE_ADDRESS)
+    for aline in _wrap(store_address, width):
+        out += _line(aline)
     out += _line("=" * width)
 
     # Transaction meta
@@ -240,9 +308,9 @@ def build_receipt(transaction: Any, *, width: int = 42, cut: bool = True) -> byt
     items = getattr(transaction, "items", None) or []
     for item in items:
         product = getattr(item, "product", None)
+        pn = getattr(item, "product_name", None)
         name = (
-            getattr(item, "product_name", None)
-            or getattr(item, "name", None)
+            (pn if isinstance(pn, str) and pn.strip() else None)
             or getattr(product, "name", None)
             or "Article"
         )
@@ -256,7 +324,8 @@ def build_receipt(transaction: Any, *, width: int = 42, cut: bool = True) -> byt
             or None
         )
 
-        out += _line(name[:width])
+        for nline in _wrap(str(name), width):
+            out += _line(nline)
         # Secondary chip line — only when there's actually something to show
         chips = _item_detail_parts(item)
         if chips:
@@ -279,8 +348,10 @@ def build_receipt(transaction: Any, *, width: int = 42, cut: bool = True) -> byt
     total_tva = float(getattr(transaction, "total_tva", 0) or 0)
     total_ttc = float(getattr(transaction, "total_ttc", 0) or 0)
 
+    vat_rate = shop.get("vat_rate_percent")
+    vat_label = f"TVA {float(vat_rate):g}%" if vat_rate else "TVA"
     out += _row("Total HT", f"{total_ht:.2f} EUR", width=width)
-    out += _row("TVA 20%", f"{total_tva:.2f} EUR", width=width)
+    out += _row(vat_label, f"{total_tva:.2f} EUR", width=width)
     out += BOLD_ON
     out += _row("TOTAL TTC", f"{total_ttc:.2f} EUR", width=width)
     out += BOLD_OFF
@@ -338,12 +409,26 @@ def build_receipt(transaction: Any, *, width: int = 42, cut: bool = True) -> byt
     # the footer.
     out += LF
     out += ALIGN_CENTER + BOLD_ON
-    out += _line("Merci de votre visite !")
+    footer_text = (
+        (template.footer if template and getattr(template, "footer", None) else "")
+        or "Merci de votre visite !"
+    )
+    for fline in _wrap(footer_text, width):
+        out += _line(fline)
     out += BOLD_OFF
-    out += _line("Boutique de seconde main premium")
-    out += _line("vintiz.fr")
-    out += _line(f"Vernon, Normandie · {dt.strftime('%d/%m/%Y')}")
-    out += _line("À bientôt chez Vintiz !")
+    website = shop.get("website")
+    if website:
+        out += _line(str(website))
+    # Return conditions from the configured ticket template (unified with the
+    # studio + dashboard receipt text).
+    conditions = template.conditions_retour if template else None
+    if conditions:
+        out += _line("-" * width)
+        out += ALIGN_LEFT
+        for cline in _wrap(str(conditions), width):
+            out += _line(cline)
+        out += ALIGN_CENTER
+    out += _line(f"{shop.get('city', 'Vernon')} · {dt.strftime('%d/%m/%Y')}")
     # Explicit feed before cut so the head has time to flush the
     # buffer onto the paper before the cutter fires.
     out += LF + LF
@@ -440,8 +525,17 @@ def send_raw(
     raise last_exc
 
 
-def print_receipt(transaction: Any, host: str, port: int = 9100, *, width: int = 42, cut: bool = True) -> int:
-    payload = build_receipt(transaction, width=width, cut=cut)
+def print_receipt(
+    transaction: Any,
+    host: str,
+    port: int = 9100,
+    *,
+    template: Any | None = None,
+    shop: dict[str, Any] | None = None,
+    width: int = 42,
+    cut: bool = True,
+) -> int:
+    payload = build_receipt(transaction, template=template, shop=shop, width=width, cut=cut)
     send_raw(host, port, payload)
     return len(payload)
 

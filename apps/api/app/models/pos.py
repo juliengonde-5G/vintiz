@@ -115,6 +115,11 @@ class TransactionItem(Base):
     product_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("products.id"), nullable=True
     )
+    # Item label frozen at sale time — required for manual lines (bag, custom
+    # article) that have no product_id, and a stable fallback for catalog items
+    # whose Product is later edited/deleted. Used on tickets, receipt text and
+    # invoices so the printed name matches what was actually sold.
+    product_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Set on refund items only — points back to the original sale's item
     # so partial refunds aggregate per *line*, not per product. Without it
     # two distinct lines that share the same product_id would share the

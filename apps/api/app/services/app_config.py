@@ -49,6 +49,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "tva_intracom": "",        # n° TVA intracommunautaire (FRxx…)
         "iban": "",                # IBAN for invoice payment
         "bic": "",                 # BIC / SWIFT
+        # Company logo — uploaded via /settings (Tickets & Factures). Absolute
+        # path on the API host; used on the invoice PDF and (opt-in) the ticket.
+        "logo_path": "",
+        "print_logo_on_ticket": False,
     },
     # SumUp config — editable via /settings > Paiement (overrides env vars)
     "sumup": {

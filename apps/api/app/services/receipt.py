@@ -128,7 +128,10 @@ class ReceiptService:
             # to a generic label (e.g. for free-form quick-sale lines).
             name = "Article"
             product = getattr(item, "product", None)
-            if product and getattr(product, "name", None):
+            pn = getattr(item, "product_name", None)
+            if isinstance(pn, str) and pn.strip():
+                name = pn
+            elif product and getattr(product, "name", None):
                 name = product.name
             # Truncate long names so the line stays within the receipt width
             if len(name) > 28:
@@ -261,7 +264,10 @@ class ReceiptService:
         for item in (transaction.items or []):
             name = "Article"
             product = getattr(item, "product", None)
-            if product and getattr(product, "name", None):
+            pn = getattr(item, "product_name", None)
+            if isinstance(pn, str) and pn.strip():
+                name = pn
+            elif product and getattr(product, "name", None):
                 name = product.name
             if len(name) > 28:
                 name = name[:27] + "…"

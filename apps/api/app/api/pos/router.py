@@ -776,6 +776,42 @@ async def resend_transaction(
         raise HTTPException(status_code=400, detail="Canal invalide (email ou sms)")
 
 
+async def _resolve_ticket_template_and_shop(db: AsyncSession, transaction):
+    """Resolve the ReceiptTemplate snapshot (or active default for the kind)
+    and the persisted shop_info — so the printed ESC/POS ticket is unified
+    with the studio config and the dashboard receipt text."""
+    from sqlalchemy import select
+
+    from app.models.receipt_template import ReceiptKind, ReceiptTemplate
+    from app.services.app_config import get_section
+
+    target_kind = (
+        ReceiptKind.invoice if transaction.is_invoice else ReceiptKind.ticket
+    )
+    template = None
+    if transaction.template_id is not None:
+        template = (
+            await db.execute(
+                select(ReceiptTemplate).where(
+                    ReceiptTemplate.id == transaction.template_id
+                )
+            )
+        ).scalar_one_or_none()
+    if template is None:
+        template = (
+            await db.execute(
+                select(ReceiptTemplate)
+                .where(
+                    ReceiptTemplate.kind == target_kind,
+                    ReceiptTemplate.is_default.is_(True),
+                    ReceiptTemplate.is_active.is_(True),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    return template, (get_section("shop_info") or {})
+
+
 @router.post("/transactions/{transaction_id}/print")
 async def print_transaction_receipt(
     transaction_id: uuid.UUID,
@@ -808,11 +844,14 @@ async def print_transaction_receipt(
     if not host:
         raise HTTPException(status_code=400, detail="Adresse IP de l'imprimante non configuree")
 
+    template, shop = await _resolve_ticket_template_and_shop(db, transaction)
     try:
         escpos_service.print_receipt(
             transaction,
             host=host,
             port=port,
+            template=template,
+            shop=shop,
             width=int(rp.get("width_chars") or 42),
             cut=bool(rp.get("cut_paper", True)),
         )
@@ -895,8 +934,11 @@ async def get_transaction_escpos(
 
     cfg = load_config()
     rp = cfg["receipt_printer"]
+    template, shop = await _resolve_ticket_template_and_shop(db, transaction)
     payload = escpos_service.build_receipt(
         transaction,
+        template=template,
+        shop=shop,
         width=int(rp.get("width_chars") or 42),
         cut=bool(rp.get("cut_paper", True)),
     )

@@ -145,7 +145,14 @@ def generate_invoice_pdf(
     # ------------------------------------------------------------------
     # Header band — logo (or wordmark) + FACTURE title + meta
     # ------------------------------------------------------------------
-    logo_path = Path(__file__).resolve().parent.parent / "assets" / "receipt-logo.png"
+    # Configurable company logo (Settings › Tickets & Factures) takes
+    # precedence over the bundled wordmark asset.
+    configured_logo = (shop.get("logo_path") or "").strip()
+    logo_path = (
+        Path(configured_logo)
+        if configured_logo
+        else Path(__file__).resolve().parent.parent / "assets" / "receipt-logo.png"
+    )
     logo_flow: Any = None
     if logo_path.exists():
         try:

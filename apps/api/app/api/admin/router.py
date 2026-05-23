@@ -1,9 +1,11 @@
 import asyncio
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Annotated, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -451,6 +453,7 @@ class ShopInfoUpdate(BaseModel):
     tva_intracom: str | None = None
     iban: str | None = None
     bic: str | None = None
+    print_logo_on_ticket: bool | None = None
 
 
 @router.get("/shop-info")
@@ -468,6 +471,72 @@ async def update_shop_info(payload: ShopInfoUpdate):
 
     values = payload.model_dump(exclude_none=True)
     return update_section("shop_info", values)
+
+
+# ---------------------------------------------------------------------------
+# Company logo — uploaded asset rendered on invoices (and opt-in on tickets)
+# ---------------------------------------------------------------------------
+
+_BRANDING_DIR = Path(
+    os.getenv(
+        "VINTIZ_BRANDING_DIR",
+        str(Path(__file__).resolve().parents[3] / "data" / "branding"),
+    )
+)
+_LOGO_FILE = _BRANDING_DIR / "logo.png"
+
+
+@router.get("/branding/logo")
+async def get_branding_logo(current_user: Annotated[User, Depends(get_current_user)]):
+    """Serve the current company logo PNG (for the studio preview)."""
+    if not _LOGO_FILE.exists():
+        raise HTTPException(status_code=404, detail="Aucun logo configuré")
+    return Response(content=_LOGO_FILE.read_bytes(), media_type="image/png")
+
+
+@router.post("/branding/logo", dependencies=[Depends(manager_only)])
+async def upload_branding_logo(file: UploadFile = File(...)):
+    """Upload the company logo. Normalised to PNG, max 600px wide, and the
+    absolute path is persisted in ``shop_info.logo_path``."""
+    from app.services.app_config import update_section
+
+    raw = await file.read()
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Logo trop lourd (max 5 Mo).")
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+
+        im = Image.open(BytesIO(raw)).convert("RGBA")
+        if im.width > 600:
+            ratio = 600 / im.width
+            im = im.resize((600, int(im.height * ratio)), Image.LANCZOS)
+        _BRANDING_DIR.mkdir(parents=True, exist_ok=True)
+        im.save(_LOGO_FILE, format="PNG")
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=400, detail=f"Image invalide : {exc}"
+        ) from exc
+
+    update_section("shop_info", {"logo_path": str(_LOGO_FILE)})
+    return {"ok": True, "logo_path": str(_LOGO_FILE)}
+
+
+@router.delete("/branding/logo", dependencies=[Depends(manager_only)])
+async def delete_branding_logo():
+    """Remove the company logo and clear ``shop_info.logo_path``."""
+    from app.services.app_config import update_section
+
+    if _LOGO_FILE.exists():
+        try:
+            _LOGO_FILE.unlink()
+        except OSError:
+            pass
+    update_section("shop_info", {"logo_path": "", "print_logo_on_ticket": False})
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

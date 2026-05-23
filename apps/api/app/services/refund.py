@@ -237,6 +237,7 @@ class RefundService:
                 TransactionItem(
                     transaction_id=refund_tx.id,
                     product_id=original_item.product_id,
+                    product_name=getattr(original_item, "product_name", None),
                     original_transaction_item_id=original_item.id,
                     quantity=qty,
                     unit_price=float(original_item.unit_price),
