@@ -27,6 +27,7 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
   const [busy, setBusy] = useState(false);
   const [newUrl, setNewUrl] = useState('');
   const [error, setError] = useState('');
+  const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -178,65 +179,108 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
           Aucune photo. Ajoutez-en une ci-dessous.
         </div>
       ) : (
-        <div className="space-y-2">
-          {photos.map((photo, idx) => (
+        <div className="space-y-3">
+          {photos.map((photo, idx) => {
+            const failed = photo.processing_status === 'failed';
+            return (
             <div
               key={photo.id}
-              className={`flex items-center gap-3 p-2 border rounded-lg ${
+              className={`p-3 border rounded-xl ${
                 photo.is_primary
-                  ? 'border-vz-teal bg-vz-teal-soft/40'
+                  ? 'border-vz-teal bg-vz-teal-soft/30'
                   : 'border-gray-200 bg-white'
               }`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={mediaUrl(photo.url)}
-                alt={`Photo ${idx + 1}`}
-                className="w-16 h-16 object-cover rounded border border-gray-200"
-              />
-              {/* Vitrine copy (background removed) — shown next to the raw shot. */}
-              {photo.processed_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={mediaUrl(photo.processed_url)}
-                  alt={`Photo vitrine ${idx + 1}`}
-                  title="Photo vitrine (fond détouré)"
-                  className="w-16 h-16 object-contain rounded border border-vz-teal/40 bg-white"
-                />
-              ) : (
-                <div className="w-16 h-16 rounded border border-dashed border-gray-200 flex items-center justify-center text-[10px] text-gray-400 text-center px-1">
-                  pas de vitrine
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500 truncate">{photo.url}</p>
-                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                  {photo.is_primary && (
-                    <span className="inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-vz-teal text-white">
-                      Principale
+              {/* Before / after — original shot vs detoured storefront copy.
+                  Both enlarge on click so the manager can inspect the cut-out. */}
+              <div className="grid grid-cols-2 gap-3">
+                <figure className="min-w-0">
+                  <figcaption className="mb-1 flex items-center justify-between">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-vz-ink-mute">
+                      Originale
                     </span>
-                  )}
-                  {photo.processed_url && (
-                    <span className="inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-vz-teal-soft text-vz-teal">
+                    {photo.is_primary && (
+                      <span className="rounded-full bg-vz-teal px-2 py-0.5 text-[10px] font-medium text-white">
+                        Principale
+                      </span>
+                    )}
+                  </figcaption>
+                  <button
+                    type="button"
+                    onClick={() => setLightbox({ url: mediaUrl(photo.url), label: 'Photo originale' })}
+                    className="group block w-full overflow-hidden rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                    title="Agrandir la photo originale"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={mediaUrl(photo.url)}
+                      alt={`Photo ${idx + 1}`}
+                      className="aspect-square w-full object-cover transition-transform group-hover:scale-105"
+                    />
+                  </button>
+                </figure>
+
+                <figure className="min-w-0">
+                  <figcaption className="mb-1 flex items-center justify-between">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-vz-ink-mute">
                       Vitrine
                     </span>
+                    {photo.processed_url && (
+                      <span className="rounded-full bg-vz-teal-soft px-2 py-0.5 text-[10px] font-medium text-vz-teal-deep">
+                        Détourée
+                      </span>
+                    )}
+                  </figcaption>
+                  {photo.processed_url ? (
+                    <button
+                      type="button"
+                      onClick={() => setLightbox({ url: mediaUrl(photo.processed_url!), label: 'Photo vitrine (fond détouré)' })}
+                      className="group block w-full overflow-hidden rounded-lg border border-vz-teal/40 bg-[length:16px_16px] bg-[linear-gradient(45deg,#0000000a_25%,transparent_25%,transparent_75%,#0000000a_75%),linear-gradient(45deg,#0000000a_25%,#fff_25%,#fff_75%,#0000000a_75%)] focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                      title="Agrandir la photo vitrine"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={mediaUrl(photo.processed_url)}
+                        alt={`Photo vitrine ${idx + 1}`}
+                        className="aspect-square w-full object-contain transition-transform group-hover:scale-105"
+                      />
+                    </button>
+                  ) : (
+                    <div className={`flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-2 text-center text-[11px] ${
+                      failed ? 'border-vz-accent/40 text-vz-accent' : 'border-gray-200 text-gray-400'
+                    }`}>
+                      <span>{failed ? 'Détourage échoué' : 'Pas de photo vitrine'}</span>
+                    </div>
                   )}
-                </div>
+                </figure>
+              </div>
+
+              {/* Source URL + actions */}
+              <p className="mt-2 truncate text-[11px] text-gray-400" title={photo.url}>{photo.url}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => regenerateStorefront(photo.id)}
                   disabled={busy}
-                  className="mt-1 text-xs text-vz-teal hover:underline disabled:opacity-40"
+                  className="rounded-lg bg-vz-teal-soft px-2.5 py-1 text-xs font-medium text-vz-teal hover:bg-vz-teal-soft/70 disabled:opacity-40"
                 >
-                  {photo.processed_url ? 'Régénérer la vitrine' : 'Générer la photo vitrine'}
+                  {photo.processed_url ? 'Régénérer la vitrine' : 'Générer la vitrine'}
                 </button>
-              </div>
-              <div className="flex flex-col gap-1">
+                {!photo.is_primary && (
+                  <button
+                    type="button"
+                    onClick={() => setPrimary(photo.id)}
+                    disabled={busy}
+                    className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50 disabled:opacity-40"
+                  >
+                    Définir principale
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => move(idx, 'up')}
                   disabled={busy || idx === 0}
-                  className="px-2 py-0.5 text-xs rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-30"
+                  className="rounded-lg border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-30"
                   title="Monter"
                 >
                   ▲
@@ -245,34 +289,23 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
                   type="button"
                   onClick={() => move(idx, 'down')}
                   disabled={busy || idx === photos.length - 1}
-                  className="px-2 py-0.5 text-xs rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-30"
+                  className="rounded-lg border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-30"
                   title="Descendre"
                 >
                   ▼
                 </button>
-              </div>
-              <div className="flex flex-col gap-1">
-                {!photo.is_primary && (
-                  <button
-                    type="button"
-                    onClick={() => setPrimary(photo.id)}
-                    disabled={busy}
-                    className="px-2 py-1 text-xs rounded bg-vz-teal-soft text-vz-teal hover:bg-vz-teal-soft"
-                  >
-                    Principale
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={() => deletePhoto(photo.id)}
                   disabled={busy}
-                  className="px-2 py-1 text-xs rounded bg-red-50 text-red-600 hover:bg-red-100"
+                  className="ml-auto rounded-lg bg-red-50 px-2.5 py-1 text-xs text-red-600 hover:bg-red-100 disabled:opacity-40"
                 >
                   Supprimer
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -322,6 +355,33 @@ export default function PhotoGallery({ productId, onChange }: PhotoGalleryProps)
           </button>
         </div>
       </div>
+
+      {lightbox && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 p-4"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightbox.url}
+            alt={lightbox.label}
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[80vh] max-w-[90vw] rounded-lg bg-white object-contain shadow-2xl"
+          />
+          <div className="mt-3 flex items-center gap-3 text-sm text-white">
+            <span>{lightbox.label}</span>
+            <button
+              type="button"
+              onClick={() => setLightbox(null)}
+              className="rounded-lg bg-white/15 px-3 py-1 hover:bg-white/25"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
