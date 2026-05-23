@@ -9,6 +9,16 @@ import Modal from '@/components/ui/Modal';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
 
+interface CardPayment {
+  amount: number;
+  sumup_transaction_id: string | null;
+  sumup_transaction_code: string | null;
+  sumup_auth_code: string | null;
+  sumup_card_brand: string | null;
+  sumup_card_last4: string | null;
+  sumup_environment: string | null;
+}
+
 interface AdminTransaction {
   id: string;
   transaction_number: number;
@@ -19,9 +29,24 @@ interface AdminTransaction {
   total_ht: number;
   total_tva: number;
   methods: string[];
+  card_payments: CardPayment[];
   cashier_id: string | null;
   client_id: string | null;
   client_company_name: string | null;
+  created_at: string | null;
+}
+
+interface FailedCbAttempt {
+  id: string;
+  amount: number;
+  status: 'pending' | 'succeeded' | 'failed' | 'cancelled';
+  transaction_id: string | null;
+  sumup_checkout_id: string | null;
+  sumup_transaction_id: string | null;
+  sumup_card_brand: string | null;
+  sumup_card_last4: string | null;
+  error_detail: string | null;
+  cancelled_reason: string | null;
   created_at: string | null;
 }
 
@@ -89,7 +114,9 @@ function MethodBadge({ method }: { method: string }) {
 }
 
 export default function AdminTransactionsPage() {
+  const [view, setView] = useState<'transactions' | 'failed_cb'>('transactions');
   const [rows, setRows] = useState<AdminTransaction[]>([]);
+  const [attempts, setAttempts] = useState<FailedCbAttempt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
@@ -126,9 +153,48 @@ export default function AdminTransactionsPage() {
     setLoading(false);
   }, [filters]);
 
+  // Failed CB attempts — the "CB échouées" view folds the former
+  // /admin/payment-attempts debug surface into this page.
+  const loadAttempts = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams();
+      params.set('status', 'failed');
+      params.set('method', 'card');
+      if (filters.from) params.set('from', filters.from);
+      if (filters.to) params.set('to', filters.to);
+      params.set('limit', '200');
+      const res = await api.get(`/api/admin/payment-attempts?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAttempts(data.attempts || []);
+      } else if (res.status === 403) {
+        setError('Accès réservé aux administrateurs.');
+      } else {
+        setError('Erreur de chargement.');
+      }
+    } catch {
+      setError('Erreur réseau.');
+    }
+    setLoading(false);
+  }, [filters]);
+
   useEffect(() => {
-    load();
-  }, [load]);
+    if (view === 'transactions') load();
+    else loadAttempts();
+  }, [view, load, loadAttempts]);
+
+  const topErrors = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const a of attempts) {
+      const key = a.error_detail || a.cancelled_reason || '(sans détail)';
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+  }, [attempts]);
 
   const totalSales = rows
     .filter((r) => r.type === 'sale')
@@ -170,27 +236,77 @@ export default function AdminTransactionsPage() {
               Historique des transactions
             </h1>
             <p className="text-sm text-vz-ink-mute">
-              Toutes les ventes, refunds et factures — filtrables.
+              {view === 'transactions'
+                ? 'Toutes les ventes, refunds et factures — détail CB (TPE Solo) inclus.'
+                : 'Tentatives CB refusées par le TPE Solo — regroupées par cause.'}
             </p>
           </div>
-          <div className="flex gap-3">
-            <KpiTile label="Ventes" value={formatCurrency(totalSales)} tone="teal" />
-            <KpiTile
-              label="Remboursements"
-              value={formatCurrency(totalRefunds)}
-              tone="accent"
-            />
-            <KpiTile label="Lignes" value={String(rows.length)} tone="neutral" />
-          </div>
+          {view === 'transactions' && (
+            <div className="flex gap-3">
+              <KpiTile label="Ventes" value={formatCurrency(totalSales)} tone="teal" />
+              <KpiTile
+                label="Remboursements"
+                value={formatCurrency(totalRefunds)}
+                tone="accent"
+              />
+              <KpiTile label="Lignes" value={String(rows.length)} tone="neutral" />
+            </div>
+          )}
         </header>
 
-        <Card>
-          <FiltersBar
-            value={filters}
-            onChange={setFilters}
-            onReset={() => setFilters(DEFAULT_FILTERS)}
-          />
-        </Card>
+        {/* View switch — folds the old « Tentatives CB » page into this one. */}
+        <div className="mb-4 inline-flex rounded-xl border border-vz-line bg-vz-surface p-1">
+          {([
+            ['transactions', 'Transactions'],
+            ['failed_cb', 'CB échouées'],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setView(key)}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
+                view === key
+                  ? 'bg-vz-teal text-white'
+                  : 'text-vz-ink-soft hover:bg-vz-bg-alt'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {view === 'transactions' && (
+          <Card>
+            <FiltersBar
+              value={filters}
+              onChange={setFilters}
+              onReset={() => setFilters(DEFAULT_FILTERS)}
+            />
+          </Card>
+        )}
+
+        {view === 'failed_cb' && topErrors.length > 0 && (
+          <Card>
+            <h2 className="mb-3 font-display text-lg font-semibold text-vz-ink">
+              Top causes d&apos;échec
+            </h2>
+            <ul className="space-y-1.5">
+              {topErrors.map(([msg, count], i) => (
+                <li
+                  key={i}
+                  className="flex items-center justify-between border-b border-vz-line pb-1.5 text-sm last:border-b-0 last:pb-0"
+                >
+                  <span className="truncate pr-3 font-mono text-xs text-vz-ink">
+                    {msg}
+                  </span>
+                  <span className="rounded-full bg-vz-accent-soft px-2 py-0.5 font-mono text-xs font-bold text-vz-ink">
+                    {count}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
 
         <Card className="mt-4">
           {error && (
@@ -200,6 +316,52 @@ export default function AdminTransactionsPage() {
           )}
           {loading ? (
             <p className="py-12 text-center text-vz-ink-mute">Chargement…</p>
+          ) : view === 'failed_cb' ? (
+            attempts.length === 0 ? (
+              <p className="py-12 text-center text-vz-ink-mute">
+                Aucune tentative CB refusée.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-vz-line text-xs uppercase tracking-wide text-vz-ink-mute">
+                    <tr>
+                      <th className="px-3 py-2">Date</th>
+                      <th className="px-3 py-2 text-right">Montant</th>
+                      <th className="px-3 py-2">Carte</th>
+                      <th className="px-3 py-2">Réf. SumUp</th>
+                      <th className="px-3 py-2">Cause</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attempts.map((a) => (
+                      <tr
+                        key={a.id}
+                        className="border-b border-vz-line last:border-b-0"
+                      >
+                        <td className="px-3 py-3 font-mono text-xs text-vz-ink-soft">
+                          {formatDate(a.created_at)}
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono tabular-nums">
+                          {formatCurrency(a.amount)}
+                        </td>
+                        <td className="px-3 py-3 font-mono text-xs text-vz-ink-soft">
+                          {a.sumup_card_brand || a.sumup_card_last4
+                            ? `${a.sumup_card_brand || 'CB'} ••${a.sumup_card_last4 || '????'}`
+                            : '—'}
+                        </td>
+                        <td className="px-3 py-3 font-mono text-xs text-vz-ink-soft">
+                          {a.sumup_transaction_id || a.sumup_checkout_id || '—'}
+                        </td>
+                        <td className="px-3 py-3 font-mono text-xs text-vz-ink-soft">
+                          {a.error_detail || a.cancelled_reason || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
           ) : rows.length === 0 ? (
             <p className="py-12 text-center text-vz-ink-mute">
               Aucune transaction ne correspond aux filtres.
@@ -214,6 +376,7 @@ export default function AdminTransactionsPage() {
                     <th className="px-3 py-2">Type</th>
                     <th className="px-3 py-2">Client</th>
                     <th className="px-3 py-2">Méthodes</th>
+                    <th className="px-3 py-2">CB</th>
                     <th className="px-3 py-2 text-right">Total TTC</th>
                     <th className="px-3 py-2"></th>
                   </tr>
@@ -247,6 +410,17 @@ export default function AdminTransactionsPage() {
                                 <MethodBadge key={i} method={m} />
                               ))}
                         </div>
+                      </td>
+                      <td className="px-3 py-3 font-mono text-xs text-vz-ink-soft">
+                        {tx.card_payments.length > 0
+                          ? tx.card_payments
+                              .map((c) =>
+                                c.sumup_card_brand || c.sumup_card_last4
+                                  ? `${c.sumup_card_brand || 'CB'} ••${c.sumup_card_last4 || '????'}`
+                                  : '✓',
+                              )
+                              .join(', ')
+                          : '—'}
                       </td>
                       <td className="px-3 py-3 text-right font-mono tabular-nums">
                         {formatCurrency(tx.total_ttc)}
@@ -305,6 +479,32 @@ export default function AdminTransactionsPage() {
               label="Méthodes"
               value={detail.methods.map((m) => METHOD_LABEL[m] || m).join(', ')}
             />
+            {detail.card_payments.length > 0 && (
+              <div className="rounded-lg border border-vz-line bg-vz-bg-alt/60 p-3">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-vz-ink-mute">
+                  Détail CB — TPE Solo
+                </p>
+                {detail.card_payments.map((c, i) => (
+                  <div key={i} className="space-y-1 text-sm">
+                    <DetailRow
+                      label="Carte"
+                      value={
+                        c.sumup_card_brand || c.sumup_card_last4
+                          ? `${c.sumup_card_brand || 'CB'} •••• ${c.sumup_card_last4 || '????'}`
+                          : '—'
+                      }
+                    />
+                    <DetailRow
+                      label="Réf. transaction"
+                      value={c.sumup_transaction_code || c.sumup_transaction_id || '—'}
+                    />
+                    {c.sumup_auth_code && (
+                      <DetailRow label="Autorisation" value={c.sumup_auth_code} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             <DetailRow label="Total HT" value={formatCurrency(detail.total_ht)} />
             <DetailRow label="TVA" value={formatCurrency(detail.total_tva)} />
             <DetailRow

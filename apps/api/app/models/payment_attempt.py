@@ -60,5 +60,14 @@ class PaymentAttempt(Base):
         nullable=True,
     )
     sumup_checkout_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # SumUp Solo call + return — captured when the reader settles a CB attempt
+    # (PAID or FAILED). Mirrors the Payment columns so a failed/cancelled try
+    # that never produced a Transaction still records the terminal outcome:
+    # transaction reference, auth code and masked card for SAV / reconciliation.
+    sumup_transaction_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sumup_transaction_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sumup_auth_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sumup_card_brand: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sumup_card_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
     error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancelled_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

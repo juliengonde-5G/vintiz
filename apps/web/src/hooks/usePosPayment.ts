@@ -21,8 +21,8 @@ import type { PaymentStatus } from '@/components/pos/PaymentStatusBanner';
  *   doesn't see a "wedged" state on return.
  * - **Payment-attempt logging** : every CB attempt is logged to
  *   `/api/pos/payment-attempts` (pending → succeeded / failed / timeout),
- *   even when the cashier abandons before commit — drives the
- *   /admin/payment-attempts debug surface.
+ *   even when the cashier abandons before commit — drives the « CB
+ *   échouées » view of the /admin/transactions page.
  *
  * The hook returns a stable `runCardCheckout` ready to be passed to
  * `<MultiStepPaymentWizard onCardCheckout={...} />`. It does NOT manage the
@@ -61,6 +61,23 @@ function extractSumUpDetails(
     sumup_card_brand: data.sumup_card_brand as string | undefined,
     sumup_card_last4: data.sumup_card_last4 as string | undefined,
     sumup_environment: data.environment as string | undefined,
+  };
+}
+
+/** Flatten the Solo return into the fields the payment-attempts log accepts,
+ * so a settled CB attempt (succeeded or failed) records the terminal outcome
+ * — transaction reference + masked card — not only the checkout id. */
+function sumupAttemptFields(
+  sumup: SumUpPaymentDetails,
+  checkoutId?: string,
+): Record<string, unknown> {
+  return {
+    sumup_checkout_id: sumup.sumup_checkout_id || checkoutId,
+    sumup_transaction_id: sumup.sumup_transaction_id,
+    sumup_transaction_code: sumup.sumup_transaction_code,
+    sumup_auth_code: sumup.sumup_auth_code,
+    sumup_card_brand: sumup.sumup_card_brand,
+    sumup_card_last4: sumup.sumup_card_last4,
   };
 }
 
@@ -232,8 +249,14 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
               if (finalRes.ok) {
                 const finalData = await finalRes.json();
                 if ((finalData.status || '').toUpperCase() === 'PAID') {
+                  const sumup = extractSumUpDetails(finalData, checkoutId);
                   attemptId = await logAttempt(
-                    { method: 'card', amount, status: 'succeeded', sumup_checkout_id: checkoutId },
+                    {
+                      method: 'card',
+                      amount,
+                      status: 'succeeded',
+                      ...sumupAttemptFields(sumup, checkoutId),
+                    },
                     attemptId,
                   );
                   onStatus('paid');
@@ -241,7 +264,7 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
                     status: 'paid',
                     checkout_id: checkoutId,
                     attempt_id: attemptId,
-                    sumup: extractSumUpDetails(finalData, checkoutId),
+                    sumup,
                   };
                 }
               }
@@ -290,12 +313,13 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
             const data = await res.json();
             const raw = (data.status || 'PENDING').toUpperCase();
             if (raw === 'PAID') {
+              const sumup = extractSumUpDetails(data, checkoutId);
               attemptId = await logAttempt(
                 {
                   method: 'card',
                   amount,
                   status: 'succeeded',
-                  sumup_checkout_id: checkoutId,
+                  ...sumupAttemptFields(sumup, checkoutId),
                 },
                 attemptId,
               );
@@ -304,7 +328,7 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
                 status: 'paid',
                 checkout_id: checkoutId,
                 attempt_id: attemptId,
-                sumup: extractSumUpDetails(data, checkoutId),
+                sumup,
               };
             }
             if (raw === 'FAILED') {
@@ -315,7 +339,7 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
                   amount,
                   status: 'failed',
                   error_detail: detail,
-                  sumup_checkout_id: checkoutId,
+                  ...sumupAttemptFields(extractSumUpDetails(data, checkoutId), checkoutId),
                 },
                 attemptId,
               );

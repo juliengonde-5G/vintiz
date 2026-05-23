@@ -190,17 +190,6 @@ const navGroups: NavGroup[] = [
         ),
       },
       {
-        label: 'Tentatives CB',
-        href: '/admin/payment-attempts',
-        icon: (
-          <svg {...iconProps}>
-            <rect x="2" y="5" width="20" height="14" rx="2" />
-            <line x1="2" y1="10" x2="22" y2="10" />
-            <path d="M7 15h2" />
-          </svg>
-        ),
-      },
-      {
         label: 'Rapports Z',
         href: '/admin/z-reports',
         icon: (

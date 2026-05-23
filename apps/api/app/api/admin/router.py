@@ -118,6 +118,21 @@ async def list_admin_transactions(
     out: list[dict] = []
     for t in rows:
         methods = [p.method.value for p in (t.payments or [])]
+        # CB Solo detail per card payment — surfaced by the merged
+        # /admin/transactions view (transaction ref, masked card, auth code).
+        card_payments = [
+            {
+                "amount": float(p.amount),
+                "sumup_transaction_id": p.sumup_transaction_id,
+                "sumup_transaction_code": p.sumup_transaction_code,
+                "sumup_auth_code": p.sumup_auth_code,
+                "sumup_card_brand": p.sumup_card_brand,
+                "sumup_card_last4": p.sumup_card_last4,
+                "sumup_environment": p.sumup_environment,
+            }
+            for p in (t.payments or [])
+            if p.method == PaymentMethod.card
+        ]
         out.append(
             {
                 "id": str(t.id),
@@ -129,6 +144,7 @@ async def list_admin_transactions(
                 "total_ht": float(t.total_ht),
                 "total_tva": float(t.total_tva),
                 "methods": methods,
+                "card_payments": card_payments,
                 "cashier_id": str(t.cashier_id) if t.cashier_id else None,
                 "client_id": str(t.client_id) if t.client_id else None,
                 "client_company_name": t.client_company_name,
@@ -204,6 +220,11 @@ async def list_admin_payment_attempts(
                 "drawer_id": str(a.drawer_id) if a.drawer_id else None,
                 "cashier_id": str(a.cashier_id) if a.cashier_id else None,
                 "sumup_checkout_id": a.sumup_checkout_id,
+                "sumup_transaction_id": a.sumup_transaction_id,
+                "sumup_transaction_code": a.sumup_transaction_code,
+                "sumup_auth_code": a.sumup_auth_code,
+                "sumup_card_brand": a.sumup_card_brand,
+                "sumup_card_last4": a.sumup_card_last4,
                 "error_detail": a.error_detail,
                 "cancelled_reason": a.cancelled_reason,
                 "created_at": a.created_at.isoformat() if a.created_at else None,

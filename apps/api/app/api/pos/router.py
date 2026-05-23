@@ -135,6 +135,14 @@ class PaymentAttemptRequest(BaseModel):
     drawer_id: uuid.UUID | None = None
     transaction_id: uuid.UUID | None = None
     sumup_checkout_id: str | None = None
+    # SumUp Solo return — populated by the POS once the reader settles the
+    # checkout (PAID / FAILED), so the attempt records the terminal outcome
+    # even when no sale committed.
+    sumup_transaction_id: str | None = None
+    sumup_transaction_code: str | None = None
+    sumup_auth_code: str | None = None
+    sumup_card_brand: str | None = None
+    sumup_card_last4: str | None = None
     error_detail: str | None = None
     cancelled_reason: str | None = None
     attempt_id: uuid.UUID | None = None  # supplied to update an existing attempt
@@ -1693,6 +1701,21 @@ async def log_payment_attempt(
             detail="status invalide (pending | succeeded | failed | cancelled).",
         )
 
+    def _apply_sumup_return(target: PaymentAttempt) -> None:
+        """Copy the Solo call/return fields onto the attempt when supplied."""
+        if request.sumup_checkout_id is not None:
+            target.sumup_checkout_id = request.sumup_checkout_id
+        if request.sumup_transaction_id is not None:
+            target.sumup_transaction_id = request.sumup_transaction_id
+        if request.sumup_transaction_code is not None:
+            target.sumup_transaction_code = request.sumup_transaction_code
+        if request.sumup_auth_code is not None:
+            target.sumup_auth_code = request.sumup_auth_code
+        if request.sumup_card_brand is not None:
+            target.sumup_card_brand = request.sumup_card_brand
+        if request.sumup_card_last4 is not None:
+            target.sumup_card_last4 = request.sumup_card_last4
+
     if request.attempt_id is not None:
         existing = (
             await db.execute(
@@ -1705,6 +1728,7 @@ async def log_payment_attempt(
         existing.amount = float(request.amount)
         if request.transaction_id is not None:
             existing.transaction_id = request.transaction_id
+        _apply_sumup_return(existing)
         if request.error_detail is not None:
             # Defense in depth — un client compromis ou un POS non
             # patché pourrait pousser un payload SumUp brut. Re-redact
@@ -1723,6 +1747,11 @@ async def log_payment_attempt(
             drawer_id=request.drawer_id,
             transaction_id=request.transaction_id,
             sumup_checkout_id=request.sumup_checkout_id,
+            sumup_transaction_id=request.sumup_transaction_id,
+            sumup_transaction_code=request.sumup_transaction_code,
+            sumup_auth_code=request.sumup_auth_code,
+            sumup_card_brand=request.sumup_card_brand,
+            sumup_card_last4=request.sumup_card_last4,
             error_detail=redact_sumup_error(request.error_detail)
             if request.error_detail is not None
             else None,
@@ -1739,6 +1768,11 @@ async def log_payment_attempt(
         "status": attempt.status.value,
         "transaction_id": str(attempt.transaction_id) if attempt.transaction_id else None,
         "sumup_checkout_id": attempt.sumup_checkout_id,
+        "sumup_transaction_id": attempt.sumup_transaction_id,
+        "sumup_transaction_code": attempt.sumup_transaction_code,
+        "sumup_auth_code": attempt.sumup_auth_code,
+        "sumup_card_brand": attempt.sumup_card_brand,
+        "sumup_card_last4": attempt.sumup_card_last4,
         "error_detail": attempt.error_detail,
         "cancelled_reason": attempt.cancelled_reason,
         "created_at": attempt.created_at.isoformat() if attempt.created_at else None,
