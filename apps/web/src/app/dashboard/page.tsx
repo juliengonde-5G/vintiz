@@ -69,6 +69,8 @@ interface WeatherData {
     temp_max: number;
     description: string;
     icon: string;
+    morning?: { temp: number; description: string; icon: string } | null;
+    afternoon?: { temp: number; description: string; icon: string } | null;
   }[];
   city: string;
 }
@@ -342,18 +344,38 @@ function WeatherWidget({ data }: { data: WeatherData }) {
       </div>
       {data.forecast && data.forecast.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {data.forecast.slice(0, 4).map((day, i) => (
-            <div key={i} className="flex flex-col items-center min-w-[60px] p-2 bg-gray-50 rounded-lg">
-              <p className="text-xs text-gray-500 mb-1">{formatDateShort(day.date)}</p>
+          {data.forecast.slice(0, 5).map((day, i) => (
+            <div key={i} className="flex min-w-[88px] flex-col items-center rounded-lg bg-gray-50 p-2">
+              <p className="mb-1 text-xs font-medium capitalize text-gray-600">{formatDateShort(day.date)}</p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={weatherIconUrl(day.icon)}
                 alt={day.description}
-                className="w-8 h-8"
+                className="h-8 w-8"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
-              <p className="text-xs font-medium text-black">{Math.round(day.temp_max)}°</p>
-              <p className="text-xs text-gray-400">{Math.round(day.temp_min)}°</p>
+              <p className="text-xs font-medium text-black">{Math.round(day.temp_max)}° / {Math.round(day.temp_min)}°</p>
+              {/* Morning / afternoon detail (req: niveau de détail matin/après-midi) */}
+              {(day.morning || day.afternoon) && (
+                <div className="mt-1.5 w-full space-y-0.5 border-t border-gray-200 pt-1">
+                  {day.morning && (
+                    <div className="flex items-center justify-between gap-1" title={day.morning.description}>
+                      <span className="text-[10px] text-gray-400">Matin</span>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={weatherIconUrl(day.morning.icon)} alt="" className="h-4 w-4" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                      <span className="text-[10px] font-medium text-black">{Math.round(day.morning.temp)}°</span>
+                    </div>
+                  )}
+                  {day.afternoon && (
+                    <div className="flex items-center justify-between gap-1" title={day.afternoon.description}>
+                      <span className="text-[10px] text-gray-400">A-m.</span>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={weatherIconUrl(day.afternoon.icon)} alt="" className="h-4 w-4" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                      <span className="text-[10px] font-medium text-black">{Math.round(day.afternoon.temp)}°</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
