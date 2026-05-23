@@ -1,0 +1,23 @@
+[Unit]
+Description=Vintiz label print agent (polls the API, prints labels via CUPS)
+Documentation=https://github.com/juliengonde-5g/vintiz/tree/main/apps/print-agent
+After=network-online.target cups.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Config (VINTIZ_API_URL, RPI_AGENT_TOKEN, CUPS_PRINTER, …) lives here:
+EnvironmentFile=/etc/vintiz-print-agent.env
+ExecStart=/usr/bin/python3 /opt/vintiz-print-agent/print_agent.py
+Restart=always
+RestartSec=5
+# Run as the user that owns the CUPS access (the installer uses the lp group).
+User=vintiz-agent
+Group=lp
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

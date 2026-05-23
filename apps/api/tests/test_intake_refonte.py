@@ -1,7 +1,7 @@
 """Tests for the product-intake refonte.
 
 Covers:
-- the stock / rayon placement reference on the Zebra label,
+- the stock / rayon placement reference on the printed label,
 - the automatic stamping of entrée-stock / mise-en-rayon dates,
 - the store-operations audit metrics + deterministic fallback narrative.
 """
@@ -21,10 +21,13 @@ from app.services.store_ops_audit import (
     build_store_ops_report,
     collect_metrics,
 )
-from app.services.zebra_zpl import (
+from app.services.label_render import (
+    HEIGHT_PX,
+    WIDTH_PX,
     LabelData,
-    build_label_zpl,
+    label_snapshot,
     product_to_label_data,
+    render_label_png,
 )
 
 
@@ -70,60 +73,53 @@ class _StubProduct:
         self.displayed_at = None
 
 
-def test_label_default_keeps_legacy_rayon_lines():
-    """A LabelData without an explicit location renders the historical lines."""
-    zpl = build_label_zpl(
+def test_label_snapshot_has_ref_name_and_intake_week():
+    """The printable snapshot carries the compact 25×52 tag content."""
+    snap = label_snapshot(
         LabelData(
-            product_name="Veste",
+            product_name="Veste en jean",
             category="Vestes",
             size="M",
             condition="bon",
             sale_price=12.0,
-            barcode="VTZ-1",
+            barcode="VTZ-2026-00142",
             shelf_date=datetime(2026, 5, 14, tzinfo=timezone.utc),
         )
     )
-    assert "Rayon depuis : 14/05/2026" in zpl
-    assert "Démarque le :" in zpl
+    assert snap["ref"] == "VTZ-2026-00142"
+    assert snap["name"] == "Veste en jean"
+    # Week 20 of 2026 = the ISO week of 2026-05-14.
+    assert snap["week_label"] == "Semaine 20"
 
 
-def test_label_stock_location_shows_entry_line():
-    data = LabelData(
-        product_name="Pull",
-        category="Pulls",
-        size="L",
-        condition="bon",
-        sale_price=18.0,
-        barcode="VTZ-2",
-        shelf_date=None,
-        location="stock",
-        entry_date=datetime(2026, 5, 16, tzinfo=timezone.utc),
+def test_label_snapshot_falls_back_for_blank_fields():
+    snap = label_snapshot(
+        LabelData(
+            product_name="", category="", size=None, condition=None,
+            sale_price=0.0, barcode="", shelf_date=None,
+        )
     )
-    zpl = build_label_zpl(data)
-    assert "En stock depuis : 16/05/2026" in zpl
-    assert "A mettre en rayon" in zpl
-    # Stock items don't carry a markdown deadline.
-    assert "Démarque le :" not in zpl
+    assert snap["ref"] == "VTZ-NOREF"
+    assert snap["name"] == "Article"
+    assert snap["week_label"] == "Semaine —"
 
 
-def test_label_condition_code_rendered_as_display():
-    """A stored condition code (e.g. ``tres_bon``) prints as French text."""
-    data = LabelData(
-        product_name="Robe", category="Robes", size="M", condition="tres_bon",
-        sale_price=30.0, barcode="VTZ-3", shelf_date=None,
+def test_render_label_png_has_expected_dimensions():
+    """The renderer emits a PNG sized to the 25×52 mm media at 8 dpmm."""
+    png = render_label_png(
+        label_snapshot(
+            LabelData(
+                product_name="Robe noire", category="Robes", size="M",
+                condition="bon", sale_price=25.0, barcode="VTZ-2026-00999",
+                shelf_date=None, week_number=20,
+            )
+        )
     )
-    zpl = build_label_zpl(data)
-    assert "Très bon état" in zpl
-    assert "tres_bon" not in zpl
-
-
-def test_label_condition_display_string_passthrough():
-    """An already-human condition string is left untouched (legacy fixtures)."""
-    data = LabelData(
-        product_name="Robe", category="Robes", size="M", condition="Comme neuf",
-        sale_price=30.0, barcode="VTZ-4", shelf_date=None,
-    )
-    assert "Comme neuf" in build_label_zpl(data)
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    from PIL import Image
+    import io
+    img = Image.open(io.BytesIO(png))
+    assert img.size == (WIDTH_PX, HEIGHT_PX)
 
 
 def test_product_to_label_data_derives_location_from_status():

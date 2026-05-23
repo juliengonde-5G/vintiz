@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Raspberry Pi print agent (in-store, drives the label printer via CUPS).
+    # The agent polls /api/labels/agent/* with this shared token sent in the
+    # ``X-Agent-Token`` header. When empty the agent endpoints return 503 so a
+    # misconfigured deployment fails loudly instead of silently accepting jobs.
+    RPI_AGENT_TOKEN: str = ""
+    # Seconds without a poll before the agent is reported offline in the UI.
+    RPI_AGENT_STALE_SECONDS: int = 120
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = False

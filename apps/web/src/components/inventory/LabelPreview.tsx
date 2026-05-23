@@ -10,7 +10,8 @@ interface LabelPreviewProps {
 }
 
 /**
- * Renders the Labelary PNG preview of the product label.
+ * Renders the PNG preview of the product label (same render the Raspberry Pi
+ * prints, served by GET /api/labels/preview/{id}).
  *
  * The blob URL is revoked on unmount / refresh so we don't leak memory
  * when the operator hops between products.
@@ -41,7 +42,7 @@ export default function LabelPreview({ productId, refreshKey = 0 }: LabelPreview
         if (!cancelled) setUrl(objectUrl);
       } catch {
         if (!cancelled) {
-          setError('Aperçu indisponible — Labelary injoignable');
+          setError('Aperçu indisponible');
           setUrl('');
         }
       } finally {

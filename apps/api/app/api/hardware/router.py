@@ -7,19 +7,21 @@ Exposes endpoints for the back-office "Materiel" settings tab:
 * ``GET  /hardware/compatibility``  — static matrix of supported peripherals
 * ``POST /hardware/receipt/test``   — send a test ticket (MUNBYN)
 * ``POST /hardware/drawer/kick``    — pulse the Safescan drawer
-* ``POST /hardware/label/test``     — send a test label (Zebra ZD421d)
+* ``POST /hardware/label/test``     — queue a test label for the Raspberry Pi agent
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
-from app.services import escpos_service
+from app.services import escpos_service, label_queue
 from app.services.hardware_config import load_config, save_config
 
 router = APIRouter(prefix="/hardware", tags=["hardware"])
@@ -61,10 +63,10 @@ COMPATIBILITY_MATRIX = [
     {
         "category": "label_printer",
         "label": "Imprimante d'etiquettes",
-        "model": "Zebra ZD421d",
-        "connection": "Ethernet local (ZPL TCP 9100) ou cloud (Weblink + SendFileToPrinter)",
+        "model": "Raspberry Pi + CUPS",
+        "connection": "File d'attente (l'agent Raspberry Pi tire les jobs)",
         "supported": True,
-        "notes": "Etiquettes Vintiz 80x120 mm (thermique direct 203 dpi). Apercu via Labelary. Mode cloud : l'imprimante se connecte a Zebra Data Services, le backend pousse le ZPL par API (utile quand l'API tourne hors site).",
+        "notes": "Etiquettes Vintiz 25x52 mm (thermique direct 203 dpi). Le backend rend l'etiquette en PDF ; la Raspberry Pi en boutique interroge l'API et imprime via CUPS sur l'imprimante branchee (USB ou reseau local). Aucune connexion entrante requise.",
     },
     {
         "category": "payment_terminal",
@@ -83,26 +85,12 @@ async def get_compatibility(current_user: User = Depends(get_current_user)):
     return {"items": COMPATIBILITY_MATRIX}
 
 
-def _mask_label_secrets(cfg: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of the config with the Zebra cloud API key masked.
-
-    The key is a secret persisted in ``hardware.json``; we never echo it
-    back to the browser. Instead we expose a boolean + last-4 hint so the
-    UI can show "configurée" without revealing the value.
-    """
-    lp = dict(cfg.get("label_printer") or {})
-    key = lp.get("cloud_api_key") or ""
-    lp["cloud_api_key"] = ""
-    lp["cloud_api_key_set"] = bool(key)
-    lp["cloud_api_key_hint"] = key[-4:] if key else ""
-    out = dict(cfg)
-    out["label_printer"] = lp
-    return out
-
-
 @router.get("/config")
 async def get_config(current_user: User = Depends(get_current_user)):
-    return _mask_label_secrets(load_config())
+    # The label printer config no longer holds any secret (the Pi agent token
+    # lives server-side in RPI_AGENT_TOKEN, never in hardware.json), so the
+    # config can be returned as-is.
+    return load_config()
 
 
 @router.put("/config")
@@ -111,17 +99,8 @@ async def update_config(
     current_user: User = Depends(get_current_user),
 ):
     payload = {k: v for k, v in update.model_dump(exclude_none=True).items()}
-    lp = payload.get("label_printer")
-    if isinstance(lp, dict):
-        # Drop the read-only mask helpers if the UI echoes them back.
-        lp.pop("cloud_api_key_set", None)
-        lp.pop("cloud_api_key_hint", None)
-        # A blank api key means "leave the stored one untouched": never let
-        # an empty field (or the masked placeholder) wipe the saved secret.
-        if not (lp.get("cloud_api_key") or "").strip():
-            lp.pop("cloud_api_key", None)
     save_config(payload)
-    return _mask_label_secrets(load_config())
+    return load_config()
 
 
 class TestPrintRequest(BaseModel):
@@ -230,70 +209,14 @@ async def drawer_kick_escpos(
 
 @router.post("/label/test")
 async def label_test(
-    req: TestPrintRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
     current_user: User = Depends(get_current_user),
 ):
-    """Send a test ZPL label to the Zebra ZD421d.
+    """Queue a test label for the Raspberry Pi agent to print via CUPS.
 
-    Kept under /hardware/label/test for legacy compatibility with the
-    settings UI, but the actual driver is now ``zebra_printer``. The
-    canonical endpoint going forward is ``POST /api/labels/test-print``.
-
-    Honours the configured transport: in ``cloud`` mode the test label is
-    pushed via Zebra's SendFileToPrinter API; the host/port override only
-    applies to the local TCP path.
+    Kept under /hardware/label/test for the settings UI; the canonical
+    endpoint is ``POST /api/labels/test-print``. The label is enqueued, not
+    pushed — the in-store Pi will pick it up on its next poll.
     """
-    from app.services import zebra_cloud, zebra_printer
-
-    cfg = load_config()["label_printer"]
-    connection = (cfg.get("connection") or "network").strip().lower()
-
-    if connection == "bluetooth":
-        # The server can't reach a BLE printer — the tablet runs the test
-        # via Web Bluetooth (GET /api/hardware/label/test-zpl).
-        raise HTTPException(
-            status_code=400,
-            detail="Mode Bluetooth : lancez le test depuis la tablette (Web Bluetooth)",
-        )
-
-    if connection == "cloud":
-        try:
-            serial = await zebra_cloud.send_zpl(zebra_printer.build_test_label_zpl(), cfg)
-        except zebra_cloud.CloudConfigError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except zebra_printer.PrinterUnreachable as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-        return {"success": True, "target": f"cloud:{serial}"}
-
-    host = req.host or cfg.get("host") or ""
-    port = int(req.port or cfg.get("port") or zebra_printer.DEFAULT_PORT)
-    if not host:
-        raise HTTPException(
-            status_code=400, detail="Imprimante étiquettes non configurée"
-        )
-    try:
-        zebra_printer.send_test_label(host=host, port=port)
-    except zebra_printer.PrinterUnreachable as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return {"success": True, "host": host, "port": port}
-
-
-@router.get("/label/test-zpl")
-async def label_test_zpl(
-    current_user: User = Depends(get_current_user),
-):
-    """Return raw ZPL bytes for a test label.
-
-    Used by the Bluetooth (Web Bluetooth) path on the cashier tablet: the
-    front fetches this and writes it to the Zebra's BLE Parser service —
-    the equivalent of ``/receipt/test-escpos`` for the WebUSB path.
-    """
-    from fastapi.responses import Response
-
-    from app.services import zebra_printer
-
-    return Response(
-        content=zebra_printer.build_test_label_zpl(),
-        media_type="text/plain; charset=utf-8",
-        headers={"Cache-Control": "no-store"},
-    )
+    job = await label_queue.enqueue_test(db, user_id=getattr(current_user, "id", None))
+    return {"success": True, "status": "queued", "job_id": str(job.id)}

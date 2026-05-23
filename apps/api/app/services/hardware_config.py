@@ -1,9 +1,9 @@
 """Persistent hardware configuration for Vintiz peripherals.
 
 Stores the network/USB settings for the receipt printer (MUNBYN 047P-WiFi),
-the label printer (Zebra ZD421d, ZPL over TCP), the cash drawer (Safescan
-SD-4141 wired via the receipt printer's RJ-12 port) and the Bluetooth / USB
-barcode scanner (Inateck BCST-35).
+the label printer (driven by the in-store Raspberry Pi agent over CUPS), the
+cash drawer (Safescan SD-4141 wired via the receipt printer's RJ-12 port) and
+the Bluetooth / USB barcode scanner (Inateck BCST-35).
 
 The config is persisted on disk under ``data/hardware.json`` (next to the
 API process) so it survives reloads. Defaults can be overridden via env
@@ -58,37 +58,23 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "on_time_ms": 50,
         "off_time_ms": 250,
     },
-    # Label printer — Zebra ZD421d, ZPL II, 4 inch direct thermal
+    # Label printer — driven by the in-store Raspberry Pi agent over CUPS.
     #
-    # ``connection`` selects the transport:
-    #   network   = ZPL over TCP 9100 on the LAN. Only works when the API can
-    #               reach the printer's IP (API + printer on the same network).
-    #   cloud     = Weblink + Zebra's SendFileToPrinter API. The printer dials
-    #               out to Zebra Data Services and we push ZPL via REST. Use
-    #               this when the API runs off-site (cloud) and the printer is
-    #               on the boutique LAN behind NAT. See services/zebra_cloud.py.
-    #   bluetooth = Web Bluetooth (BLE) from the cashier tablet. The SERVER
-    #               can't reach a BLE printer, so server-side print endpoints
-    #               return 400 in this mode; the tablet fetches the raw ZPL
-    #               (GET /api/labels/{id}/zpl) and writes it to the Zebra's BLE
-    #               Parser service. ``bt_device_name`` is a reconnection hint.
+    # The API no longer talks to a printer directly. Manager actions enqueue a
+    # LabelPrintJob; the Pi polls /api/labels/agent/* (outbound only) and prints
+    # the server-rendered PDF on whatever printer is attached to it (USB or a
+    # local network printer), via CUPS. ``cups_printer_name`` is purely
+    # informational here — the authoritative printer name lives in the Pi's own
+    # agent config; the Pi agent token is a server secret (RPI_AGENT_TOKEN), not
+    # stored in this file.
     "label_printer": {
         "enabled": False,
-        "model": "Zebra ZD421d",
-        "protocol": "zpl",
-        "connection": os.getenv("ZEBRA_CONNECTION", "network"),  # network | cloud | bluetooth
-        "host": os.getenv("ZEBRA_PRINTER_IP", os.getenv("LABEL_PRINTER_HOST", "")),
-        "port": int(os.getenv("ZEBRA_PRINTER_PORT", os.getenv("LABEL_PRINTER_PORT", "9100"))),
+        "model": "Raspberry Pi · CUPS",
+        "agent": "raspberry-cups",
         "dpi": 203,
         "label_width_mm": 25,
         "label_height_mm": 52,
-        # Cloud mode (Weblink + SendFileToPrinter) — Zebra Data Services creds
-        "cloud_api_key": os.getenv("ZEBRA_CLOUD_API_KEY", ""),
-        "cloud_tenant": os.getenv("ZEBRA_CLOUD_TENANT", ""),
-        "cloud_serial": os.getenv("ZEBRA_CLOUD_SERIAL", ""),
-        "cloud_endpoint": os.getenv("ZEBRA_CLOUD_ENDPOINT", ""),  # blank → default
-        # Bluetooth mode — name of the paired BLE printer (reconnection hint)
-        "bt_device_name": "",
+        "cups_printer_name": os.getenv("RPI_CUPS_PRINTER_NAME", ""),
     },
     # Barcode scanner — Inateck BCST-35 2D (HID keyboard mode by default)
     "barcode_scanner": {

@@ -389,7 +389,7 @@ export default function NewProductWizard() {
         setLabelUrl(URL.createObjectURL(blob));
       } else {
         const e = await res.json().catch(() => ({}));
-        setPrintMsg(e.detail || 'Aperçu indisponible (Labelary injoignable)');
+        setPrintMsg(e.detail || 'Aperçu indisponible');
       }
     } catch {
       setPrintMsg('Aperçu indisponible');
@@ -403,7 +403,7 @@ export default function NewProductWizard() {
     setPrintMsg('');
     const { printProductLabel } = await import('@/lib/print-label');
     const result = await printProductLabel(created.id);
-    setPrintMsg(result.ok ? 'Étiquette envoyée à l\'imprimante Zebra' : result.message);
+    setPrintMsg(result.message);
     setPrinting(false);
   };
 
@@ -855,8 +855,8 @@ export default function NewProductWizard() {
                 </div>
 
                 {/* Étiquette 25×52 — rendu HTML local (toujours affiché, indépendant
-                    du réseau). Mêmes champs que l'impression Zebra : code-barres,
-                    réf, nom, semaine. L'aperçu imprimante Labelary vient en bonus. */}
+                    du réseau). Mêmes champs que l'étiquette imprimée : code-barres,
+                    réf, nom, semaine. L'aperçu serveur (PNG) vient en bonus. */}
                 <div className="mx-auto w-44 border-2 border-vz-ink rounded-lg p-3 bg-white text-center">
                   {/* Code-barres (visuel décoratif) + valeur scannable */}
                   <div
@@ -873,7 +873,7 @@ export default function NewProductWizard() {
                   <p className="text-xs text-vz-ink-mute mt-1">Semaine {getWeekNumber()}</p>
                 </div>
 
-                {/* Aperçu imprimante (Labelary) — facultatif */}
+                {/* Aperçu imprimante (rendu serveur PNG) — facultatif */}
                 {labelLoading ? (
                   <p className="text-xs text-gray-400">Chargement de l&apos;aperçu imprimante…</p>
                 ) : labelUrl ? (

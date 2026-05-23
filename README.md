@@ -3,7 +3,7 @@
 Logiciel de gestion pour boutique de seconde main premium — Vernon, Normandie.
 
 Application complète : caisse iPad, gestion d'inventaire, CRM, IA assistante,
-matériel ESC/POS / SATO / SumUp, site vitrine SEO + GA4, espace client, cahier
+matériel ESC/POS / Raspberry Pi / SumUp, site vitrine SEO + GA4, espace client, cahier
 de travail journalier, KPIs retail + ESS, segmentation RFM, emails automatiques
 (anniversaires, nouveautés), réservation 48h, Wallet pass.
 
@@ -115,7 +115,7 @@ PUBLIC_SITE_URL=https://vintiz.fr
 GA_MEASUREMENT_ID=G-XXXXXXXXXX
 GOOGLE_SITE_VERIFICATION=...
 RECEIPT_PRINTER_HOST=192.168.1.50   # MUNBYN 047P-WiFi
-LABEL_PRINTER_HOST=192.168.1.51     # SATO CT4-LX
+RPI_AGENT_TOKEN=                    # étiquettes via la Raspberry Pi (apps/print-agent)
 
 # Phase 4 — communication + wallet (avril 2026)
 BREVO_API_KEY=                      # transactional emails (anniversaires, nouveautés)
@@ -134,7 +134,7 @@ WALLET_GOOGLE_CLASS_SUFFIX=vintiz_loyalty
 | Tablette caisse | iPad (Safari) | — |
 | Douchette code-barres | Inateck BCST-35 ou 160B | USB HID |
 | Imprimante ticket | **MUNBYN 047P-WiFi** ESC/POS 80 mm | Wi-Fi (port 9100) |
-| Imprimante étiquettes | **SATO CT4-LX** SBPL 4″ | Wi-Fi (port 9100) |
+| Imprimante étiquettes | via **Raspberry Pi** + CUPS (USB/LAN) | File d'attente (apps/print-agent) |
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 | Sur l'imprimante MUNBYN |
 | TPE | **SumUp Solo** | Wi-Fi / compte SumUp |
 

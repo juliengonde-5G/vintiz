@@ -173,18 +173,18 @@ export default function ProductDetailPage() {
         setLabelUrl(url);
       } else {
         const e = await res.json().catch(() => ({}));
-        setSatoMsg(e.detail || 'Aperçu indisponible — Labelary injoignable');
+        setSatoMsg(e.detail || 'Aperçu indisponible');
       }
     } catch { /* show error in modal */ }
     setLabelLoading(false);
   };
 
-  const handlePrintZebra = async () => {
+  const handlePrintLabel = async () => {
     setSatoSending(true);
     setSatoMsg('');
     const { printProductLabel } = await import('@/lib/print-label');
     const result = await printProductLabel(productId);
-    setSatoMsg(result.ok ? 'Étiquette envoyée à l\'imprimante Zebra' : result.message);
+    setSatoMsg(result.message);
     setSatoSending(false);
   };
 
@@ -453,8 +453,8 @@ export default function ProductDetailPage() {
                   >
                     📄 Planche A4
                   </Button>
-                  <Button onClick={handlePrintZebra} disabled={satoSending} variant="secondary">
-                    {satoSending ? 'Envoi...' : 'Imprimer sur Zebra'}
+                  <Button onClick={handlePrintLabel} disabled={satoSending} variant="secondary">
+                    {satoSending ? 'Envoi...' : 'Imprimer (Raspberry)'}
                   </Button>
                 </div>
                 {satoMsg && <p className="text-sm text-vz-teal mt-2">{satoMsg}</p>}

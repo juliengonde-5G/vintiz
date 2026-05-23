@@ -209,7 +209,7 @@ def _generate_vintiz_barcode() -> str:
 
     Format: ``VTZ-YYYY-NNNNNN`` — prefix + current year + 6-digit
     pseudo-random sequence. Same shape as the documented example
-    (``VTZ-2026-00142``) so labels printed by the Zebra look familiar.
+    (``VTZ-2026-00142``) so printed labels look familiar.
 
     The 6-digit space (100 000 … 999 999) gives 900 000 possible codes
     per year; collisions are vanishingly rare at the volume of a single

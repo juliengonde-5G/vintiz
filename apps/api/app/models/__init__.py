@@ -60,6 +60,7 @@ from app.models.cash_movement import (
     CashMovementReason,
 )
 from app.models.sumup_terminal import SumUpTerminal, SumUpTerminalStatus
+from app.models.label_job import LabelJobStatus, LabelJobType, LabelPrintJob
 
 __all__ = [
     "Base",
@@ -93,4 +94,5 @@ __all__ = [
     "PaymentAttempt", "PaymentAttemptStatus",
     "CashMovement", "CashMovementDirection", "CashMovementReason",
     "SumUpTerminal", "SumUpTerminalStatus",
+    "LabelPrintJob", "LabelJobStatus", "LabelJobType",
 ]

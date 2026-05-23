@@ -26,7 +26,7 @@ from app.models.product import Product, ProductPhoto, ProductStatus
 logger = logging.getLogger("vintiz.ai.store_ops")
 
 # Back stock vs shop floor. Mirrors FLOOR_STATUSES in the inventory router and
-# _FLOOR_STATUS_VALUES in zebra_zpl so the three views agree on what "en
+# _FLOOR_STATUS_VALUES in label_render so the three views agree on what "en
 # magasin" means.
 STOCK_STATUSES = [
     ProductStatus.stock,

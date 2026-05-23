@@ -48,16 +48,10 @@ interface HardwareConfig {
   };
   cash_drawer: { enabled: boolean; model: string; kick_on_cash: boolean; kick_pin: number; on_time_ms: number; off_time_ms: number };
   label_printer: {
-    enabled: boolean; model: string; host: string; port: number;
+    enabled: boolean; model: string;
     label_width_mm: number; label_height_mm: number;
-    connection?: 'network' | 'cloud' | 'bluetooth';
-    cloud_api_key?: string;
-    cloud_tenant?: string;
-    cloud_serial?: string;
-    cloud_endpoint?: string;
-    cloud_api_key_set?: boolean;
-    cloud_api_key_hint?: string;
-    bt_device_name?: string;
+    agent?: string;
+    cups_printer_name?: string;
   };
   barcode_scanner: { enabled: boolean; model: string; mode: string; suffix: string; min_length: number };
   payment_terminal: { enabled: boolean; model: string; mode: string };
@@ -70,6 +64,57 @@ interface CompatibilityItem {
   connection: string;
   supported: boolean;
   notes: string;
+}
+
+interface LabelAgentStatusData {
+  online: boolean;
+  agent_configured: boolean;
+  last_seen: string | null;
+  pending: number;
+  printing: number;
+  errors: number;
+}
+
+/** Live status pill for the in-store Raspberry Pi label-print agent. */
+function LabelAgentStatus() {
+  const [status, setStatus] = useState<LabelAgentStatusData | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await api.get('/api/labels/printer/status');
+        if (!cancelled && res.ok) setStatus(await res.json());
+      } catch { /* ignore — pill just stays hidden */ }
+    };
+    load();
+    const id = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+  if (!status) return null;
+
+  const queue = status.pending + status.printing;
+  let dot = 'bg-amber-500';
+  let text = 'Agent hors ligne — la Pi n\'a pas contacté le serveur récemment';
+  if (!status.agent_configured) {
+    dot = 'bg-gray-400';
+    text = 'Agent non configuré (RPI_AGENT_TOKEN absent côté serveur)';
+  } else if (status.online) {
+    dot = 'bg-green-500';
+    text = 'Agent Raspberry Pi en ligne';
+  }
+  return (
+    <div className="flex items-center gap-2 text-sm rounded-lg border border-vz-line bg-vz-bg-alt px-3 py-2 flex-wrap">
+      <span className={`w-2.5 h-2.5 rounded-full ${dot}`} />
+      <span className="text-vz-ink">{text}</span>
+      {queue > 0 && <span className="text-vz-ink-mute">· {queue} en file</span>}
+      {status.errors > 0 && <span className="text-red-600">· {status.errors} erreur(s)</span>}
+      {status.last_seen && (
+        <span className="text-vz-ink-mute ml-auto text-xs">
+          vu à {new Date(status.last_seen).toLocaleTimeString('fr-FR')}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export default function SettingsPage() {
@@ -517,86 +562,16 @@ export default function SettingsPage() {
     else setError(result.message);
   };
 
-  const pairBluetoothPrinter = async () => {
-    setError(''); setMessage('');
-    if (!hardware) return;
-    try {
-      const { requestZebraDevice, isWebBluetoothSupported } = await import('@/lib/web-bluetooth-printer');
-      if (!isWebBluetoothSupported()) {
-        setError('Web Bluetooth indisponible — utilisez Chrome Android sur HTTPS.');
-        return;
-      }
-      const { info } = await requestZebraDevice();
-      const next = {
-        ...hardware,
-        label_printer: {
-          ...hardware.label_printer,
-          connection: 'bluetooth' as const,
-          bt_device_name: info.name,
-        },
-      };
-      setHardware(next);
-      await api.put('/api/hardware/config', { label_printer: next.label_printer });
-      setMessage(`Imprimante Bluetooth couplée : ${info.name}`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`Échec du couplage Bluetooth : ${msg}`);
-    }
-  };
-
   const testLabelPrinter = async () => {
     if (!hardware) return;
     setError(''); setMessage('');
-    const conn = hardware.label_printer.connection || 'network';
-
-    if (conn === 'bluetooth') {
-      // BLE path: fetch the test ZPL and write it to the Zebra over Web
-      // Bluetooth (Chrome Android tablet). The server can't reach a BLE
-      // printer, so this never touches the network print endpoint.
-      setHwTests((s) => ({ ...s, label_printer: { status: 'running' } }));
-      try {
-        const { isWebBluetoothSupported, findPairedZebra, requestZebraDevice, sendZpl } =
-          await import('@/lib/web-bluetooth-printer');
-        if (!isWebBluetoothSupported()) {
-          setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: 'Web Bluetooth indisponible — Chrome Android requis.' } }));
-          return;
-        }
-        let device = await findPairedZebra({ name: hardware.label_printer.bt_device_name });
-        if (!device) {
-          const paired = await requestZebraDevice();
-          device = paired.device;
-        }
-        const res = await api.get('/api/hardware/label/test-zpl');
-        if (!res.ok) {
-          const e = await res.json().catch(() => ({}));
-          setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: e.detail || 'ZPL de test indisponible' } }));
-          return;
-        }
-        const zpl = await res.text();
-        await sendZpl(device, zpl);
-        setHwTests((s) => ({ ...s, label_printer: { status: 'success', message: 'Étiquette de test envoyée (Bluetooth)' } }));
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: `Échec Bluetooth : ${msg}` } }));
-      }
-      return;
-    }
-
-    const isCloud = conn === 'cloud';
-    const host = hardware.label_printer.host?.trim();
-    const port = hardware.label_printer.port || 9100;
-    if (!isCloud && !host) {
-      setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: "Renseignez d'abord l'adresse IP de l'imprimante." } }));
-      return;
-    }
-    // Network mode tests the IP typed in the form (no save needed). Cloud
-    // mode uses the persisted Zebra Data Services credentials, so save the
-    // form first — the test endpoint reads the stored config in that mode.
+    // Queue a test label; the in-store Raspberry Pi prints it on its next poll.
+    // No host/port — the server never talks to the printer directly anymore.
     setHwTests((s) => ({ ...s, label_printer: { status: 'running' } }));
     try {
-      const res = await api.post('/api/hardware/label/test', isCloud ? {} : { host, port });
+      const res = await api.post('/api/hardware/label/test', {});
       if (res.ok) {
-        setHwTests((s) => ({ ...s, label_printer: { status: 'success', message: isCloud ? 'Étiquette de test envoyée via le cloud Zebra (Weblink)' : `Étiquette de test envoyée à ${host}:${port}` } }));
+        setHwTests((s) => ({ ...s, label_printer: { status: 'success', message: "Étiquette de test ajoutée à la file — la Raspberry l'imprimera à son prochain passage." } }));
       } else {
         const e = await res.json().catch(() => ({}));
         setHwTests((s) => ({ ...s, label_printer: { status: 'error', message: e.detail || `Échec du test (HTTP ${res.status})` } }));
@@ -1549,11 +1524,12 @@ export default function SettingsPage() {
                   </div>
                 </Card>
 
-                <Card title="Imprimante d&apos;étiquettes — Zebra ZD421d">
+                <Card title="Imprimante d&apos;étiquettes — Raspberry Pi (CUPS)">
                   <p className="text-xs text-vz-ink-mute mb-3">
-                    Format Vintiz 80×120 mm, thermique direct 203 dpi. Deux modes : <strong>réseau local</strong> (ZPL en TCP 9100, l&apos;API doit joindre l&apos;imprimante) ou <strong>cloud</strong> (Weblink + SendFileToPrinter : l&apos;imprimante se connecte à Zebra Data Services, idéal si l&apos;API tourne hors site).
+                    Étiquettes Vintiz 25×52 mm, thermique direct 203 dpi. Le serveur ne pilote plus l&apos;imprimante directement : il <strong>rend l&apos;étiquette en PDF</strong> et la met dans une file. La <strong>Raspberry Pi</strong> en boutique interroge l&apos;API (connexion sortante uniquement) et imprime via <strong>CUPS</strong> sur l&apos;imprimante branchée (USB ou réseau local). Aucune IP à configurer ici — voir <code>apps/print-agent/</code> pour installer l&apos;agent sur la Pi.
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <LabelAgentStatus />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                     <div className="flex items-center gap-3 sm:col-span-2">
                       <input
                         type="checkbox"
@@ -1562,90 +1538,25 @@ export default function SettingsPage() {
                         onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, enabled: e.target.checked } })}
                         className="w-5 h-5 accent-vz-teal"
                       />
-                      <label htmlFor="lp-enabled" className="text-sm font-medium text-black">Activer l&apos;imprimante Zebra</label>
+                      <label htmlFor="lp-enabled" className="text-sm font-medium text-black">Activer l&apos;impression d&apos;étiquettes</label>
                     </div>
                     <div className="sm:col-span-2">
-                      <label className="block text-sm font-medium text-black mb-1.5">Mode de connexion</label>
-                      <select
-                        value={hardware.label_printer.connection || 'network'}
-                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, connection: e.target.value as 'network' | 'cloud' | 'bluetooth' } })}
-                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
-                      >
-                        <option value="network">Réseau local (TCP 9100)</option>
-                        <option value="cloud">Cloud Zebra (Weblink + SendFileToPrinter)</option>
-                        <option value="bluetooth">Bluetooth (tablette, Web Bluetooth)</option>
-                      </select>
+                      <Input
+                        label="Nom de l'imprimante CUPS (indicatif)"
+                        value={hardware.label_printer.cups_printer_name || ''}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, cups_printer_name: e.target.value } })}
+                        placeholder="ex. vintiz_labels"
+                      />
+                      <p className="text-xs text-vz-ink-mute mt-1">
+                        Pour mémoire — le nom réel utilisé par l&apos;impression est configuré sur la Raspberry Pi (variable <code>CUPS_PRINTER</code> de l&apos;agent).
+                      </p>
                     </div>
-                    {(hardware.label_printer.connection || 'network') === 'network' && (
-                      <>
-                        <Input
-                          label="Adresse IP"
-                          value={hardware.label_printer.host}
-                          onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, host: e.target.value } })}
-                          placeholder="192.168.1.100"
-                        />
-                        <div>
-                          <label className="block text-sm font-medium text-black mb-1.5">Port TCP</label>
-                          <input
-                            type="number"
-                            value={hardware.label_printer.port}
-                            onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, port: parseInt(e.target.value) || 9100 } })}
-                            className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
-                          />
-                        </div>
-                      </>
-                    )}
-                    {hardware.label_printer.connection === 'cloud' && (
-                      <>
-                        <Input
-                          label="Clé API Zebra Data Services"
-                          type="password"
-                          value={hardware.label_printer.cloud_api_key || ''}
-                          onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, cloud_api_key: e.target.value } })}
-                          placeholder={hardware.label_printer.cloud_api_key_set ? `•••• ${hardware.label_printer.cloud_api_key_hint || ''}` : 'clé API'}
-                        />
-                        <Input
-                          label="Tenant"
-                          value={hardware.label_printer.cloud_tenant || ''}
-                          onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, cloud_tenant: e.target.value } })}
-                          placeholder="n° de tenant"
-                        />
-                        <Input
-                          label="N° de série imprimante"
-                          value={hardware.label_printer.cloud_serial || ''}
-                          onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, cloud_serial: e.target.value } })}
-                          placeholder="ex. D2J123456789"
-                        />
-                        <div className="sm:col-span-2 text-xs text-vz-ink-mute">
-                          L&apos;imprimante doit d&apos;abord être enrôlée auprès de Zebra Data Services (Weblink). Laissez la clé API vide pour conserver celle déjà enregistrée. Enregistrez avant de tester.
-                        </div>
-                      </>
-                    )}
-                    {hardware.label_printer.connection === 'bluetooth' && (
-                      <div className="sm:col-span-2">
-                        {hardware.label_printer.bt_device_name ? (
-                          <div className="flex items-center gap-3 flex-wrap">
-                            <span className="text-sm text-vz-ink">Imprimante couplée : <strong>{hardware.label_printer.bt_device_name}</strong></span>
-                            <button type="button" onClick={pairBluetoothPrinter} className="text-xs text-vz-teal underline">
-                              Coupler une autre
-                            </button>
-                          </div>
-                        ) : (
-                          <Button onClick={pairBluetoothPrinter} variant="secondary" size="sm">
-                            Coupler l&apos;imprimante Bluetooth
-                          </Button>
-                        )}
-                        <p className="text-xs text-vz-ink-mute mt-2">
-                          Web Bluetooth (BLE) depuis la tablette — Chrome Android requis (pas iPad/Safari). L&apos;impression se fait depuis la tablette, pas le serveur. L&apos;imprimante doit avoir l&apos;option Bluetooth LE.
-                        </p>
-                      </div>
-                    )}
                     <div>
                       <label className="block text-sm font-medium text-black mb-1.5">Largeur étiquette (mm)</label>
                       <input
                         type="number"
                         value={hardware.label_printer.label_width_mm}
-                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_width_mm: parseInt(e.target.value) || 80 } })}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_width_mm: parseInt(e.target.value) || 25 } })}
                         className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>
@@ -1654,7 +1565,7 @@ export default function SettingsPage() {
                       <input
                         type="number"
                         value={hardware.label_printer.label_height_mm}
-                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_height_mm: parseInt(e.target.value) || 120 } })}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_height_mm: parseInt(e.target.value) || 52 } })}
                         className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
                       />
                     </div>

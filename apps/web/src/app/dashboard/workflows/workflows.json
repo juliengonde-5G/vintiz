@@ -49,9 +49,9 @@
     {
       "id": "printer-label",
       "name": "Imprimante étiquettes",
-      "subtitle": "SATO CT4-LX SBPL 4″",
+      "subtitle": "Raspberry Pi + CUPS",
       "category": "hardware",
-      "description": "Imprimante réseau port 9100 — étiquettes thermiques produits.",
+      "description": "La Raspberry Pi en boutique tire les jobs d'étiquettes depuis l'API et imprime via CUPS (USB/LAN).",
       "x": 60,
       "y": 520
     },
@@ -418,13 +418,14 @@
       "id": "product-label-print",
       "category": "metier",
       "group": "Inventaire",
-      "title": "Impression étiquette produit (SATO CT4-LX)",
-      "description": "Manager clique « Générer étiquette » dans la fiche produit. Si imprimante SATO configurée, impression directe ; sinon PNG téléchargeable.",
-      "trigger": "Manager clique « Générer étiquette »",
+      "title": "Impression étiquette produit (file → Raspberry Pi)",
+      "description": "Manager clique « Imprimer » : l'API rend l'étiquette en PDF et la met en file. La Raspberry Pi en boutique tire le job (poll sortant) et imprime via CUPS.",
+      "trigger": "Manager clique « Imprimer »",
       "steps": [
-        { "from": "browser-mgr", "to": "api", "label": "GET /api/inventory/products/{id}/label", "detail": "Génération code-barres Code 128 + métadonnées (prix, marque, zone).", "protocol": "HTTPS" },
-        { "from": "api", "to": "postgres", "label": "SELECT Product + Category + Zone", "detail": "Pour le rendu de l'étiquette.", "protocol": "SQL" },
-        { "from": "api", "to": "printer-label", "label": "SBPL RAW → printer:9100", "detail": "Si LABEL_PRINTER_HOST configuré. Sinon retourne PNG.", "protocol": "TCP:9100" }
+        { "from": "browser-mgr", "to": "api", "label": "POST /api/labels/print/{id}", "detail": "Snapshot du contenu (réf, nom, semaine) + INSERT label_print_jobs (status=pending). 202.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "INSERT label_print_jobs", "detail": "Job en file, contenu figé pour le rendu PDF.", "protocol": "SQL" },
+        { "from": "printer-label", "to": "api", "label": "GET /api/labels/agent/jobs/next", "detail": "La Pi interroge l'API (X-Agent-Token), réclame les jobs, reçoit le PDF base64.", "protocol": "HTTPS sortant" },
+        { "from": "printer-label", "to": "api", "label": "POST /api/labels/agent/jobs/{id}/ack", "detail": "La Pi imprime le PDF via CUPS (lp) puis acquitte (success/error).", "protocol": "HTTPS sortant" }
       ]
     },
     {
@@ -663,12 +664,12 @@
       "id": "ep-inventory-label",
       "category": "endpoint",
       "group": "Inventaire",
-      "title": "GET /api/inventory/products/{id}/label",
-      "description": "Étiquette PNG ou impression SATO si configurée.",
-      "trigger": "GET /api/inventory/products/{id}/label",
+      "title": "GET /api/labels/preview/{id}",
+      "description": "Aperçu PNG de l'étiquette (rendu serveur, même rendu que celui imprimé par la Pi).",
+      "trigger": "GET /api/labels/preview/{id}",
       "steps": [
-        { "from": "browser-mgr", "to": "api", "label": "GET label", "detail": "?print=true pour push direct SATO.", "protocol": "HTTPS" },
-        { "from": "api", "to": "printer-label", "label": "SBPL → SATO:9100", "detail": "Sinon retourne PNG image/png.", "protocol": "TCP:9100" }
+        { "from": "browser-mgr", "to": "api", "label": "GET /api/labels/preview/{id}", "detail": "JWT manager.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "SELECT Product", "detail": "Données pour le rendu.", "protocol": "SQL" }
       ]
     },
     {
@@ -942,11 +943,11 @@
       "category": "endpoint",
       "group": "Hardware",
       "title": "POST /api/hardware/label/test",
-      "description": "Imprime une étiquette de test sur la SATO CT4-LX.",
+      "description": "Met une étiquette de test en file ; la Raspberry Pi l'imprime à son prochain passage.",
       "trigger": "POST /api/hardware/label/test",
       "steps": [
-        { "from": "browser-mgr", "to": "api", "label": "POST (manager)", "detail": "Utilise LABEL_PRINTER_HOST.", "protocol": "HTTPS" },
-        { "from": "api", "to": "printer-label", "label": "SBPL RAW → SATO:9100", "detail": "Étiquette test 60x40mm.", "protocol": "TCP:9100" }
+        { "from": "browser-mgr", "to": "api", "label": "POST (manager)", "detail": "Sans body.", "protocol": "HTTPS" },
+        { "from": "api", "to": "postgres", "label": "INSERT label_print_jobs (job_type=test)", "detail": "Le job est tiré ensuite par l'agent Pi.", "protocol": "SQL" }
       ]
     },
     {
@@ -1323,12 +1324,12 @@
       "id": "hw-print-label-sato",
       "category": "hardware",
       "group": "Imprimante étiquettes",
-      "title": "Impression étiquette via SATO SBPL",
-      "description": "Imprimante thermique 4″ pour étiquettes produits. SBPL natif côté API.",
-      "trigger": "Manager clique « Imprimer étiquette » ou bouton test /settings",
+      "title": "Impression étiquette via Raspberry Pi + CUPS",
+      "description": "Le backend rend l'étiquette en PDF et la met en file ; la Raspberry Pi tire le job et imprime via CUPS (lp). Voir apps/print-agent.",
+      "trigger": "Manager clique « Imprimer » ou bouton test /settings",
       "steps": [
-        { "from": "tablet", "to": "api", "label": "POST /api/hardware/label/test OU GET /label?print=true", "detail": "Service sato_service.py.", "protocol": "HTTPS" },
-        { "from": "api", "to": "printer-label", "label": "SBPL RAW → SATO:9100", "detail": "Étiquette format configurable.", "protocol": "TCP:9100" }
+        { "from": "tablet", "to": "api", "label": "POST /api/labels/print/{id} (ou /test-print)", "detail": "Met le job en file (label_print_jobs).", "protocol": "HTTPS" },
+        { "from": "printer-label", "to": "api", "label": "GET agent/jobs/next + ack", "detail": "La Pi tire le PDF (X-Agent-Token) et imprime via CUPS.", "protocol": "HTTPS sortant" }
       ]
     },
     {
@@ -1359,12 +1360,12 @@
       "id": "hw-test-label",
       "category": "hardware",
       "group": "Settings",
-      "title": "Bouton « Imprimer étiquette test » (/settings/materiel)",
-      "description": "Test live de la SATO sans produit réel.",
+      "title": "Bouton « Imprimer une étiquette de test » (/settings/materiel)",
+      "description": "Met une étiquette de test en file, sans produit réel ; la Raspberry Pi l'imprime.",
       "trigger": "Manager clique le bouton test dans /settings",
       "steps": [
-        { "from": "browser-mgr", "to": "api", "label": "POST /api/hardware/label/test", "detail": "Sans body.", "protocol": "HTTPS" },
-        { "from": "api", "to": "printer-label", "label": "SBPL test → SATO:9100", "detail": "Étiquette générique 60x40mm.", "protocol": "TCP:9100" }
+        { "from": "browser-mgr", "to": "api", "label": "POST /api/hardware/label/test", "detail": "Sans body — INSERT label_print_jobs (test).", "protocol": "HTTPS" },
+        { "from": "printer-label", "to": "api", "label": "GET agent/jobs/next + ack", "detail": "La Pi tire le job de test et l'imprime via CUPS.", "protocol": "HTTPS sortant" }
       ]
     },
     {

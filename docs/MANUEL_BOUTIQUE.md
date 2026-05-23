@@ -28,8 +28,8 @@ nominatif au premier login (Settings > Sécurité).
 3. Tiroir-caisse Safescan — branché sur l'imprimante (RJ-12)
 4. Douchette Inateck — branchée en USB sur l'iPad (ou dongle)
 5. TPE SumUp Solo — allumé et connecté au Wi-Fi
-6. (Optionnel) Imprimante étiquettes SATO CT4-LX — pour générer/réimprimer
-   des étiquettes produits
+6. (Optionnel) Raspberry Pi + imprimante étiquettes — pour générer/réimprimer
+   des étiquettes produits (voir apps/print-agent)
 
 ### B. Se connecter
 
@@ -142,9 +142,11 @@ Dashboard → cliquer sur la transaction → modal détail → boutons
 
 Sur la fiche produit :
 
-- Bouton **Télécharger étiquette** → PNG 50 × 30 mm avec nom + prix + barcode
-- Bouton **Imprimer SATO** (si imprimante étiquettes configurée) → impression
-  directe sur la SATO CT4-LX
+- Aperçu étiquette 25 × 52 mm (code-barres + réf + nom + semaine)
+- Bouton **Imprimer (Raspberry)** (si l'impression étiquettes est activée) →
+  l'étiquette est mise en file ; la Raspberry Pi en boutique l'imprime
+- Bouton **Planche A4** (mode dégradé) → impression depuis le navigateur si la Pi
+  est indisponible
 
 ### Score produit (IA)
 
@@ -248,8 +250,9 @@ est disponible via le lien en pied de chaque newsletter.
   d'impression en 1 clic
 - **Tiroir-caisse** (Safescan) : kick on cash (auto à chaque vente espèces),
   pin (0 ou 1), durée d'impulsion. Test "Kicker tiroir"
-- **Imprimante étiquettes** (SATO) : IP + port + dimensions étiquette + DPI.
-  Test SATO
+- **Imprimante étiquettes** (Raspberry Pi + CUPS) : activation + dimensions
+  étiquette ; statut de l'agent (en ligne / file). Bouton "Imprimer une
+  étiquette de test" (mise en file). Installation de la Pi : apps/print-agent
 - **Douchette** : longueur min, suffix, mode (USB HID standard)
 - **TPE SumUp** : reader ID si push direct
 

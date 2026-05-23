@@ -33,7 +33,7 @@ docs/
   PREDICTIVE_ENGINE.md        Moteur prédictif (cahier de travail)
   MANUEL_BOUTIQUE.md          Guide utilisateur/manager
   UX_DESIGN.md                Brief design (heuristiques, parcours, états)
-  ZEBRA_INSTALLATION.md       Mise en service Zebra ZD421d (réseau local + cloud Weblink)
+  RASPBERRY_PRINT_AGENT.md    Impression étiquettes via la Raspberry Pi (file + CUPS)
   test_barcodes/*.png         Barcodes Code 128 (régénérés par seed_test_products)
 .github/workflows/
   deploy.yml                  Auto-deploy SSH sur push main
@@ -59,7 +59,7 @@ docs/
 | Site public | Next.js 14 App Router + Tailwind CSS — landing + SEO + GA4 |
 | Barcode | python-barcode + Pillow (Code 128) |
 | Imprimante ticket | **MUNBYN 047P** ESC/POS 80 mm — réseau (port 9100) **ou** USB-OTG via WebUSB sur tablette Android |
-| Imprimante étiquettes | **Zebra ZD421d** ZPL II thermique direct 25×52 mm — réseau local (TCP 9100), cloud (Weblink + SendFileToPrinter) **ou** Bluetooth LE (Web Bluetooth tablette) — preview Labelary |
+| Imprimante étiquettes | via **Raspberry Pi + CUPS** — le backend rend l'étiquette 25×52 mm en PDF et la met en file ; la Pi en boutique tire les jobs et imprime sur l'imprimante branchée (USB/LAN). Aperçu PNG rendu serveur. Voir `apps/print-agent/` |
 | Douchette | **Inateck BCST-35** USB HID (champ POS auto-focus) ou Inateck 160B |
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 kické par l'imprimante ESC/POS (`ESC p m`) |
 | TPE | **SumUp Solo** Wi-Fi (push direct possible via `SUMUP_READER_ID`) |
@@ -141,28 +141,13 @@ SUMUP_RETURN_URL=                 # optionnel: callback après paiement reader
 # Hardware (optionnel — sinon configurable via /settings > Materiel)
 RECEIPT_PRINTER_HOST=             # IP de la MUNBYN 047P-WiFi
 RECEIPT_PRINTER_PORT=9100
-ZEBRA_PRINTER_IP=                 # IP de la Zebra ZD421d (legacy: LABEL_PRINTER_HOST fallback)
-ZEBRA_PRINTER_PORT=9100
-# Zebra — choix du transport d'impression étiquettes :
-#   network (défaut) = ZPL en TCP 9100 sur le LAN (l'API doit joindre l'IP).
-#   cloud            = Weblink + API SendFileToPrinter. L'imprimante se
-#                      connecte en SORTIE à Zebra Data Services ; le backend
-#                      pousse le ZPL par REST. À utiliser quand l'API tourne
-#                      hors site (cloud) et ne peut pas ouvrir de socket vers
-#                      la boutique. Le MQTT natif Zebra ne sait PAS imprimer
-#                      (gestion/notifs only) — d'où Weblink. Voir
-#                      app/services/zebra_cloud.py pour l'enrôlement.
-#   bluetooth        = Web Bluetooth (BLE) depuis la tablette Chrome Android.
-#                      Le serveur ne peut pas joindre une imprimante BLE :
-#                      les endpoints d'impression renvoient 400 et la
-#                      tablette récupère le ZPL (GET /api/labels/{id}/zpl)
-#                      pour l'écrire sur le service BLE Parser de la Zebra.
-#                      Voir apps/web/src/lib/web-bluetooth-printer.ts.
-ZEBRA_CONNECTION=network          # network | cloud | bluetooth
-ZEBRA_CLOUD_API_KEY=              # clé API Zebra Data Services (mode cloud)
-ZEBRA_CLOUD_TENANT=               # n° de tenant Zebra (mode cloud)
-ZEBRA_CLOUD_SERIAL=               # n° de série de l'imprimante enrôlée (mode cloud)
-ZEBRA_CLOUD_ENDPOINT=             # optionnel: override (défaut api.zebra.com/v2/devices/printers/send)
+# Étiquettes — agent Raspberry Pi (apps/print-agent). Le backend rend les
+# étiquettes en PDF et les met en file ; la Pi en boutique interroge l'API
+# (HTTPS sortant, NAT-friendly) et imprime via CUPS. Aucune IP imprimante ici.
+RPI_AGENT_TOKEN=                  # secret partagé avec la Pi (vide ⇒ endpoints agent en 503)
+                                  # générer: python3 -c "import secrets; print(secrets.token_hex(32))"
+RPI_AGENT_STALE_SECONDS=120       # délai sans poll avant "hors ligne" + re-queue d'un job non acquitté
+RPI_CUPS_PRINTER_NAME=            # indicatif (affiché en /settings > Materiel ; le nom réel est sur la Pi)
 VINTIZ_HARDWARE_CONFIG=           # chemin custom du fichier hardware.json (défaut: data/hardware.json)
 
 # Email transactional (P4-003) — gateway unifié Brevo > SMTP > simulation.
@@ -243,11 +228,14 @@ GET    /api/pos/cashier/list                 Lister utilisateurs + statut PIN (m
 GET    /api/inventory/products               Liste produits (paginée)
 GET    /api/inventory/products/search?q=…    Recherche (filtre stock+display par défaut, &include_sold=true sinon)
 GET    /api/inventory/products/{id}          Fiche produit
-POST   /api/labels/print/{product_id}        Impression unitaire Zebra (ZPL TCP 9100)
-POST   /api/labels/print/batch                Impression multiple (body: product_ids[], copies)
-GET    /api/labels/preview/{product_id}       Aperçu PNG Labelary (image/png)
-GET    /api/labels/printer/status             Ping TCP imprimante (online/offline + latency_ms)
+POST   /api/labels/print/{product_id}        Met une étiquette en file (202, l'agent Pi imprime)
+POST   /api/labels/print/batch                Met N étiquettes en file (body: product_ids[], copies)
+POST   /api/labels/test-print                 Met une étiquette de test en file
+GET    /api/labels/preview/{product_id}       Aperçu PNG (rendu serveur, image/png)
+GET    /api/labels/printer/status             Statut agent Pi (online + file + dernier contact)
 GET    /api/labels/sheet?ids=…&cols=2&rows=4  Mode dégradé : planche A4 HTML (window.print auto)
+GET    /api/labels/agent/jobs/next?max=N      [agent] Réclame des jobs + PDF (en-tête X-Agent-Token)
+POST   /api/labels/agent/jobs/{id}/ack        [agent] Acquitte un job (success/error)
 GET    /api/pos/transactions/{id}/escpos      Bytes ESC/POS bruts pour WebUSB (mode tablette)
 GET    /api/hardware/receipt/test-escpos     Bytes ESC/POS pour ticket test WebUSB
 GET    /api/inventory/products/{id}/score    Score détaillé
@@ -288,7 +276,7 @@ GET    /api/hardware/config                  Lire config persistée (data/hardwa
 PUT    /api/hardware/config                  Modifier config (IP imprimante, kick pin…)
 POST   /api/hardware/receipt/test            Imprimer un ticket de test (MUNBYN ESC/POS)
 POST   /api/hardware/drawer/kick             Ouvrir tiroir (impulsion ESC p m via printer)
-POST   /api/hardware/label/test              Imprimer étiquette de test (Zebra ZPL)
+POST   /api/hardware/label/test              Mettre une étiquette de test en file (agent Pi)
 
 # Cahier de travail (back-office /dashboard/cahier-du-jour)
 GET    /api/cahier/{report_date}                Données cahier journalier (KPI + objectifs + IA)
@@ -489,7 +477,7 @@ GET    /api/admin/predictive/audience?period_days=90  Snapshot debug dominant ta
 - Boutons de test live :
   - "Imprimer ticket test" (MUNBYN ESC/POS port 9100)
   - "Kicker tiroir" (impulsion `ESC p m`)
-  - "Imprimer étiquette test" (Zebra ZPL port 9100)
+  - "Imprimer une étiquette de test" (met un job en file → imprimé par l'agent Pi)
 - Tableau de compatibilité avec annotations (`/api/hardware/compatibility`)
 - Utilisable même en production : pas de redéploiement requis pour changer une IP
 
@@ -641,7 +629,7 @@ Matériel supporté :
 | Tablette caisse | iPad (Safari) | — | — |
 | Douchette code-barres | **Inateck BCST-35** ou **160B** | USB HID (clavier) | Auto-focus champ POS |
 | Imprimante ticket | **MUNBYN 047P-WiFi** ESC/POS 80 mm | Réseau (port 9100) | `app/services/escpos_service.py` |
-| Imprimante étiquettes | **Zebra ZD421d** ZPL II 25×52 mm | Réseau LAN (9100), cloud Weblink **ou** Bluetooth LE | `zebra_printer.py` (TCP) + `zebra_cloud.py` (Weblink) + `web-bluetooth-printer.ts` (BLE front) + `zebra_zpl.py` |
+| Imprimante étiquettes | via **Raspberry Pi + CUPS** (USB/LAN) | File d'attente (Pi tire les jobs) | `label_render.py` (PDF/PNG) + `label_queue.py` + `api/labels/router.py` + agent `apps/print-agent/` |
 | Tiroir-caisse | **Safescan SD-4141** RJ-12 | Branché sur imprimante (kick `ESC p m`) | inclus dans `escpos_service` |
 | TPE | **SumUp Solo** | Wi-Fi / compte SumUp | `app/services/sumup_service.py` |
 

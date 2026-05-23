@@ -187,7 +187,7 @@ export default function InventoryPage() {
     try {
       const { printProductLabel } = await import('@/lib/print-label');
       const result = await printProductLabel(id);
-      showToast(result.ok ? 'Étiquette envoyée à l\'imprimante' : result.message, result.ok ? 'success' : 'error');
+      showToast(result.message, result.ok ? 'success' : 'error');
     } finally {
       setPrintingId(null);
     }
