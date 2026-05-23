@@ -138,6 +138,13 @@ export default function POSPage() {
   const [manualName, setManualName] = useState('');
   const [manualPrice, setManualPrice] = useState('');
 
+  // Reusable bag quick-add — label + default price (configurable in Settings).
+  // The bag is a manual line: unlimited quantity, no stock impact, price
+  // editable per sale at the till.
+  const [bagLabel, setBagLabel] = useState('Sac boutique Vintiz');
+  const [bagDefaultPrice, setBagDefaultPrice] = useState(0.25);
+  const [priceEditIdx, setPriceEditIdx] = useState<number | null>(null);
+
   // Payment
   const [showPayment, setShowPayment] = useState(false);
   const [payments, setPayments] = useState<PaymentLine[]>([]);
@@ -351,6 +358,18 @@ export default function POSPage() {
   useEffect(() => {
     api.get('/api/pos/drawer/current').then(async (res) => {
       if (res.ok) setDrawer(await res.json());
+    }).catch(() => {});
+  }, []);
+
+  // POS quick-add config — reusable bag label + default price.
+  useEffect(() => {
+    api.get('/api/admin/pos-config').then(async (res) => {
+      if (!res.ok) return;
+      const cfg = await res.json();
+      if (cfg.bag_label) setBagLabel(cfg.bag_label);
+      if (typeof cfg.bag_default_price_eur === 'number') {
+        setBagDefaultPrice(cfg.bag_default_price_eur);
+      }
     }).catch(() => {});
   }, []);
 
@@ -622,15 +641,15 @@ export default function POSPage() {
 
   const addBag = () => {
     setCart(prev => {
-      const existing = prev.find(i => i.name === 'Sac boutique Vintiz' && i.isManual);
+      const existing = prev.find(i => i.name === bagLabel && i.isManual);
       if (existing) {
-        return prev.map(i => i.name === 'Sac boutique Vintiz' && i.isManual
+        return prev.map(i => i.name === bagLabel && i.isManual
           ? { ...i, quantity: i.quantity + 1 } : i);
       }
       return [...prev, {
         product_id: null,
-        name: 'Sac boutique Vintiz',
-        price: 0.25,
+        name: bagLabel,
+        price: bagDefaultPrice,
         quantity: 1,
         discount: 0,
         isManual: true,
@@ -663,6 +682,14 @@ export default function POSPage() {
   const updateDiscount = (index: number, discount: number) => {
     setCart(prev => prev.map((item, i) =>
       i === index ? { ...item, discount: Math.max(0, Math.min(30, discount)) } : item
+    ));
+  };
+
+  // Inline price edit — only for manual lines (bag, custom article). Real
+  // catalog products keep their tagged sale_price.
+  const updatePrice = (index: number, value: number) => {
+    setCart(prev => prev.map((item, i) =>
+      i === index ? { ...item, price: Math.max(0, value) } : item
     ));
   };
 
@@ -1510,7 +1537,30 @@ export default function POSPage() {
                           {item.isManual && <span className="ml-1 text-xs text-gray-400">(man.)</span>}
                         </p>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-xs text-gray-500">{formatCurrency(item.price)}</span>
+                          {item.isManual ? (
+                            priceEditIdx === idx ? (
+                              <input
+                                type="number"
+                                step="0.05"
+                                min="0"
+                                autoFocus
+                                defaultValue={item.price.toFixed(2)}
+                                onBlur={(e) => { updatePrice(idx, parseFloat(e.target.value) || 0); setPriceEditIdx(null); }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { updatePrice(idx, parseFloat((e.target as HTMLInputElement).value) || 0); setPriceEditIdx(null); } }}
+                                className="w-16 text-xs px-1.5 py-0.5 rounded border border-vz-teal focus:outline-none focus:ring-1 focus:ring-vz-teal"
+                              />
+                            ) : (
+                              <button
+                                onClick={() => setPriceEditIdx(idx)}
+                                title="Modifier le prix"
+                                className="text-xs px-1.5 py-0.5 rounded border border-dashed border-gray-300 text-gray-600 hover:border-vz-teal hover:text-vz-teal"
+                              >
+                                {formatCurrency(item.price)} ✎
+                              </button>
+                            )
+                          ) : (
+                            <span className="text-xs text-gray-500">{formatCurrency(item.price)}</span>
+                          )}
                           <button
                             onClick={() => setDiscountOpenIdx(discountOpenIdx === idx ? null : idx)}
                             className={`text-xs px-1.5 py-0.5 rounded-full font-medium transition-colors ${
@@ -1727,10 +1777,10 @@ export default function POSPage() {
             </div>
             {/* Quick action buttons */}
             <div className="flex gap-2 mt-2">
-              <button onClick={addBag}
+              <button onClick={addBag} title={`${bagLabel} — prix modifiable au panier`}
                 className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-black transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
-                Sac 0,25 €
+                Sac {formatCurrency(bagDefaultPrice)}
               </button>
               <button onClick={() => setShowManualEntry(true)}
                 className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-black transition-colors">

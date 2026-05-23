@@ -251,6 +251,46 @@ async def update_cash_management_config(payload: CashManagementConfigUpdate):
 
 
 # ---------------------------------------------------------------------------
+# POS quick-add config — default reusable-bag label + price
+# ---------------------------------------------------------------------------
+
+
+class PosConfigUpdate(BaseModel):
+    bag_label: str | None = None
+    bag_default_price_eur: float | None = None
+
+
+@router.get("/pos-config")
+async def get_pos_config(current_user: Annotated[User, Depends(get_current_user)]):
+    """Read POS quick-add defaults (bag label + price).
+
+    Readable by any authenticated back-office user so the till can pre-fill
+    the « Sac » button even when the operator is not a manager.
+    """
+    from app.services.app_config import get_section
+
+    return get_section("pos")
+
+
+@router.put("/pos-config", dependencies=[Depends(manager_only)])
+async def update_pos_config(payload: PosConfigUpdate):
+    """Update POS quick-add defaults (manager only)."""
+    from app.services.app_config import get_section, update_section
+
+    values = payload.model_dump(exclude_none=True)
+    price = values.get("bag_default_price_eur")
+    if price is not None and (price < 0 or price > 1000):
+        raise HTTPException(
+            status_code=400,
+            detail="bag_default_price_eur doit être entre 0 et 1000 €",
+        )
+    if "bag_label" in values and not str(values["bag_label"]).strip():
+        values.pop("bag_label")
+    update_section("pos", values)
+    return get_section("pos")
+
+
+# ---------------------------------------------------------------------------
 # Cash drawer sessions — admin overview (/admin > Sessions caisses)
 # ---------------------------------------------------------------------------
 

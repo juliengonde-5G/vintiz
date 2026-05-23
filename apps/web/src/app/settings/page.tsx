@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import CashManagementSettingsPanel from '@/components/settings/CashManagementSettingsPanel';
+import PosQuickAddPanel from '@/components/settings/PosQuickAddPanel';
 import ReceiptTemplatesPanel from '@/components/settings/ReceiptTemplatesPanel';
 import ScoringWeightsPanel from '@/components/settings/ScoringWeightsPanel';
 import SumUpTerminalsPanel from '@/components/settings/SumUpTerminalsPanel';
@@ -957,6 +958,7 @@ export default function SettingsPage() {
           <div className="space-y-6">
             <SumUpTerminalsPanel />
             <ReceiptTemplatesPanel />
+            <PosQuickAddPanel />
             <CashManagementSettingsPanel />
           </div>
         )}

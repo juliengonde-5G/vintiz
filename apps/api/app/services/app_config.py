@@ -87,6 +87,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "default_detail_mode": True,
         "comptable_email": "",
     },
+    # POS quick-add config — editable via /settings > Caisse.
+    # The reusable shopping bag is a manual line item (no stock impact,
+    # unlimited quantity). Its price is editable per sale at the till; this
+    # is just the default the « Sac » button pre-fills.
+    "pos": {
+        "bag_label": "Sac boutique Vintiz",
+        "bag_default_price_eur": 0.25,
+    },
 }
 
 
