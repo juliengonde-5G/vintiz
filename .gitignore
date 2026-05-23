@@ -23,6 +23,10 @@ build/
 # Data
 data/subscribers.json
 
+# Runtime config persisted by the API (app_config.json, hardware.json…) —
+# created at runtime via /settings, must never be committed (local/secret state).
+apps/api/data/
+
 # OS
 .DS_Store
 Thumbs.db
