@@ -81,12 +81,11 @@ export default function ZoneDetailPage() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
+    // The zone itself drives the page: fetch it on its own so a failure in
+    // the secondary analytics/products calls (e.g. a 500 that fails CORS and
+    // rejects the fetch) can never blank the zone into "Zone introuvable".
     try {
-      const [zoneRes, analyticsRes, productsRes] = await Promise.all([
-        api.get(`/api/admin/zones/${zoneId}`),
-        api.get(`/api/admin/zones/${zoneId}/analytics`),
-        api.get(`/api/admin/zones/${zoneId}/products`),
-      ]);
+      const zoneRes = await api.get(`/api/admin/zones/${zoneId}`);
       if (zoneRes.ok) {
         const z: Zone = await zoneRes.json();
         setZone(z);
@@ -94,11 +93,21 @@ export default function ZoneDetailPage() {
       } else {
         setZone(null);
       }
-      if (analyticsRes.ok) setAnalytics(await analyticsRes.json());
-      if (productsRes.ok) setProducts(await productsRes.json());
+    } catch {
+      setZone(null);
     } finally {
       setLoading(false);
     }
+
+    // Secondary data — best effort, independent of the zone render.
+    try {
+      const analyticsRes = await api.get(`/api/admin/zones/${zoneId}/analytics`);
+      if (analyticsRes.ok) setAnalytics(await analyticsRes.json());
+    } catch { /* analytics optional */ }
+    try {
+      const productsRes = await api.get(`/api/admin/zones/${zoneId}/products`);
+      if (productsRes.ok) setProducts(await productsRes.json());
+    } catch { /* products optional */ }
   }, [zoneId]);
 
   useEffect(() => {

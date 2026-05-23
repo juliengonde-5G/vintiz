@@ -378,7 +378,7 @@ async def zone_analytics(
         day_start = now - timedelta(days=day_offset)
         day_end = day_start + timedelta(days=1)
         day_res = await db.execute(
-            select(func.coalesce(func.sum(TransactionItem.price), 0))
+            select(func.coalesce(func.sum(TransactionItem.line_total), 0))
             .join(Transaction, Transaction.id == TransactionItem.transaction_id)
             .join(Product, Product.id == TransactionItem.product_id)
             .where(
