@@ -440,6 +440,99 @@ def build_receipt(
     return bytes(out)
 
 
+def build_cb_ticket(
+    data: dict[str, Any],
+    *,
+    shop: dict[str, Any] | None = None,
+    merchant_code: str | None = None,
+    width: int = 42,
+    cut: bool = True,
+) -> bytes:
+    """Build a card-payment slip (ticket CB) from the SumUp Solo return.
+
+    ``data`` carries: ``copy`` ("merchant"|"client"), ``amount``, ``status``
+    ("paid"|"failed"|"cancelled"|"timeout"), and the optional card detail
+    (``card_brand``, ``card_last4``, ``auth_code``, ``transaction_code``,
+    ``transaction_id``, ``declined_reason``).
+
+    Issued for every CB attempt — success or failure — so the merchant keeps a
+    trace of the terminal outcome (ANC/CB rules) and the client gets a copy on
+    demand.
+    """
+    shop = shop if shop is not None else _shop_info()
+    out = bytearray()
+    out += INIT
+
+    store_name = (shop.get("name") or STORE_NAME).upper()
+    addr_parts = [
+        shop.get("address_line1", ""),
+        f"{shop.get('postal_code', '')} {shop.get('city', '')}".strip(),
+    ]
+    store_address = ", ".join(p for p in addr_parts if p) or STORE_ADDRESS
+
+    out += ALIGN_CENTER + BOLD_ON + DOUBLE_ON
+    for hline in _wrap(store_name, max(8, width // 2)):
+        out += _line(hline)
+    out += DOUBLE_OFF
+    out += BOLD_OFF
+    for aline in _wrap(store_address, width):
+        out += _line(aline)
+    out += LF
+    out += BOLD_ON
+    out += _line("TICKET CARTE BANCAIRE")
+    copy = (data.get("copy") or "merchant").lower()
+    out += _line("COPIE COMMERCANT" if copy == "merchant" else "COPIE CLIENT")
+    out += BOLD_OFF
+    out += _line("=" * width)
+
+    out += ALIGN_LEFT
+    now = datetime.now()
+    out += _line(f"Date  : {now.strftime('%d/%m/%Y %H:%M')}")
+    if merchant_code:
+        out += _line(f"Commercant : {merchant_code}")
+    brand = (data.get("card_brand") or "").upper()
+    last4 = data.get("card_last4") or ""
+    if brand or last4:
+        out += _line(f"Carte : {brand or 'CB'} **** {last4 or '****'}")
+    amount = float(data.get("amount") or 0)
+    out += _row("Montant", f"{amount:.2f} EUR", width=width)
+    out += _line("-" * width)
+
+    status = (data.get("status") or "").lower()
+    out += ALIGN_CENTER + BOLD_ON
+    if status == "paid":
+        out += _line("*** TRANSACTION ACCEPTEE ***")
+    else:
+        out += _line("*** TRANSACTION REFUSEE ***")
+    out += BOLD_OFF
+    out += ALIGN_LEFT
+    if status == "paid":
+        auth = data.get("auth_code")
+        if auth:
+            out += _line(f"Autorisation : {auth}")
+        ref = data.get("transaction_code") or data.get("transaction_id")
+        if ref:
+            out += _line(f"Reference    : {ref}")
+    else:
+        reason = data.get("declined_reason")
+        if reason:
+            for rline in _wrap(f"Motif : {reason}", width):
+                out += _line(rline)
+    out += _line("=" * width)
+
+    out += LF
+    out += ALIGN_CENTER
+    if copy == "merchant":
+        out += _line("Exemplaire conserve par le commercant")
+    else:
+        out += _line("Conservez ce ticket")
+    out += LF + LF
+    out += ALIGN_LEFT
+    if cut:
+        out += CUT_PARTIAL
+    return bytes(out)
+
+
 def build_drawer_kick(pin: int = 0, on_time: int = 50, off_time: int = 250) -> bytes:
     """Build the ESC/POS pulse command that kicks the cash drawer.
 

@@ -333,13 +333,14 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
             }
             if (raw === 'FAILED') {
               const detail = data.error_detail || 'Carte refusée';
+              const sumup = extractSumUpDetails(data, checkoutId);
               attemptId = await logAttempt(
                 {
                   method: 'card',
                   amount,
                   status: 'failed',
                   error_detail: detail,
-                  ...sumupAttemptFields(extractSumUpDetails(data, checkoutId), checkoutId),
+                  ...sumupAttemptFields(sumup, checkoutId),
                 },
                 attemptId,
               );
@@ -349,6 +350,7 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
                 detail,
                 checkout_id: checkoutId,
                 attempt_id: attemptId,
+                sumup,
               };
             }
             if (raw === 'CANCELLED') {

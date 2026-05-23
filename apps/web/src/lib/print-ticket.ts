@@ -242,3 +242,56 @@ export async function printTransactionTicket(
     };
   }
 }
+
+export interface CbTicketData {
+  amount: number;
+  status: 'paid' | 'failed' | 'cancelled' | 'timeout' | 'pending';
+  card_brand?: string | null;
+  card_last4?: string | null;
+  auth_code?: string | null;
+  transaction_code?: string | null;
+  transaction_id?: string | null;
+  declined_reason?: string | null;
+}
+
+/**
+ * Print a card-payment slip (ticket CB) — merchant or client copy — built
+ * from the SumUp Solo return. Works for accepted and declined transactions.
+ * Branches network/USB exactly like ``printTransactionTicket``.
+ */
+export async function printCbTicket(
+  data: CbTicketData,
+  copy: 'merchant' | 'client',
+): Promise<PrintTicketResult> {
+  const cfg = await readPrinterConfig();
+  const body = { ...data, copy };
+  const label = copy === 'merchant' ? 'commerçant' : 'client';
+
+  if (cfg.mode === 'usb') {
+    try {
+      const device = await getUsbDevice(cfg);
+      const bytesRes = await api.post('/api/pos/payments/cb/ticket/escpos', body);
+      if (!bytesRes.ok) {
+        const b = await bytesRes.json().catch(() => ({} as Record<string, unknown>));
+        return { ok: false, transport: 'usb', message: (b.detail as string) || 'Ticket CB indisponible' };
+      }
+      const bytes = new Uint8Array(await bytesRes.arrayBuffer());
+      const { sendEscposBytes } = await import('@/lib/webusb-printer');
+      await sendEscposBytes(device, bytes);
+      return { ok: true, transport: 'usb', message: `Ticket CB ${label} imprimé (USB)` };
+    } catch (err) {
+      return { ok: false, transport: 'usb', message: err instanceof Error ? err.message : 'Erreur USB' };
+    }
+  }
+
+  try {
+    const res = await api.post('/api/pos/payments/cb/ticket/print', body);
+    if (res.ok) {
+      return { ok: true, transport: 'network', message: `Ticket CB ${label} imprimé` };
+    }
+    const b = await res.json().catch(() => ({} as Record<string, unknown>));
+    return { ok: false, transport: 'network', message: (b.detail as string) || 'Impression CB échouée' };
+  } catch {
+    return { ok: false, transport: 'network', message: 'Imprimante injoignable' };
+  }
+}

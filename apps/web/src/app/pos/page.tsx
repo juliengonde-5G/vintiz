@@ -261,6 +261,11 @@ export default function POSPage() {
   // later refund be issued through the SumUp API instead of manually).
   const [cbDetails, setCbDetails] = useState<SumUpPaymentDetails | null>(null);
 
+  // CB slip (ticket carte) — after a CB attempt the merchant copy prints
+  // automatically and we offer the client copy via this prompt.
+  const [cbClientPrompt, setCbClientPrompt] = useState<import('@/lib/print-ticket').CbTicketData | null>(null);
+  const [cbTicketBusy, setCbTicketBusy] = useState(false);
+
   // Which cart item has its discount strip expanded (compact layout: hide by
   // default to fit more items on Lenovo landscape).
   const [discountOpenIdx, setDiscountOpenIdx] = useState<number | null>(null);
@@ -2372,6 +2377,32 @@ export default function POSPage() {
             if (outcome.status === 'paid' && outcome.sumup) {
               setCbDetails(outcome.sumup);
             }
+            // Ticket CB : on récupère le retour Solo et on édite la copie
+            // commerçant automatiquement (succès OU échec), puis on propose
+            // la copie client. Les abandons/annulations cashier ne génèrent
+            // pas de ticket CB (rien ne s'est passé sur le TPE).
+            if (outcome.status === 'paid' || outcome.status === 'failed' || outcome.status === 'timeout') {
+              const cbData = {
+                amount,
+                status: outcome.status,
+                card_brand: outcome.sumup?.sumup_card_brand ?? null,
+                card_last4: outcome.sumup?.sumup_card_last4 ?? null,
+                auth_code: outcome.sumup?.sumup_auth_code ?? null,
+                transaction_code: outcome.sumup?.sumup_transaction_code ?? null,
+                transaction_id: outcome.sumup?.sumup_transaction_id ?? null,
+                declined_reason: outcome.detail ?? null,
+              };
+              void (async () => {
+                const { printCbTicket } = await import('@/lib/print-ticket');
+                const r = await printCbTicket(cbData, 'merchant');
+                setDrawerToast({
+                  msg: r.ok ? 'Ticket CB commerçant imprimé' : `Ticket CB : ${r.message}`,
+                  ok: r.ok,
+                });
+                setTimeout(() => setDrawerToast(null), 3500);
+              })();
+              setCbClientPrompt(cbData);
+            }
             return outcome;
           }}
           onCommit={async (tenders) => {
@@ -2854,6 +2885,50 @@ export default function POSPage() {
           }`}
         >
           {drawerToast.msg}
+        </div>
+      )}
+
+      {/* Ticket CB — copie client proposée après la copie commerçant auto. */}
+      {cbClientPrompt && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="font-display text-lg font-semibold text-vz-ink">
+              Ticket carte bancaire
+            </h3>
+            <p className="mt-1 text-sm text-vz-ink-soft">
+              {cbClientPrompt.status === 'paid'
+                ? 'Paiement CB accepté.'
+                : 'Transaction CB refusée.'}{' '}
+              La copie commerçant a été imprimée automatiquement. Imprimer la
+              copie client ?
+            </p>
+            <div className="mt-5 flex flex-col gap-2">
+              <Button
+                disabled={cbTicketBusy}
+                onClick={async () => {
+                  setCbTicketBusy(true);
+                  const { printCbTicket } = await import('@/lib/print-ticket');
+                  const r = await printCbTicket(cbClientPrompt, 'client');
+                  setDrawerToast({
+                    msg: r.ok ? 'Ticket CB client imprimé' : `Ticket CB : ${r.message}`,
+                    ok: r.ok,
+                  });
+                  setTimeout(() => setDrawerToast(null), 3500);
+                  setCbTicketBusy(false);
+                  setCbClientPrompt(null);
+                }}
+              >
+                {cbTicketBusy ? 'Impression…' : 'Imprimer le ticket client'}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={cbTicketBusy}
+                onClick={() => setCbClientPrompt(null)}
+              >
+                Pas de ticket client
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

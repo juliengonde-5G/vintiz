@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from decimal import Decimal
 
@@ -1002,6 +1003,89 @@ async def get_transaction_escpos(
             "Content-Disposition": f'attachment; filename="receipt-{transaction_id}.bin"',
             "Cache-Control": "no-store",
         },
+    )
+
+
+class CbTicketRequest(BaseModel):
+    copy: str = "merchant"  # "merchant" | "client"
+    amount: float
+    status: str  # paid | failed | cancelled | timeout
+    card_brand: str | None = None
+    card_last4: str | None = None
+    auth_code: str | None = None
+    transaction_code: str | None = None
+    transaction_id: str | None = None
+    declined_reason: str | None = None
+
+
+def _cb_ticket_bytes(request: "CbTicketRequest", width: int, cut: bool) -> bytes:
+    from app.services import escpos_service
+    from app.services.app_config import get_section
+
+    sumup_cfg = get_section("sumup") or {}
+    merchant_code = sumup_cfg.get("merchant_code") or os.getenv("SUMUP_MERCHANT_CODE") or None
+    return escpos_service.build_cb_ticket(
+        request.model_dump(),
+        shop=get_section("shop_info") or {},
+        merchant_code=merchant_code,
+        width=width,
+        cut=cut,
+    )
+
+
+@router.post("/payments/cb/ticket/print")
+async def print_cb_ticket(
+    request: CbTicketRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Print a CB slip (merchant or client copy) on the MUNBYN over TCP.
+
+    Built from the SumUp Solo return so it works for both accepted and
+    declined transactions. Network transport only — the USB tablet flow uses
+    ``/payments/cb/ticket/escpos`` + WebUSB.
+    """
+    from app.services import escpos_service
+    from app.services.hardware_config import load_config
+
+    cfg = load_config()
+    rp = cfg["receipt_printer"]
+    if not rp.get("enabled"):
+        raise HTTPException(status_code=400, detail="Imprimante de reçus désactivée")
+    host = rp.get("host") or ""
+    if not host:
+        raise HTTPException(status_code=400, detail="Adresse IP de l'imprimante non configurée")
+    payload = _cb_ticket_bytes(
+        request,
+        width=int(rp.get("width_chars") or 42),
+        cut=bool(rp.get("cut_paper", True)),
+    )
+    try:
+        escpos_service.send_raw(host, int(rp.get("port") or 9100), payload)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Imprimante injoignable : {exc}") from exc
+    return {"success": True, "copy": request.copy}
+
+
+@router.post("/payments/cb/ticket/escpos")
+async def cb_ticket_escpos(
+    request: CbTicketRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Return the CB slip ESC/POS bytes for the WebUSB (tablet) flow."""
+    from fastapi.responses import Response
+
+    from app.services.hardware_config import load_config
+
+    rp = load_config()["receipt_printer"]
+    payload = _cb_ticket_bytes(
+        request,
+        width=int(rp.get("width_chars") or 42),
+        cut=bool(rp.get("cut_paper", True)),
+    )
+    return Response(
+        content=bytes(payload),
+        media_type="application/octet-stream",
+        headers={"Cache-Control": "no-store"},
     )
 
 
