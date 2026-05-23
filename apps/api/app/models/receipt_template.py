@@ -64,6 +64,9 @@ class ReceiptTemplate(Base):
     # {date} {shop_name}.
     email_subject: Mapped[str | None] = mapped_column(String(200), nullable=True)
     email_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # SMS body for the ticket resend channel (short, {placeholders}). Editable
+    # in the studio so the receipt SMS wording is configurable.
+    sms_body: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # --- Block visibility toggles -------------------------------------------
     show_payment_block: Mapped[bool] = mapped_column(

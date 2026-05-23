@@ -23,6 +23,7 @@ interface Template {
   legal_mentions: string | null;
   email_subject: string | null;
   email_body: string | null;
+  sms_body: string | null;
   show_payment_block: boolean;
   show_legal_mentions: boolean;
   is_default: boolean;
@@ -44,6 +45,7 @@ interface Draft {
   legal_mentions: string;
   email_subject: string;
   email_body: string;
+  sms_body: string;
   show_payment_block: boolean;
   show_legal_mentions: boolean;
   is_active: boolean;
@@ -66,6 +68,7 @@ const EMPTY_DRAFT: Draft = {
   email_subject: 'Votre facture {invoice_number} — {shop_name}',
   email_body:
     'Bonjour,\n\nVeuillez trouver ci-joint votre facture {invoice_number} d’un montant de {total_ttc}.\n\nCordialement,\n{shop_name}',
+  sms_body: '{shop_name} - Ticket #{ticket_number} - Total {total_ttc}. Merci !',
   show_payment_block: true,
   show_legal_mentions: true,
   is_active: true,
@@ -87,6 +90,7 @@ function toDraft(t: Template): Draft {
     legal_mentions: t.legal_mentions ?? '',
     email_subject: t.email_subject ?? '',
     email_body: t.email_body ?? '',
+    sms_body: t.sms_body ?? '',
     show_payment_block: t.show_payment_block,
     show_legal_mentions: t.show_legal_mentions,
     is_active: t.is_active,
@@ -108,6 +112,7 @@ function draftToBody(d: Draft) {
     legal_mentions: d.legal_mentions || null,
     email_subject: d.email_subject || null,
     email_body: d.email_body || null,
+    sms_body: d.sms_body || null,
     show_payment_block: d.show_payment_block,
     show_legal_mentions: d.show_legal_mentions,
     is_active: d.is_active,
@@ -533,24 +538,52 @@ function StudioEditor({
             </FieldGroup>
           )}
 
-          {isInvoice && (
-            <FieldGroup title="Email d'envoi de la facture">
+          <FieldGroup
+            title={isInvoice ? "Email d'envoi de la facture" : 'Email du reçu'}
+          >
+            <Field
+              label="Objet"
+              value={draft.email_subject}
+              onChange={(s) => set({ email_subject: s })}
+            />
+            <Field
+              label="Corps du message"
+              value={draft.email_body}
+              onChange={(s) => set({ email_body: s })}
+              multiline
+            />
+            <p className="text-xs text-vz-ink-mute">
+              {isInvoice ? (
+                <>
+                  Variables : <code>{'{invoice_number}'}</code>{' '}
+                  <code>{'{company}'}</code> <code>{'{total_ttc}'}</code>{' '}
+                  <code>{'{date}'}</code> <code>{'{shop_name}'}</code>. Le PDF
+                  est joint automatiquement.
+                </>
+              ) : (
+                <>
+                  Variables : <code>{'{ticket_number}'}</code>{' '}
+                  <code>{'{total_ttc}'}</code> <code>{'{shop_name}'}</code>{' '}
+                  <code>{'{client_name}'}</code>. La liste des articles est
+                  ajoutée automatiquement.
+                </>
+              )}
+            </p>
+          </FieldGroup>
+
+          {!isInvoice && (
+            <FieldGroup title="SMS du reçu">
               <Field
-                label="Objet"
-                value={draft.email_subject}
-                onChange={(s) => set({ email_subject: s })}
-              />
-              <Field
-                label="Corps du message"
-                value={draft.email_body}
-                onChange={(s) => set({ email_body: s })}
+                label="Message SMS"
+                value={draft.sms_body}
+                onChange={(s) => set({ sms_body: s })}
                 multiline
               />
               <p className="text-xs text-vz-ink-mute">
-                Variables : <code>{'{invoice_number}'}</code>{' '}
-                <code>{'{company}'}</code> <code>{'{total_ttc}'}</code>{' '}
-                <code>{'{date}'}</code> <code>{'{shop_name}'}</code>. Le PDF est
-                joint automatiquement.
+                Variables : <code>{'{ticket_number}'}</code>{' '}
+                <code>{'{total_ttc}'}</code> <code>{'{shop_name}'}</code>{' '}
+                <code>{'{client_name}'}</code>. Gardez-le court (1 SMS ≈ 160
+                caractères).
               </p>
             </FieldGroup>
           )}

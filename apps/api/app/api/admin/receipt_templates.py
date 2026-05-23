@@ -49,6 +49,7 @@ class ReceiptTemplateRequest(BaseModel):
     legal_mentions: str | None = None
     email_subject: str | None = None
     email_body: str | None = None
+    sms_body: str | None = None
     show_payment_block: bool = True
     show_legal_mentions: bool = True
     is_active: bool = True
@@ -70,6 +71,7 @@ def _serialize(t: ReceiptTemplate) -> dict:
         "legal_mentions": t.legal_mentions,
         "email_subject": t.email_subject,
         "email_body": t.email_body,
+        "sms_body": t.sms_body,
         "show_payment_block": bool(t.show_payment_block),
         "show_legal_mentions": bool(t.show_legal_mentions),
         "is_default": bool(t.is_default),
@@ -209,6 +211,7 @@ async def create_receipt_template(
         legal_mentions=payload.legal_mentions,
         email_subject=payload.email_subject,
         email_body=payload.email_body,
+        sms_body=payload.sms_body,
         show_payment_block=payload.show_payment_block,
         show_legal_mentions=payload.show_legal_mentions,
         is_default=False,
@@ -217,6 +220,7 @@ async def create_receipt_template(
     db.add(row)
     await db.flush()
     await db.commit()
+    await db.refresh(row)
     return _serialize(row)
 
 
@@ -243,11 +247,13 @@ async def update_receipt_template(
     row.legal_mentions = payload.legal_mentions
     row.email_subject = payload.email_subject
     row.email_body = payload.email_body
+    row.sms_body = payload.sms_body
     row.show_payment_block = payload.show_payment_block
     row.show_legal_mentions = payload.show_legal_mentions
     row.is_active = payload.is_active
     await db.flush()
     await db.commit()
+    await db.refresh(row)
     return _serialize(row)
 
 
@@ -306,4 +312,5 @@ async def set_default_receipt_template(
     row.is_default = True
     await db.flush()
     await db.commit()
+    await db.refresh(row)
     return _serialize(row)

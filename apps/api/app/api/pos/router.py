@@ -659,6 +659,32 @@ async def resend_transaction(
         for item in transaction.get("items", [])
     )
 
+    # Resolve the active default ticket template + shop name so the email/SMS
+    # wording is configurable from the studio (unified with the printed ticket).
+    from sqlalchemy import select as _select
+
+    from app.models.receipt_template import ReceiptKind, ReceiptTemplate
+    from app.services.app_config import get_section as _get_section
+
+    notif_template = (
+        await db.execute(
+            _select(ReceiptTemplate)
+            .where(
+                ReceiptTemplate.kind == ReceiptKind.ticket,
+                ReceiptTemplate.is_default.is_(True),
+                ReceiptTemplate.is_active.is_(True),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    _shop_name = (_get_section("shop_info") or {}).get("name", "Vintiz")
+    notif_ctx = {
+        "ticket_number": str(ticket_num),
+        "total_ttc": f"{total:.2f} €",
+        "shop_name": _shop_name,
+        "client_name": greeting_name or "",
+    }
+
     if request.channel == "email":
         recipient = ad_hoc_to or client.get("email")
         if not recipient:
@@ -673,13 +699,25 @@ async def resend_transaction(
         )
 
         salutation = f"Bonjour {greeting_name}" if greeting_name else "Bonjour"
+        # Configurable wording from the ticket template (studio). The items
+        # list is appended to the personalised intro so the receipt is complete.
+        if notif_template and notif_template.email_body:
+            intro = _apply_placeholders(notif_template.email_body, notif_ctx)
+        else:
+            intro = (
+                f"{salutation},\n\n"
+                f"Voici le recu de votre achat chez {notif_ctx['shop_name']}."
+            )
         body_text = (
-            f"{salutation},\n\n"
-            f"Voici le recu de votre achat chez Vintiz.\n\n"
+            f"{intro}\n\n"
             f"Ticket #{ticket_num}\n"
             f"Articles :\n{items_text}\n\n"
-            f"Total TTC : {total:.2f} EUR\n\n"
-            f"Merci de votre visite !\nVintiz — Boutique de seconde main premium"
+            f"Total TTC : {total:.2f} EUR"
+        )
+        subject = (
+            _apply_placeholders(notif_template.email_subject, notif_ctx)
+            if notif_template and notif_template.email_subject
+            else f"Votre reçu {notif_ctx['shop_name']} #{ticket_num}"
         )
         body_html = "<pre style=\"font-family: monospace\">" + body_text + "</pre>"
 
@@ -687,7 +725,7 @@ async def resend_transaction(
             outcome = _gateway_send(EmailMessage(
                 to=recipient,
                 to_name=greeting_name,
-                subject=f"Votre reçu Vintiz #{ticket_num}",
+                subject=subject,
                 html=body_html,
                 text=body_text,
             ))
@@ -737,7 +775,9 @@ async def resend_transaction(
         )
 
         sms_body = (
-            f"Vintiz - Ticket #{ticket_num} - Total {total:.2f}EUR. Merci !"
+            _apply_placeholders(notif_template.sms_body, notif_ctx)
+            if notif_template and notif_template.sms_body
+            else f"{notif_ctx['shop_name']} - Ticket #{ticket_num} - Total {total:.2f}EUR. Merci !"
         )
         try:
             sms_result = _gateway_send_sms(SMSMessage(to=recipient, body=sms_body))
