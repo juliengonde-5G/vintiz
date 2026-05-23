@@ -71,16 +71,8 @@ interface CompatibilityItem {
   notes: string;
 }
 
-interface SumUpConfig {
-  environment: string;
-  api_key_set: boolean;
-  merchant_code_set: boolean;
-  merchant_code_masked: string;
-  api_base: string;
-}
-
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'store' | 'payment' | 'caisse' | 'communication' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
+  const [tab, setTab] = useState<'store' | 'caisse' | 'communication' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
   const [hardware, setHardware] = useState<HardwareConfig | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityItem[]>([]);
   const [hwSaving, setHwSaving] = useState(false);
@@ -104,9 +96,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-
-  // SumUp configuration state (production-only — sandbox retiré).
-  const [sumupConfig, setSumupConfig] = useState<SumUpConfig | null>(null);
 
   // New category form
   const [newCatName, setNewCatName] = useState('');
@@ -136,17 +125,6 @@ export default function SettingsPage() {
   } | null>(null);
   const [shopSaving, setShopSaving] = useState(false);
 
-  // SumUp persisted config (overrides env vars). Mode production uniquement.
-  const [sumupForm, setSumupForm] = useState<{
-    api_key: string; merchant_code: string;
-    reader_id: string; return_url: string;
-  }>({ api_key: '', merchant_code: '', reader_id: '', return_url: '' });
-  const [sumupPersisted, setSumupPersisted] = useState<{
-    api_key_masked: string; merchant_code_masked: string;
-    reader_id_masked: string; return_url: string;
-  } | null>(null);
-  const [sumupSaving, setSumupSaving] = useState(false);
-
   // Hardware compatibility test status (per category)
   type HwTestStatus = 'idle' | 'running' | 'success' | 'error';
   const [hwTests, setHwTests] = useState<Record<string, { status: HwTestStatus; message?: string }>>({});
@@ -174,30 +152,12 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (tab === 'store') loadShopInfo();
-    if (tab === 'payment') loadSumupConfig();
     if (tab === 'communication') loadEmailConfig();
     if (tab === 'categories') loadCategories();
     if (tab === 'zones') loadZones();
     if (tab === 'hardware') loadHardware();
     if (tab === 'cahier') loadCahierData();
     if (tab === 'fidelite') loadLoyaltyConfig();
-  }, [tab]);
-
-  // ── SumUp config snapshot — fetched once on payment tab activation.
-  // Plus de polling sandbox : on lit la config persistée (clés masquées)
-  // et c'est tout. Toute vraie transaction CB passe par l'API SumUp en
-  // production.
-  useEffect(() => {
-    if (tab !== 'payment') return;
-    let cancelled = false;
-    const refresh = async () => {
-      try {
-        const res = await api.get('/api/pos/payments/cb/config');
-        if (!cancelled && res.ok) setSumupConfig(await res.json());
-      } catch { /* silent */ }
-    };
-    refresh();
-    return () => { cancelled = true; };
   }, [tab]);
 
   const loadShopInfo = async () => {
@@ -225,54 +185,6 @@ export default function SettingsPage() {
       }
     } catch { setError('Erreur de connexion'); }
     setShopSaving(false);
-  };
-
-  const loadSumupConfig = async () => {
-    try {
-      const res = await api.get('/api/admin/sumup-config');
-      if (res.ok) {
-        const data = await res.json();
-        setSumupPersisted(data.persisted);
-        setSumupForm({
-          // Never echo back the secret — leave empty so user explicitly retypes to change
-          api_key: '',
-          merchant_code: '',
-          reader_id: '',
-          return_url: data.persisted.return_url || '',
-        });
-      }
-    } catch {
-      setError('Erreur de chargement SumUp');
-    }
-  };
-
-  const saveSumupConfig = async () => {
-    setSumupSaving(true);
-    setError('');
-    try {
-      // Only send fields the operator explicitly typed — empty = no change.
-      const body: Record<string, unknown> = {
-        return_url: sumupForm.return_url,
-      };
-      if (sumupForm.api_key.trim()) body.api_key = sumupForm.api_key.trim();
-      if (sumupForm.merchant_code.trim()) body.merchant_code = sumupForm.merchant_code.trim();
-      if (sumupForm.reader_id.trim()) body.reader_id = sumupForm.reader_id.trim();
-      const res = await api.put('/api/admin/sumup-config', body);
-      if (res.ok) {
-        const data = await res.json();
-        setSumupPersisted(data.persisted);
-        setSumupForm((f) => ({ ...f, api_key: '', merchant_code: '', reader_id: '' }));
-        setMessage('Configuration SumUp enregistrée');
-        setTimeout(() => setMessage(''), 3000);
-        // Refresh masked config snapshot.
-        const snap = await api.get('/api/pos/payments/cb/config');
-        if (snap.ok) setSumupConfig(await snap.json());
-      } else {
-        const e = await res.json().catch(() => ({}));
-        setError(e.detail || 'Erreur enregistrement SumUp');
-      }
-    } catch { setError('Erreur de connexion'); }
-    setSumupSaving(false);
   };
 
   // ── Email gateway config ─────────────────────────────────────────────────
@@ -827,7 +739,6 @@ export default function SettingsPage() {
 
   const tabs = [
     { key: 'store' as const, label: 'Boutique' },
-    { key: 'payment' as const, label: 'Paiement' },
     { key: 'caisse' as const, label: 'Caisse' },
     { key: 'communication' as const, label: 'Communication' },
     { key: 'cahier' as const, label: 'Cahier de travail' },
@@ -1010,9 +921,14 @@ export default function SettingsPage() {
                   <p className="font-medium text-black">CB, Especes, Cheque, Virement</p>
                 </div>
               </div>
+              <p className="mt-3 text-xs text-vz-ink-mute">
+                Les identifiants SumUp (clé API, merchant code) sont fournis par
+                les variables d&apos;environnement / l&apos;ops. La gestion des
+                terminaux (TPE Solo) se fait dans l&apos;onglet « Caisse ».
+              </p>
               <div className="mt-4">
-                <Button variant="outline" onClick={() => setTab('payment')}>
-                  Configurer SumUp
+                <Button variant="outline" onClick={() => setTab('caisse')}>
+                  Gérer les terminaux
                 </Button>
               </div>
             </Card>
@@ -1032,112 +948,6 @@ export default function SettingsPage() {
                   <p className="font-medium text-vz-teal">api.vintiz.fr</p>
                 </div>
               </div>
-            </Card>
-          </div>
-        )}
-
-        {/* PAYMENT TAB */}
-        {tab === 'payment' && (
-          <div className="space-y-6">
-            <Card title="Configuration SumUp (TPE Solo) — Production">
-              <p className="text-sm text-vz-ink-soft mb-4">
-                Vintiz utilise SumUp en <strong>mode production uniquement</strong>.
-                Le mode sandbox/simulation a été retiré : toute vente CB passe
-                directement par api.sumup.com et débite la carte réelle.
-              </p>
-              {!sumupConfig ? (
-                <p className="text-sm text-gray-500">Chargement de la configuration…</p>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-5 p-3 rounded-lg bg-vz-bg/60 border border-vz-line">
-                    <div>
-                      <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Environnement</p>
-                      <p className="font-medium text-black mt-1">
-                        <span className="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">
-                          PRODUCTION
-                        </span>
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Clé API</p>
-                      <p className="font-medium text-black mt-1">
-                        {sumupConfig.api_key_set
-                          ? '✓ Définie'
-                          : <span className="text-red-600">⚠ Non définie — CB indisponible</span>}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-vz-ink-mute text-xs uppercase tracking-wider">Merchant code</p>
-                      <p className="font-mono text-black mt-1 text-xs">
-                        {sumupConfig.merchant_code_set ? sumupConfig.merchant_code_masked : '—'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="sm:col-span-2">
-                      <label className="block text-sm font-medium text-black mb-1.5">
-                        Clé API SumUp
-                        {sumupPersisted?.api_key_masked && <span className="ml-2 text-xs text-vz-ink-mute font-mono">actuelle : {sumupPersisted.api_key_masked}</span>}
-                      </label>
-                      <input
-                        type="password"
-                        value={sumupForm.api_key}
-                        onChange={(e) => setSumupForm({ ...sumupForm, api_key: e.target.value })}
-                        placeholder={sumupPersisted?.api_key_masked ? 'Laisser vide pour conserver' : 'sup_sk_…'}
-                        autoComplete="off"
-                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-black mb-1.5">
-                        Merchant code
-                        {sumupPersisted?.merchant_code_masked && <span className="ml-2 text-xs text-vz-ink-mute font-mono">{sumupPersisted.merchant_code_masked}</span>}
-                      </label>
-                      <input
-                        type="text"
-                        value={sumupForm.merchant_code}
-                        onChange={(e) => setSumupForm({ ...sumupForm, merchant_code: e.target.value })}
-                        placeholder={sumupPersisted?.merchant_code_masked ? 'Laisser vide pour conserver' : 'M…'}
-                        autoComplete="off"
-                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-black mb-1.5">
-                        Reader ID (TPE Solo, optionnel)
-                        {sumupPersisted?.reader_id_masked && <span className="ml-2 text-xs text-vz-ink-mute font-mono">{sumupPersisted.reader_id_masked}</span>}
-                      </label>
-                      <input
-                        type="text"
-                        value={sumupForm.reader_id}
-                        onChange={(e) => setSumupForm({ ...sumupForm, reader_id: e.target.value })}
-                        placeholder={sumupPersisted?.reader_id_masked ? 'Laisser vide pour conserver' : 'reader_…'}
-                        autoComplete="off"
-                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
-                      />
-                      <p className="text-xs text-gray-400 mt-1">Si défini : push direct sur le TPE (le client tape, le caissier ne saisit pas).</p>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <Input
-                        label="Return URL (optionnel)"
-                        value={sumupForm.return_url}
-                        onChange={(e) => setSumupForm({ ...sumupForm, return_url: e.target.value })}
-                        placeholder="https://app.vintiz.fr/pos/sumup-return"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center mt-5 flex-wrap gap-3">
-                    <p className="text-xs text-gray-500">
-                      Les valeurs persistées priment sur les variables d&apos;environnement.
-                      Champ vide = conserver la valeur actuelle.
-                    </p>
-                    <Button onClick={saveSumupConfig} disabled={sumupSaving}>
-                      {sumupSaving ? 'Enregistrement…' : 'Enregistrer SumUp'}
-                    </Button>
-                  </div>
-                </>
-              )}
             </Card>
           </div>
         )}
@@ -1852,19 +1662,21 @@ export default function SettingsPage() {
 
                 <Card title="Terminal de paiement — SumUp">
                   <p className="text-sm text-gray-500 mb-3">
-                    La configuration complète (clé API, merchant code, reader ID, mode sandbox/production)
-                    se fait dans l&apos;onglet&nbsp;
+                    Les identifiants SumUp (clé API, merchant code) sont fournis
+                    par les variables d&apos;environnement / l&apos;ops. La
+                    gestion des terminaux (TPE Solo, reader ID) se fait dans
+                    l&apos;onglet&nbsp;
                     <button
                       type="button"
-                      onClick={() => setTab('payment')}
+                      onClick={() => setTab('caisse')}
                       className="text-vz-teal underline font-medium"
                     >
-                      Paiement
+                      Caisse
                     </button>
-                    &nbsp;— les valeurs sont persistées et primer sur les variables d&apos;environnement.
+                    .
                   </p>
-                  <Button variant="outline" onClick={() => setTab('payment')}>
-                    Ouvrir la configuration SumUp
+                  <Button variant="outline" onClick={() => setTab('caisse')}>
+                    Gérer les terminaux
                   </Button>
                 </Card>
 
