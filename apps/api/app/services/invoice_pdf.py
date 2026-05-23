@@ -82,7 +82,15 @@ def generate_invoice_pdf(
     )
 
     # ---- Charte v3 « Sauge Néo » ----
-    TEAL = colors.HexColor("#0B7A6A")
+    # Accent colour is template-driven (Tickets & Factures studio); falls back
+    # to the charte teal when the template has no override or an invalid hex.
+    _accent = "#0B7A6A"
+    if template is not None and getattr(template, "accent_color", None):
+        _accent = template.accent_color
+    try:
+        TEAL = colors.HexColor(_accent)
+    except Exception:  # noqa: BLE001 — never fail an invoice on a bad colour
+        TEAL = colors.HexColor("#0B7A6A")
     INK = colors.HexColor("#0E0E0C")
     INK_SOFT = colors.HexColor("#4A4A47")
     INK_MUTE = colors.HexColor("#8B8B86")
@@ -192,9 +200,13 @@ def generate_invoice_pdf(
     # ------------------------------------------------------------------
     # Émetteur + Facturé à (side by side, buyer on a cream panel)
     # ------------------------------------------------------------------
+    accent_tag = _accent.lstrip("#") or "0B7A6A"
+    name_line = f"<b>{shop.get('name', 'Vintiz')}</b>"
+    if shop.get("legal_form"):
+        name_line += f" — {shop['legal_form']}"
     seller_lines = [
-        "<font color='#0B7A6A'><b>ÉMETTEUR</b></font>",
-        f"<b>{shop.get('name', 'Vintiz')}</b>",
+        f"<font color='#{accent_tag}'><b>ÉMETTEUR</b></font>",
+        name_line,
         shop.get("tagline", ""),
         shop.get("address_line1", ""),
     ]
@@ -213,9 +225,13 @@ def generate_invoice_pdf(
         seller_lines.append(f"RCS : {shop['rcs']}")
     if shop.get("ape"):
         seller_lines.append(f"APE : {shop['ape']}")
+    if shop.get("tva_intracom"):
+        seller_lines.append(f"TVA intracom. : {shop['tva_intracom']}")
+    if shop.get("capital_social"):
+        seller_lines.append(f"Capital : {shop['capital_social']}")
     seller_html = "<br/>".join(line for line in seller_lines if line)
 
-    buyer_lines = ["<font color='#0B7A6A'><b>FACTURÉ À</b></font>"]
+    buyer_lines = [f"<font color='#{accent_tag}'><b>FACTURÉ À</b></font>"]
     if transaction.client_company_name:
         buyer_lines.append(f"<b>{transaction.client_company_name}</b>")
     if transaction.client_billing_address:
@@ -248,6 +264,11 @@ def generate_invoice_pdf(
     )
     story.append(parties)
     story.append(Spacer(1, 7 * mm))
+
+    # Optional intro note (template-driven).
+    if template is not None and getattr(template, "header_note", None):
+        story.append(Paragraph(template.header_note, body_soft))
+        story.append(Spacer(1, 4 * mm))
 
     # ------------------------------------------------------------------
     # Items table
@@ -347,13 +368,21 @@ def generate_invoice_pdf(
     # ------------------------------------------------------------------
     # Payment + footer
     # ------------------------------------------------------------------
+    show_payment_block = (
+        getattr(template, "show_payment_block", True) if template else True
+    )
     payments = transaction.payments or []
-    if payments:
-        pay_lines = ["<font color='#0B7A6A'><b>RÈGLEMENT</b></font>"]
+    if show_payment_block and (payments or shop.get("iban")):
+        pay_lines = [f"<font color='#{accent_tag}'><b>RÈGLEMENT</b></font>"]
         for p in payments:
             pay_lines.append(
                 f"{_payment_method_label(p.method)} : {_format_eur(float(p.amount))}"
             )
+        if template is not None and getattr(template, "payment_terms", None):
+            pay_lines.append(template.payment_terms)
+        if shop.get("iban"):
+            bic = f" — BIC : {shop['bic']}" if shop.get("bic") else ""
+            pay_lines.append(f"IBAN : {shop['iban']}{bic}")
         story.append(Paragraph("<br/>".join(pay_lines), body))
         story.append(Spacer(1, 5 * mm))
 
@@ -362,6 +391,10 @@ def generate_invoice_pdf(
         story.append(Spacer(1, 2 * mm))
     if template and template.conditions_retour:
         story.append(Paragraph(template.conditions_retour, body_small))
+        story.append(Spacer(1, 2 * mm))
+    show_legal = getattr(template, "show_legal_mentions", True) if template else True
+    if show_legal and template and getattr(template, "legal_mentions", None):
+        story.append(Paragraph(template.legal_mentions, body_small))
         story.append(Spacer(1, 2 * mm))
 
     story.append(Spacer(1, 2 * mm))

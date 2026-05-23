@@ -203,6 +203,27 @@ export default function AdminTransactionsPage() {
     .filter((r) => r.type === 'refund')
     .reduce((sum, r) => sum + r.total_ttc, 0);
 
+  const sendInvoice = async (tx: AdminTransaction): Promise<void> => {
+    const to = window.prompt(
+      'Adresse email du destinataire (laisser vide pour utiliser le client lié) :',
+      '',
+    );
+    if (to === null) return; // cancelled
+    try {
+      const res = await api.post(`/api/pos/transactions/${tx.id}/send-invoice`, {
+        to: to.trim() || undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        alert(data.message || 'Facture envoyée.');
+      } else {
+        alert(`Erreur : ${data.detail || res.statusText}`);
+      }
+    } catch {
+      alert('Erreur réseau.');
+    }
+  };
+
   const downloadInvoice = async (tx: AdminTransaction): Promise<void> => {
     try {
       const res = await api.get(`/api/pos/transactions/${tx.id}/invoice.pdf`);
@@ -514,9 +535,14 @@ export default function AdminTransactionsPage() {
             />
             <div className="flex flex-wrap gap-2 pt-3">
               {detail.is_invoice && (
-                <Button onClick={() => void downloadInvoice(detail)}>
-                  Télécharger facture PDF
-                </Button>
+                <>
+                  <Button onClick={() => void downloadInvoice(detail)}>
+                    Télécharger facture PDF
+                  </Button>
+                  <Button variant="outline" onClick={() => void sendInvoice(detail)}>
+                    Envoyer par email
+                  </Button>
+                </>
               )}
               <Button
                 variant="outline"

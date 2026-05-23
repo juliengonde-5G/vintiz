@@ -446,6 +446,11 @@ class ShopInfoUpdate(BaseModel):
     siret: str | None = None
     rcs: str | None = None
     ape: str | None = None
+    legal_form: str | None = None
+    capital_social: str | None = None
+    tva_intracom: str | None = None
+    iban: str | None = None
+    bic: str | None = None
 
 
 @router.get("/shop-info")

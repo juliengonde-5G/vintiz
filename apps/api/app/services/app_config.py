@@ -43,6 +43,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "siret": "",
         "rcs": "",
         "ape": "",
+        # Seller legal + banking fields rendered on B2B invoices.
+        "legal_form": "",          # e.g. "SARL", "Association loi 1901"
+        "capital_social": "",      # e.g. "10 000 €"
+        "tva_intracom": "",        # n° TVA intracommunautaire (FRxx…)
+        "iban": "",                # IBAN for invoice payment
+        "bic": "",                 # BIC / SWIFT
     },
     # SumUp config — editable via /settings > Paiement (overrides env vars)
     "sumup": {

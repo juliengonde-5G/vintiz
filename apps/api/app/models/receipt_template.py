@@ -44,5 +44,34 @@ class ReceiptTemplate(Base):
     show_loyalty_footer: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )
+
+    # --- Presentation (mostly invoices — Pennylane-style customisation) -----
+    # Accent colour used for the invoice bands/rules (hex). Defaults to the
+    # charte teal.
+    accent_color: Mapped[str] = mapped_column(
+        String(9), nullable=False, default="#0B7A6A"
+    )
+    # Free intro note printed above the items table (e.g. a thank-you line or
+    # a PO reference prompt).
+    header_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Payment terms line (e.g. "Paiement à réception — 30 jours").
+    payment_terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Legal mentions block (late-payment penalties, escompte, médiation…).
+    legal_mentions: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # --- Invoice email (configurable subject/body, PDF attached) ------------
+    # Both support {placeholders}: {invoice_number} {company} {total_ttc}
+    # {date} {shop_name}.
+    email_subject: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    email_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # --- Block visibility toggles -------------------------------------------
+    show_payment_block: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    show_legal_mentions: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

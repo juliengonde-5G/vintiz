@@ -993,6 +993,175 @@ async def get_transaction_invoice_pdf(
     )
 
 
+class SendInvoiceRequest(BaseModel):
+    to: str | None = None  # override recipient (B2B walk-in without account)
+
+
+def _invoice_email_context(transaction, shop_name: str) -> dict[str, str]:
+    label = (
+        f"FACT-{transaction.created_at.year}-{transaction.invoice_number:06d}"
+        if transaction.invoice_number is not None and transaction.created_at
+        else f"FACT-{transaction.transaction_number:06d}"
+    )
+    return {
+        "invoice_number": label,
+        "company": transaction.client_company_name or "",
+        "total_ttc": f"{float(transaction.total_ttc):.2f} €",
+        "date": transaction.created_at.strftime("%d/%m/%Y")
+        if transaction.created_at
+        else "",
+        "shop_name": shop_name,
+    }
+
+
+def _apply_placeholders(text: str, ctx: dict[str, str]) -> str:
+    """Replace ``{key}`` tokens — replace-based (no str.format) so stray
+    braces in operator-authored text never raise."""
+    out = text
+    for key, value in ctx.items():
+        out = out.replace("{" + key + "}", value)
+    return out
+
+
+@router.post(
+    "/transactions/{transaction_id}/send-invoice",
+    dependencies=[Depends(manager_only)],
+)
+async def send_transaction_invoice(
+    transaction_id: uuid.UUID,
+    request: SendInvoiceRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Email the B2B invoice PDF to the client.
+
+    Manager only. The subject + body come from the invoice template
+    (Tickets & Factures studio), with ``{invoice_number} {company}
+    {total_ttc} {date} {shop_name}`` placeholders. The generated PDF is
+    attached. Falls back to a neutral wording when the template has no email
+    copy configured.
+    """
+    from app.models.client import Client
+    from app.models.pos import Transaction
+    from app.models.receipt_template import ReceiptKind, ReceiptTemplate
+    from app.services.app_config import get_section
+    from app.services.email_gateway import (
+        EmailDeliveryError,
+        EmailMessage,
+        send_email as _gateway_send,
+    )
+    from app.services.invoice_pdf import generate_invoice_pdf
+
+    row = (
+        await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Transaction introuvable")
+    if not row.is_invoice:
+        raise HTTPException(
+            status_code=400, detail="Cette transaction n'est pas une facture B2B."
+        )
+
+    template = None
+    if row.template_id is not None:
+        template = (
+            await db.execute(
+                select(ReceiptTemplate).where(ReceiptTemplate.id == row.template_id)
+            )
+        ).scalar_one_or_none()
+    if template is None:
+        template = (
+            await db.execute(
+                select(ReceiptTemplate)
+                .where(
+                    ReceiptTemplate.kind == ReceiptKind.invoice,
+                    ReceiptTemplate.is_default.is_(True),
+                    ReceiptTemplate.is_active.is_(True),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    recipient = (request.to or "").strip() or None
+    if not recipient and row.client_id is not None:
+        client = (
+            await db.execute(select(Client).where(Client.id == row.client_id))
+        ).scalar_one_or_none()
+        if client and client.email:
+            recipient = client.email
+    if not recipient:
+        raise HTTPException(
+            status_code=400,
+            detail="Adresse email manquante (ni client lié, ni 'to' fourni).",
+        )
+
+    pdf_bytes = generate_invoice_pdf(row, template=template)
+    shop_name = (get_section("shop_info") or {}).get("name", "Vintiz")
+    ctx = _invoice_email_context(row, shop_name)
+
+    subject_tpl = (
+        template.email_subject
+        if template and template.email_subject
+        else "Votre facture {invoice_number} — {shop_name}"
+    )
+    body_tpl = (
+        template.email_body
+        if template and template.email_body
+        else (
+            "Bonjour,\n\n"
+            "Veuillez trouver ci-joint votre facture {invoice_number} "
+            "d'un montant de {total_ttc}.\n\n"
+            "Cordialement,\n{shop_name}"
+        )
+    )
+    subject = _apply_placeholders(subject_tpl, ctx)
+    body_text = _apply_placeholders(body_tpl, ctx)
+    body_html = '<pre style="font-family: monospace">' + body_text + "</pre>"
+
+    try:
+        outcome = _gateway_send(
+            EmailMessage(
+                to=recipient,
+                subject=subject,
+                html=body_html,
+                text=body_text,
+                attachments=[
+                    {
+                        "filename": f"{ctx['invoice_number']}.pdf",
+                        "content": pdf_bytes,
+                        "mime": "application/pdf",
+                    }
+                ],
+                tags=["invoice"],
+            )
+        )
+    except EmailDeliveryError:
+        logger.exception(
+            "Failed to send invoice email for transaction %s", transaction_id
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="L'envoi de la facture par email a échoué. Réessayez plus tard.",
+        )
+
+    simulated = outcome.status != "sent"
+    return {
+        "success": True,
+        "status": outcome.status,
+        "simulated": simulated,
+        "to": recipient,
+        "backend": outcome.backend,
+        "message": (
+            f"Facture envoyée à {recipient}"
+            if not simulated
+            else (
+                f"⚠ Email simulé (provider non configuré). {recipient} n'a "
+                f"PAS reçu la facture. Configurez Brevo/SMTP dans "
+                f"/settings > Communication."
+            )
+        ),
+    }
+
+
 @router.get("/transactions/{transaction_id}/receipt")
 async def get_transaction_receipt(
     transaction_id: uuid.UUID,

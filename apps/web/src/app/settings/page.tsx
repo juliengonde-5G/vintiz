@@ -8,7 +8,7 @@ import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import CashManagementSettingsPanel from '@/components/settings/CashManagementSettingsPanel';
 import PosQuickAddPanel from '@/components/settings/PosQuickAddPanel';
-import ReceiptTemplatesPanel from '@/components/settings/ReceiptTemplatesPanel';
+import ReceiptInvoiceStudio from '@/components/settings/ReceiptInvoiceStudio';
 import ScoringWeightsPanel from '@/components/settings/ScoringWeightsPanel';
 import SumUpTerminalsPanel from '@/components/settings/SumUpTerminalsPanel';
 import { api } from '@/lib/api';
@@ -73,7 +73,7 @@ interface CompatibilityItem {
 }
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'store' | 'caisse' | 'communication' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
+  const [tab, setTab] = useState<'store' | 'caisse' | 'tickets' | 'communication' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
   const [hardware, setHardware] = useState<HardwareConfig | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityItem[]>([]);
   const [hwSaving, setHwSaving] = useState(false);
@@ -123,6 +123,8 @@ export default function SettingsPage() {
     phone: string; email: string; website: string;
     hours: string; surface_m2: number; vat_rate_percent: number;
     siret: string; rcs: string; ape: string;
+    legal_form: string; capital_social: string; tva_intracom: string;
+    iban: string; bic: string;
   } | null>(null);
   const [shopSaving, setShopSaving] = useState(false);
 
@@ -741,6 +743,7 @@ export default function SettingsPage() {
   const tabs = [
     { key: 'store' as const, label: 'Boutique' },
     { key: 'caisse' as const, label: 'Caisse' },
+    { key: 'tickets' as const, label: 'Tickets & Factures' },
     { key: 'communication' as const, label: 'Communication' },
     { key: 'cahier' as const, label: 'Cahier de travail' },
     { key: 'fidelite' as const, label: 'Fidelite' },
@@ -901,7 +904,39 @@ export default function SettingsPage() {
                       value={shopInfo.ape}
                       onChange={(e) => setShopInfo({ ...shopInfo, ape: e.target.value })}
                     />
+                    <Input
+                      label="Forme juridique"
+                      value={shopInfo.legal_form}
+                      onChange={(e) => setShopInfo({ ...shopInfo, legal_form: e.target.value })}
+                      placeholder="SARL, Association loi 1901…"
+                    />
+                    <Input
+                      label="Capital social"
+                      value={shopInfo.capital_social}
+                      onChange={(e) => setShopInfo({ ...shopInfo, capital_social: e.target.value })}
+                      placeholder="10 000 €"
+                    />
+                    <Input
+                      label="TVA intracommunautaire"
+                      value={shopInfo.tva_intracom}
+                      onChange={(e) => setShopInfo({ ...shopInfo, tva_intracom: e.target.value })}
+                      placeholder="FR..."
+                    />
+                    <Input
+                      label="IBAN (facture)"
+                      value={shopInfo.iban}
+                      onChange={(e) => setShopInfo({ ...shopInfo, iban: e.target.value })}
+                    />
+                    <Input
+                      label="BIC"
+                      value={shopInfo.bic}
+                      onChange={(e) => setShopInfo({ ...shopInfo, bic: e.target.value })}
+                    />
                   </div>
+                  <p className="text-xs text-vz-ink-mute mt-2">
+                    Ces informations vendeur alimentent l&apos;émetteur et le bloc
+                    règlement des factures (onglet « Tickets &amp; Factures »).
+                  </p>
                   <div className="flex justify-end mt-5">
                     <Button onClick={saveShopInfo} disabled={shopSaving}>
                       {shopSaving ? 'Enregistrement…' : 'Enregistrer la boutique'}
@@ -953,13 +988,19 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* CAISSE TAB — Multi-terminaux SumUp + templates ticket/facture + routine */}
+        {/* CAISSE TAB — Multi-terminaux SumUp + article sac + routine caisse */}
         {tab === 'caisse' && (
           <div className="space-y-6">
             <SumUpTerminalsPanel />
-            <ReceiptTemplatesPanel />
             <PosQuickAddPanel />
             <CashManagementSettingsPanel />
+          </div>
+        )}
+
+        {/* TICKETS & FACTURES TAB — studio mise en forme ticket + facture PDF */}
+        {tab === 'tickets' && (
+          <div className="space-y-6">
+            <ReceiptInvoiceStudio />
           </div>
         )}
 
