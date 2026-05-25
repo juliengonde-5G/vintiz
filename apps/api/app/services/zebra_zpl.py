@@ -139,6 +139,10 @@ def build_label_zpl(
     # dots (8/mm); fine-tune against the /labels/preview render if needed.
     return (
         "^XA"
+        # Print orientation inversée (180°) : l'étiquette sort dans le bon sens
+        # de lecture par rapport au sens d'éjection de la Zebra ZD421d. Doit
+        # précéder les champs ^FO pour s'appliquer à toute l'étiquette.
+        "^POI"
         f"^PR{pr}"
         f"^MD{md}"
         "^CI28"
