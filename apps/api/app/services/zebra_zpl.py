@@ -92,19 +92,27 @@ def _price_str(price: float) -> str:
     return f"{price:.2f} €".replace(".", ",")
 
 
-def _barcode_layout(ref: str, *, canvas_w: int = LABEL_WIDTH_DOTS) -> tuple[int, int]:
+def _barcode_layout(
+    ref: str, *, canvas_w: int = LABEL_WIDTH_DOTS, right_shift: int = 0
+) -> tuple[int, int]:
     """Module width + x-origin so the Code 128 is centred and fits the canvas.
 
     Largeur Code 128 (modules) = start(11) + n×11 + checksum(11) + stop(13)
     + 2 zones de silence (10 chacune). On choisit la largeur de module la plus
     grande qui rentre (meilleure lisibilité scanner), puis on centre.
+
+    ``right_shift`` ajoute une marge à gauche (décale le code-barres vers la
+    droite) pour compenser l'offset physique du printhead ; on clampe pour que
+    le code reste dans le canvas.
     """
     n = len(ref)
     modules = 11 * (n + 2) + 13 + 20
     for by in (3, 2, 1):
         width = by * modules
         if width <= canvas_w - 16:
-            return by, max(8, (canvas_w - width) // 2)
+            centered = (canvas_w - width) // 2
+            max_x = canvas_w - width - 8
+            return by, max(8, min(centered + right_shift, max_x))
     return 1, 8
 
 
@@ -133,17 +141,17 @@ def build_info_label_zpl(
     week = _week_label(data)
 
     # Paysage 640×300 (12 dpmm). Tout centré sur la largeur (^FB640), empilé
-    # verticalement dans Y ≤ ~290 :
-    #   y=20 : nom du produit (police 46) → fin y=66
-    #   y=95 : code-barres Code 128 horizontal centré, h=120 + interprétation
-    #   y=255: semaine (police 34) → fin y=289
-    by, bx = _barcode_layout(ref)
+    # verticalement dans Y ≤ ~250 (zone imprimable utile) :
+    #   y=8  : nom du produit (police 30) → fin y=38
+    #   y=46 : code-barres Code 128 décalé à droite, h=90 + interprétation
+    #   y=195: semaine (police 30) → fin y=225
+    by, bx = _barcode_layout(ref, right_shift=55)
     return (
         "^XA"
         + _zpl_head(pr, md)
-        + f"^FO0,10^FB640,1,0,C,0^A0N,32,28^FD{name}^FS"
-        + f"^FO{bx},55^BY{by},2.5,90^BCN,90,Y,N,N,A^FD{ref}^FS"
-        + f"^FO0,210^FB640,1,0,C,0^A0N,28,24^FD{week}^FS"
+        + f"^FO0,8^FB640,1,0,C,0^A0N,30,28^FD{name}^FS"
+        + f"^FO{bx},46^BY{by},2.5,90^BCN,90,Y,N,N,A^FD{ref}^FS"
+        + f"^FO0,195^FB640,1,0,C,0^A0N,30,28^FD{week}^FS"
         + f"^PQ{copies}"
         + "^XZ"
     )
