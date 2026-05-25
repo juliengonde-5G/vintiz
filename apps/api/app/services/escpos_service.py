@@ -367,7 +367,7 @@ def build_receipt(
     total_paid = Decimal("0")
     for payment in payments:
         method = getattr(payment, "method", None)
-        label = getattr(method, "value", str(method or "PAIE")).upper()
+        label = getattr(method, "value", str(method or "PAIE")).upper().replace("_", " ")
         amount = float(getattr(payment, "amount", 0) or 0)
         total_paid += Decimal(str(amount))
         out += _row(label, f"{amount:.2f} EUR", width=width)

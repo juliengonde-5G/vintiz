@@ -214,6 +214,7 @@ class PosService:
         method_map = {
             "especes": "cash", "carte": "card", "cheque": "cheque",
             "cash": "cash", "card": "card", "avoir": "avoir",
+            "cheque_cdc": "cheque_cdc",
         }
         avoir_total = Decimal("0")
         for pay in payments:

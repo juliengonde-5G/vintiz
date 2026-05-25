@@ -74,6 +74,7 @@ const METHOD_LABEL: Record<string, string> = {
   cash: 'Espèces',
   card: 'CB',
   cheque: 'Chèque',
+  cheque_cdc: 'Chèque CDC',
   avoir: 'Avoir',
   transfer: 'Virement',
 };

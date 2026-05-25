@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-export type PosPaymentMethod = 'cash' | 'card' | 'cheque' | 'avoir';
+export type PosPaymentMethod = 'cash' | 'card' | 'cheque' | 'cheque_cdc' | 'avoir';
 
 interface MethodConfig {
   id: PosPaymentMethod;
@@ -72,15 +72,31 @@ const METHODS: Record<PosPaymentMethod, MethodConfig> = {
       </svg>
     ),
   },
+  cheque_cdc: {
+    id: 'cheque_cdc',
+    label: 'Chèque CDC',
+    hint: 'Le Club des Commerçants',
+    icon: (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src="/payment/cdc-logo.svg"
+        alt=""
+        aria-hidden="true"
+        width={44}
+        height={44}
+        className="object-contain"
+      />
+    ),
+  },
   avoir: {
     id: 'avoir',
     label: 'Avoir',
     hint: 'Solde client',
     icon: (
       <svg {...ICON_PROPS} aria-hidden="true">
-        <circle cx="24" cy="24" r="16" />
-        <path d="M16 24h16" />
-        <path d="M19 19l-3 5 3 5" />
+        <path d="M42 24V14H10a4 4 0 0 1 0-8h28v8" />
+        <path d="M6 10v28a4 4 0 0 0 4 4h32V32" />
+        <path d="M36 24a4 4 0 0 0 0 8h8v-8Z" />
       </svg>
     ),
   },
@@ -95,7 +111,7 @@ const METHODS: Record<PosPaymentMethod, MethodConfig> = {
  * stays the same.
  */
 export default function PaymentMethodSelector({
-  methods = ['cash', 'card', 'cheque', 'avoir'],
+  methods = ['cash', 'card', 'cheque', 'cheque_cdc', 'avoir'],
   disabled = {},
   disabledReasons = {},
   onPick,

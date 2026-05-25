@@ -35,6 +35,7 @@ def _payment_method_label(method: PaymentMethod | str) -> str:
         "cash": "Espèces",
         "card": "Carte bancaire",
         "cheque": "Chèque",
+        "cheque_cdc": "Chèque CDC",
         "transfer": "Virement",
         "avoir": "Avoir",
     }.get(raw, raw.capitalize())

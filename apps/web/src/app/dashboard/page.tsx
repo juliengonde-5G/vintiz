@@ -107,6 +107,7 @@ function formatDateShort(dateStr: string): string {
 function methodLabel(m: string): string {
   if (m === 'especes' || m === 'cash') return 'Espèces';
   if (m === 'carte' || m === 'card') return 'CB';
+  if (m === 'cheque_cdc') return 'Chèque CDC';
   if (m === 'cheque') return 'Chèque';
   return m;
 }

@@ -53,6 +53,7 @@ def _payment_method_label(method: PaymentMethod | str) -> str:
         "cash": "Espèces",
         "card": "Carte bancaire",
         "cheque": "Chèque",
+        "cheque_cdc": "Chèque CDC",
         "transfer": "Virement",
         "avoir": "Avoir",
     }.get(raw, raw.capitalize())
@@ -379,7 +380,7 @@ async def generate_z_report_pdf(db: AsyncSession, z_report: ZReport) -> bytes:
         Paragraph("<b>Nb</b>", body_right),
     ]
     method_rows = [method_header]
-    for method in ("cash", "card", "cheque", "avoir", "transfer"):
+    for method in ("cash", "card", "cheque", "cheque_cdc", "avoir", "transfer"):
         bucket = payment_totals.get(method)
         if not bucket:
             continue

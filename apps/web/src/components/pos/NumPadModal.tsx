@@ -27,6 +27,7 @@ const METHOD_LABEL: Record<PosPaymentMethod, string> = {
   cash: 'Espèces',
   card: 'Carte bancaire',
   cheque: 'Chèque',
+  cheque_cdc: 'Chèque CDC',
   avoir: 'Avoir',
 };
 

@@ -25,6 +25,10 @@ class PaymentMethod(str, enum.Enum):
     cash = "cash"
     card = "card"
     cheque = "cheque"
+    # Chèque cadeau "Le Club des Commerçants" — encaissé comme un chèque mais
+    # suivi séparément pour le remboursement auprès de l'association (rapport Z,
+    # export fiscal et tickets le distinguent d'un chèque classique).
+    cheque_cdc = "cheque_cdc"
     transfer = "transfer"
     avoir = "avoir"  # Settled from the client's store-credit balance
 

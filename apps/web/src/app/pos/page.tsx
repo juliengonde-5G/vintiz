@@ -62,7 +62,7 @@ interface CartItem {
 }
 
 interface PaymentLine {
-  method: 'especes' | 'carte' | 'cheque' | 'avoir';
+  method: 'especes' | 'carte' | 'cheque' | 'cheque_cdc' | 'avoir';
   amount: number;
 }
 
@@ -1183,6 +1183,7 @@ export default function POSPage() {
     especes: 'Especes',
     carte: 'Carte (CB)',
     cheque: 'Cheque',
+    cheque_cdc: 'Cheque CDC',
     avoir: 'Avoir client',
   };
 
@@ -2169,9 +2170,10 @@ export default function POSPage() {
                     onClick={() => addPayment('especes')}
                     className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink"
                   >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-vz-teal">
-                      <rect x="1" y="4" width="22" height="16" rx="2"/>
-                      <line x1="1" y1="10" x2="23" y2="10"/>
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-vz-teal">
+                      <rect x="2" y="6" width="20" height="12" rx="2"/>
+                      <circle cx="12" cy="12" r="2.5"/>
+                      <path d="M6 12h.01M18 12h.01"/>
                     </svg>
                     <span className="text-sm font-semibold">Espèces</span>
                   </button>
@@ -2180,9 +2182,10 @@ export default function POSPage() {
                     disabled={cbStatus === 'pending' || cbStatus === 'paid'}
                     className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-vz-teal">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-vz-teal">
                       <rect x="2" y="5" width="20" height="14" rx="2"/>
                       <line x1="2" y1="10" x2="22" y2="10"/>
+                      <line x1="6" y1="15" x2="10" y2="15"/>
                     </svg>
                     <span className="text-sm font-semibold">Carte CB</span>
                   </button>
@@ -2190,11 +2193,21 @@ export default function POSPage() {
                     onClick={() => addPayment('cheque')}
                     className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink"
                   >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-vz-teal">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                      <polyline points="14 2 14 8 20 8"/>
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-vz-teal">
+                      <rect x="2" y="6" width="20" height="12" rx="2"/>
+                      <path d="M6 11h8M6 14.5h5"/>
+                      <path d="M15 14.5l1.8 1.8L20 13"/>
                     </svg>
                     <span className="text-sm font-semibold">Chèque</span>
+                  </button>
+                  <button
+                    onClick={() => addPayment('cheque_cdc')}
+                    title="Chèque cadeau Le Club des Commerçants"
+                    className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/payment/cdc-logo.svg" alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
+                    <span className="text-sm font-semibold">Chèque CDC</span>
                   </button>
                   <button
                     onClick={() => addPayment('avoir')}
@@ -2202,11 +2215,10 @@ export default function POSPage() {
                     title={selectedClient?.avoir_balance ? `Solde avoir : ${formatCurrency(selectedClient.avoir_balance)}` : 'Pas d\'avoir disponible'}
                     className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-accent hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-vz-accent">
-                      <polyline points="20 12 20 22 4 22 4 12"/>
-                      <rect x="2" y="7" width="20" height="5"/>
-                      <line x1="12" y1="22" x2="12" y2="7"/>
-                      <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-vz-accent">
+                      <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+                      <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+                      <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>
                     </svg>
                     <span className="text-sm font-semibold">
                       Avoir{selectedClient?.avoir_balance ? ` (${formatCurrency(selectedClient.avoir_balance)})` : ''}
@@ -2412,6 +2424,7 @@ export default function POSPage() {
               cash: 'especes',
               card: 'carte',
               cheque: 'cheque',
+              cheque_cdc: 'cheque_cdc',
               avoir: 'avoir',
             };
             const mapped = tenders.map((t) => ({

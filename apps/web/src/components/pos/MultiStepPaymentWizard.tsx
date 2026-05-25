@@ -362,6 +362,7 @@ function labelFor(m: PosPaymentMethod): string {
     cash: 'Espèces',
     card: 'Carte bancaire',
     cheque: 'Chèque',
+    cheque_cdc: 'Chèque CDC',
     avoir: 'Avoir',
   }[m];
 }

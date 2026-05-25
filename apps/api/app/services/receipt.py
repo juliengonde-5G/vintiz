@@ -155,7 +155,7 @@ class ReceiptService:
 
         # Payments
         for payment in (transaction.payments or []):
-            method_label = payment.method.value.upper()
+            method_label = payment.method.value.upper().replace("_", " ")
             amount = float(payment.amount)
             lines.append(f"{method_label:<28}{amount:>13.2f} EUR")
 
@@ -287,7 +287,7 @@ class ReceiptService:
         lines.append("-" * width)
 
         for payment in (transaction.payments or []):
-            method_label = payment.method.value.upper()
+            method_label = payment.method.value.upper().replace("_", " ")
             amount = float(payment.amount)
             lines.append(f"{method_label + ' (rendu)':<28}{amount:>13.2f} EUR")
 

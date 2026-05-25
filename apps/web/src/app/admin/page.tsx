@@ -39,9 +39,10 @@ function formatDate(s: string): string {
 
 function PaymentBadge({ method }: { method: string }) {
   const cfg: Record<string, { label: string; cls: string }> = {
-    card:    { label: 'CB', cls: 'bg-blue-100 text-blue-700' },
-    cash:    { label: 'Espèces', cls: 'bg-green-100 text-green-700' },
-    cheque:  { label: 'Chèque', cls: 'bg-purple-100 text-purple-700' },
+    card:       { label: 'CB', cls: 'bg-blue-100 text-blue-700' },
+    cash:       { label: 'Espèces', cls: 'bg-green-100 text-green-700' },
+    cheque:     { label: 'Chèque', cls: 'bg-purple-100 text-purple-700' },
+    cheque_cdc: { label: 'Chèque CDC', cls: 'bg-red-100 text-red-700' },
   };
   const c = cfg[method] || { label: method, cls: 'bg-gray-100 text-gray-600' };
   return (
