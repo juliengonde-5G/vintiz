@@ -50,12 +50,14 @@ def test_label_starts_and_ends_with_zpl_markers():
     assert zpl.endswith("^XZ"), "ZPL job must end with ^XZ"
 
 
-def test_label_declares_utf8_and_25x52_dimensions():
+def test_label_declares_utf8_and_landscape_dimensions():
     zpl = build_label_zpl(_veste_femme_m())
     assert "^CI28" in zpl, "UTF-8 must be enabled for accents"
     assert LABEL_WIDTH_DOTS == 200 and LABEL_HEIGHT_DOTS == 416
-    assert f"^PW{LABEL_WIDTH_DOTS}" in zpl
-    assert f"^LL{LABEL_HEIGHT_DOTS}" in zpl
+    # Paysage : 52 mm en largeur d'impression (^PW), 25 mm en défilement (^LL).
+    assert f"^PW{LABEL_HEIGHT_DOTS}" in zpl
+    assert f"^LL{LABEL_WIDTH_DOTS}" in zpl
+    assert "^POI" not in zpl, "contenu non tourné : pas d'inversion ^POI"
 
 
 def test_label_renders_product_type():
@@ -65,10 +67,11 @@ def test_label_renders_product_type():
     assert "Veste en jean délavée" not in zpl
 
 
-def test_label_contains_rotated_code128_barcode_and_ref():
+def test_label_contains_horizontal_code128_barcode_and_ref():
     zpl = build_label_zpl(_veste_femme_m())
-    # Rotated Code 128 so the long reference fits on a 25 mm-wide label.
-    assert "^BCR," in zpl
+    # Paysage : Code 128 horizontal (^BCN) le long des 52 mm.
+    assert "^BCN," in zpl
+    assert "^BCR," not in zpl
     assert "^FDVTZ-2026-00142^FS" in zpl
 
 
