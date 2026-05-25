@@ -31,6 +31,7 @@ from app.api.seo.router import router as seo_router
 from app.api.newsletter.router import router as newsletter_router
 from app.api.cahier.router import router as cahier_router
 from app.api.checklist.router import router as checklist_router
+from app.api.accounting.router import router as accounting_router
 
 setup_logging()
 logger = logging.getLogger("vintiz")
@@ -156,6 +157,7 @@ app.include_router(seo_router, prefix="/api")
 app.include_router(newsletter_router, prefix="/api")
 app.include_router(cahier_router, prefix="/api")
 app.include_router(checklist_router, prefix="/api")
+app.include_router(accounting_router, prefix="/api")
 
 # Static files for product photo uploads (P1-008 follow-up). The folder is
 # created on demand by the upload handler, but we mount it eagerly so missing
