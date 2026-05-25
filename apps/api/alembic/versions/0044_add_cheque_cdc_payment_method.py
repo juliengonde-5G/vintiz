@@ -1,7 +1,7 @@
 """add 'cheque_cdc' to payment_method enum
 
-Revision ID: 0043
-Revises: 0042
+Revision ID: 0044
+Revises: 0043
 Create Date: 2026-05-25
 
 Adds the "Chèque CDC" payment method (chèque cadeau « Le Club des
@@ -16,8 +16,8 @@ Idempotent: skips if the value already exists in the enum.
 from alembic import op
 
 
-revision = "0043"
-down_revision = "0042"
+revision = "0044"
+down_revision = "0043"
 branch_labels = None
 depends_on = None
 
