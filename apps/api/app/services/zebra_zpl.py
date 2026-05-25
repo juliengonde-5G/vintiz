@@ -121,7 +121,7 @@ def build_info_label_zpl(
         "^XA"
         + _zpl_head(pr, md)
         + f"^FO0,8^FB640,1,0,C,0^A0N,30,30^FD{name}^FS"
-        + f"^FO20,45^BY2,2.5,85^BCN,85,Y,N,N,A^FD{ref}^FS"
+        + f"^FO20,45^BY1,2.5,85^BCN,85,Y,N,N,A^FD{ref}^FS"
         + f"^FO0,158^FB640,1,0,C,0^A0N,24,24^FD{week}^FS"
         + f"^PQ{copies}"
         + "^XZ"
