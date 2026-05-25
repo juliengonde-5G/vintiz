@@ -136,8 +136,13 @@ def build_info_label_zpl(
     pr = max(2, min(6, int(print_rate)))
     md = max(-30, min(30, int(media_darkness)))
 
-    name = _sanitize(data.product_name, max_length=28) or "Article"
-    ref  = _sanitize(data.barcode, max_length=24)      or "VTZ-NOREF"
+    size = _sanitize(data.size, max_length=5)
+    # La taille s'affiche à côté du nom ; on raccourcit le nom quand une
+    # taille est présente pour que l'ensemble tienne sur une ligne (640 dots).
+    name_max = 18 if size else 28
+    name = _sanitize(data.product_name, max_length=name_max) or "Article"
+    title = f"{name}  T.{size}" if size else name
+    ref  = _sanitize(data.barcode, max_length=24) or "VTZ-NOREF"
     week = _week_label(data)
 
     # Paysage 640×300 (12 dpmm). Tout centré sur la largeur (^FB640), empilé
@@ -149,7 +154,7 @@ def build_info_label_zpl(
     return (
         "^XA"
         + _zpl_head(pr, md)
-        + f"^FO0,8^FB640,1,0,C,0^A0N,30,28^FD{name}^FS"
+        + f"^FO0,8^FB640,1,0,C,0^A0N,30,28^FD{title}^FS"
         + f"^FO{bx},46^BY{by},2.5,90^BCN,90,Y,N,N,A^FD{ref}^FS"
         + f"^FO0,172^FB640,1,0,C,0^A0N,30,28^FD{week}^FS"
         + f"^PQ{copies}"

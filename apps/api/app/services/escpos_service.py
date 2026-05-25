@@ -98,12 +98,35 @@ STORE_ADDRESS = "6 rue Saint-Jacques, 27200 Vernon"
 STORE_INFO = "Boutique seconde main premium"
 
 
+# Accent → ASCII fold. Several MUNBYN 047P firmware revisions ignore the
+# ``ESC t`` codepage select and render CP858 high bytes as garbage (the
+# "é" / "à" come out as random glyphs). Folding to ASCII before encoding
+# guarantees a legible ticket on every unit — we lose the accent but never
+# the readability, which is the right trade-off for a thermal receipt.
+_ACCENT_FOLD = str.maketrans(
+    {
+        "à": "a", "â": "a", "ä": "a", "á": "a", "ã": "a", "å": "a",
+        "é": "e", "è": "e", "ê": "e", "ë": "e",
+        "î": "i", "ï": "i", "í": "i", "ì": "i",
+        "ô": "o", "ö": "o", "ó": "o", "ò": "o", "õ": "o",
+        "ù": "u", "û": "u", "ü": "u", "ú": "u",
+        "ç": "c", "ñ": "n", "ÿ": "y",
+        "À": "A", "Â": "A", "Ä": "A", "Á": "A", "Ã": "A",
+        "É": "E", "È": "E", "Ê": "E", "Ë": "E",
+        "Î": "I", "Ï": "I", "Ô": "O", "Ö": "O",
+        "Ù": "U", "Û": "U", "Ü": "U", "Ç": "C", "Ñ": "N",
+        "œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE",
+        "€": "EUR", "’": "'", "‘": "'", "“": '"', "”": '"',
+        "–": "-", "—": "-", "…": "...", "·": "-", "•": "-",
+        " ": " ", " ": " ",
+    }
+)
+
+
 def _encode(text: str) -> bytes:
-    """Encode text in CP858 (Euro + accents) with fallback."""
-    try:
-        return text.encode("cp858")
-    except (UnicodeEncodeError, LookupError):
-        return text.encode("ascii", errors="replace")
+    """Fold accents to ASCII, then encode (printer-codepage agnostic)."""
+    folded = (text or "").translate(_ACCENT_FOLD)
+    return folded.encode("ascii", errors="replace")
 
 
 def _build_logo_raster(logo_path: str | None = None) -> bytes:

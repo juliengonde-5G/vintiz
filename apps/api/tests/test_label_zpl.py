@@ -95,6 +95,18 @@ def test_info_label_contains_product_name():
     assert "Veste en jean" in build_info_label_zpl(_veste())
 
 
+def test_info_label_shows_size_next_to_name():
+    assert "T.M" in build_info_label_zpl(_veste())
+
+
+def test_info_label_no_size_when_absent():
+    data = LabelData(
+        product_name="Pull", category="Pulls", size=None, condition=None,
+        sale_price=10.0, barcode="VTZ-X", shelf_date=None,
+    )
+    assert "T." not in build_info_label_zpl(data)
+
+
 def test_info_label_does_not_contain_category():
     assert "Vestes" not in build_info_label_zpl(_veste())
 
