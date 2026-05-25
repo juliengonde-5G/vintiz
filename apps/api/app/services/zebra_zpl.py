@@ -133,17 +133,18 @@ def build_info_label_zpl(
     week = _week_label(data)
 
     # Paysage 640×300 (12 dpmm). Tout centré sur la largeur (^FB640), empilé
-    # verticalement dans Y ≤ ~290 :
-    #   y=20 : nom du produit (police 46) → fin y=66
-    #   y=95 : code-barres Code 128 horizontal centré, h=120 + interprétation
-    #   y=255: semaine (police 34) → fin y=289
+    # dans Y ≤ ~290. Largeur de glyphe < hauteur pour que les chaînes longues
+    # tiennent dans 640 ; le nom peut se replier sur 2 lignes.
+    #   y=12 : nom du produit (police 38×32, max 2 lignes) → fin ≤ y=88
+    #   y=95 : code-barres Code 128 horizontal centré, h=110 + interprétation
+    #   y=250: semaine (police 30×28)
     by, bx = _barcode_layout(ref)
     return (
         "^XA"
         + _zpl_head(pr, md)
-        + f"^FO0,20^FB640,1,0,C,0^A0N,46,46^FD{name}^FS"
-        + f"^FO{bx},95^BY{by},2.5,120^BCN,120,Y,N,N,A^FD{ref}^FS"
-        + f"^FO0,255^FB640,1,0,C,0^A0N,34,34^FD{week}^FS"
+        + f"^FO0,12^FB640,2,0,C,0^A0N,38,32^FD{name}^FS"
+        + f"^FO{bx},95^BY{by},2.5,110^BCN,110,Y,N,N,A^FD{ref}^FS"
+        + f"^FO0,250^FB640,1,0,C,0^A0N,30,28^FD{week}^FS"
         + f"^PQ{copies}"
         + "^XZ"
     )
@@ -163,16 +164,17 @@ def build_price_label_zpl(
 
     price = _price_str(float(data.sale_price))
 
-    # Paysage 640×300, centré, Y ≤ ~290 :
-    #   y=30 : "VINTIZ" (police 64) → fin y=94
-    #   y=125: séparateur horizontal
-    #   y=150: prix en grande police (120) → fin y=270
+    # Paysage 640×300, centré, Y ≤ ~290. Largeur de glyphe < hauteur pour que
+    # les prix longs (ex. "199,00 €") tiennent dans 640 :
+    #   y=40 : "VINTIZ" (police 60×54) → fin y=100
+    #   y=130: séparateur horizontal
+    #   y=155: prix en grande police (110×66) → fin y=265
     return (
         "^XA"
         + _zpl_head(pr, md)
-        + "^FO0,30^FB640,1,0,C,0^A0N,64,64^FDVINTIZ^FS"
-        + "^FO40,125^GB560,3,3^FS"
-        + f"^FO0,150^FB640,1,0,C,0^A0N,120,120^FD{price}^FS"
+        + "^FO0,40^FB640,1,0,C,0^A0N,60,54^FDVINTIZ^FS"
+        + "^FO40,130^GB560,3,3^FS"
+        + f"^FO0,155^FB640,1,0,C,0^A0N,110,66^FD{price}^FS"
         + f"^PQ{copies}"
         + "^XZ"
     )
