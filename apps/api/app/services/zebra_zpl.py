@@ -166,13 +166,13 @@ def build_price_label_zpl(
     # Paysage 640×300, centré, Y ≤ ~290 :
     #   y=30 : "VINTIZ" (police 64) → fin y=94
     #   y=125: séparateur horizontal
-    #   y=150: prix en grande police (120) → fin y=270
+    #   y=150: prix (police 110×64 ; largeur réduite pour que "199,00 €" tienne)
     return (
         "^XA"
         + _zpl_head(pr, md)
         + "^FO0,30^FB640,1,0,C,0^A0N,64,64^FDVINTIZ^FS"
         + "^FO40,125^GB560,3,3^FS"
-        + f"^FO0,150^FB640,1,0,C,0^A0N,120,120^FD{price}^FS"
+        + f"^FO0,150^FB640,1,0,C,0^A0N,110,64^FD{price}^FS"
         + f"^PQ{copies}"
         + "^XZ"
     )
