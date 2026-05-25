@@ -13,7 +13,9 @@ from app.services.zebra_zpl import (
     LABEL_HEIGHT_DOTS,
     LABEL_WIDTH_DOTS,
     LabelData,
+    build_label_set_zpl,
     build_label_zpl,
+    build_price_label_zpl,
 )
 
 
@@ -146,3 +148,27 @@ def test_product_type_clamped_to_22_chars():
     # 21 chars + ellipsis = 22 visible characters max for the type field.
     assert "x" * 22 not in zpl
     assert "…" in zpl
+
+
+def test_price_label_renders_brand_and_price():
+    zpl = build_price_label_zpl(_veste_femme_m())
+    assert zpl.startswith("^XA") and zpl.endswith("^XZ")
+    assert "VINTIZ" in zpl, "le tag prix porte le logo/lettrage VINTIZ"
+    assert "12,00 €" in zpl, "prix de vente au format FR"
+
+
+def test_price_label_uses_same_25x52_media():
+    zpl = build_price_label_zpl(_veste_femme_m())
+    assert f"^PW{LABEL_WIDTH_DOTS}" in zpl
+    assert f"^LL{LABEL_HEIGHT_DOTS}" in zpl
+
+
+def test_label_set_emits_product_then_price_label():
+    zpl = build_label_set_zpl(_veste_femme_m())
+    # Deux jobs ZPL = deux étiquettes physiques imprimées à la suite.
+    assert zpl.count("^XA") == 2
+    assert zpl.count("^XZ") == 2
+    # Tag produit (code-barres/réf) + tag prix (logo + prix).
+    assert "^FDVTZ-2026-00142^FS" in zpl
+    assert "VINTIZ" in zpl
+    assert "12,00 €" in zpl

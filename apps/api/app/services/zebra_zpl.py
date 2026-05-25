@@ -169,6 +169,72 @@ def build_label_zpl(
     )
 
 
+def _price_label(data: "LabelData") -> str:
+    """Prix de vente formaté FR : ``39,00 €`` (virgule décimale)."""
+    value = float(getattr(data, "sale_price", 0) or 0)
+    return f"{value:.2f} €".replace(".", ",")
+
+
+def build_price_label_zpl(
+    data: LabelData,
+    *,
+    copies: int = 1,
+    print_rate: int = DEFAULT_PRINT_RATE,
+    media_darkness: int = DEFAULT_MEDIA_DARKNESS,
+) -> str:
+    """Render the SECOND tag : logo Vintiz + prix de vente.
+
+    Même média et même orientation que l'étiquette produit (25×52 mm,
+    contenu tourné + ``^POI`` pour se lire dans le même sens). Le « logo »
+    est le lettrage VINTIZ en texte (rendu fiable sur tête thermique 1 bit,
+    sans bitmap) ; le prix est imprimé en gros dessous.
+    """
+    if copies < 1:
+        copies = 1
+    pr = max(2, min(6, int(print_rate)))
+    md = max(-30, min(30, int(media_darkness)))
+    price = _price_label(data)
+
+    # Rotated like the product tag. Sous ^POI, x croissant = du bas vers le
+    # haut visuel : prix en bas (x faible), VINTIZ en haut (x élevé).
+    return (
+        "^XA"
+        "^POI"
+        f"^PR{pr}"
+        f"^MD{md}"
+        "^CI28"
+        f"^PW{LABEL_WIDTH_DOTS}"
+        f"^LL{LABEL_HEIGHT_DOTS}"
+        "^LH0,0"
+        # Prix de vente (gros, bas visuel).
+        f"^FO30,8^A0R,86,86^FB400,1,0,C,0^FD{price}^FS"
+        # Lettrage VINTIZ (haut visuel).
+        f"^FO150,8^A0R,48,48^FB400,1,0,C,0^FDVINTIZ^FS"
+        f"^PQ{copies}"
+        "^XZ"
+    )
+
+
+def build_label_set_zpl(
+    data: LabelData,
+    *,
+    copies: int = 1,
+    print_rate: int = DEFAULT_PRINT_RATE,
+    media_darkness: int = DEFAULT_MEDIA_DARKNESS,
+) -> str:
+    """Jeu d'étiquettes imprimé à l'édition : tag produit + tag prix.
+
+    Concatène les deux jobs ZPL (``^XA…^XZ`` × 2) ; la Zebra imprime donc
+    deux étiquettes à la suite — l'étiquette code-barres/réf puis l'étiquette
+    logo + prix.
+    """
+    kwargs = {"print_rate": print_rate, "media_darkness": media_darkness}
+    return (
+        build_label_zpl(data, copies=copies, **kwargs)
+        + build_price_label_zpl(data, copies=copies, **kwargs)
+    )
+
+
 # Product statuses that mean the item is physically on the shop floor.
 _FLOOR_STATUS_VALUES = {"display", "displayed", "discounted", "deep_discounted"}
 

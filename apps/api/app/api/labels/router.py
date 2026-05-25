@@ -35,7 +35,9 @@ from app.services.label_preview import (
     render_zpl_to_png,
 )
 from app.services.zebra_zpl import (
+    build_label_set_zpl,
     build_label_zpl,
+    build_price_label_zpl,
     product_to_label_data,
 )
 
@@ -143,7 +145,8 @@ async def print_label(
     product = await _fetch_product(db, product_id)
     cfg = _label_config()
     _validate_transport(cfg)
-    zpl = build_label_zpl(product_to_label_data(product), copies=max(copies, 1))
+    # Édition étiquette = jeu de 2 tags : produit (code-barres/réf) + prix (logo).
+    zpl = build_label_set_zpl(product_to_label_data(product), copies=max(copies, 1))
     try:
         target = await _dispatch_zpl(cfg, zpl)
     except zebra_printer.PrinterUnreachable as exc:
@@ -185,7 +188,7 @@ async def print_batch(
     for idx, product_id in enumerate(payload.product_ids):
         try:
             product = await _fetch_product(db, product_id)
-            zpl = build_label_zpl(
+            zpl = build_label_set_zpl(
                 product_to_label_data(product), copies=payload.copies
             )
             await _dispatch_zpl(cfg, zpl)
@@ -226,16 +229,43 @@ async def preview_label(
     visually validate a label before sending it to the printer.
     """
     product = await _fetch_product(db, product_id)
-    zpl = build_label_zpl(product_to_label_data(product))
+    data = product_to_label_data(product)
     try:
-        png = await render_zpl_to_png(zpl)
+        # Aperçu du JEU : tag produit (code-barres/réf) + tag prix (logo).
+        product_png = await render_zpl_to_png(build_label_zpl(data))
+        price_png = await render_zpl_to_png(build_price_label_zpl(data))
     except PreviewUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return Response(
-        content=png,
+        content=_stack_pngs_vertically([product_png, price_png]),
         media_type="image/png",
         headers={"Cache-Control": "no-store"},
     )
+
+
+def _stack_pngs_vertically(
+    pngs: list[bytes], *, gap: int = 14, bg: tuple = (246, 245, 241)
+) -> bytes:
+    """Empile verticalement plusieurs PNG (aperçu du jeu d'étiquettes)."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    imgs = [Image.open(BytesIO(p)).convert("RGB") for p in pngs if p]
+    if not imgs:
+        return b""
+    if len(imgs) == 1:
+        return pngs[0]
+    width = max(im.width for im in imgs)
+    height = sum(im.height for im in imgs) + gap * (len(imgs) - 1)
+    canvas = Image.new("RGB", (width, height), bg)
+    y = 0
+    for im in imgs:
+        canvas.paste(im, ((width - im.width) // 2, y))
+        y += im.height + gap
+    out = BytesIO()
+    canvas.save(out, format="PNG")
+    return out.getvalue()
 
 
 @router.get(
@@ -427,7 +457,7 @@ async def product_label_zpl(
     printer's ``/escpos`` endpoint for the WebUSB path.
     """
     product = await _fetch_product(db, product_id)
-    zpl = build_label_zpl(product_to_label_data(product), copies=max(copies, 1))
+    zpl = build_label_set_zpl(product_to_label_data(product), copies=max(copies, 1))
     return Response(
         content=zpl,
         media_type="text/plain; charset=utf-8",
