@@ -111,7 +111,7 @@ const METHODS: Record<PosPaymentMethod, MethodConfig> = {
  * stays the same.
  */
 export default function PaymentMethodSelector({
-  methods = ['cash', 'card', 'cheque', 'cheque_cdc', 'avoir'],
+  methods = ['cash', 'card', 'cheque_cdc', 'avoir'],
   disabled = {},
   disabledReasons = {},
   onPick,

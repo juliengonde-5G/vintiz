@@ -2190,17 +2190,6 @@ export default function POSPage() {
                     <span className="text-sm font-semibold">Carte CB</span>
                   </button>
                   <button
-                    onClick={() => addPayment('cheque')}
-                    className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink"
-                  >
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-vz-teal">
-                      <rect x="2" y="6" width="20" height="12" rx="2"/>
-                      <path d="M6 11h8M6 14.5h5"/>
-                      <path d="M15 14.5l1.8 1.8L20 13"/>
-                    </svg>
-                    <span className="text-sm font-semibold">Chèque</span>
-                  </button>
-                  <button
                     onClick={() => addPayment('cheque_cdc')}
                     title="Chèque cadeau Le Club des Commerçants"
                     className="flex flex-col items-center justify-center gap-2 p-4 bg-vz-bg-alt rounded-xl border border-vz-line hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[88px] text-vz-ink"
