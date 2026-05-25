@@ -43,6 +43,12 @@ class ZoneCreate(BaseModel):
     photo_url: str | None = None
     sales_target_monthly: float | None = None
     display_order: int | None = None
+    match_genders: List[str] | None = None
+    match_colors: List[str] | None = None
+    match_size_classes: List[str] | None = None
+    min_trend_score: float | None = None
+    assignment_priority: int | None = None
+    auto_assign: bool | None = None
 
 
 class ZoneUpdate(BaseModel):
@@ -60,6 +66,12 @@ class ZoneUpdate(BaseModel):
     photo_url: str | None = None
     sales_target_monthly: float | None = None
     display_order: int | None = None
+    match_genders: List[str] | None = None
+    match_colors: List[str] | None = None
+    match_size_classes: List[str] | None = None
+    min_trend_score: float | None = None
+    assignment_priority: int | None = None
+    auto_assign: bool | None = None
 
 
 class ZoneLayoutItem(BaseModel):
@@ -97,6 +109,12 @@ def _serialize_zone(zone: StoreZone, product_count: int | None = None) -> dict:
         "photo_url": zone.photo_url,
         "sales_target_monthly": float(zone.sales_target_monthly) if zone.sales_target_monthly is not None else None,
         "display_order": zone.display_order,
+        "match_genders": zone.match_genders,
+        "match_colors": zone.match_colors,
+        "match_size_classes": zone.match_size_classes,
+        "min_trend_score": float(zone.min_trend_score) if zone.min_trend_score is not None else None,
+        "assignment_priority": zone.assignment_priority,
+        "auto_assign": zone.auto_assign,
     }
     if product_count is not None:
         out["product_count"] = product_count
@@ -175,6 +193,12 @@ async def create_zone(
         photo_url=zone_in.photo_url,
         sales_target_monthly=zone_in.sales_target_monthly,
         display_order=zone_in.display_order if zone_in.display_order is not None else 0,
+        match_genders=zone_in.match_genders,
+        match_colors=zone_in.match_colors,
+        match_size_classes=zone_in.match_size_classes,
+        min_trend_score=zone_in.min_trend_score,
+        assignment_priority=zone_in.assignment_priority if zone_in.assignment_priority is not None else 100,
+        auto_assign=zone_in.auto_assign if zone_in.auto_assign is not None else True,
     )
     db.add(zone)
     await db.flush()
@@ -199,7 +223,9 @@ async def update_zone(
     data = zone_in.model_dump(exclude_unset=True)
     for field in ("name", "description", "capacity", "color_code", "pos_x", "pos_y",
                   "width", "height", "shape", "icon", "photo_url",
-                  "sales_target_monthly", "display_order"):
+                  "sales_target_monthly", "display_order",
+                  "match_genders", "match_colors", "match_size_classes",
+                  "min_trend_score", "assignment_priority", "auto_assign"):
         if field in data:
             setattr(zone, field, data[field])
     if "product_types" in data and data["product_types"] is not None:

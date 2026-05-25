@@ -1,5 +1,6 @@
 """Tests for the merchandising service (P2-005 / P2-006 / P2-007 / P2-008)."""
 
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -8,11 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.models import Base
 from app.models.merchandising import WindowDisplayProposal
-from app.models.product import Category, Product, ProductPhoto, ProductStatus
+from app.models.product import Category, Gender, Product, ProductPhoto, ProductStatus
 from app.models.store import FurnitureItem, StoreZone, ZoneProduct, ZoneTag
 from app.models.user import User
 from app.services.merchandising import (
     MerchandisingService,
+    classify_size,
     score_bucket,
 )
 
@@ -61,6 +63,12 @@ async def _make_zone(
     capacity: int = 30,
     product_types: str | None = None,
     display_order: int = 0,
+    match_genders: list | None = None,
+    match_colors: list | None = None,
+    match_size_classes: list | None = None,
+    min_trend_score: float | None = None,
+    assignment_priority: int = 100,
+    auto_assign: bool = True,
 ) -> StoreZone:
     z = StoreZone(
         name=name,
@@ -69,14 +77,22 @@ async def _make_zone(
         display_order=display_order,
         pos_x=10, pos_y=10, width=20, height=20,
         shape="rounded",
+        match_genders=match_genders,
+        match_colors=match_colors,
+        match_size_classes=match_size_classes,
+        min_trend_score=min_trend_score,
+        assignment_priority=assignment_priority,
+        auto_assign=auto_assign,
     )
     session.add(z)
     await session.flush()
     return z
 
 
-async def _make_category(session: AsyncSession, name: str) -> Category:
-    c = Category(name=name)
+async def _make_category(
+    session: AsyncSession, name: str, gender: Gender = Gender.mixte
+) -> Category:
+    c = Category(name=name, gender=gender)
     session.add(c)
     await session.flush()
     return c
@@ -93,6 +109,7 @@ async def _make_product(
     status: ProductStatus = ProductStatus.displayed,
     brand: str | None = "Sandro",
     color: str | None = "noir",
+    size: str | None = None,
 ) -> Product:
     p = Product(
         barcode=f"P-{uuid.uuid4().hex[:8]}",
@@ -104,6 +121,7 @@ async def _make_product(
         trend_score=trend_score,
         brand=brand,
         color=color,
+        size=size,
     )
     session.add(p)
     await session.flush()
@@ -162,9 +180,15 @@ async def test_zone_occupancy_handles_zero_zones(session):
 
 @pytest.mark.anyio
 async def test_suggest_hot_product_routes_to_window(session):
-    cat = await _make_category(session, "Robes")
-    window = await _make_zone(session, name="Vitrine femme", capacity=4, product_types="robes")
-    rack = await _make_zone(session, name="Rack robes", capacity=30, product_types="robes")
+    cat = await _make_category(session, "Robes", Gender.femme)
+    window = await _make_zone(
+        session, name="Vitrine femme", capacity=4,
+        min_trend_score=75, assignment_priority=10,
+    )
+    rack = await _make_zone(
+        session, name="Rack robes", capacity=30, product_types="robes",
+        assignment_priority=60,
+    )
     hot = await _make_product(
         session, name="Robe Hermes", category=cat, trend_score=85,
         status=ProductStatus.tagged,
@@ -178,11 +202,15 @@ async def test_suggest_hot_product_routes_to_window(session):
 
 @pytest.mark.anyio
 async def test_suggest_falls_back_when_window_full(session):
-    cat = await _make_category(session, "Robes")
+    cat = await _make_category(session, "Robes", Gender.femme)
     window = await _make_zone(
-        session, name="Vitrine femme", capacity=2, product_types="robes",
+        session, name="Vitrine femme", capacity=2,
+        min_trend_score=75, assignment_priority=10,
     )
-    rack = await _make_zone(session, name="Rack robes", capacity=30, product_types="robes")
+    rack = await _make_zone(
+        session, name="Rack robes", capacity=30, product_types="robes",
+        assignment_priority=60,
+    )
     # Fill the window
     for _ in range(2):
         await _make_product(
@@ -254,6 +282,206 @@ async def test_suggest_with_no_zones_returns_no_suggestion(session):
     suggestion = await MerchandisingService(session).suggest_zone(p)
     assert suggestion.primary_zone_id is None
     assert "Aucune zone" in suggestion.rationale
+
+
+# ---------------------------------------------------------------------------
+# suggest_zone — règles conditionnelles (refonte zonage 2026-05)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_suggest_woman_color_routes_to_color_zone(session):
+    robes = await _make_category(session, "Robes", Gender.femme)
+    await _make_zone(session, name="Tendance", min_trend_score=70, assignment_priority=40)
+    entree = await _make_zone(
+        session, name="Entrée", capacity=85,
+        match_genders=["femme"], match_colors=["rose", "rouge"],
+        assignment_priority=60,
+    )
+    await _make_zone(
+        session, name="Droite 2", capacity=155,
+        match_genders=["femme"], match_colors=["vert", "noir", "marron"],
+        assignment_priority=62,
+    )
+    p = await _make_product(
+        session, name="Robe rouge", category=robes, color="rouge",
+        trend_score=40, size="M", status=ProductStatus.tagged,
+    )
+    s = await MerchandisingService(session).suggest_zone(p)
+    assert s.primary_zone_id == str(entree.id)
+    assert s.should_go_to_window is False
+
+
+@pytest.mark.anyio
+async def test_suggest_trendy_routes_to_vitrine_then_tendance(session):
+    robes = await _make_category(session, "Robes", Gender.femme)
+    vitrine = await _make_zone(
+        session, name="Vitrine", capacity=8,
+        min_trend_score=75, assignment_priority=10,
+    )
+    tendance = await _make_zone(
+        session, name="Tendance", capacity=200,
+        min_trend_score=70, assignment_priority=40,
+    )
+    await _make_zone(
+        session, name="Entrée", match_genders=["femme"],
+        match_colors=["rouge"], assignment_priority=60,
+    )
+    p = await _make_product(
+        session, name="Robe rouge tendance", category=robes, color="rouge",
+        trend_score=82, status=ProductStatus.tagged,
+    )
+    s = await MerchandisingService(session).suggest_zone(p)
+    assert s.primary_zone_id == str(vitrine.id)
+    assert s.should_go_to_window is True
+    assert s.alternative_zone_id == str(tendance.id)
+
+
+@pytest.mark.anyio
+async def test_suggest_mens_polo_priority_list_capacity_aware(session):
+    polo = await _make_category(session, "Polo", Gender.homme)
+    rond = await _make_zone(
+        session, name="Portant Rond Homme", capacity=2,
+        match_genders=["homme"],
+        product_types=json.dumps(["polo", "chemise", "veste"]),
+        assignment_priority=30,
+    )
+    plein = await _make_zone(
+        session, name="Portant Homme", capacity=2,
+        match_genders=["homme"],
+        product_types=json.dumps(["polo", "t-shirt", "short"]),
+        assignment_priority=31,
+    )
+    mur = await _make_zone(
+        session, name="Hommes", capacity=50,
+        match_genders=["homme"], assignment_priority=32,
+    )
+
+    def _polo():
+        return _make_product(
+            session, name="Polo", category=polo, color="bleu",
+            trend_score=40, status=ProductStatus.tagged,
+        )
+
+    # Vide → Portant Rond Homme (prio 30, catégorie polo).
+    s1 = await MerchandisingService(session).suggest_zone(await _polo())
+    assert s1.primary_zone_id == str(rond.id)
+
+    # Rond Homme plein → Portant Homme.
+    for _ in range(2):
+        await _make_product(session, name="x", category=polo, zone_id=rond.id, status=ProductStatus.displayed)
+    s2 = await MerchandisingService(session).suggest_zone(await _polo())
+    assert s2.primary_zone_id == str(plein.id)
+
+    # Les deux portants pleins → Hommes (fourre-tout).
+    for _ in range(2):
+        await _make_product(session, name="x", category=polo, zone_id=plein.id, status=ProductStatus.displayed)
+    s3 = await MerchandisingService(session).suggest_zone(await _polo())
+    assert s3.primary_zone_id == str(mur.id)
+
+
+@pytest.mark.anyio
+async def test_suggest_mens_shoes_to_chaussures_h(session):
+    chauss = await _make_category(session, "Chaussures", Gender.homme)
+    await _make_zone(
+        session, name="Chaussures droite femme", capacity=48,
+        match_genders=["femme"], product_types=json.dumps(["chaussures"]),
+        assignment_priority=20,
+    )
+    ch_h = await _make_zone(
+        session, name="Chaussures H", capacity=28,
+        match_genders=["homme"], product_types=json.dumps(["chaussures"]),
+        assignment_priority=21,
+    )
+    p = await _make_product(
+        session, name="Sneakers homme", category=chauss, color="blanc",
+        trend_score=40, status=ProductStatus.tagged,
+    )
+    s = await MerchandisingService(session).suggest_zone(p)
+    assert s.primary_zone_id == str(ch_h.id)
+
+
+@pytest.mark.anyio
+async def test_suggest_large_size_woman_beats_color_zone(session):
+    robes = await _make_category(session, "Robes", Gender.femme)
+    droite3 = await _make_zone(
+        session, name="Droite 3", capacity=115,
+        match_genders=["femme"], match_size_classes=["grande"],
+        assignment_priority=50,
+    )
+    await _make_zone(
+        session, name="Entrée", capacity=85,
+        match_genders=["femme"], match_colors=["rouge"],
+        assignment_priority=60,
+    )
+    p = await _make_product(
+        session, name="Robe XL rouge", category=robes, color="rouge",
+        size="XL", trend_score=40, status=ProductStatus.tagged,
+    )
+    s = await MerchandisingService(session).suggest_zone(p)
+    assert s.primary_zone_id == str(droite3.id)
+
+
+@pytest.mark.anyio
+async def test_suggest_color_overflow_to_lower_priority(session):
+    robes = await _make_category(session, "Robes", Gender.femme)
+    entree = await _make_zone(
+        session, name="Entrée", capacity=1,
+        match_genders=["femme"], match_colors=["rose", "rouge"],
+        assignment_priority=60,
+    )
+    portant1 = await _make_zone(
+        session, name="Portant 1", capacity=10,
+        match_genders=["femme"], match_colors=["rouge", "jaune", "orange"],
+        assignment_priority=63,
+    )
+    await _make_product(
+        session, name="filler", category=robes, color="rouge",
+        zone_id=entree.id, status=ProductStatus.displayed,
+    )
+    p = await _make_product(
+        session, name="Robe rouge", category=robes, color="rouge",
+        trend_score=40, status=ProductStatus.tagged,
+    )
+    s = await MerchandisingService(session).suggest_zone(p)
+    assert s.primary_zone_id == str(portant1.id)
+
+
+@pytest.mark.anyio
+async def test_suggest_skips_zone_with_auto_assign_false(session):
+    robes = await _make_category(session, "Robes", Gender.femme)
+    await _make_zone(
+        session, name="Entrée (off)", capacity=85,
+        match_genders=["femme"], match_colors=["rouge"],
+        assignment_priority=60, auto_assign=False,
+    )
+    portant1 = await _make_zone(
+        session, name="Portant 1", capacity=10,
+        match_genders=["femme"], match_colors=["rouge"],
+        assignment_priority=63,
+    )
+    p = await _make_product(
+        session, name="Robe rouge", category=robes, color="rouge",
+        trend_score=40, status=ProductStatus.tagged,
+    )
+    s = await MerchandisingService(session).suggest_zone(p)
+    assert s.primary_zone_id == str(portant1.id)
+
+
+def test_classify_size_mapping():
+    assert classify_size("XS") == "petite"
+    assert classify_size("S") == "petite"
+    assert classify_size("M") == "standard"
+    assert classify_size("L") == "standard"
+    assert classify_size("XL") == "grande"
+    assert classify_size("XXL") == "grande"
+    assert classify_size("36") == "petite"
+    assert classify_size("40") == "standard"
+    assert classify_size("44") == "grande"
+    assert classify_size("grande taille") == "grande"
+    assert classify_size(None) is None
+    assert classify_size("") is None
+    assert classify_size("Taille unique") is None
 
 
 # ---------------------------------------------------------------------------
