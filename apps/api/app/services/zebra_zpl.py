@@ -138,17 +138,11 @@ def build_label_zpl(
     # longueur (52 mm horizontal). Quatre lignes empilées, de haut en bas :
     #   Semaine · Type produit · code-barres (Code 128) · réf produit.
     # Le média est chargé 25 mm en largeur de tête (^PW200) × 52 mm en
-    # défilement (^LL416) ; le contenu est donc tourné (``^A0R`` / ``^BCR``)
-    # pour se lire à l'horizontale. Comme ``^POI`` retourne l'étiquette de
-    # 180°, les lignes sont posées en x croissant du bas vers le haut visuel
-    # (réf en premier dans le code → en bas ; Semaine en dernier → en haut).
+    # défilement (^LL416) ; le contenu est tourné (``^A0R`` / ``^BCR``)
+    # pour se lire à l'horizontale (top du label vers la droite).
     # Positions en dots (8/mm) ; ajuster contre /labels/preview au besoin.
     return (
         "^XA"
-        # Print orientation inversée (180°) : l'étiquette sort dans le bon sens
-        # de lecture par rapport au sens d'éjection de la Zebra ZD421d. Doit
-        # précéder les champs ^FO pour s'appliquer à toute l'étiquette.
-        "^POI"
         f"^PR{pr}"
         f"^MD{md}"
         "^CI28"
