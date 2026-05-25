@@ -445,6 +445,41 @@ async def run_daily_trend_alerts() -> None:
         logger.exception("Trend alerts cron failed: %s", exc)
 
 
+async def run_daily_monitoring_check() -> None:
+    """Health-check all external services and alert if any is KO. 06:00 Paris."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.monitoring_service import MonitoringService
+
+        async with AsyncSession(engine) as db:
+            svc = MonitoringService(db)
+            await svc.check_and_alert()
+            logger.info("Monitoring check complete")
+    except Exception as exc:
+        logger.exception("Monitoring check job failed: %s", exc)
+
+
+async def run_daily_backup() -> None:
+    """pg_dump → S3 backup. Runs daily at 03:00 Paris (after RGPD purge)."""
+    try:
+        from app.services.backup_service import BackupService
+
+        svc = BackupService()
+        result = await svc.run_backup()
+        if result.success:
+            logger.info(
+                "Backup OK: %s — %.1f MB — %.1fs",
+                result.filename,
+                result.size_bytes / 1_048_576,
+                result.duration_s,
+            )
+        else:
+            logger.error("Backup FAILED: %s", result.error)
+    except Exception as exc:
+        logger.exception("Backup job failed: %s", exc)
+
+
 def register_all_jobs(scheduler) -> None:
     """Register all cron jobs with the given APScheduler instance."""
     from apscheduler.triggers.cron import CronTrigger
@@ -563,5 +598,17 @@ def register_all_jobs(scheduler) -> None:
         run_weekly_checklist,
         CronTrigger(day_of_week="mon", hour=9, minute=0),
         id="weekly_checklist",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_daily_monitoring_check,
+        CronTrigger(hour=6, minute=0),
+        id="daily_monitoring_check",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_daily_backup,
+        CronTrigger(hour=3, minute=15),
+        id="daily_backup",
         replace_existing=True,
     )

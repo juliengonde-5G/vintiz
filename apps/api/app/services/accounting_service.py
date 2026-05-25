@@ -165,7 +165,20 @@ class AccountingService:
             )
         await self.db.flush()
 
-        # 6. Alerte écart de caisse
+        # 6. Réconciliation SumUp (best-effort, informatif)
+        try:
+            from app.services.sumup_reconciliation import SumUpReconciliationService
+            recon_svc = SumUpReconciliationService(self.db)
+            recon = await recon_svc.reconcile(export_date)
+            acct_exp.reconciliation_ran = True
+            acct_exp.reconciliation_delta = round(recon.delta, 2)
+            acct_exp.reconciliation_matched = recon.matched_count
+            acct_exp.reconciliation_unmatched_vintiz = recon.unmatched_vintiz
+            acct_exp.reconciliation_unmatched_sumup = recon.unmatched_sumup
+        except Exception as _recon_exc:
+            _log.warning("SumUp reconciliation skipped: %s", _recon_exc)
+
+        # 7. Alerte écart de caisse
         if (
             acct_exp.cash_discrepancy is not None
             and abs(acct_exp.cash_discrepancy) > float(cfg.discrepancy_alert_threshold)
@@ -173,13 +186,13 @@ class AccountingService:
             await self._send_discrepancy_alert(acct_exp, cfg)
             acct_exp.discrepancy_alert_sent = True
 
-        # 7. Générer le FEC quotidien
+        # 8. Générer le FEC quotidien
         fec = self._generate_fec(lines, z_report, export_date, cfg)
         acct_exp.fec_content = fec
         acct_exp.fec_filename = f"FEC_Vintiz_{export_date.strftime('%Y%m%d')}_Z{z_report.report_number:04d}.txt"
         acct_exp.fec_generated_at = datetime.now(timezone.utc)
 
-        # 8. Verrouiller les transactions
+        # 9. Verrouiller les transactions
         tx_ids = [t.id for t in transactions]
         if tx_ids:
             await self.db.execute(
@@ -192,7 +205,7 @@ class AccountingService:
             )
         acct_exp.locked_at = datetime.now(timezone.utc)
 
-        # 9. Export Pennylane (async best-effort)
+        # 10. Export Pennylane (async best-effort)
         if cfg.pennylane_enabled and cfg.pennylane_api_key:
             await self._export_to_pennylane(acct_exp, lines, cfg, z_report, export_date)
         else:
@@ -550,6 +563,16 @@ class AccountingService:
     <p style="margin:4px 0 0;color:#4A4A47;">{pennylane_status}</p>
     <p style="margin:4px 0 0;color:#8B8B86;font-size:13px;">FEC : {export.fec_filename or "non généré"}</p>
   </div>
+
+  {f'''<div style="background:#F0F9FF;border-radius:8px;padding:16px;margin-bottom:24px;">
+    <p style="margin:0;font-weight:bold;color:#0E0E0C;">Réconciliation SumUp</p>
+    <p style="margin:4px 0 0;color:{"#16a34a" if abs(export.reconciliation_delta or 0) < 0.01 else "#dc2626"};">
+      Écart CB : {"✓ 0,00 €" if abs(export.reconciliation_delta or 0) < 0.01 else f"{("+") if (export.reconciliation_delta or 0) >= 0 else ""}{export.reconciliation_delta:.2f} €"}
+      · {export.reconciliation_matched or 0} rapprochés
+      {f"· ⚠️ {export.reconciliation_unmatched_vintiz} Vintiz sans contrepartie" if export.reconciliation_unmatched_vintiz else ""}
+      {f"· ⚠️ {export.reconciliation_unmatched_sumup} SumUp sans contrepartie" if export.reconciliation_unmatched_sumup else ""}
+    </p>
+  </div>''' if export.reconciliation_ran else ""}
 
   <p style="font-size:12px;color:#8B8B86;text-align:center;margin:0;">
     Vintiz Vernon · Boutique de seconde main premium<br>

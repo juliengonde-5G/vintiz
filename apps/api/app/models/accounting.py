@@ -151,6 +151,13 @@ class AccountingExport(Base):
     )
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # ── Réconciliation SumUp (informatif, lancée à la clôture) ───────────────
+    reconciliation_ran: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reconciliation_delta: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    reconciliation_matched: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reconciliation_unmatched_vintiz: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reconciliation_unmatched_sumup: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     lines: Mapped[list["AccountingExportLine"]] = relationship(
         "AccountingExportLine", back_populates="export", lazy="selectin"
     )

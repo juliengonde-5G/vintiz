@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel
+import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,6 +126,11 @@ def _export_out(exp: AccountingExport, with_lines: bool = False) -> dict:
         "email_sent_to": exp.email_sent_to,
         "locked_at": exp.locked_at.isoformat() if exp.locked_at else None,
         "created_at": exp.created_at.isoformat(),
+        "reconciliation_ran": getattr(exp, "reconciliation_ran", False),
+        "reconciliation_delta": float(exp.reconciliation_delta) if getattr(exp, "reconciliation_delta", None) is not None else None,
+        "reconciliation_matched": getattr(exp, "reconciliation_matched", None),
+        "reconciliation_unmatched_vintiz": getattr(exp, "reconciliation_unmatched_vintiz", None),
+        "reconciliation_unmatched_sumup": getattr(exp, "reconciliation_unmatched_sumup", None),
     }
     if with_lines:
         base["lines"] = [
@@ -357,7 +363,7 @@ async def get_monthly_fec(
 async def list_monthly_closes(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Liste des mois avec exports disponibles."""
+    """Liste des mois avec exports disponibles + stats agrégées."""
     from sqlalchemy import func, extract
     stmt = (
         select(
@@ -365,9 +371,17 @@ async def list_monthly_closes(
             extract("month", AccountingExport.export_date).label("month"),
             func.count(AccountingExport.id).label("count"),
             func.sum(AccountingExport.net_ttc).label("net_ttc"),
+            func.sum(AccountingExport.total_sales_ttc).label("total_sales_ttc"),
+            func.sum(AccountingExport.total_refunds_ttc).label("total_refunds_ttc"),
+            func.sum(AccountingExport.total_tva).label("total_tva"),
+            func.sum(AccountingExport.cash_total).label("cash_total"),
+            func.sum(AccountingExport.card_total).label("card_total"),
+            func.sum(AccountingExport.cheque_total).label("cheque_total"),
+            func.sum(AccountingExport.transaction_count).label("transaction_count"),
+            func.sum(AccountingExport.refund_count).label("refund_count"),
         )
         .group_by("year", "month")
-        .order_by("year", "month")
+        .order_by(sa.desc("year"), sa.desc("month"))
     )
     result = await db.execute(stmt)
     return [
@@ -376,6 +390,14 @@ async def list_monthly_closes(
             "month": int(row.month),
             "count": row.count,
             "net_ttc": round(float(row.net_ttc or 0), 2),
+            "total_sales_ttc": round(float(row.total_sales_ttc or 0), 2),
+            "total_refunds_ttc": round(float(row.total_refunds_ttc or 0), 2),
+            "total_tva": round(float(row.total_tva or 0), 2),
+            "cash_total": round(float(row.cash_total or 0), 2),
+            "card_total": round(float(row.card_total or 0), 2),
+            "cheque_total": round(float(row.cheque_total or 0), 2),
+            "transaction_count": int(row.transaction_count or 0),
+            "refund_count": int(row.refund_count or 0),
         }
         for row in result.all()
     ]

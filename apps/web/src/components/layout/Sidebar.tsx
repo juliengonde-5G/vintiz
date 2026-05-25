@@ -197,6 +197,18 @@ const navGroups: NavGroup[] = [
         ),
       },
       {
+        label: 'Clôture mensuelle',
+        href: '/accounting/monthly-close',
+        icon: (
+          <svg {...iconProps}>
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+        ),
+      },
+      {
         label: 'Paramétrage',
         href: '/settings/comptabilite',
         icon: (
@@ -218,6 +230,15 @@ const navGroups: NavGroup[] = [
           <svg {...iconProps}>
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             <polyline points="9 12 11 14 15 10" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Monitoring',
+        href: '/admin/monitoring',
+        icon: (
+          <svg {...iconProps}>
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
           </svg>
         ),
       },

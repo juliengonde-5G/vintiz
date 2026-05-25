@@ -1973,3 +1973,50 @@ async def predictive_audience_debug(
     return serialize_dominant(result)
 
 
+# ---------------------------------------------------------------------------
+# Monitoring
+# ---------------------------------------------------------------------------
+
+
+@router.get("/monitoring", dependencies=[Depends(manager_only)])
+async def get_monitoring_status(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Retourne un rapport de santé de tous les services externes."""
+    from app.services.monitoring_service import MonitoringService
+    svc = MonitoringService(db)
+    report = await svc.check_all()
+    return {
+        "all_healthy": report.all_healthy,
+        "checked_at": report.checked_at,
+        "services": [
+            {
+                "name": s.name,
+                "healthy": s.healthy,
+                "latency_ms": s.latency_ms,
+                "detail": s.detail,
+                "checked_at": s.checked_at,
+            }
+            for s in report.services
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Backup
+# ---------------------------------------------------------------------------
+
+
+@router.post("/backup/run", dependencies=[Depends(manager_only)])
+async def trigger_backup():
+    """Déclenche un backup PostgreSQL → S3 immédiatement (hors cron)."""
+    from app.services.backup_service import BackupService
+    svc = BackupService()
+    result = await svc.run_backup()
+    return {
+        "success": result.success,
+        "filename": result.filename,
+        "size_bytes": result.size_bytes,
+        "sha256": result.sha256,
+        "s3_key": result.s3_key,
+        "duration_s": result.duration_s,
+        "error": result.error,
+    }
