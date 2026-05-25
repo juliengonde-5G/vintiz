@@ -60,6 +60,12 @@ from app.models.cash_movement import (
     CashMovementReason,
 )
 from app.models.sumup_terminal import SumUpTerminal, SumUpTerminalStatus
+from app.models.accounting import (
+    AccountingConfig,
+    AccountingExport,
+    AccountingExportLine,
+    ExportStatus,
+)
 
 __all__ = [
     "Base",
@@ -93,4 +99,5 @@ __all__ = [
     "PaymentAttempt", "PaymentAttemptStatus",
     "CashMovement", "CashMovementDirection", "CashMovementReason",
     "SumUpTerminal", "SumUpTerminalStatus",
+    "AccountingConfig", "AccountingExport", "AccountingExportLine", "ExportStatus",
 ]

@@ -434,6 +434,23 @@ async def close_drawer(
         },
     )
 
+    # Clôture comptable — best-effort (n'empêche pas la réponse en cas d'échec)
+    accounting_export_id = None
+    accounting_status = None
+    try:
+        from app.services.accounting_service import AccountingService
+        acct_svc = AccountingService(db)
+        acct_exp = await acct_svc.run_daily_close(
+            z_report=z_report,
+            drawer=drawer,
+            triggered_by_user_id=current_user.id,
+        )
+        accounting_export_id = str(acct_exp.id)
+        accounting_status = acct_exp.status.value
+    except Exception as _acct_exc:
+        import logging
+        logging.getLogger("vintiz").error("Accounting close failed: %s", _acct_exc)
+
     return {
         "drawer_id": str(drawer.id),
         "z_report_number": z_report.report_number,
@@ -444,6 +461,8 @@ async def close_drawer(
         "difference": float(drawer.closing_amount - drawer.expected_amount)
         if drawer.expected_amount
         else 0,
+        "accounting_export_id": accounting_export_id,
+        "accounting_status": accounting_status,
     }
 
 

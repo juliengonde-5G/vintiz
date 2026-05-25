@@ -99,6 +99,12 @@ class Transaction(Base):
     total_ttc: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     hash_chain: Mapped[str] = mapped_column(String(64), nullable=False)
 
+    # Comptabilité — verrouillé après export vers Pennylane/FEC.
+    accounting_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    accounting_export_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
     items: Mapped[list["TransactionItem"]] = relationship(
         "TransactionItem", back_populates="transaction", lazy="selectin"
     )
