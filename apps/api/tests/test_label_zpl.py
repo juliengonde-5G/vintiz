@@ -1,8 +1,9 @@
-"""Unit tests for the Zebra ZPL label generator (25×52 mm standard tag).
+"""Tests unitaires pour le générateur ZPL Vintiz (25×52 mm, deux étiquettes).
 
-The boutique tag is laid out landscape and prints four stacked rows —
-Semaine, Type produit (catégorie), code-barres (Code 128) and réf produit.
-These tests run against pure ``LabelData`` payloads so no database is needed.
+Étiquette 1 (info) : code-barres Code 128, réf, nom du produit, semaine.
+Étiquette 2 (prix) : logo VINTIZ, prix de vente.
+
+Les tests s'appuient sur des LabelData purs — aucune base de données.
 """
 
 from __future__ import annotations
@@ -13,26 +14,27 @@ from app.services.zebra_zpl import (
     LABEL_HEIGHT_DOTS,
     LABEL_WIDTH_DOTS,
     LabelData,
+    build_info_label_zpl,
     build_label_zpl,
+    build_price_label_zpl,
 )
-
 
 REF_SHELF = datetime(2026, 5, 14, tzinfo=timezone.utc)
 
 
-def _veste_femme_m() -> LabelData:
+def _veste() -> LabelData:
     return LabelData(
         product_name="Veste en jean délavée",
         category="Vestes",
         size="M",
         condition="Très bon état",
-        sale_price=12.0,
+        sale_price=12.5,
         barcode="VTZ-2026-00142",
         shelf_date=REF_SHELF,
     )
 
 
-def _jean_homme_l() -> LabelData:
+def _jean() -> LabelData:
     return LabelData(
         product_name="Jean droit Levi's 501",
         category="Pantalons",
@@ -44,41 +46,65 @@ def _jean_homme_l() -> LabelData:
     )
 
 
-def test_label_starts_and_ends_with_zpl_markers():
-    zpl = build_label_zpl(_veste_femme_m())
-    assert zpl.startswith("^XA"), "ZPL job must start with ^XA"
-    assert zpl.endswith("^XZ"), "ZPL job must end with ^XZ"
+# ---------------------------------------------------------------------------
+# build_label_zpl — structure deux blocs
+# ---------------------------------------------------------------------------
 
 
-def test_label_declares_utf8_and_25x52_dimensions():
-    zpl = build_label_zpl(_veste_femme_m())
-    assert "^CI28" in zpl, "UTF-8 must be enabled for accents"
-    assert LABEL_WIDTH_DOTS == 200 and LABEL_HEIGHT_DOTS == 416
+def test_build_label_zpl_contains_two_blocks():
+    zpl = build_label_zpl(_veste())
+    assert zpl.count("^XA") == 2
+    assert zpl.count("^XZ") == 2
+
+
+def test_build_label_zpl_info_first_then_price():
+    zpl = build_label_zpl(_veste())
+    idx_info = zpl.index("VTZ-2026-00142")
+    idx_price = zpl.index("12,50")
+    assert idx_info < idx_price
+
+
+# ---------------------------------------------------------------------------
+# Étiquette 1 — Info
+# ---------------------------------------------------------------------------
+
+
+def test_info_label_structure():
+    zpl = build_info_label_zpl(_veste())
+    assert zpl.startswith("^XA")
+    assert zpl.endswith("^XZ")
+    assert "^CI28" in zpl
     assert f"^PW{LABEL_WIDTH_DOTS}" in zpl
     assert f"^LL{LABEL_HEIGHT_DOTS}" in zpl
 
 
-def test_label_renders_product_type():
-    zpl = build_label_zpl(_veste_femme_m())
-    # Landscape tag shows the product TYPE (category), not the full name.
-    assert "Vestes" in zpl
-    assert "Veste en jean délavée" not in zpl
-
-
-def test_label_contains_rotated_code128_barcode_and_ref():
-    zpl = build_label_zpl(_veste_femme_m())
-    # Rotated Code 128 so the long reference fits on a 25 mm-wide label.
+def test_info_label_contains_barcode_code128():
+    zpl = build_info_label_zpl(_veste())
     assert "^BCR," in zpl
-    assert "^FDVTZ-2026-00142^FS" in zpl
 
 
-def test_label_shows_intake_week_derived_from_shelf_date():
-    zpl = build_label_zpl(_veste_femme_m())
+def test_info_label_contains_reference():
+    zpl = build_info_label_zpl(_veste())
+    assert "VTZ-2026-00142" in zpl
+
+
+def test_info_label_contains_product_name():
+    zpl = build_info_label_zpl(_veste())
+    assert "Veste en jean" in zpl
+
+
+def test_info_label_does_not_contain_category():
+    zpl = build_info_label_zpl(_veste())
+    assert "Vestes" not in zpl
+
+
+def test_info_label_shows_week_from_shelf_date():
+    zpl = build_info_label_zpl(_veste())
     week = REF_SHELF.isocalendar()[1]
     assert f"Semaine {week:02d}" in zpl
 
 
-def test_explicit_week_number_takes_precedence():
+def test_info_label_explicit_week_takes_precedence():
     data = LabelData(
         product_name="Robe",
         category="Robes",
@@ -89,60 +115,102 @@ def test_explicit_week_number_takes_precedence():
         shelf_date=REF_SHELF,
         week_number=3,
     )
-    assert "Semaine 03" in build_label_zpl(data)
+    assert "Semaine 03" in build_info_label_zpl(data)
 
 
-def test_compact_tag_omits_price_and_condition():
-    """The landscape tag drops the price / état / markdown block.
+def test_info_label_no_week_fallback():
+    data = LabelData(
+        product_name="Pull",
+        category="Pulls",
+        size="M",
+        condition=None,
+        sale_price=10.0,
+        barcode="VTZ-X",
+        shelf_date=None,
+    )
+    assert "Semaine --" in build_info_label_zpl(data)
 
-    It keeps Semaine, Type produit (catégorie), code-barres et réf produit.
-    """
-    zpl = build_label_zpl(_veste_femme_m())
-    assert "€" not in zpl
-    assert "12,00" not in zpl
-    assert "Très bon état" not in zpl
-    assert "Démarque" not in zpl
 
-
-def test_copies_propagate_to_pq_command():
-    zpl = build_label_zpl(_jean_homme_l(), copies=3)
+def test_info_label_copies_in_pq():
+    zpl = build_info_label_zpl(_jean(), copies=3)
     assert "^PQ3" in zpl
 
 
-def test_zero_or_negative_copies_clamped_to_one():
-    assert "^PQ1" in build_label_zpl(_veste_femme_m(), copies=0)
-    assert "^PQ1" in build_label_zpl(_veste_femme_m(), copies=-5)
+def test_info_label_copies_clamped():
+    assert "^PQ1" in build_info_label_zpl(_veste(), copies=0)
+    assert "^PQ1" in build_info_label_zpl(_veste(), copies=-2)
 
 
-def test_zpl_control_characters_in_type_are_neutralised():
-    # The rendered field is now the product type (category); ZPL control
-    # prefixes in it must be neutralised so they can't break the print job.
+def test_info_label_zpl_chars_in_name_sanitized():
     data = LabelData(
-        product_name="Robe",
-        category="Robe ^XA ~tilde \\back",
+        product_name="Robe ^XA ~test \\slash",
+        category="Robes",
         size=None,
-        condition="Bon état",
+        condition=None,
         sale_price=20.0,
         barcode="VTZ-2026-00500",
         shelf_date=REF_SHELF,
     )
-    zpl = build_label_zpl(data)
+    zpl = build_info_label_zpl(data)
     assert zpl.count("^XA") == 1
     assert zpl.count("^XZ") == 1
-    assert "Robe -XA -tilde /back" in zpl
+    assert "Robe -XA -test /slash" in zpl
 
 
-def test_product_type_clamped_to_22_chars():
+def test_info_label_name_clamped():
     data = LabelData(
-        product_name="Robe",
-        category="x" * 60,
+        product_name="A" * 60,
+        category="X",
         size=None,
-        condition="Bon état",
-        sale_price=20.0,
-        barcode="VTZ-2026-00600",
-        shelf_date=REF_SHELF,
+        condition=None,
+        sale_price=5.0,
+        barcode="VTZ-Y",
+        shelf_date=None,
     )
-    zpl = build_label_zpl(data)
-    # 21 chars + ellipsis = 22 visible characters max for the type field.
-    assert "x" * 22 not in zpl
+    zpl = build_info_label_zpl(data)
+    assert "A" * 29 not in zpl
     assert "…" in zpl
+
+
+# ---------------------------------------------------------------------------
+# Étiquette 2 — Prix
+# ---------------------------------------------------------------------------
+
+
+def test_price_label_structure():
+    zpl = build_price_label_zpl(_veste())
+    assert zpl.startswith("^XA")
+    assert zpl.endswith("^XZ")
+    assert "^CI28" in zpl
+
+
+def test_price_label_contains_vintiz():
+    assert "VINTIZ" in build_price_label_zpl(_veste())
+
+
+def test_price_label_formats_price_french():
+    assert "12,50" in build_price_label_zpl(_veste())
+    assert "€" in build_price_label_zpl(_veste())
+
+
+def test_price_label_zero_price():
+    data = LabelData(
+        product_name="Cadeau",
+        category="Divers",
+        size=None,
+        condition=None,
+        sale_price=0.0,
+        barcode="VTZ-0",
+        shelf_date=None,
+    )
+    assert "0,00" in build_price_label_zpl(data)
+
+
+def test_price_label_copies_in_pq():
+    zpl = build_price_label_zpl(_jean(), copies=2)
+    assert "^PQ2" in zpl
+
+
+def test_price_label_has_separator():
+    zpl = build_price_label_zpl(_veste())
+    assert "^GB" in zpl

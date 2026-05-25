@@ -1,9 +1,9 @@
 """Tests for the product-intake refonte.
 
 Covers:
-- the stock / rayon placement reference on the Zebra label,
 - the automatic stamping of entrée-stock / mise-en-rayon dates,
-- the store-operations audit metrics + deterministic fallback narrative.
+- the store-operations audit metrics + deterministic fallback narrative,
+- the product_to_label_data ORM adapter.
 """
 
 from __future__ import annotations
@@ -21,11 +21,7 @@ from app.services.store_ops_audit import (
     build_store_ops_report,
     collect_metrics,
 )
-from app.services.zebra_zpl import (
-    LabelData,
-    build_label_zpl,
-    product_to_label_data,
-)
+from app.services.zebra_zpl import product_to_label_data
 
 
 @pytest.fixture
@@ -50,13 +46,11 @@ async def session():
 
 
 # ---------------------------------------------------------------------------
-# Label — placement reference (mise en stock / mise en rayon)
+# ORM adapter — product_to_label_data
 # ---------------------------------------------------------------------------
 
 
 class _StubProduct:
-    """Duck-typed product for product_to_label_data without a DB row."""
-
     def __init__(self, status, received_at=None, shelf_date=None):
         self.name = "Robe noire"
         self.category = None
@@ -68,62 +62,6 @@ class _StubProduct:
         self.received_at = received_at
         self.shelf_date = shelf_date
         self.displayed_at = None
-
-
-def test_label_default_keeps_legacy_rayon_lines():
-    """A LabelData without an explicit location renders the historical lines."""
-    zpl = build_label_zpl(
-        LabelData(
-            product_name="Veste",
-            category="Vestes",
-            size="M",
-            condition="bon",
-            sale_price=12.0,
-            barcode="VTZ-1",
-            shelf_date=datetime(2026, 5, 14, tzinfo=timezone.utc),
-        )
-    )
-    assert "Rayon depuis : 14/05/2026" in zpl
-    assert "Démarque le :" in zpl
-
-
-def test_label_stock_location_shows_entry_line():
-    data = LabelData(
-        product_name="Pull",
-        category="Pulls",
-        size="L",
-        condition="bon",
-        sale_price=18.0,
-        barcode="VTZ-2",
-        shelf_date=None,
-        location="stock",
-        entry_date=datetime(2026, 5, 16, tzinfo=timezone.utc),
-    )
-    zpl = build_label_zpl(data)
-    assert "En stock depuis : 16/05/2026" in zpl
-    assert "A mettre en rayon" in zpl
-    # Stock items don't carry a markdown deadline.
-    assert "Démarque le :" not in zpl
-
-
-def test_label_condition_code_rendered_as_display():
-    """A stored condition code (e.g. ``tres_bon``) prints as French text."""
-    data = LabelData(
-        product_name="Robe", category="Robes", size="M", condition="tres_bon",
-        sale_price=30.0, barcode="VTZ-3", shelf_date=None,
-    )
-    zpl = build_label_zpl(data)
-    assert "Très bon état" in zpl
-    assert "tres_bon" not in zpl
-
-
-def test_label_condition_display_string_passthrough():
-    """An already-human condition string is left untouched (legacy fixtures)."""
-    data = LabelData(
-        product_name="Robe", category="Robes", size="M", condition="Comme neuf",
-        sale_price=30.0, barcode="VTZ-4", shelf_date=None,
-    )
-    assert "Comme neuf" in build_label_zpl(data)
 
 
 def test_product_to_label_data_derives_location_from_status():
