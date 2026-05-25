@@ -2,16 +2,20 @@
 
 Vintiz imprime DEUX étiquettes par produit :
 
-  Étiquette 1 — Info :
+  Étiquette 1 — Info (paysage, texte ^A0N) :
     ┌─────────────────────────────────────────────┐
-    │ Réf  ║▌█▌▌█  Nom du produit     Semaine 21  │
+    │              Nom du produit                 │
+    │              ║▌█▌▌█ (réf)                    │
+    │                Semaine 21                   │
     └─────────────────────────────────────────────┘
-    Contenu : code-barres Code 128 (rotaté 90°) + réf (ligne
-    d'interprétation) + nom du produit + numéro de semaine.
+    Contenu : nom du produit + code-barres Code 128 horizontal
+    (ligne d'interprétation = réf) + numéro de semaine.
 
-  Étiquette 2 — Prix :
+  Étiquette 2 — Prix (paysage, texte ^A0N) :
     ┌─────────────────────────────────────────────┐
-    │  VINTIZ  │            12,50 €               │
+    │                  VINTIZ                     │
+    │             ─────────────                   │
+    │                 12,50 €                     │
     └─────────────────────────────────────────────┘
     Contenu : logo texte VINTIZ + prix de vente.
 
@@ -26,10 +30,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-LABEL_WIDTH_DOTS = 200   # 25 mm
-LABEL_HEIGHT_DOTS = 416  # 52 mm
+LABEL_WIDTH_DOTS = 640   # canvas paysage (largeur) — identique à l'étiquette test
+LABEL_HEIGHT_DOTS = 400  # canvas paysage (hauteur)
 LABELARY_DPMM = "8dpmm"
-LABELARY_SIZE = "0.98x2.05"
+LABELARY_SIZE = "3.15x1.97"
 
 DEFAULT_PRINT_RATE = 4
 DEFAULT_MEDIA_DARKNESS = 0
@@ -108,22 +112,18 @@ def build_info_label_zpl(
     ref  = _sanitize(data.barcode, max_length=24)      or "VTZ-NOREF"
     week = _week_label(data)
 
-    # Mise en page paysage (52 mm horizontal, 25 mm vertical).
-    # Tout le contenu est rotaté 90° CW (^A0R / ^BCR) pour se lire
-    # à l'horizontale. De gauche à droite (y croissant) :
-    #   réf (bas visuel) | code-barres | nom | semaine (haut visuel)
-    # De haut en bas (x croissant dans les 200 dots = 25 mm) :
-    #   x=8  : ligne de réf (police 22)
-    #   x=38 : code-barres Code 128 (hauteur 82 dots)
-    #   x=132: nom du produit (police 30)
-    #   x=168: semaine (police 24)
+    # Mise en page paysage (canvas 640×400, texte ^A0N non rotaté — même
+    # convention que l'étiquette test, validée sur la ZD421d). De haut en
+    # bas (y croissant), centré sur la largeur :
+    #   y=30  : nom du produit (police 44)
+    #   y=110 : code-barres Code 128 horizontal + ligne d'interprétation (réf)
+    #   y=310 : semaine (police 32)
     return (
         "^XA"
         + _zpl_head(pr, md)
-        + f"^FO8,12^A0R,22,22^FB392,1,0,C,0^FD{ref}^FS"
-        + f"^FO38,12^BY2,2.5,82^BCR,82,N,N,N,A^FD{ref}^FS"
-        + f"^FO132,12^A0R,30,30^FB392,1,0,C,0^FD{name}^FS"
-        + f"^FO168,12^A0R,24,24^FB392,1,0,C,0^FD{week}^FS"
+        + f"^FO0,30^FB640,1,0,C,0^A0N,44,44^FD{name}^FS"
+        + f"^FO70,110^BY2,2.5,110^BCN,110,Y,N,N,A^FD{ref}^FS"
+        + f"^FO0,310^FB640,1,0,C,0^A0N,32,32^FD{week}^FS"
         + f"^PQ{copies}"
         + "^XZ"
     )
@@ -143,16 +143,16 @@ def build_price_label_zpl(
 
     price = _price_str(float(data.sale_price))
 
-    # Paysage également. De haut en bas (x croissant) :
-    #   x=16 : "VINTIZ" (police 30, bande étroite)
-    #   x=60 : séparateur vertical (trait 2 dots × 416 dots)
-    #   x=80 : prix en grande police (80 dots de haut, 52 dots de large/char)
+    # Paysage (canvas 640×400, texte ^A0N). De haut en bas, centré :
+    #   y=40  : "VINTIZ" (police 64)
+    #   y=150 : séparateur horizontal (trait)
+    #   y=210 : prix en grande police (120)
     return (
         "^XA"
         + _zpl_head(pr, md)
-        + "^FO16,12^A0R,30,30^FB392,1,0,C,0^FDVINTIZ^FS"
-        + "^FO60,0^GB2,416,2^FS"
-        + f"^FO80,12^A0R,80,52^FB392,1,0,C,0^FD{price}^FS"
+        + "^FO0,40^FB640,1,0,C,0^A0N,64,64^FDVINTIZ^FS"
+        + "^FO40,150^GB560,3,3^FS"
+        + f"^FO0,210^FB640,1,0,C,0^A0N,120,120^FD{price}^FS"
         + f"^PQ{copies}"
         + "^XZ"
     )

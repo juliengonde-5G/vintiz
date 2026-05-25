@@ -84,7 +84,7 @@ def test_info_label_structure():
 
 
 def test_info_label_contains_barcode_code128():
-    assert "^BCR," in build_info_label_zpl(_veste())
+    assert "^BCN," in build_info_label_zpl(_veste())
 
 
 def test_info_label_contains_reference():
