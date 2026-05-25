@@ -356,37 +356,52 @@ export default function NewProductWizard() {
     if (!created) return;
     setSaving(true);
     setError('');
-    try {
-      const body: Record<string, unknown> = {
-        status: destination === 'rayon' ? 'display' : 'stock',
-      };
-      if (destination === 'rayon' && selectedZoneId) body.zone_id = selectedZoneId;
-      const res = await api.put(`/api/inventory/products/${created.id}`, body);
-      if (res.ok) {
-        const updated: CreatedProduct = await res.json();
-        // The PUT response (ProductResponse) doesn't resolve the zone name —
-        // backfill it from the plan so the exit screen can show it.
-        const zoneName = planZones.find((z) => z.id === selectedZoneId)?.name ?? null;
-        setCreated({ ...updated, zone_name: destination === 'rayon' ? zoneName : null });
-      } else {
-        const d = await res.json().catch(() => ({}));
-        setError(d.detail || "Erreur lors de l'affectation");
-        setSaving(false);
-        return;
+    const body: Record<string, unknown> = {
+      status: destination === 'rayon' ? 'display' : 'stock',
+    };
+    if (destination === 'rayon' && selectedZoneId) body.zone_id = selectedZoneId;
+
+    // Reprise silencieuse : juste après l'upload photo, la connexion peut être
+    // réinitialisée et le PUT échouer en « failed to fetch ». Le PUT est
+    // idempotent (statut + zone) → on le rejoue sur une connexion neuve avant
+    // de surfacer une erreur, sans rien afficher entre-temps.
+    let res: Response | null = null;
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        res = await api.put(`/api/inventory/products/${created.id}`, body);
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        }
       }
-    } catch (err) {
-      // The article already exists at this point (créé à l'étape prix) — only
-      // the mise en rayon a échoué. Surface the real cause and reassure that
-      // the article isn't lost (retrouvable en stock dans l'inventaire).
+    }
+
+    if (res === null) {
+      // Toutes les reprises ont échoué — l'article existe déjà en stock.
       setError(
-        (err instanceof Error && err.message
-          ? `Mise en rayon impossible : ${err.message}.`
+        (lastErr instanceof Error && lastErr.message
+          ? `Mise en rayon impossible : ${lastErr.message}.`
           : 'Mise en rayon impossible : serveur Vintiz injoignable.') +
           " L'article est enregistré en stock — réessayez ou finalisez depuis l'inventaire.",
       );
       setSaving(false);
       return;
     }
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setError(d.detail || "Erreur lors de l'affectation");
+      setSaving(false);
+      return;
+    }
+    const updated: CreatedProduct = await res.json();
+    // The PUT response (ProductResponse) doesn't resolve the zone name —
+    // backfill it from the plan so the exit screen can show it.
+    const zoneName = planZones.find((z) => z.id === selectedZoneId)?.name ?? null;
+    setCreated({ ...updated, zone_name: destination === 'rayon' ? zoneName : null });
+
     setSaving(false);
     setStep('done');
     void loadLabel();
