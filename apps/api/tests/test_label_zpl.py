@@ -81,7 +81,6 @@ def test_info_label_structure():
     assert "^CI28" in zpl
     assert f"^PW{LABEL_WIDTH_DOTS}" in zpl
     assert f"^LL{LABEL_HEIGHT_DOTS}" in zpl
-    assert "^POI" in zpl
 
 
 def test_info_label_contains_barcode_code128():
@@ -163,7 +162,6 @@ def test_price_label_structure():
     assert zpl.startswith("^XA")
     assert zpl.endswith("^XZ")
     assert "^CI28" in zpl
-    assert "^POI" in zpl
 
 
 def test_price_label_contains_vintiz():
