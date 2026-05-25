@@ -395,6 +395,22 @@ async def get_product_by_barcode(
         )
         product = result.scalar_one_or_none()
 
+    # Keyboard-layout fallback — the Inateck scanner emulates a US-QWERTY
+    # keyboard, but the tablet runs French AZERTY, so every hyphen of the
+    # printed barcode is typed as "=" ("VTZ-2026-372694" arrives as
+    # "VTZ=2026=372694"). Vintiz barcodes never contain "=", so when the
+    # scan still misses we map "=" back to "-" and retry (ilike covers the
+    # exact + caps cases in one query).
+    if product is None and "=" in code:
+        alt = code.replace("=", "-")
+        result = await db.execute(
+            select(Product)
+            .outerjoin(Category, Product.category_id == Category.id)
+            .where(Product.barcode.ilike(alt))
+            .limit(1)
+        )
+        product = result.scalar_one_or_none()
+
     # Inventory diagnostic log so the manager can see what was actually
     # scanned when a "not found" report comes in. Logged at INFO so it
     # ends up in the daily journal without spamming WARNING.
