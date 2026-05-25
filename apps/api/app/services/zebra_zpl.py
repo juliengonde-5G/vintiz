@@ -141,9 +141,9 @@ def build_info_label_zpl(
     return (
         "^XA"
         + _zpl_head(pr, md)
-        + f"^FO0,20^FB640,1,0,C,0^A0N,46,46^FD{name}^FS"
-        + f"^FO{bx},95^BY{by},2.5,120^BCN,120,Y,N,N,A^FD{ref}^FS"
-        + f"^FO0,255^FB640,1,0,C,0^A0N,34,34^FD{week}^FS"
+        + f"^FO0,10^FB640,1,0,C,0^A0N,32,28^FD{name}^FS"
+        + f"^FO{bx},55^BY{by},2.5,90^BCN,90,Y,N,N,A^FD{ref}^FS"
+        + f"^FO0,210^FB640,1,0,C,0^A0N,28,24^FD{week}^FS"
         + f"^PQ{copies}"
         + "^XZ"
     )
@@ -163,16 +163,16 @@ def build_price_label_zpl(
 
     price = _price_str(float(data.sale_price))
 
-    # Paysage 640×300, centré, Y ≤ ~290 :
-    #   y=30 : "VINTIZ" (police 64) → fin y=94
-    #   y=125: séparateur horizontal
-    #   y=150: prix (police 110×64 ; largeur réduite pour que "199,00 €" tienne)
+    # Paysage 640×300, centré, Y ≤ ~270 :
+    #   y=20 : "VINTIZ" (police 46) → fin y=66
+    #   y=90 : séparateur horizontal
+    #   y=105: prix (police 85×52)
     return (
         "^XA"
         + _zpl_head(pr, md)
-        + "^FO0,30^FB640,1,0,C,0^A0N,64,64^FDVINTIZ^FS"
-        + "^FO40,125^GB560,3,3^FS"
-        + f"^FO0,150^FB640,1,0,C,0^A0N,110,64^FD{price}^FS"
+        + "^FO0,20^FB640,1,0,C,0^A0N,46,42^FDVINTIZ^FS"
+        + "^FO40,90^GB560,3,3^FS"
+        + f"^FO0,105^FB640,1,0,C,0^A0N,85,52^FD{price}^FS"
         + f"^PQ{copies}"
         + "^XZ"
     )
