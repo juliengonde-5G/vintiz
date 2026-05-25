@@ -26,14 +26,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-# Physical 25 × 52 mm label @ 8 dpmm (Zebra ZD421d, 203 dpi). The tag is
-# printed PAYSAGE: the 52 mm side runs across the print head (^PW) and the
-# 25 mm side is the feed length (^LL) — see build_label_zpl.
-LABEL_WIDTH_DOTS = 200   # 25 mm (côté défilement en paysage)
-LABEL_HEIGHT_DOTS = 416  # 52 mm (largeur d'impression en paysage)
+# 25 × 52 mm @ 8 dpmm (Zebra ZD421d, 203 dpi). Width = across the print head,
+# length = feed direction. Change here (+ hardware.json label_*_mm) to retarget
+# a different media size.
+LABEL_WIDTH_DOTS = 200   # 25 mm
+LABEL_HEIGHT_DOTS = 416  # 52 mm
 LABELARY_DPMM = "8dpmm"
-# Labelary path size is width × height in inches; paysage = 52 mm × 25 mm.
-LABELARY_SIZE = "2.05x0.98"
+# Labelary path size is in inches: 25 mm ≈ 0.98", 52 mm ≈ 2.05".
+LABELARY_SIZE = "0.98x2.05"
 
 # Print rate (^PR) — inches per second. ZD421d 203 dpi supports 2-6 ips.
 # Lower = sharper print on small fonts and barcodes ; higher = faster
@@ -116,8 +116,8 @@ def build_label_zpl(
 ) -> str:
     """Render a single Vintiz 25×52 mm product tag as a ZPL II string.
 
-    Paysage, lecture droite à la sortie. Quatre lignes empilées : Semaine,
-    Type produit (catégorie), code-barres Code 128 horizontal et réf produit.
+    Content (per the boutique brief): Code 128 barcode, its reference
+    (interpretation line), the product name and the intake week — nothing else.
 
     ``copies`` is passed through to ``^PQ`` so a single submission can print
     several physical labels (used by the batch endpoint). ``print_rate`` and
@@ -134,29 +134,36 @@ def build_label_zpl(
     week = _week_label(data)
 
     # ZPL II — ``^CI28`` enables UTF-8 so accented characters render.
-    # Mise en page PAYSAGE lisible droite : on imprime le côté 52 mm en travers
-    # de la tête (^PW416) et le 25 mm en défilement (^LL200). Le contenu n'est
-    # donc PAS tourné — il se lit tel quel à la sortie, sans pivoter le tag.
-    # Quatre lignes centrées empilées de haut en bas :
-    #   Semaine · Type produit · code-barres Code 128 horizontal · réf produit.
+    # Mise en page PAYSAGE : la tablette tient l'étiquette dans le sens de la
+    # longueur (52 mm horizontal). Quatre lignes empilées, de haut en bas :
+    #   Semaine · Type produit · code-barres (Code 128) · réf produit.
+    # Le média est chargé 25 mm en largeur de tête (^PW200) × 52 mm en
+    # défilement (^LL416) ; le contenu est donc tourné (``^A0R`` / ``^BCR``)
+    # pour se lire à l'horizontale. Comme ``^POI`` retourne l'étiquette de
+    # 180°, les lignes sont posées en x croissant du bas vers le haut visuel
+    # (réf en premier dans le code → en bas ; Semaine en dernier → en haut).
     # Positions en dots (8/mm) ; ajuster contre /labels/preview au besoin.
     return (
         "^XA"
+        # Print orientation inversée (180°) : l'étiquette sort dans le bon sens
+        # de lecture par rapport au sens d'éjection de la Zebra ZD421d. Doit
+        # précéder les champs ^FO pour s'appliquer à toute l'étiquette.
+        "^POI"
         f"^PR{pr}"
         f"^MD{md}"
         "^CI28"
-        # Paysage : largeur d'impression = 52 mm, défilement = 25 mm.
-        f"^PW{LABEL_HEIGHT_DOTS}"
-        f"^LL{LABEL_WIDTH_DOTS}"
+        f"^PW{LABEL_WIDTH_DOTS}"
+        f"^LL{LABEL_HEIGHT_DOTS}"
         "^LH0,0"
-        # Semaine d'arrivage.
-        f"^FO0,8^A0N,26,26^FB{LABEL_HEIGHT_DOTS},1,0,C,0^FD{week}^FS"
+        # Réf produit (bas visuel).
+        f"^FO8,12^A0R,22,22^FB392,1,0,C,0^FD{ref}^FS"
+        # Code-barres Code 128 — barres seules (réf imprimée à part). Module
+        # 2 dots, hauteur 82 dots ; court le long des 52 mm.
+        f"^FO38,12^BY2,2.5,82^BCR,82,N,N,N,A^FD{ref}^FS"
         # Type produit (catégorie).
-        f"^FO0,40^A0N,32,32^FB{LABEL_HEIGHT_DOTS},1,0,C,0^FD{ptype}^FS"
-        # Code-barres Code 128 horizontal — barres seules (réf imprimée à part).
-        f"^FO12,80^BY2,2.5,66^BCN,66,N,N,N,A^FD{ref}^FS"
-        # Réf produit.
-        f"^FO0,154^A0N,26,26^FB{LABEL_HEIGHT_DOTS},1,0,C,0^FD{ref}^FS"
+        f"^FO132,12^A0R,30,30^FB392,1,0,C,0^FD{ptype}^FS"
+        # Semaine d'arrivage (haut visuel).
+        f"^FO176,12^A0R,24,24^FB392,1,0,C,0^FD{week}^FS"
         f"^PQ{copies}"
         "^XZ"
     )
