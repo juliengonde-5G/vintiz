@@ -130,15 +130,16 @@ def _encode(text: str) -> bytes:
 
 
 def _build_logo_raster(logo_path: str | None = None) -> bytes:
-    """Convert the company logo PNG into an ESC/POS raster command.
+    """Convert the company logo PNG into ESC * (bit-image) commands.
 
-    Uses ``GS v 0 m xL xH yL yH d…`` (raster bit image) which is the
-    most widely supported image command on ESC/POS clones. The PNG is
-    composited on white, converted to 1-bit at ``_LOGO_TARGET_WIDTH``
-    dots wide, then packed MSB-first 8 pixels per byte. Cached per path.
+    Uses ``ESC * 33 nL nH`` (24-pin double-density) rather than ``GS v 0``
+    because several MUNBYN 047P firmware revisions don't recognise the newer
+    raster command and print raw bytes as garbled text. ``ESC *`` is the
+    legacy bit-image command supported by virtually all ESC/POS clones.
 
-    ``logo_path`` overrides the default asset (used by the configurable
-    company logo). Returns ``b""`` on any failure so the receipt still
+    The image is sent in 24-dot horizontal bands; line spacing is set to 24
+    units before the image and restored to the firmware default afterwards.
+    Cached per path. Returns ``b""`` on any failure so the receipt still
     prints without the logo.
     """
     path = Path(logo_path) if logo_path else _LOGO_PATH
@@ -163,18 +164,41 @@ def _build_logo_raster(logo_path: str | None = None) -> bytes:
             target_h = int(im.size[1] * ratio)
             bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
             flat = Image.alpha_composite(bg, im).convert("L")
-            resized = flat.resize(
-                (_LOGO_TARGET_WIDTH, target_h), Image.LANCZOS
-            ).convert("1")
-            width_bytes = _LOGO_TARGET_WIDTH // 8
-            # Pillow's "1" mode is one bit per pixel ; black = 0, white = 1.
-            # ESC/POS raster expects "1 = burn / print" — invert.
-            pixels = resized.tobytes()
-            inverted = bytes(b ^ 0xFF for b in pixels)
-            x_l, x_h = width_bytes & 0xFF, (width_bytes >> 8) & 0xFF
-            y_l, y_h = target_h & 0xFF, (target_h >> 8) & 0xFF
-            header = GS + b"v0" + bytes([0, x_l, x_h, y_l, y_h])
-            _logo_raster_cache[key] = header + inverted
+            resized = flat.resize((_LOGO_TARGET_WIDTH, target_h), Image.LANCZOS)
+            # Pad height to a multiple of 24 so every band is complete.
+            pad_h = (-target_h) % 24
+            if pad_h:
+                padded = Image.new("L", (_LOGO_TARGET_WIDTH, target_h + pad_h), 255)
+                padded.paste(resized, (0, 0))
+                resized = padded
+            w, h = resized.size
+            # 1 byte per pixel (L-mode): 0 = black = print, 255 = white = skip.
+            raw = resized.tobytes()
+            nL = w & 0xFF
+            nH = (w >> 8) & 0xFF
+            band_cmd = ESC + b"*\x21" + bytes([nL, nH])
+            out = bytearray()
+            # ESC 3 24: set line spacing to 24 units so the LF after each
+            # band advances the paper by exactly one band height.
+            out += ESC + b"3\x18"
+            for band in range(h // 24):
+                y0 = band * 24
+                out += band_cmd
+                for x in range(w):
+                    b0 = b1 = b2 = 0
+                    for bit in range(8):
+                        if raw[(y0 + bit) * w + x] < 128:
+                            b0 |= 1 << (7 - bit)
+                    for bit in range(8):
+                        if raw[(y0 + 8 + bit) * w + x] < 128:
+                            b1 |= 1 << (7 - bit)
+                    for bit in range(8):
+                        if raw[(y0 + 16 + bit) * w + x] < 128:
+                            b2 |= 1 << (7 - bit)
+                    out += bytes([b0, b1, b2])
+                out += LF
+            out += ESC + b"2"  # restore default line spacing (1/6 inch)
+            _logo_raster_cache[key] = bytes(out)
             return _logo_raster_cache[key]
         except Exception as exc:  # noqa: BLE001 — never fail the receipt
             _log.warning("Receipt logo conversion failed: %s", exc)
