@@ -14,6 +14,7 @@ and offline-friendly; a follow-up will optionally chain Claude on top
 from __future__ import annotations
 
 import logging
+import re
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass
@@ -77,10 +78,120 @@ def _zone_matches_category(zone: StoreZone, category: Category | None) -> bool:
     types_norm = _normalize(zone.product_types)
     if not cat_norm:
         return False
+    # product_types peut être un tableau JSON ('["robe","robes"]') ou une
+    # chaîne CSV ; on neutralise crochets/guillemets avant de tokeniser.
+    types_norm = re.sub(r'[\[\]"]', " ", types_norm)
     # Tokenize both sides to avoid "robe" matching "robotique" etc.
     cat_tokens = {tok for tok in cat_norm.split() if len(tok) > 2}
     type_tokens = {tok for tok in types_norm.replace(",", " ").split() if len(tok) > 2}
     return bool(cat_tokens & type_tokens)
+
+
+def _color_matches(color_norm: str, tokens: list | None) -> bool:
+    """True si la couleur (normalisée) partage un token avec la liste de la
+    zone. « bleu marine » matche ["bleu"] ; insensible casse/accents."""
+    if not tokens or not color_norm:
+        return False
+    color_tokens = {tok for tok in color_norm.split() if tok}
+    want = {_normalize(str(t)) for t in tokens if t}
+    return bool(color_tokens & want)
+
+
+# Classes de tailles pour les règles "grandes tailles" / "petites tailles".
+_SIZE_PETITE = {"XXS", "XS", "S"}
+_SIZE_STANDARD = {"M", "L"}
+_SIZE_GRANDE = {"XL", "XXL", "XXXL", "2XL", "3XL", "4XL"}
+
+
+def classify_size(size: str | None) -> str | None:
+    """Mappe une taille libre vers 'petite' / 'standard' / 'grande' (ou None).
+
+    Lettres (XS…XXXL) + numériques vêtement (≤36 petite, 38-42 standard,
+    ≥44 grande). Les chaussures sont routées par catégorie avant toute
+    condition de taille → un mauvais classement numérique reste sans effet.
+    """
+    if not size:
+        return None
+    s = size.strip().upper().replace(" ", "")
+    if not s:
+        return None
+    if "GRANDE" in s:
+        return "grande"
+    if s in _SIZE_PETITE:
+        return "petite"
+    if s in _SIZE_STANDARD:
+        return "standard"
+    if s in _SIZE_GRANDE:
+        return "grande"
+    m = re.match(r"(\d+)", s)
+    if m:
+        n = int(m.group(1))
+        if n <= 36:
+            return "petite"
+        if n <= 42:
+            return "standard"
+        return "grande"
+    return None
+
+
+def _zone_matches_rules(
+    zone: StoreZone,
+    *,
+    gender_token: str | None,
+    color_norm: str,
+    size_class: str | None,
+    score: float | None,
+    category: Category | None,
+) -> bool:
+    """True si le produit satisfait TOUTES les conditions posées sur la zone.
+
+    Une condition absente (None / liste vide) n'est pas testée — donc une zone
+    avec seulement match_genders=["homme"] est le fourre-tout homme.
+    """
+    if zone.match_genders:
+        if gender_token is None or gender_token not in set(zone.match_genders):
+            return False
+    if zone.min_trend_score is not None:
+        if score is None or float(score) < float(zone.min_trend_score):
+            return False
+    if zone.match_colors:
+        if not _color_matches(color_norm, zone.match_colors):
+            return False
+    if zone.match_size_classes:
+        if size_class is None or size_class not in set(zone.match_size_classes):
+            return False
+    if zone.product_types:
+        if not _zone_matches_category(zone, category):
+            return False
+    return True
+
+
+def _suggestion_rationale(
+    zone: StoreZone,
+    product: Product,
+    category: Category | None,
+    gender_token: str | None,
+    size_class: str | None,
+    score: float | None,
+) -> str:
+    """Phrase courte expliquant l'affectation (lisible au comptoir)."""
+    if _is_window_zone(zone):
+        s = f"{score:.0f}" if score is not None else "?"
+        return f"Score tendance {s} — vitrine {zone.name} libre."
+    if zone.min_trend_score is not None:
+        s = f"{score:.0f}" if score is not None else "?"
+        return f"Tendance (score {s} ≥ {float(zone.min_trend_score):.0f}) → {zone.name}."
+    bits: list[str] = []
+    if gender_token:
+        bits.append(gender_token)
+    if zone.match_colors and product.color:
+        bits.append(f"couleur {product.color}")
+    if zone.match_size_classes and size_class:
+        bits.append(f"taille {size_class}")
+    if zone.product_types and category:
+        bits.append(category.name)
+    detail = " · ".join(bits) if bits else "placement"
+    return f"{detail} → {zone.name}."
 
 
 @dataclass
@@ -165,23 +276,20 @@ class MerchandisingService:
     async def suggest_zone(self, product: Product) -> ZoneSuggestion:
         """Pick the zone where a freshly-tagged product should land.
 
-        Decision rules (deterministic):
-        1. If the product is Hot (score ≥ 75) AND there's a window zone with
-           ≥ 1 free slot, route to window. The score acts as the green
-           light for the spotlight position.
-        2. Otherwise, pick the least-saturated zone among those whose
-           product_types matches the product's category. Among ties,
-           prefer the one with the most free capacity.
-        3. If no category match exists, fall back to the least-saturated
-           non-window zone overall.
-        4. If no zones are configured at all, return a "no suggestion"
-           result without raising.
+        Moteur par règles (cascade gender-first, capacity-aware) : on évalue
+        les zones par ``assignment_priority`` croissant ; pour chaque zone
+        ``auto_assign`` on vérifie que TOUTES ses conditions présentes (genre /
+        score tendance / couleur / classe de taille / catégorie) passent et
+        qu'il reste ≥ 1 place. La 1re zone qui matche est primaire, la suivante
+        alternative ; à priorité égale on préfère la plus de place libre.
 
-        Returns a ``ZoneSuggestion`` describing the recommendation plus a
-        short ``rationale`` Sophie can read out loud.
+        Reste consultatif : l'opérateur confirme à l'étiquetage. Les règles
+        sont éditables en base (/zones), pas codées en dur.
         """
         zones_result = await self.db.execute(
-            select(StoreZone).order_by(StoreZone.display_order, StoreZone.name)
+            select(StoreZone).order_by(
+                StoreZone.assignment_priority, StoreZone.display_order, StoreZone.name
+            )
         )
         zones = zones_result.scalars().all()
         if not zones:
@@ -210,7 +318,7 @@ class MerchandisingService:
         )
         load_by_zone = {row[0]: int(row[1]) for row in load_result.all()}
 
-        # Resolve product category (if any) — used for matching.
+        # Resolve product category (carries gender) — used for matching.
         category: Category | None = None
         if product.category_id is not None:
             cat_row = await self.db.execute(
@@ -218,54 +326,44 @@ class MerchandisingService:
             )
             category = cat_row.scalar_one_or_none()
 
-        bucket = score_bucket(product.trend_score)
-
-        # Rule 1: Hot → window
-        for zone in zones:
-            if not _is_window_zone(zone):
-                continue
-            free = (zone.capacity or 0) - load_by_zone.get(zone.id, 0)
-            if bucket == "hot" and free >= 1:
-                fallback = self._pick_category_zone(
-                    zones, load_by_zone, category, exclude_id=zone.id
-                )
-                return ZoneSuggestion(
-                    primary_zone_id=str(zone.id),
-                    primary_zone_name=zone.name,
-                    alternative_zone_id=str(fallback.id) if fallback else None,
-                    alternative_zone_name=fallback.name if fallback else None,
-                    should_go_to_window=True,
-                    rationale=(
-                        f"Score Hot ({product.trend_score:.0f}) — vitrine "
-                        f"{zone.name} libre. Si saturée plus tard, replier "
-                        f"vers {fallback.name if fallback else 'une zone catégorie'}."
-                    ),
-                )
-
-        # Rule 2/3: category match → least-loaded
-        primary = self._pick_category_zone(zones, load_by_zone, category)
-        alternative = (
-            self._pick_least_loaded_non_window(
-                zones, load_by_zone, exclude_id=primary.id if primary else None
-            )
-            if primary
-            else None
+        gender_token = (
+            category.gender.value if category and category.gender is not None else None
         )
-        if primary is not None:
+        color_norm = _normalize(product.color)
+        size_class = classify_size(product.size)
+        score = product.trend_score
+
+        def _free(zone: StoreZone) -> int:
+            return (zone.capacity or 0) - load_by_zone.get(zone.id, 0)
+
+        matches = [
+            z for z in zones
+            if z.auto_assign
+            and _free(z) >= 1
+            and _zone_matches_rules(
+                z, gender_token=gender_token, color_norm=color_norm,
+                size_class=size_class, score=score, category=category,
+            )
+        ]
+        # Priorité croissante ; à égalité, plus de place libre puis display_order.
+        matches.sort(key=lambda z: (z.assignment_priority, -_free(z), z.display_order))
+
+        if matches:
+            primary = matches[0]
+            alternative = matches[1] if len(matches) > 1 else None
             return ZoneSuggestion(
                 primary_zone_id=str(primary.id),
                 primary_zone_name=primary.name,
                 alternative_zone_id=str(alternative.id) if alternative else None,
                 alternative_zone_name=alternative.name if alternative else None,
-                should_go_to_window=False,
-                rationale=(
-                    f"Catégorie {category.name if category else 'inconnue'} → "
-                    f"{primary.name} (la moins saturée parmi les zones "
-                    f"compatibles)."
+                should_go_to_window=_is_window_zone(primary),
+                rationale=_suggestion_rationale(
+                    primary, product, category, gender_token, size_class, score
                 ),
             )
 
-        # Rule 4: no category match anywhere
+        # Aucune règle ne matche (ou tout est plein) → zone la moins chargée
+        # parmi les zones auto_assign hors vitrine.
         fallback = self._pick_least_loaded_non_window(zones, load_by_zone)
         if fallback is None:
             fallback = zones[0]
@@ -274,38 +372,12 @@ class MerchandisingService:
             primary_zone_name=fallback.name,
             alternative_zone_id=None,
             alternative_zone_name=None,
-            should_go_to_window=False,
+            should_go_to_window=_is_window_zone(fallback),
             rationale=(
-                "Aucune zone n'est typée pour cette catégorie : "
+                "Aucune zone ne correspond aux règles : "
                 f"placement par défaut en {fallback.name}."
             ),
         )
-
-    @staticmethod
-    def _pick_category_zone(
-        zones: Iterable[StoreZone],
-        load_by_zone: dict,
-        category: Category | None,
-        exclude_id=None,
-    ) -> StoreZone | None:
-        if category is None:
-            return None
-        matching = [
-            z for z in zones
-            if _zone_matches_category(z, category)
-            and not _is_window_zone(z)
-            and z.id != exclude_id
-        ]
-        if not matching:
-            return None
-        # Sort by free capacity DESC (most room first), tie-break on display_order.
-        matching.sort(
-            key=lambda z: (
-                -((z.capacity or 0) - load_by_zone.get(z.id, 0)),
-                z.display_order,
-            )
-        )
-        return matching[0]
 
     @staticmethod
     def _pick_least_loaded_non_window(
@@ -315,7 +387,7 @@ class MerchandisingService:
     ) -> StoreZone | None:
         candidates = [
             z for z in zones
-            if not _is_window_zone(z) and z.id != exclude_id
+            if not _is_window_zone(z) and z.auto_assign and z.id != exclude_id
         ]
         if not candidates:
             return None

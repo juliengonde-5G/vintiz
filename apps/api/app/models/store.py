@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Float, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,6 +31,19 @@ class StoreZone(Base):
     # background overlay in the iso canvas.
     floor_plan_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     layout_orientation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # ---- Règles d'affectation automatique (moteur prédictif) -------------
+    # Éditables dans /zones. "Vide/None = pas de contrainte" sur cet axe.
+    # Voir ai_mapping.DEFAULT_ZONES + migration 0043 + suggest_zone() :
+    # les 3 sources doivent rester synchronisées sur les noms de zones.
+    match_genders: Mapped[list | None] = mapped_column(JSONType, nullable=True)
+    match_colors: Mapped[list | None] = mapped_column(JSONType, nullable=True)
+    match_size_classes: Mapped[list | None] = mapped_column(JSONType, nullable=True)
+    min_trend_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    # Ordre d'évaluation du moteur (croissant = testé en premier) — distinct
+    # de display_order (ordre visuel du plan).
+    assignment_priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    auto_assign: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     zone_products: Mapped[list["ZoneProduct"]] = relationship(
         "ZoneProduct", back_populates="zone", lazy="selectin"

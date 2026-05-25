@@ -82,26 +82,33 @@ interface AIRecoResult {
 
 // ---------------------------------------------------------------------------
 // Visual floor plan of the boutique (Lot N°2, ~184 m² utiles).
-// Zones are positioned to match the real layout (plan.jpg) :
-//   - Petits Prix 1/2 + Extra 1/2 sur le mur du fond (top)
-//   - Chaussures F + cabines + Portants Standards 1/2 cote gauche/centre
-//   - Chaussures H + Hommes + Tendance + Vitrine sur la facade (bottom)
-//   - Entrée à droite
-// Coordinates use a 380x380 viewBox (cf. <svg viewBox="0 0 390 380">).
+// Refonte 2026-05 : 14 zones. Layout (plan.jpg, entrée à droite) :
+//   - Entrée + Droite 1/2/3 sur le mur droit (haut) ; Chaussures droite femme
+//     en retour de mur droit
+//   - Portants Ronds + Portant 1/2 + Portant Homme au centre
+//   - Chaussures H + Hommes + Tendance + Vitrine sur la facade (bas)
+// Les NOMS doivent matcher exactement ceux de la base (cf. ai_mapping.
+// DEFAULT_ZONES + migration 0043). Coordonnées en viewBox 390x380.
 // ---------------------------------------------------------------------------
 
 const ZONE_LAYOUT: Record<string, { x: number; y: number; w: number; h: number; label: string; shortLabel: string }> = {
-  'Petits Prix 1':         { x: 282, y: 10,  w: 96,  h: 46,  label: 'Petits Prix 1',         shortLabel: 'PP1' },
-  'Petits Prix 2':         { x: 180, y: 10,  w: 98,  h: 46,  label: 'Petits Prix 2',         shortLabel: 'PP2' },
-  'Extra 1':               { x: 92,  y: 14,  w: 84,  h: 50,  label: 'Extra 1',               shortLabel: 'E1' },
-  'Extra 2':               { x: 50,  y: 70,  w: 50,  h: 80,  label: 'Extra 2',               shortLabel: 'E2' },
-  'Chaussures F':          { x: 50,  y: 158, w: 50,  h: 64,  label: 'Chaussures F',          shortLabel: 'Ch.F' },
-  'Portants Standards 1':  { x: 170, y: 108, w: 86,  h: 64,  label: 'Portants Standards 1',  shortLabel: 'PS1' },
-  'Portants Standards 2':  { x: 86,  y: 222, w: 86,  h: 64,  label: 'Portants Standards 2',  shortLabel: 'PS2' },
-  'Chaussures H':          { x: 88,  y: 304, w: 56,  h: 56,  label: 'Chaussures H',          shortLabel: 'Ch.H' },
-  'Hommes':                { x: 150, y: 314, w: 70,  h: 50,  label: 'Hommes',                shortLabel: 'H' },
-  'Tendance':              { x: 226, y: 304, w: 92,  h: 56,  label: 'Tendance',              shortLabel: 'Tend' },
-  'Vitrine':               { x: 324, y: 304, w: 50,  h: 56,  label: 'Vitrine',               shortLabel: 'Vit' },
+  // Mur droit / entrée (haut, droite → gauche)
+  'Entrée':                  { x: 286, y: 10,  w: 92,  h: 42,  label: 'Entrée',              shortLabel: 'Ent' },
+  'Droite 1':                { x: 196, y: 10,  w: 86,  h: 42,  label: 'Droite 1',            shortLabel: 'D1' },
+  'Droite 2':                { x: 110, y: 10,  w: 82,  h: 42,  label: 'Droite 2',            shortLabel: 'D2' },
+  'Droite 3':                { x: 50,  y: 10,  w: 56,  h: 56,  label: 'Droite 3',            shortLabel: 'D3' },
+  'Chaussures droite femme': { x: 50,  y: 70,  w: 56,  h: 64,  label: 'Chaussures femme',    shortLabel: 'Ch.F' },
+  // Portants centraux
+  'Portant Rond Femme':      { x: 256, y: 110, w: 84,  h: 50,  label: 'Portant Rond Femme',  shortLabel: 'PRF' },
+  'Portant Rond Homme':      { x: 164, y: 110, w: 84,  h: 50,  label: 'Portant Rond Homme',  shortLabel: 'PRH' },
+  'Portant 1':               { x: 256, y: 168, w: 84,  h: 44,  label: 'Portant 1',           shortLabel: 'P1' },
+  'Portant 2':               { x: 110, y: 200, w: 90,  h: 50,  label: 'Portant 2',           shortLabel: 'P2' },
+  'Portant Homme':           { x: 204, y: 226, w: 86,  h: 50,  label: 'Portant Homme',       shortLabel: 'PH' },
+  // Facade (bas, gauche → droite)
+  'Chaussures H':            { x: 50,  y: 304, w: 54,  h: 56,  label: 'Chaussures H',        shortLabel: 'Ch.H' },
+  'Hommes':                  { x: 110, y: 304, w: 70,  h: 56,  label: 'Hommes',              shortLabel: 'H' },
+  'Tendance':                { x: 186, y: 304, w: 100, h: 56,  label: 'Tendance',            shortLabel: 'Tend' },
+  'Vitrine':                 { x: 292, y: 304, w: 86,  h: 56,  label: 'Vitrine',             shortLabel: 'Vit' },
 };
 
 function zoneOccupancyFill(percent: number): string {
