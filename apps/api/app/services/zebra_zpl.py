@@ -3,21 +3,22 @@
 Vintiz imprime DEUX étiquettes par produit :
 
   Étiquette 1 — Info (paysage, ^A0N) :
-    ┌──────────────────────────────────────────────────────┐  ← 52 mm (X, ~416 dots)
-    │           Nom du produit                             │
-    │   ║▌█▌▌█████▌▌ (barcode) VTZ-2026-00142             │
-    │           Semaine 21                                 │
-    └──────────────────────────────────────────────────────┘  ← 25 mm (Y, 200 dots)
+    ┌──────────────────────────────────────────────────────┐  ← 52 mm (X, 640 dots)
+    │                  Nom du produit                      │
+    │            ║▌█▌▌█████▌▌ (code-barres centré)         │
+    │                   Semaine 21                         │
+    └──────────────────────────────────────────────────────┘  ← 25 mm (Y, 300 dots)
 
   Étiquette 2 — Prix (paysage, ^A0N) :
     ┌──────────────────────────────────────────────────────┐
-    │                   VINTIZ                             │
-    │           ─────────────────────                      │
-    │                  12,50 €                             │
+    │                     VINTIZ                           │
+    │              ─────────────────────                   │
+    │                    12,50 €                           │
     └──────────────────────────────────────────────────────┘
 
-  Coordonnées : X = axe printhead (52 mm paysage, clips à 416 dots).
-                Y = axe alimentation (25 mm, gap sensor coupe à 200 dots).
+  ZD421d 300 dpi : X = axe printhead (52 mm = 640 dots), Y = axe
+  alimentation (25 mm = 300 dots). Tout est centré (^FB640) ; la largeur
+  de module du code-barres s'adapte pour rester dans les 640 dots.
 
 build_label_zpl() / build_label_set_zpl() concatènent les deux blocs
 ^XA…^XZ — la Zebra imprime les deux à la suite. La preview Labelary
@@ -30,10 +31,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-LABEL_WIDTH_DOTS = 640   # canvas paysage X (axe printhead ≈ 52 mm, printer clips at 416)
-LABEL_HEIGHT_DOTS = 200  # canvas paysage Y (axe alimentation, 25 mm = 200 dots)
-LABELARY_DPMM = "8dpmm"
-LABELARY_SIZE = "2.05x0.98"   # landscape 52 × 25 mm
+# ZD421d 300 dpi (12 dpmm) : l'étiquette test ^PW640 remplit correctement les
+# 52 mm → 640 dots / 52 mm ≈ 12 dpmm. En paysage : X = 52 mm = 640 dots
+# (axe printhead), Y = 25 mm = 300 dots (axe alimentation).
+LABEL_WIDTH_DOTS = 640   # canvas paysage X (printhead, 52 mm)
+LABEL_HEIGHT_DOTS = 300  # canvas paysage Y (alimentation, 25 mm)
+LABELARY_DPMM = "12dpmm"
+LABELARY_SIZE = "2.1x0.98"   # landscape 53 × 25 mm
 
 DEFAULT_PRINT_RATE = 4
 DEFAULT_MEDIA_DARKNESS = 0
@@ -88,6 +92,22 @@ def _price_str(price: float) -> str:
     return f"{price:.2f} €".replace(".", ",")
 
 
+def _barcode_layout(ref: str, *, canvas_w: int = LABEL_WIDTH_DOTS) -> tuple[int, int]:
+    """Module width + x-origin so the Code 128 is centred and fits the canvas.
+
+    Largeur Code 128 (modules) = start(11) + n×11 + checksum(11) + stop(13)
+    + 2 zones de silence (10 chacune). On choisit la largeur de module la plus
+    grande qui rentre (meilleure lisibilité scanner), puis on centre.
+    """
+    n = len(ref)
+    modules = 11 * (n + 2) + 13 + 20
+    for by in (3, 2, 1):
+        width = by * modules
+        if width <= canvas_w - 16:
+            return by, max(8, (canvas_w - width) // 2)
+    return 1, 8
+
+
 def _zpl_head(pr: int, md: int) -> str:
     return (
         f"^PR{pr}^MD{md}^CI28"
@@ -112,17 +132,18 @@ def build_info_label_zpl(
     ref  = _sanitize(data.barcode, max_length=24)      or "VTZ-NOREF"
     week = _week_label(data)
 
-    # Paysage : axe X = 52 mm (printhead, ~416 dots), axe Y = 25 mm (alimentation = 200 dots).
-    # Tout le contenu doit tenir dans Y ≤ ~185 (le capteur de gap coupe à 200).
-    #   y=8  : nom du produit (police 30) → fin y=38
-    #   y=45 : code-barres Code 128 horizontal, h=85 + ligne d'interprétation (~20) → fin y≈150
-    #   y=158: semaine (police 24) → fin y=182
+    # Paysage 640×300 (12 dpmm). Tout centré sur la largeur (^FB640), empilé
+    # verticalement dans Y ≤ ~290 :
+    #   y=20 : nom du produit (police 46) → fin y=66
+    #   y=95 : code-barres Code 128 horizontal centré, h=120 + interprétation
+    #   y=255: semaine (police 34) → fin y=289
+    by, bx = _barcode_layout(ref)
     return (
         "^XA"
         + _zpl_head(pr, md)
-        + f"^FO0,8^FB640,1,0,C,0^A0N,30,30^FD{name}^FS"
-        + f"^FO20,45^BY1,2.5,85^BCN,85,Y,N,N,A^FD{ref}^FS"
-        + f"^FO0,158^FB640,1,0,C,0^A0N,24,24^FD{week}^FS"
+        + f"^FO0,20^FB640,1,0,C,0^A0N,46,46^FD{name}^FS"
+        + f"^FO{bx},95^BY{by},2.5,120^BCN,120,Y,N,N,A^FD{ref}^FS"
+        + f"^FO0,255^FB640,1,0,C,0^A0N,34,34^FD{week}^FS"
         + f"^PQ{copies}"
         + "^XZ"
     )
@@ -142,16 +163,16 @@ def build_price_label_zpl(
 
     price = _price_str(float(data.sale_price))
 
-    # Paysage, Y ≤ 185 :
-    #   y=10 : "VINTIZ" (police 40) → fin y=50
-    #   y=60 : séparateur horizontal
-    #   y=70 : prix en grande police (95) → fin y=165
+    # Paysage 640×300, centré, Y ≤ ~290 :
+    #   y=30 : "VINTIZ" (police 64) → fin y=94
+    #   y=125: séparateur horizontal
+    #   y=150: prix en grande police (120) → fin y=270
     return (
         "^XA"
         + _zpl_head(pr, md)
-        + "^FO0,10^FB640,1,0,C,0^A0N,40,40^FDVINTIZ^FS"
-        + "^FO40,60^GB560,3,3^FS"
-        + f"^FO0,70^FB640,1,0,C,0^A0N,95,95^FD{price}^FS"
+        + "^FO0,30^FB640,1,0,C,0^A0N,64,64^FDVINTIZ^FS"
+        + "^FO40,125^GB560,3,3^FS"
+        + f"^FO0,150^FB640,1,0,C,0^A0N,120,120^FD{price}^FS"
         + f"^PQ{copies}"
         + "^XZ"
     )
