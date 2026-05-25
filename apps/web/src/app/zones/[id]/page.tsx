@@ -26,6 +26,12 @@ type Zone = {
   photo_url: string | null;
   sales_target_monthly: number | null;
   display_order: number;
+  match_genders: string[] | null;
+  match_colors: string[] | null;
+  match_size_classes: string[] | null;
+  min_trend_score: number | null;
+  assignment_priority: number;
+  auto_assign: boolean;
   product_count?: number;
 };
 
@@ -141,6 +147,12 @@ export default function ZoneDetailPage() {
         icon: form.icon,
         photo_url: form.photo_url,
         sales_target_monthly: form.sales_target_monthly,
+        match_genders: form.match_genders ?? [],
+        match_colors: form.match_colors ?? [],
+        match_size_classes: form.match_size_classes ?? [],
+        min_trend_score: form.min_trend_score ?? null,
+        assignment_priority: form.assignment_priority,
+        auto_assign: form.auto_assign,
       };
       const res = await api.put(`/api/admin/zones/${zone.id}`, payload);
       if (res.ok) {
@@ -150,6 +162,33 @@ export default function ZoneDetailPage() {
       setSavingForm(false);
     }
   };
+
+  const RULE_COLORS = ['rose', 'rouge', 'bleu', 'blanc', 'violet', 'vert', 'noir', 'marron', 'jaune', 'orange', 'gris', 'camel', 'beige'];
+  type ChipField = 'match_genders' | 'match_colors' | 'match_size_classes';
+  const toggleChip = (field: ChipField, value: string) => {
+    const arr = (form[field] as string[] | null | undefined) ?? [];
+    const next = arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value];
+    setForm({ ...form, [field]: next });
+  };
+  const renderChips = (field: ChipField, options: string[]) => (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((o) => {
+        const on = ((form[field] as string[] | null | undefined) ?? []).includes(o);
+        return (
+          <button
+            key={o}
+            type="button"
+            onClick={() => toggleChip(field, o)}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+              on ? 'bg-vz-teal text-white' : 'bg-gray-100 text-gray-600 hover:bg-vz-teal-soft'
+            }`}
+          >
+            {o}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -504,13 +543,65 @@ export default function ZoneDetailPage() {
                   />
                 </label>
               </div>
-              <div className="mt-4 flex items-center justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => setForm(zone)}>Annuler</Button>
-                <Button size="sm" onClick={saveForm} disabled={savingForm}>
-                  {savingForm ? 'Sauvegarde…' : 'Enregistrer'}
-                </Button>
+            </Card>
+
+            <Card className="mt-6" title="Regles d'affectation automatique" subtitle="Conditions utilisees par le moteur predictif pour suggerer cette zone">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <span className="text-xs font-medium text-gray-600">Genres</span>
+                  <p className="text-[11px] text-gray-400 mb-1.5">Vide = tous genres</p>
+                  {renderChips('match_genders', ['femme', 'homme', 'enfant', 'mixte'])}
+                </div>
+                <div className="md:col-span-2">
+                  <span className="text-xs font-medium text-gray-600">Couleurs</span>
+                  <p className="text-[11px] text-gray-400 mb-1.5">Vide = pas de condition couleur</p>
+                  {renderChips('match_colors', RULE_COLORS)}
+                </div>
+                <div>
+                  <span className="text-xs font-medium text-gray-600">Tailles</span>
+                  <p className="text-[11px] text-gray-400 mb-1.5">Vide = toutes tailles</p>
+                  {renderChips('match_size_classes', ['petite', 'standard', 'grande'])}
+                </div>
+                <label className="block">
+                  <span className="text-xs font-medium text-gray-600">Score tendance minimum</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
+                    value={form.min_trend_score ?? ''}
+                    placeholder="ex. 70 (Tendance), 75 (Vitrine)"
+                    onChange={(e) => setForm({ ...form, min_trend_score: e.target.value ? Number(e.target.value) : null })}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-gray-600">Priorite d&apos;affectation</span>
+                  <input
+                    type="number"
+                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
+                    value={form.assignment_priority ?? 100}
+                    onChange={(e) => setForm({ ...form, assignment_priority: Number(e.target.value) })}
+                  />
+                  <span className="text-[11px] text-gray-400">Plus petit = evalue en premier</span>
+                </label>
+                <label className="flex items-center gap-2 md:col-span-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-vz-teal focus:ring-vz-teal"
+                    checked={form.auto_assign ?? true}
+                    onChange={(e) => setForm({ ...form, auto_assign: e.target.checked })}
+                  />
+                  <span className="text-xs font-medium text-gray-600">Inclure dans les suggestions automatiques</span>
+                </label>
               </div>
             </Card>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setForm(zone)}>Annuler</Button>
+              <Button size="sm" onClick={saveForm} disabled={savingForm}>
+                {savingForm ? 'Sauvegarde…' : 'Enregistrer'}
+              </Button>
+            </div>
           </div>
         )}
       </main>

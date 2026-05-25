@@ -455,7 +455,7 @@ export default function ZonesPage() {
         ) : zones.length === 0 ? (
           <EmptyState
             title="Aucune zone"
-            description="Lance le seed pour initialiser les 11 espaces de la boutique."
+            description="Lance le seed pour initialiser les 14 espaces de la boutique."
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

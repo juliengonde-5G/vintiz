@@ -23,77 +23,127 @@ from app.models.store import (
 logger = logging.getLogger("vintiz.ai.mapping")
 
 # Default zones for Vintiz boutique — Lot N°2, S. utile 183,95 m² (magasin 98,70 m²).
-# Layout aligned with `plan.jpg` and the photo plate (Standard 1/2, Extra 1/2,
-# Chaussures F/H, Hommes, Tendances, Vitrine). Coordinates are percentages of
-# the canvas (0-100) ; the entrée is à droite, la vitrine tendance en façade.
+# Refonte 2026-05 : 14 zones avec règles d'affectation conditionnelles
+# (genre / couleur / taille / catégorie / score tendance). Coordonnées en %
+# du canvas (0-100) ; entrée à droite, mur du fond en haut, façade en bas.
+#
+# IMPORTANT — garder synchronisé sur les NOMS de zones avec :
+#   - alembic/versions/0043_store_zone_rules_and_remap.py (TARGET_ZONES)
+#   - apps/web/src/app/ia/page.tsx (ZONE_LAYOUT)
+# product_types est stocké en chaîne JSON (colonne TEXT) ; match_* sont des
+# listes Python (colonnes JSONType). "None/[] = pas de contrainte" sur l'axe.
 DEFAULT_ZONES = [
-    # ---- Mur du fond (back wall, top of plan), de droite (entrée) à gauche ----
     {
-        "name": "Petits Prix 1", "description": "Mur du fond cote entree — femme, prix doux",
-        "capacity": 200, "color_code": "#26A695", "icon": "shirt",
-        "pos_x": 72, "pos_y": 2, "width": 24, "height": 12, "shape": "rect", "display_order": 1,
-        "photo_url": "/zones/standard-1.jpeg",
+        "name": "Vitrine", "description": "Vitrine devanture cote entree — exposition tendance",
+        "capacity": 8, "color_code": "#006B61", "icon": "star",
+        "pos_x": 84, "pos_y": 80, "width": 12, "height": 15, "shape": "rounded", "display_order": 1,
+        "photo_url": "/zones/vitrine.jpeg",
+        "match_genders": None, "match_colors": None, "match_size_classes": None,
+        "product_types": None, "min_trend_score": 75, "assignment_priority": 10,
     },
     {
-        "name": "Petits Prix 2", "description": "Mur du fond centre — femme, prix doux",
-        "capacity": 200, "color_code": "#26A695", "icon": "shirt",
-        "pos_x": 46, "pos_y": 2, "width": 24, "height": 12, "shape": "rect", "display_order": 2,
-        "photo_url": "/zones/standard-2.jpeg",
-    },
-    {
-        "name": "Extra 1", "description": "Mur du fond — selection extra femme",
-        "capacity": 150, "color_code": "#008678", "icon": "shirt",
-        "pos_x": 24, "pos_y": 4, "width": 20, "height": 14, "shape": "rect", "display_order": 3,
-        "photo_url": "/zones/extra-1.jpeg",
-    },
-    {
-        "name": "Extra 2", "description": "Retour mur — selection extra femme",
-        "capacity": 150, "color_code": "#008678", "icon": "shirt",
-        "pos_x": 12, "pos_y": 18, "width": 12, "height": 22, "shape": "rect", "display_order": 4,
+        "name": "Chaussures droite femme", "description": "Mur droit — chaussures femme",
+        "capacity": 48, "color_code": "#FFC5DF", "icon": "bag",
+        "pos_x": 4, "pos_y": 22, "width": 13, "height": 20, "shape": "rect", "display_order": 2,
         "photo_url": "/zones/extra-2.jpeg",
+        "match_genders": ["femme"], "match_colors": None, "match_size_classes": None,
+        "product_types": json.dumps(["chaussures", "chaussure", "escarpin", "botte", "basket", "sandale"]),
+        "min_trend_score": None, "assignment_priority": 20,
     },
-    # ---- Cote gauche (left wall + portants centraux femme) ----
-    {
-        "name": "Chaussures F", "description": "Mur gauche pres des cabines — chaussures femme",
-        "capacity": 30, "color_code": "#FFC5DF", "icon": "bag",
-        "pos_x": 12, "pos_y": 42, "width": 12, "height": 18, "shape": "rect", "display_order": 5,
-        "photo_url": "/zones/chaussures-f.jpeg",
-    },
-    {
-        "name": "Portants Standards 1", "description": "Portant central femme (haut)",
-        "capacity": 120, "color_code": "#FF97C0", "icon": "grid",
-        "pos_x": 44, "pos_y": 28, "width": 22, "height": 18, "shape": "rounded", "display_order": 6,
-    },
-    {
-        "name": "Portants Standards 2", "description": "Portant central femme (bas)",
-        "capacity": 120, "color_code": "#FF97C0", "icon": "grid",
-        "pos_x": 22, "pos_y": 58, "width": 22, "height": 18, "shape": "rounded", "display_order": 7,
-    },
-    # ---- Mur facade (bottom of plan), de gauche a droite ----
     {
         "name": "Chaussures H", "description": "Coin facade gauche — chaussures homme",
-        "capacity": 30, "color_code": "#3B82F6", "icon": "bag",
-        "pos_x": 22, "pos_y": 80, "width": 14, "height": 15, "shape": "rect", "display_order": 8,
+        "capacity": 28, "color_code": "#3B82F6", "icon": "bag",
+        "pos_x": 6, "pos_y": 80, "width": 14, "height": 15, "shape": "rect", "display_order": 3,
         "photo_url": "/zones/chaussures-h.jpeg",
+        "match_genders": ["homme"], "match_colors": None, "match_size_classes": None,
+        "product_types": json.dumps(["chaussures", "chaussure", "basket", "botte", "mocassin", "sneaker"]),
+        "min_trend_score": None, "assignment_priority": 21,
     },
     {
-        "name": "Hommes", "description": "Mur facade — collection homme complete",
-        "capacity": 150, "color_code": "#1E3A8A", "icon": "shirt",
-        "pos_x": 38, "pos_y": 82, "width": 18, "height": 13, "shape": "rect", "display_order": 9,
+        "name": "Portant Rond Homme", "description": "Portant rond homme — pieces structurees",
+        "capacity": 100, "color_code": "#1E40AF", "icon": "grid",
+        "pos_x": 24, "pos_y": 42, "width": 16, "height": 14, "shape": "rounded", "display_order": 4,
+        "match_genders": ["homme"], "match_colors": None, "match_size_classes": None,
+        "product_types": json.dumps(["polo", "chemise", "veste", "chemisette", "haut"]),
+        "min_trend_score": None, "assignment_priority": 30,
+    },
+    {
+        "name": "Portant Homme", "description": "Portant homme — basiques",
+        "capacity": 280, "color_code": "#1E3A8A", "icon": "grid",
+        "pos_x": 24, "pos_y": 60, "width": 18, "height": 15, "shape": "rounded", "display_order": 5,
+        "match_genders": ["homme"], "match_colors": None, "match_size_classes": None,
+        "product_types": json.dumps(["polo", "t-shirt", "tshirt", "tee-shirt", "bermuda", "short", "shirt"]),
+        "min_trend_score": None, "assignment_priority": 31,
+    },
+    {
+        "name": "Hommes", "description": "Mur facade — collection homme (fourre-tout)",
+        "capacity": 210, "color_code": "#172554", "icon": "shirt",
+        "pos_x": 24, "pos_y": 82, "width": 18, "height": 13, "shape": "rect", "display_order": 6,
         "photo_url": "/zones/hommes.jpeg",
+        "match_genders": ["homme"], "match_colors": None, "match_size_classes": None,
+        "product_types": None, "min_trend_score": None, "assignment_priority": 32,
     },
     {
-        "name": "Tendance", "description": "Tete de gondole facade — tendance femme",
+        "name": "Tendance", "description": "Tete de gondole facade — selon scoring tendance",
         "capacity": 200, "color_code": "#CC4889", "icon": "sparkles",
-        "pos_x": 58, "pos_y": 80, "width": 24, "height": 15, "shape": "rounded", "display_order": 10,
+        "pos_x": 46, "pos_y": 80, "width": 24, "height": 15, "shape": "rounded", "display_order": 7,
         "photo_url": "/zones/tendance.jpeg",
+        "match_genders": None, "match_colors": None, "match_size_classes": None,
+        "product_types": None, "min_trend_score": 70, "assignment_priority": 40,
     },
-    # ---- Vitrine (devanture cote entree, exposition uniquement) ----
     {
-        "name": "Vitrine", "description": "Vitrine devanture cote entree — exposition uniquement",
-        "capacity": 8, "color_code": "#006B61", "icon": "star",
-        "pos_x": 84, "pos_y": 80, "width": 12, "height": 15, "shape": "rounded", "display_order": 11,
-        "photo_url": "/zones/vitrine.jpeg",
+        "name": "Droite 3", "description": "Mur droit fond — femme grandes tailles + robes longues",
+        "capacity": 115, "color_code": "#008678", "icon": "shirt",
+        "pos_x": 8, "pos_y": 4, "width": 20, "height": 14, "shape": "rect", "display_order": 8,
+        "photo_url": "/zones/extra-1.jpeg",
+        "match_genders": ["femme"], "match_colors": None, "match_size_classes": ["grande"],
+        "product_types": None, "min_trend_score": None, "assignment_priority": 50,
+    },
+    {
+        "name": "Portant 2", "description": "Portant femme — petites tailles, jupes/chemisiers/shirts",
+        "capacity": 280, "color_code": "#FF97C0", "icon": "grid",
+        "pos_x": 40, "pos_y": 44, "width": 18, "height": 14, "shape": "rounded", "display_order": 9,
+        "match_genders": ["femme"], "match_colors": None, "match_size_classes": ["petite"],
+        "product_types": json.dumps(["jupe", "jupes", "chemisier", "chemisiers", "shirt", "chemise"]),
+        "min_trend_score": None, "assignment_priority": 51,
+    },
+    {
+        "name": "Entrée", "description": "Entree cote droit — femme rose/rouge",
+        "capacity": 85, "color_code": "#FF6FA5", "icon": "shirt",
+        "pos_x": 76, "pos_y": 2, "width": 20, "height": 12, "shape": "rect", "display_order": 10,
+        "match_genders": ["femme"], "match_colors": ["rose", "rouge"], "match_size_classes": None,
+        "product_types": None, "min_trend_score": None, "assignment_priority": 60,
+    },
+    {
+        "name": "Droite 1", "description": "Mur droit — femme bleu/blanc/violet",
+        "capacity": 155, "color_code": "#26A695", "icon": "shirt",
+        "pos_x": 53, "pos_y": 2, "width": 20, "height": 12, "shape": "rect", "display_order": 11,
+        "photo_url": "/zones/standard-1.jpeg",
+        "match_genders": ["femme"], "match_colors": ["bleu", "blanc", "violet"], "match_size_classes": None,
+        "product_types": None, "min_trend_score": None, "assignment_priority": 61,
+    },
+    {
+        "name": "Droite 2", "description": "Mur droit centre — femme vert/noir/marron",
+        "capacity": 155, "color_code": "#1A7A6A", "icon": "shirt",
+        "pos_x": 30, "pos_y": 2, "width": 20, "height": 12, "shape": "rect", "display_order": 12,
+        "photo_url": "/zones/standard-2.jpeg",
+        "match_genders": ["femme"], "match_colors": ["vert", "noir", "marron"], "match_size_classes": None,
+        "product_types": None, "min_trend_score": None, "assignment_priority": 62,
+    },
+    {
+        "name": "Portant 1", "description": "Portant femme — rouge/jaune/orange/marron",
+        "capacity": 10, "color_code": "#F59E0B", "icon": "grid",
+        "pos_x": 44, "pos_y": 26, "width": 16, "height": 13, "shape": "rounded", "display_order": 13,
+        "match_genders": ["femme"], "match_colors": ["rouge", "jaune", "orange", "marron"], "match_size_classes": None,
+        "product_types": None, "min_trend_score": None, "assignment_priority": 63,
+    },
+    {
+        "name": "Portant Rond Femme", "description": "Portant rond femme — pieces structurees",
+        "capacity": 100, "color_code": "#EC4899", "icon": "grid",
+        "pos_x": 64, "pos_y": 28, "width": 16, "height": 14, "shape": "rounded", "display_order": 14,
+        "match_genders": ["femme"], "match_colors": None, "match_size_classes": None,
+        "product_types": json.dumps(["chemisier", "veste", "chemisette", "haut"]),
+        "min_trend_score": None, "assignment_priority": 70,
     },
 ]
 
@@ -252,29 +302,35 @@ async def generate_arrangement_recommendations(db: AsyncSession) -> dict:
         max_tokens=2048,
         system="""Tu es un conseiller merchandising expert pour Vintiz, une boutique de vetements seconde main premium a Vernon (Lot N°2, surface utile 183,95 m² dont 98,70 m² magasin).
 
-La boutique est en forme de L, entree a droite, 11 zones :
-1. Petits Prix 1 (mur du fond cote entree, femme, 200 pieces)
-2. Petits Prix 2 (mur du fond centre, femme, 200 pieces)
-3. Extra 1 (mur du fond, femme, 150 pieces)
-4. Extra 2 (retour mur cote gauche, femme, 150 pieces)
-5. Chaussures F (mur gauche pres des cabines, 30 paires)
-6. Portants Standards 1 (portant central femme haut, 120 pieces)
-7. Portants Standards 2 (portant central femme bas, 120 pieces)
-8. Chaussures H (coin facade gauche, 30 paires homme)
-9. Hommes (mur facade, collection homme complete, 150 pieces)
-10. Tendance (tete de gondole facade femme, 200 pieces)
-11. Vitrine (devanture cote entree, exposition uniquement, ~8 pieces)
+La boutique est en forme de L, entree a droite, 14 zones :
+1. Entrée (mur droit cote entree, femme rose/rouge, 85 pieces)
+2. Droite 1 (mur droit, femme bleu/blanc/violet, 155 pieces)
+3. Droite 2 (mur droit centre, femme vert/noir/marron, 155 pieces)
+4. Droite 3 (mur droit fond, femme grandes tailles + robes longues, 115 pieces)
+5. Chaussures droite femme (mur droit, chaussures femme, 48 paires)
+6. Portant 1 (portant femme rouge/jaune/orange/marron, 10 pieces)
+7. Portant 2 (portant femme petites tailles, jupes/chemisiers/shirts, 280 pieces)
+8. Portant Rond Femme (portant rond femme : chemisier/veste/chemisette/haut, 100 pieces)
+9. Portant Rond Homme (portant rond homme : polo/chemise/veste/chemisette/haut, 100 pieces)
+10. Portant Homme (portant homme : polo/t-shirt/bermuda/short/shirt, 280 pieces)
+11. Hommes (mur facade, collection homme fourre-tout, 210 pieces)
+12. Chaussures H (coin facade gauche, chaussures homme, 28 paires)
+13. Tendance (tete de gondole facade, pieces a fort score tendance, 200 pieces)
+14. Vitrine (devanture cote entree, exposition tendance, ~8 pieces)
 
-Toutes les zones sont feminines a l'exception de Chaussures H et Hommes.
+Zones homme : Chaussures H, Portant Rond Homme, Portant Homme, Hommes. Le
+reste est feminin. Tendance et Vitrine accueillent les pieces a fort score
+tendance (tout genre), independamment du code couleur.
 
 Principes merchandising :
-- Vitrine et Tendance : pieces tendance haute, prix moyen-haut, rotation hebdo
-- Petits Prix 1/2 : entree de gamme femme, fortes capacites, rotation rapide
-- Extra 1/2 : selections premium femme, mise en valeur
-- Portants Standards : mix tendance + nouveautes femme au centre
-- Chaussures F/H : focus matiere et taille, peu de stock
-- Hommes : zone homme dediee en facade
-- Les produits stagnants sont deplaces vers Tendance/Vitrine ou demarques en Petits Prix
+- Vitrine et Tendance : pieces a fort score tendance, rotation hebdo
+- Zones Droite 1/2 + Entrée : femme triees par code couleur, fortes capacites
+- Droite 3 : femme grandes tailles et robes longues
+- Portant 1/2 : portants femme (Portant 1 couleurs vives, Portant 2 petites tailles)
+- Portant Rond Femme/Homme : pieces structurees (chemises, vestes, polos)
+- Chaussures droite femme / Chaussures H : focus matiere et taille
+- Hommes : mur homme fourre-tout en facade
+- Les produits stagnants sont deplaces vers Tendance/Vitrine ou demarques
 
 Reponds en JSON avec :
 {
