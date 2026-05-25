@@ -299,8 +299,15 @@ export default function NewProductWizard() {
       }
       setCreated(product);
       return product;
-    } catch {
-      setError('Erreur de connexion');
+    } catch (err) {
+      // Surface the real cause (timeout, réseau, serveur injoignable) instead
+      // of a generic message — sinon impossible de diagnostiquer pourquoi la
+      // fiche ne part pas.
+      setError(
+        err instanceof Error && err.message
+          ? `Échec de l'enregistrement : ${err.message}`
+          : 'Serveur Vintiz injoignable. Vérifiez la connexion puis réessayez.',
+      );
       return null;
     } finally {
       submittingRef.current = false;
@@ -367,8 +374,16 @@ export default function NewProductWizard() {
         setSaving(false);
         return;
       }
-    } catch {
-      setError('Erreur de connexion');
+    } catch (err) {
+      // The article already exists at this point (créé à l'étape prix) — only
+      // the mise en rayon a échoué. Surface the real cause and reassure that
+      // the article isn't lost (retrouvable en stock dans l'inventaire).
+      setError(
+        (err instanceof Error && err.message
+          ? `Mise en rayon impossible : ${err.message}.`
+          : 'Mise en rayon impossible : serveur Vintiz injoignable.') +
+          " L'article est enregistré en stock — réessayez ou finalisez depuis l'inventaire.",
+      );
       setSaving(false);
       return;
     }
