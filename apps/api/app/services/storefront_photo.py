@@ -110,13 +110,23 @@ async def _photoroom_cutout(image_bytes: bytes, media_type: str) -> bytes | None
     async with httpx.AsyncClient(timeout=PHOTOROOM_TIMEOUT) as client:
         resp = await client.post(
             PHOTOROOM_ENDPOINT,
-            headers={"x-api-key": api_key},
+            headers={"x-api-key": api_key.strip()},
             files={"image_file": ("product", image_bytes, media_type)},
             data={"format": "png"},
         )
     if resp.status_code != 200:
+        # Spell out the actionable cases so the failure is diagnosable from the
+        # logs without re-reading Photoroom's docs. The API credit balance is
+        # billed separately from the Photoroom app subscription.
+        hint = {
+            401: "clé API invalide ou révoquée",
+            402: "crédits API épuisés — recharger sur dashboard.photoroom.com "
+                 "(les crédits API sont distincts de l'abonnement de l'app)",
+            403: "clé interdite pour cet endpoint / compte",
+        }.get(resp.status_code, "")
+        suffix = f" — {hint}" if hint else ""
         raise RuntimeError(
-            f"Photoroom returned {resp.status_code}: {resp.text[:200]}"
+            f"Photoroom {resp.status_code}{suffix}: {resp.text[:200]}"
         )
     return resp.content
 
