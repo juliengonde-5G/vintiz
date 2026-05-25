@@ -144,14 +144,14 @@ def build_info_label_zpl(
     # verticalement dans Y ≤ ~250 (zone imprimable utile) :
     #   y=8  : nom du produit (police 30) → fin y=38
     #   y=46 : code-barres Code 128 décalé à droite, h=90 + interprétation
-    #   y=195: semaine (police 30) → fin y=225
-    by, bx = _barcode_layout(ref, right_shift=55)
+    #   y=172: semaine (police 30) → fin y=202
+    by, bx = _barcode_layout(ref, right_shift=28)
     return (
         "^XA"
         + _zpl_head(pr, md)
         + f"^FO0,8^FB640,1,0,C,0^A0N,30,28^FD{name}^FS"
         + f"^FO{bx},46^BY{by},2.5,90^BCN,90,Y,N,N,A^FD{ref}^FS"
-        + f"^FO0,195^FB640,1,0,C,0^A0N,30,28^FD{week}^FS"
+        + f"^FO0,172^FB640,1,0,C,0^A0N,30,28^FD{week}^FS"
         + f"^PQ{copies}"
         + "^XZ"
     )
