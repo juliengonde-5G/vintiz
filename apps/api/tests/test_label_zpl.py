@@ -1,8 +1,8 @@
 """Unit tests for the Zebra ZPL label generator (25×52 mm standard tag).
 
-The 25×52 boutique tag prints only four things — barcode, its reference,
-product name and intake week. These tests run against pure ``LabelData``
-payloads so no database is needed.
+The boutique tag is laid out landscape and prints four stacked rows —
+Semaine, Type produit (catégorie), code-barres (Code 128) and réf produit.
+These tests run against pure ``LabelData`` payloads so no database is needed.
 """
 
 from __future__ import annotations
@@ -58,9 +58,11 @@ def test_label_declares_utf8_and_25x52_dimensions():
     assert f"^LL{LABEL_HEIGHT_DOTS}" in zpl
 
 
-def test_label_renders_product_name():
+def test_label_renders_product_type():
     zpl = build_label_zpl(_veste_femme_m())
-    assert "Veste en jean délavée" in zpl
+    # Landscape tag shows the product TYPE (category), not the full name.
+    assert "Vestes" in zpl
+    assert "Veste en jean délavée" not in zpl
 
 
 def test_label_contains_rotated_code128_barcode_and_ref():
@@ -90,12 +92,14 @@ def test_explicit_week_number_takes_precedence():
     assert "Semaine 03" in build_label_zpl(data)
 
 
-def test_compact_tag_omits_price_category_and_condition():
-    """The 25×52 tag drops the old price/category/état/markdown block."""
+def test_compact_tag_omits_price_and_condition():
+    """The landscape tag drops the price / état / markdown block.
+
+    It keeps Semaine, Type produit (catégorie), code-barres et réf produit.
+    """
     zpl = build_label_zpl(_veste_femme_m())
     assert "€" not in zpl
     assert "12,00" not in zpl
-    assert "Vestes" not in zpl
     assert "Très bon état" not in zpl
     assert "Démarque" not in zpl
 
@@ -110,10 +114,12 @@ def test_zero_or_negative_copies_clamped_to_one():
     assert "^PQ1" in build_label_zpl(_veste_femme_m(), copies=-5)
 
 
-def test_zpl_control_characters_in_name_are_neutralised():
+def test_zpl_control_characters_in_type_are_neutralised():
+    # The rendered field is now the product type (category); ZPL control
+    # prefixes in it must be neutralised so they can't break the print job.
     data = LabelData(
-        product_name="Robe ^XA ~tilde \\back",
-        category="Robes",
+        product_name="Robe",
+        category="Robe ^XA ~tilde \\back",
         size=None,
         condition="Bon état",
         sale_price=20.0,
@@ -126,10 +132,10 @@ def test_zpl_control_characters_in_name_are_neutralised():
     assert "Robe -XA -tilde /back" in zpl
 
 
-def test_product_name_clamped_to_40_chars():
+def test_product_type_clamped_to_22_chars():
     data = LabelData(
-        product_name="x" * 60,
-        category="Robes",
+        product_name="Robe",
+        category="x" * 60,
         size=None,
         condition="Bon état",
         sale_price=20.0,
@@ -137,6 +143,6 @@ def test_product_name_clamped_to_40_chars():
         shelf_date=REF_SHELF,
     )
     zpl = build_label_zpl(data)
-    # 39 chars + ellipsis = 40 visible characters max for the name field.
-    assert "x" * 40 not in zpl
+    # 21 chars + ellipsis = 22 visible characters max for the type field.
+    assert "x" * 22 not in zpl
     assert "…" in zpl

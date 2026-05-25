@@ -129,14 +129,20 @@ def build_label_zpl(
     pr = max(2, min(6, int(print_rate)))
     md = max(-30, min(30, int(media_darkness)))
 
-    name = _sanitize(data.product_name, max_length=40) or "Article"
+    ptype = _sanitize(data.category, max_length=22) or "Article"
     ref = _sanitize(data.barcode, max_length=24) or "VTZ-NOREF"
     week = _week_label(data)
 
-    # ZPL II — ``^CI28`` enables UTF-8 so accented characters render. The
-    # barcode is rotated (``^BCR``) so the long reference fits along the 52 mm
-    # length; name + week are rotated text columns beside it. Positions are in
-    # dots (8/mm); fine-tune against the /labels/preview render if needed.
+    # ZPL II — ``^CI28`` enables UTF-8 so accented characters render.
+    # Mise en page PAYSAGE : la tablette tient l'étiquette dans le sens de la
+    # longueur (52 mm horizontal). Quatre lignes empilées, de haut en bas :
+    #   Semaine · Type produit · code-barres (Code 128) · réf produit.
+    # Le média est chargé 25 mm en largeur de tête (^PW200) × 52 mm en
+    # défilement (^LL416) ; le contenu est donc tourné (``^A0R`` / ``^BCR``)
+    # pour se lire à l'horizontale. Comme ``^POI`` retourne l'étiquette de
+    # 180°, les lignes sont posées en x croissant du bas vers le haut visuel
+    # (réf en premier dans le code → en bas ; Semaine en dernier → en haut).
+    # Positions en dots (8/mm) ; ajuster contre /labels/preview au besoin.
     return (
         "^XA"
         # Print orientation inversée (180°) : l'étiquette sort dans le bon sens
@@ -149,13 +155,15 @@ def build_label_zpl(
         f"^PW{LABEL_WIDTH_DOTS}"
         f"^LL{LABEL_HEIGHT_DOTS}"
         "^LH0,0"
-        # Rotated Code 128 — bars + interpretation line (= réf). Module 2 dots,
-        # bar length 96 dots; runs along the 52 mm side.
-        f"^FO16,28^BY2,2.5,96^BCR,96,Y,N,N,A^FD{ref}^FS"
-        # Product name — rotated text column, wraps onto up to 2 lines.
-        f"^FO120,28^A0R,26,26^FB360,2,4,L,0^FD{name}^FS"
-        # Intake week — rotated text column near the edge.
-        f"^FO168,28^A0R,22,22^FB360,1,0,L,0^FD{week}^FS"
+        # Réf produit (bas visuel).
+        f"^FO8,12^A0R,22,22^FB392,1,0,C,0^FD{ref}^FS"
+        # Code-barres Code 128 — barres seules (réf imprimée à part). Module
+        # 2 dots, hauteur 82 dots ; court le long des 52 mm.
+        f"^FO38,12^BY2,2.5,82^BCR,82,N,N,N,A^FD{ref}^FS"
+        # Type produit (catégorie).
+        f"^FO132,12^A0R,30,30^FB392,1,0,C,0^FD{ptype}^FS"
+        # Semaine d'arrivage (haut visuel).
+        f"^FO176,12^A0R,24,24^FB392,1,0,C,0^FD{week}^FS"
         f"^PQ{copies}"
         "^XZ"
     )
