@@ -327,7 +327,8 @@ def build_receipt(
         if logo:
             out += ALIGN_CENTER
             out += logo
-            out += LF
+            # No extra LF: _build_logo_raster already emits a LF after
+            # each band and restores line spacing with ESC 2.
 
     # Header (centered, bold, double size for store name)
     out += ALIGN_CENTER + BOLD_ON + DOUBLE_ON

@@ -1,5 +1,7 @@
 # Vintiz — Guide de développement
 
+**Version V1 — Mise en production** (2026-05-25)
+
 Boutique de seconde main premium — Vernon, Normandie.
 
 ## Architecture
@@ -618,7 +620,7 @@ deux pushs successifs s'enchaînent sans s'annuler.
 ## Tests
 
 ```bash
-# Backend (11 tests, dont 6 régression sécurité)
+# Backend (68 fichiers de tests, ~700+ cas — label ZPL, POS, IA, sécurité…)
 cd apps/api && pytest
 
 # Lint
@@ -650,6 +652,19 @@ dans la modal ticket. Appelle `POST /api/pos/transactions/{id}/print` qui
 envoie le ticket en ESC/POS direct vers la MUNBYN port 9100. Tiroir kické
 via la même connexion réseau. L'ancien fallback AirPrint a été retiré
 (Vintiz tourne sur Android, où `window.print()` retombe en PDF — inutile).
+
+**Logo sur le ticket** : opt-in via `shop_info.print_logo_on_ticket` (Settings >
+Infos boutique) ou `RECEIPT_PRINT_RASTER_LOGO=true`. Utilise `ESC *` mode 33
+(24-pin double-density, bandes de 24 dots) — commande plus compatible avec les
+clones MUNBYN que `GS v 0` (qui imprime du texte parasite sur certains firmwares).
+Caractères accentués : translittérés ASCII (é→e, à→a, €→EUR…) — indépendant du
+firmware, toujours lisible.
+
+**Douchette Inateck sur tablette AZERTY** : le scanner émet en QWERTY US, ce
+qui transforme les tirets `-` en `=` sur un layout AZERTY. L'endpoint
+`GET /api/inventory/products/by-barcode/{code}` gère 3 fallbacks : exact →
+ilike (caps) → substitution `=`→`-` + ilike. Les codes-barres Vintiz (`VTZ-…`)
+sont donc reconnus sans reconfigurer la douchette.
 
 Procédure complète + 15 codes-barres scannables : `docs/POS_TEST_BARCODES.md`.
 
@@ -695,3 +710,39 @@ impossible donc d'encaisser une fausse vente CB par accident.
 Pour tester avec une carte sans débiter réellement : SumUp propose des
 clés API de test côté developer.sumup.com (préfixe `sup_sk_test_…`).
 Configurer dans `SUMUP_API_KEY` ou via `/settings > Paiement`.
+
+### Étiquettes Zebra ZD421d — format et contenu
+
+Format ZPL II confirmé : **25×52 mm paysage**, 12 dpmm (300 dpi), 640×300 dots.
+**Deux étiquettes par produit** (un seul envoi TCP) :
+
+- **Étiquette 1 — Info** : nom produit + taille (`T.M`), code-barres Code 128
+  centré avec décalage physique right_shift=28 dots, numéro de semaine de mise
+  en rayon (`Semaine 21`). Référence : `build_info_label_zpl()`.
+- **Étiquette 2 — Prix** : logo VINTIZ, séparateur horizontal, prix en euros
+  format français (`12,50 €`). Référence : `build_price_label_zpl()`.
+
+Aperçu Labelary disponible via `GET /api/labels/preview/{product_id}`.
+Catégories dé-doublonnées automatiquement (migration 0046 + index unique sur
+`lower(btrim(name))`).
+
+### Pages accessibles par URL uniquement (hors sidebar)
+
+Ces pages existent et fonctionnent mais ne sont plus listées dans la
+navigation principale (simplification V1) :
+
+| URL | Contenu | Accès requis |
+|---|---|---|
+| `/dashboard/workflows` | Documentation interne : workflows métier, endpoints API, crons & jobs, hardware & ops | Manager + Collaborateur |
+| `/dashboard/workflows?category=metier` | Parcours métier | Manager + Collaborateur |
+| `/dashboard/workflows?category=endpoint` | Référence endpoints API | Manager + Collaborateur |
+| `/dashboard/workflows?category=cron` | Crons & jobs planifiés | Manager + Collaborateur |
+| `/dashboard/workflows?category=hardware` | Hardware & opérations | Manager + Collaborateur |
+| `/inventory/scan` | Scan rapide inventaire | Manager |
+| `/inventory/import` | Import CSV produits | Manager |
+| `/pos/close` | Fermeture caisse (accès depuis /pos) | Manager |
+
+> Ces pages sont protégées par l'authentification JWT (redirect `/login` si
+> pas de token). Seul `/dashboard/workflows*` reste accessible aux
+> collaborateurs — pour restreindre, ajouter les chemins dans `COLLAB_HIDDEN_PATHS`
+> dans `Sidebar.tsx`.
