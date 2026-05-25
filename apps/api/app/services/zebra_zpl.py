@@ -88,6 +88,7 @@ def _zpl_head(pr: int, md: int) -> str:
     return (
         f"^PR{pr}^MD{md}^CI28"
         f"^PW{LABEL_WIDTH_DOTS}^LL{LABEL_HEIGHT_DOTS}"
+        "^POI"   # invert 180° — la ZD421d sort l'étiquette du bon côté
         "^LH0,0"
     )
 
