@@ -22,8 +22,10 @@ preview, or written to a TCP socket on the printer port 9100.
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 # 25 × 52 mm @ 8 dpmm (Zebra ZD421d, 203 dpi). Width = across the print head,
@@ -175,6 +177,72 @@ def _price_label(data: "LabelData") -> str:
     return f"{value:.2f} €".replace(".", ",")
 
 
+# --- Logo Vintiz rasterisé en graphique ZPL (^GFA) -------------------------
+# Le monogramme VZ est rastérisé une seule fois en bitmap 1 bit puis émis en
+# ^GFA sur l'étiquette prix. Lazy + caché : pas de coût au boot, et un logo
+# manquant ou PIL absent retombe proprement sur le lettrage texte.
+_LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "logo-teal.png"
+LOGO_TARGET_DOTS = 96  # taille du monogramme sur l'étiquette (≈ 12 mm)
+_logo_zpl_cache: tuple[str, int, int] | None = None
+_logo_attempted = False
+_logo_lock = threading.Lock()
+
+
+def _image_to_gfa(img: Any) -> tuple[str, int, int]:
+    """Encode une image PIL mode ``1`` en champ graphique ZPL ``^GFA``.
+
+    Renvoie ``(zpl, width_dots, height_dots)``. Bit à 1 = point noir (ZPL),
+    or en mode ``1`` un pixel noir vaut 0 — on inverse donc le test.
+    """
+    w, h = img.size
+    bytes_per_row = (w + 7) // 8
+    total = bytes_per_row * h
+    px = img.load()
+    rows: list[str] = []
+    for y in range(h):
+        rb = bytearray(bytes_per_row)
+        for x in range(w):
+            if px[x, y] == 0:  # noir
+                rb[x >> 3] |= 0x80 >> (x & 7)
+        rows.append(rb.hex().upper())
+    return f"^GFA,{total},{total},{bytes_per_row}," + "".join(rows), w, h
+
+
+def _logo_zpl_graphic() -> tuple[str, int, int] | None:
+    """``(^GFA, width, height)`` du monogramme, ou None si indisponible.
+
+    Le logo est composé sur blanc, mis à l'échelle, tourné de 90° (pour
+    s'aligner sur le texte ``^A0R`` ; ``^POI`` applique ensuite les 180°
+    restants), puis seuillé en 1 bit noir/blanc.
+    """
+    global _logo_zpl_cache, _logo_attempted
+    if _logo_attempted:
+        return _logo_zpl_cache
+    with _logo_lock:
+        if _logo_attempted:
+            return _logo_zpl_cache
+        try:
+            from PIL import Image
+
+            img = Image.open(_LOGO_PATH).convert("RGBA")
+            bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+            bg.alpha_composite(img)
+            gray = bg.convert("L")
+            w, h = gray.size
+            scale = LOGO_TARGET_DOTS / max(w, h)
+            gray = gray.resize(
+                (max(1, round(w * scale)), max(1, round(h * scale))),
+                Image.LANCZOS,
+            )
+            gray = gray.transpose(Image.Transpose.ROTATE_270)
+            bw = gray.point(lambda p: 0 if p < 140 else 255, mode="1")
+            _logo_zpl_cache = _image_to_gfa(bw)
+        except Exception:  # noqa: BLE001 — PIL absent / logo manquant → repli texte
+            _logo_zpl_cache = None
+        _logo_attempted = True
+        return _logo_zpl_cache
+
+
 def build_price_label_zpl(
     data: LabelData,
     *,
@@ -182,12 +250,12 @@ def build_price_label_zpl(
     print_rate: int = DEFAULT_PRINT_RATE,
     media_darkness: int = DEFAULT_MEDIA_DARKNESS,
 ) -> str:
-    """Render the SECOND tag : logo Vintiz + prix de vente.
+    """Render the SECOND tag : monogramme Vintiz (image) + prix de vente.
 
     Même média et même orientation que l'étiquette produit (25×52 mm,
-    contenu tourné + ``^POI`` pour se lire dans le même sens). Le « logo »
-    est le lettrage VINTIZ en texte (rendu fiable sur tête thermique 1 bit,
-    sans bitmap) ; le prix est imprimé en gros dessous.
+    contenu tourné + ``^POI``). Le logo est le monogramme VZ rastérisé en
+    ``^GFA`` ; si l'image est indisponible, repli sur le lettrage texte.
+    Le prix est imprimé en gros sous le logo.
     """
     if copies < 1:
         copies = 1
@@ -195,8 +263,17 @@ def build_price_label_zpl(
     md = max(-30, min(30, int(media_darkness)))
     price = _price_label(data)
 
-    # Rotated like the product tag. Sous ^POI, x croissant = du bas vers le
-    # haut visuel : prix en bas (x faible), VINTIZ en haut (x élevé).
+    # Sous ^POI, x croissant = du bas vers le haut visuel : prix en bas
+    # (x faible), logo en haut (x élevé).
+    logo = _logo_zpl_graphic()
+    if logo is not None:
+        gfa, lw, lh = logo
+        lx = max(0, LABEL_WIDTH_DOTS - lw - 6)
+        ly = max(0, (LABEL_HEIGHT_DOTS - lh) // 2)
+        brand_field = f"^FO{lx},{ly}{gfa}^FS"
+    else:
+        brand_field = "^FO150,8^A0R,48,48^FB400,1,0,C,0^FDVINTIZ^FS"
+
     return (
         "^XA"
         "^POI"
@@ -207,9 +284,9 @@ def build_price_label_zpl(
         f"^LL{LABEL_HEIGHT_DOTS}"
         "^LH0,0"
         # Prix de vente (gros, bas visuel).
-        f"^FO30,8^A0R,86,86^FB400,1,0,C,0^FD{price}^FS"
-        # Lettrage VINTIZ (haut visuel).
-        f"^FO150,8^A0R,48,48^FB400,1,0,C,0^FDVINTIZ^FS"
+        f"^FO16,8^A0R,80,80^FB400,1,0,C,0^FD{price}^FS"
+        # Monogramme VZ (haut visuel) ou repli lettrage.
+        f"{brand_field}"
         f"^PQ{copies}"
         "^XZ"
     )

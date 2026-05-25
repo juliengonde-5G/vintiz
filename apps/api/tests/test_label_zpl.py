@@ -150,10 +150,12 @@ def test_product_type_clamped_to_22_chars():
     assert "…" in zpl
 
 
-def test_price_label_renders_brand_and_price():
+def test_price_label_renders_logo_and_price():
     zpl = build_price_label_zpl(_veste_femme_m())
     assert zpl.startswith("^XA") and zpl.endswith("^XZ")
-    assert "VINTIZ" in zpl, "le tag prix porte le logo/lettrage VINTIZ"
+    # Logo VZ rastérisé en graphique ZPL (^GFA) — le lettrage texte n'est
+    # qu'un repli si l'image est indisponible.
+    assert "^GFA," in zpl, "le tag prix porte le monogramme VZ en image"
     assert "12,00 €" in zpl, "prix de vente au format FR"
 
 
@@ -168,7 +170,7 @@ def test_label_set_emits_product_then_price_label():
     # Deux jobs ZPL = deux étiquettes physiques imprimées à la suite.
     assert zpl.count("^XA") == 2
     assert zpl.count("^XZ") == 2
-    # Tag produit (code-barres/réf) + tag prix (logo + prix).
+    # Tag produit (code-barres/réf) + tag prix (logo image + prix).
     assert "^FDVTZ-2026-00142^FS" in zpl
-    assert "VINTIZ" in zpl
+    assert "^GFA," in zpl
     assert "12,00 €" in zpl
