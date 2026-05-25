@@ -1109,7 +1109,7 @@ async def get_daily_briefing(
         ).where(
             Transaction.created_at >= start_yesterday,
             Transaction.created_at < start_today,
-            Transaction.type == TransactionType.sale,
+            Transaction.transaction_type == TransactionType.sale,
         )
     )
     y_count, y_revenue = y_res.one()
@@ -1121,7 +1121,7 @@ async def get_daily_briefing(
             func.coalesce(func.sum(Transaction.total_ttc), 0),
         ).where(
             Transaction.created_at >= start_today,
-            Transaction.type == TransactionType.sale,
+            Transaction.transaction_type == TransactionType.sale,
         )
     )
     t_count, t_revenue = t_res.one()
