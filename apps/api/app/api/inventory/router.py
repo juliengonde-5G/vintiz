@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -522,8 +523,17 @@ async def update_product(
     # labels and the inventory "Mise en rayon" column consistent.
     _stamp_lifecycle_dates(product)
 
-    await db.flush()
-    await db.refresh(product)
+    try:
+        await db.flush()
+        await db.refresh(product)
+    except Exception as exc:
+        # Wrap DB errors as explicit HTTP 500 so the client always receives a
+        # proper JSON response rather than a dropped connection.
+        logging.getLogger("vintiz").error("update_product flush failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur base de données : {type(exc).__name__}",
+        )
     return ProductResponse.model_validate(product)
 
 
