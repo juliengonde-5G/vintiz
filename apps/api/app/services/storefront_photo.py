@@ -26,6 +26,7 @@ vitrine look stays consistent.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import os
@@ -148,7 +149,11 @@ async def remove_background(
     if cutout:
         return cutout, "photoroom"
 
-    cutout = _rembg_cutout(image_bytes)
+    # rembg inference is synchronous + CPU-heavy (onnxruntime). Run it in a
+    # worker thread so a slow cutout never blocks the event loop — otherwise a
+    # single heavy intake photo freezes the whole API (other requests, e.g. la
+    # mise en rayon qui suit, timeout côté client → « Erreur de connexion »).
+    cutout = await asyncio.to_thread(_rembg_cutout, image_bytes)
     if cutout:
         return cutout, "rembg"
 
@@ -257,7 +262,9 @@ async def generate(
         return StorefrontResult(image=None, status="skipped", backend=None)
 
     try:
-        composed = compose_storefront(cutout)
+        # Pillow compositing (LANCZOS resize, paste, PNG encode) is also
+        # synchronous CPU work — keep it off the event loop too.
+        composed = await asyncio.to_thread(compose_storefront, cutout)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Storefront compositing failed: %s", exc)
         return StorefrontResult(image=None, status="failed", backend=backend)
