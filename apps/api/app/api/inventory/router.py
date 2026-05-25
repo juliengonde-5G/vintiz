@@ -622,8 +622,8 @@ async def list_categories(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    """List all categories."""
-    result = await db.execute(select(Category))
+    """List all categories, alphabetically."""
+    result = await db.execute(select(Category).order_by(Category.name))
     categories = result.scalars().all()
     return [CategoryResponse.model_validate(c) for c in categories]
 
@@ -634,9 +634,26 @@ async def create_category(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    """Create a new category."""
+    """Create a category — idempotent on name to avoid duplicate rows.
+
+    Le formulaire (et d'anciens seeds non idempotents) pouvaient créer
+    plusieurs fois la même catégorie ("Robes", "robes", "Robes ") d'où la
+    liste qui apparaissait en double. On normalise (trim) et on renvoie la
+    catégorie existante si le nom correspond déjà (insensible à la casse).
+    """
+    name = (category_in.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="nom de catégorie manquant")
+
+    existing = await db.execute(
+        select(Category).where(Category.name.ilike(name)).order_by(Category.created_at).limit(1)
+    )
+    found = existing.scalars().first()
+    if found is not None:
+        return CategoryResponse.model_validate(found)
+
     category = Category(
-        name=category_in.name,
+        name=name,
         parent_id=category_in.parent_id,
         gender=category_in.gender,
     )
