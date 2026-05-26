@@ -255,16 +255,28 @@ export default function ProductDetailPage() {
                     </div>
                     <Input label="Marque" value={editing.brand || ''} onChange={e => setEditing(p => ({...p, brand: e.target.value}))} />
                     <div className="sm:col-span-2">
-                      <label className="block text-sm font-medium text-black mb-1.5">Taille</label>
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        {['XS','S','M','L','XL','XXL','XXXL','TU','34','36','38','40','42','44','46'].map(s => (
-                          <button key={s} type="button" onClick={() => setEditing(p => ({...p, size: p.size === s ? '' : s}))}
-                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${editing.size === s ? 'bg-vz-teal text-white' : 'bg-gray-100 hover:bg-gray-200 text-black'}`}>
-                            {s}
-                          </button>
-                        ))}
-                      </div>
-                      <Input value={editing.size || ''} onChange={e => setEditing(p => ({...p, size: e.target.value}))} placeholder="Autre taille..." />
+                      {(() => {
+                        const catName = editing.category?.name ?? product?.category?.name ?? '';
+                        const isShoe = /chaussure|basket/i.test(catName);
+                        const clothingSizes = ['XS','S','M','L','XL','XXL','XXXL','4XL','5XL','6XL','TU','34','36','38','40','42','44','46','48','50','52','54'];
+                        const shoeSizes = ['35','36','37','38','39','40','41','42','43','44','45','46','47'];
+                        const sizeList = isShoe ? shoeSizes : clothingSizes;
+                        const sizeLabel = isShoe ? 'Pointure' : 'Taille';
+                        return (
+                          <>
+                            <label className="block text-sm font-medium text-black mb-1.5">{sizeLabel}</label>
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {sizeList.map(s => (
+                                <button key={s} type="button" onClick={() => setEditing(p => ({...p, size: p.size === s ? '' : s}))}
+                                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${editing.size === s ? 'bg-vz-teal text-white' : 'bg-gray-100 hover:bg-gray-200 text-black'}`}>
+                                  {s}
+                                </button>
+                              ))}
+                            </div>
+                            <Input value={editing.size || ''} onChange={e => setEditing(p => ({...p, size: e.target.value}))} placeholder={isShoe ? 'Autre pointure...' : 'Autre taille...'} />
+                          </>
+                        );
+                      })()}
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-sm font-medium text-black mb-1.5">Couleur</label>

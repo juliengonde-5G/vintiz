@@ -30,7 +30,7 @@ interface Zone {
   color_code?: string;
 }
 
-const ALL_PRODUCT_TYPES = ['Robes', 'Hauts', 'Pantalons', 'Jupes', 'Vestes', 'Manteaux', 'Accessoires', 'Chaussures', 'Sacs', 'Bijoux', 'Enfant'];
+const ALL_PRODUCT_TYPES = ['Robes', 'Hauts', 'Pantalons', 'Jupes', 'Vestes', 'Blousons', 'Manteaux', 'Shorts / Bermuda', 'Accessoires', 'Chaussures', 'Baskets', 'Sacs', 'Bijoux', 'Enfant'];
 
 interface HardwareConfig {
   receipt_printer: {

@@ -89,7 +89,8 @@ const STEP_LABELS: Record<Step, string> = {
   done: 'Étiquette',
 };
 
-const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', 'TU', '34', '36', '38', '40', '42', '44', '46'];
+const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '4XL', '5XL', '6XL', 'TU', '34', '36', '38', '40', '42', '44', '46', '48', '50', '52', '54'];
+const SHOE_SIZES = ['35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47'];
 const COLORS = [
   { l: 'Noir', c: '#1a1a1a' }, { l: 'Blanc', c: '#f0f0f0' }, { l: 'Gris', c: '#9ca3af' },
   { l: 'Beige', c: '#d4b896' }, { l: 'Camel', c: '#c19a6b' }, { l: 'Marine', c: '#1e3a5f' },
@@ -642,6 +643,14 @@ export default function NewProductWizard() {
           {step === 'attributes' && (
             <Card title="Étape 2 — Couleur, taille">
               <div className="space-y-5">
+                {(() => {
+                  const catName = categories.find(c => c.id === form.category_id)?.name ?? '';
+                  const isShoe = /chaussure|basket/i.test(catName);
+                  const sizeLabel = isShoe ? 'Pointure' : 'Taille';
+                  const sizePlaceholder = isShoe ? 'Autre pointure…' : 'Autre taille…';
+                  const sizeList = isShoe ? SHOE_SIZES : SIZES;
+                  return (
+                    <>
                 <div>
                   <label className="block text-sm font-medium text-black mb-1.5">Couleur</label>
                   <div className="flex flex-wrap gap-2 mb-2">
@@ -656,17 +665,20 @@ export default function NewProductWizard() {
                   <Input value={form.color} onChange={(e) => set('color', e.target.value)} placeholder="Autre couleur…" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-black mb-1.5">Taille</label>
+                  <label className="block text-sm font-medium text-black mb-1.5">{sizeLabel}</label>
                   <div className="flex flex-wrap gap-2 mb-2">
-                    {SIZES.map((s) => (
+                    {sizeList.map((s) => (
                       <button key={s} type="button" onClick={() => set('size', form.size === s ? '' : s)}
                         className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${form.size === s ? 'bg-vz-teal text-white' : 'bg-gray-100 hover:bg-gray-200 text-black'}`}>
                         {s}
                       </button>
                     ))}
                   </div>
-                  <Input value={form.size} onChange={(e) => set('size', e.target.value)} placeholder="Autre taille…" />
+                  <Input value={form.size} onChange={(e) => set('size', e.target.value)} placeholder={sizePlaceholder} />
                 </div>
+                    </>
+                  );
+                })()}
                 <div>
                   <label className="block text-sm font-medium text-black mb-1.5">État</label>
                   <div className="flex flex-wrap gap-2">
