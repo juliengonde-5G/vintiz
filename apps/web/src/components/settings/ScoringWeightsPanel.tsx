@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
@@ -421,8 +422,12 @@ export default function ScoringWeightsPanel() {
             </thead>
             <tbody>
               {preview.map((p) => (
-                <tr key={p.product_id} className="border-t border-gray-100">
-                  <td className="py-1">{p.name}</td>
+                <tr key={p.product_id} className="border-t border-gray-100 hover:bg-vz-bg/50">
+                  <td className="py-1">
+                    <Link href={`/inventory/${p.product_id}`} className="hover:text-vz-teal hover:underline" target="_blank" rel="noreferrer">
+                      {p.name}
+                    </Link>
+                  </td>
                   <td className="text-right font-mono">{p.score_before.toFixed(0)}</td>
                   <td className="text-right font-mono">{p.score_after.toFixed(0)}</td>
                   <td className={`text-right font-mono ${p.delta >= 0 ? 'text-vz-teal' : 'text-red-600'}`}>

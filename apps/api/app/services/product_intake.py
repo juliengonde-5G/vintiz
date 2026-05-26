@@ -55,6 +55,13 @@ _TYPE_TO_CATEGORY = {
     "t-shirt": "Top",
     "accessoire": "Accessoire",
     "chaussures": "Chaussures",
+    "baskets": "Baskets",
+    "basket": "Baskets",
+    "blouson": "Blousons",
+    "blousons": "Blousons",
+    "short": "Shorts / Bermuda",
+    "shorts": "Shorts / Bermuda",
+    "bermuda": "Shorts / Bermuda",
     "sac": "Sac",
 }
 

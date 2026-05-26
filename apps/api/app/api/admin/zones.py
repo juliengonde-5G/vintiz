@@ -131,7 +131,7 @@ async def list_zones(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    """List all zones with product count and full layout metadata."""
+    """List all zones with product count, market value, and full layout metadata."""
     result = await db.execute(
         select(StoreZone).order_by(StoreZone.display_order, StoreZone.name)
     )
@@ -143,7 +143,18 @@ async def list_zones(
             select(func.count(Product.id)).where(Product.zone_id == zone.id)
         )
         product_count = count_result.scalar_one() or 0
-        output.append(_serialize_zone(zone, product_count=product_count))
+
+        value_result = await db.execute(
+            select(func.sum(Product.sale_price)).where(
+                Product.zone_id == zone.id,
+                Product.status.in_([ProductStatus.display, ProductStatus.stock]),
+            )
+        )
+        market_value = float(value_result.scalar_one() or 0)
+
+        z_dict = _serialize_zone(zone, product_count=product_count)
+        z_dict["market_value"] = market_value
+        output.append(z_dict)
     return output
 
 

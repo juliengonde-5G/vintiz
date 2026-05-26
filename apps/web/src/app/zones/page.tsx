@@ -28,6 +28,7 @@ type Zone = {
   sales_target_monthly: number | null;
   display_order: number;
   product_count?: number;
+  market_value?: number;
 };
 
 type DragState =
@@ -493,6 +494,14 @@ export default function ZonesPage() {
                         </span>
                       )}
                     </div>
+                    {(z.market_value ?? 0) > 0 && (
+                      <div className="mt-2 flex items-center justify-between text-xs border-t border-gray-100 pt-2">
+                        <span className="text-gray-400">Valeur marchande</span>
+                        <span className="font-semibold text-vz-teal">
+                          {z.market_value!.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </Link>
               );
