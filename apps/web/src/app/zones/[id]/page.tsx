@@ -370,36 +370,6 @@ export default function ZoneDetailPage() {
               </Card>
             </div>
 
-            <Card title="Top produits vendus (30 jours)" subtitle="Les meilleurs ambassadeurs de la zone">
-              {analytics.top_products.length === 0 ? (
-                <p className="text-sm text-gray-500">Pas encore de ventes sur cette periode.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-100">
-                        <th className="py-2 pr-4">Produit</th>
-                        <th className="py-2 pr-4">Marque</th>
-                        <th className="py-2 pr-4 text-right">Vendus</th>
-                        <th className="py-2 text-right">CA</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {analytics.top_products.map((p) => (
-                        <tr key={p.id} className="border-b border-gray-50 hover:bg-vz-teal-soft/40">
-                          <td className="py-2 pr-4 font-medium text-black">
-                            <Link href={`/inventory/${p.id}`} className="hover:text-vz-teal">{p.name}</Link>
-                          </td>
-                          <td className="py-2 pr-4 text-gray-600">{p.brand || '—'}</td>
-                          <td className="py-2 pr-4 text-right">{p.units}</td>
-                          <td className="py-2 text-right font-medium">{formatCurrency(p.revenue)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
           </div>
         )}
 
