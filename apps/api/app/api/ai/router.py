@@ -32,6 +32,7 @@ from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.audit import Settings
 from app.models.store import StoreZone
 from app.services.ai_vision import analyze_product_photo, analyze_photo_from_url
+from app.services.weather_service import get_weather_forecast
 from app.services.ai_trend import compute_trend_scores, update_product_scores, get_stale_products
 from app.services.ai_pricing import suggest_price
 from app.services.ai_mapping import (
@@ -247,6 +248,36 @@ async def get_weekly_checklist(
             except (json.JSONDecodeError, KeyError):
                 pass
 
+    # Fetch 5-day weather forecast — filter to open days (Tue–Sat, weekday 1–5)
+    try:
+        raw_forecast = await get_weather_forecast()
+    except Exception:
+        raw_forecast = []
+
+    open_days_forecast = [
+        d for d in raw_forecast
+        if datetime.strptime(d["date"], "%Y-%m-%d").weekday() not in (0, 6)  # 0=Mon, 6=Sun
+    ]
+
+    def _fmt_slot(slot: dict | None, label: str) -> str:
+        if not slot:
+            return ""
+        return f"  {label} : {round(slot['temp'])}°C, {slot['description']}"
+
+    weather_lines = []
+    for d in open_days_forecast[:5]:
+        from datetime import date as _date
+        day_name = datetime.strptime(d["date"], "%Y-%m-%d").strftime("%A %d/%m")
+        line = f"- {day_name} : {round(d['temp_min'])}–{round(d['temp_max'])}°C, {d['description']}"
+        am = _fmt_slot(d.get("morning"), "Matin")
+        pm = _fmt_slot(d.get("afternoon"), "A-m.")
+        if am or pm:
+            detail = " / ".join(filter(None, [am.strip(), pm.strip()]))
+            line += f" ({detail})"
+        weather_lines.append(line)
+
+    weather_block = "\n".join(weather_lines) if weather_lines else "Prévisions indisponibles."
+
     # Fetch 50 products with lowest trend scores
     low_score_result = await db.execute(
         select(Product)
@@ -327,18 +358,27 @@ async def get_weekly_checklist(
                 f"- {p['name']} (prix: {p['sale_price']}€, score: {p.get('trend_score', 'N/A')})"
                 for p in mise_en_avant_products[:5]
             )
-            prompt = f"""Tu es un expert en boutique de seconde main premium.
-Semaine {week}/{year}. Voici un résumé des produits en boutique:
+            prompt = f"""Tu es un expert en boutique de seconde main premium (Vernon, Normandie).
+Semaine {week}/{year}.
 
-Produits à faible score (à mettre en avant):
+PRÉVISIONS MÉTÉO DE LA SEMAINE (jours d'ouverture Mar–Sam) :
+{weather_block}
+
+Produits à faible score (à mettre en avant) :
 {product_summary or 'Aucun'}
+
+Consignes merchandising basées sur la météo :
+- Si beau temps et chaud (>18°C) → privilégier robes, jupes, tops légers, baskets en vitrine et tête de gondole.
+- Si froid ou pluie (<12°C ou averses) → mettre en avant manteaux, blousons, pulls, chaussures imperméables.
+- Si temps mitigé → jouer sur les transitions : vestes légères, chemises, accessoires colorés.
+- Adapter la mise en scène de la vitrine au contexte météo de la semaine.
 
 INTERDICTION ABSOLUE : ne propose JAMAIS de baisse de prix, de markdown, de
 soldes ou de remise. La boutique fixe le prix correct dès la mise en rayon.
 Tes leviers : visibilité (vitrine, mise en avant), composition de rayon,
 mise en scène, rotation, publication Instagram. Pas de pricing.
 
-Génère 2-3 recommandations concrètes et actionnables pour améliorer les ventes cette semaine. Sois bref et pratique (max 100 mots)."""
+Génère 2-3 recommandations concrètes et actionnables tenant compte de la météo prévue. Sois bref et pratique (max 120 mots)."""
             msg = await client_ai.messages.create(
                 model="claude-haiku-4-5",
                 max_tokens=300,
@@ -354,6 +394,7 @@ Génère 2-3 recommandations concrètes et actionnables pour améliorer les vent
         "generated_at": now.isoformat(),
         "ai_summary": ai_summary,
         "checklist": checklist,
+        "weather_forecast": open_days_forecast,
     }
     # Cache result for the week
     await _set_setting(db, "ai_checklist_cache", json.dumps(result, ensure_ascii=False))

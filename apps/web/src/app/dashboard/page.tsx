@@ -345,7 +345,7 @@ function WeatherWidget({ data }: { data: WeatherData }) {
       </div>
       {data.forecast && data.forecast.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {data.forecast.slice(0, 5).map((day, i) => (
+          {data.forecast.filter(d => { const dow = new Date(d.date + 'T12:00:00').getDay(); return dow !== 0 && dow !== 1; }).slice(0, 5).map((day, i) => (
             <div key={i} className="flex min-w-[88px] flex-col items-center rounded-lg bg-gray-50 p-2">
               <p className="mb-1 text-xs font-medium capitalize text-gray-600">{formatDateShort(day.date)}</p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
