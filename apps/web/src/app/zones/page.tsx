@@ -155,6 +155,10 @@ export default function ZonesPage() {
     () => zones.reduce((acc, z) => acc + (z.product_count || 0), 0),
     [zones]
   );
+  const totalMarketValue = useMemo(
+    () => zones.reduce((acc, z) => acc + (z.market_value || 0), 0),
+    [zones]
+  );
 
   const percentFromEvent = (e: React.PointerEvent | PointerEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -441,6 +445,22 @@ export default function ZonesPage() {
           </>
           )}
         </Card>
+
+        {/* Total valeur marchande */}
+        {totalMarketValue > 0 && (
+          <div className="flex items-center justify-between rounded-2xl bg-vz-teal px-6 py-4 mb-2 text-white">
+            <div>
+              <p className="text-sm font-medium opacity-80">Valeur marchande totale en boutique</p>
+              <p className="text-2xl font-bold font-display">
+                {totalMarketValue.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+              </p>
+            </div>
+            <div className="text-right text-sm opacity-70">
+              <p>{totalProducts} articles</p>
+              <p>{zones.filter(z => (z.market_value || 0) > 0).length} zones actives</p>
+            </div>
+          </div>
+        )}
 
         {/* Cards */}
         <SectionHeader

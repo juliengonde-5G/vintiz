@@ -403,9 +403,27 @@ export default function ReportsPage() {
           </Card>
         )}
 
-        {/* Météo Historique */}
-        {weatherHistory.length > 0 && (
-          <Card title="Historique météo Vernon — 14 derniers jours" className="mt-6">
+        {/* Météo Historique — filtré sur la période du rapport */}
+        {(() => {
+          const filteredWeather = weatherHistory.filter(snap => {
+            const d = snap.date.slice(0, 10);
+            if (tab === 'daily') return d === dailyDate;
+            if (tab === 'weekly') {
+              const dt = new Date(d + 'T12:00:00');
+              const startOfYear = new Date(Number(weeklyYear), 0, 1);
+              const w = Math.ceil(((dt.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+              return w === Number(weeklyWeek) && dt.getFullYear() === Number(weeklyYear);
+            }
+            if (tab === 'monthly') {
+              const dt = new Date(d + 'T12:00:00');
+              return dt.getMonth() + 1 === Number(monthlyMonth) && dt.getFullYear() === Number(monthlyYear);
+            }
+            return true;
+          });
+          if (filteredWeather.length === 0) return null;
+          const periodLabel = tab === 'daily' ? dailyDate : tab === 'weekly' ? `Semaine ${weeklyWeek}/${weeklyYear}` : `${monthlyMonth}/${monthlyYear}`;
+          return (
+        <Card title={`Météo Vernon — ${periodLabel}`} className="mt-6">
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
@@ -419,7 +437,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {weatherHistory.map((snap, i) => (
+                  {filteredWeather.map((snap, i) => (
                     <tr key={i} className="border-b border-gray-50">
                       <td className="py-2 text-sm text-black">
                         {new Date(snap.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
@@ -442,7 +460,8 @@ export default function ReportsPage() {
               </table>
             </div>
           </Card>
-        )}
+          );
+        })()}
 
         {/* Historique journalier (Lot 5) */}
         <DailyRecapSection />

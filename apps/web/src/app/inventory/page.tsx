@@ -88,6 +88,16 @@ export default function InventoryPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
+  const [stockValue, setStockValue] = useState<{ display: { count: number; sale_value: number }; stock: { count: number; sale_value: number } } | null>(null);
+
+  useEffect(() => {
+    api.get('/api/reports/stock-value').then(async (res) => {
+      if (res.ok) {
+        const d = await res.json();
+        setStockValue(d.breakdown);
+      }
+    }).catch(() => {});
+  }, []);
 
   const pageSize = 20;
 
@@ -201,6 +211,24 @@ export default function InventoryPage() {
           <div>
             <h1 className="text-2xl font-bold text-black">Inventaire</h1>
             <p className="text-gray-500 mt-1">{total} produit{total > 1 ? 's' : ''}</p>
+            {stockValue && (
+              <div className="flex flex-wrap gap-4 mt-2">
+                <span className="text-xs text-gray-500">
+                  En boutique&nbsp;
+                  <span className="font-semibold text-vz-teal">
+                    {stockValue.display.sale_value.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+                  </span>
+                  <span className="ml-1 text-gray-400">({stockValue.display.count} art.)</span>
+                </span>
+                <span className="text-xs text-gray-500">
+                  En stock&nbsp;
+                  <span className="font-semibold text-gray-700">
+                    {stockValue.stock.sale_value.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+                  </span>
+                  <span className="ml-1 text-gray-400">({stockValue.stock.count} art.)</span>
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             {/* Camera scanner — caméra arrière Android via getUserMedia.
@@ -322,7 +350,6 @@ export default function InventoryPage() {
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Categorie</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Marque</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Taille</th>
-                  <th className="px-4 py-3 text-sm font-semibold text-gray-600 text-right">Prix achat</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600 text-right">Prix vente</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Statut</th>
                   <th className="px-4 py-3 text-sm font-semibold text-gray-600">Localisation</th>
@@ -375,7 +402,6 @@ export default function InventoryPage() {
                       <td className="px-4 py-3 text-sm text-gray-600">{getCategoryName(p)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{p.brand || '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{p.size || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-500 text-right">{formatCurrency(p.purchase_price)}</td>
                       <td className="px-4 py-3 text-sm font-medium text-vz-teal text-right">{formatCurrency(p.sale_price)}</td>
                       <td className="px-4 py-3">
                         <Badge variant={s.variant}>{s.label}</Badge>
