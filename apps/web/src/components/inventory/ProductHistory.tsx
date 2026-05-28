@@ -15,6 +15,8 @@ interface ProductHistoryProps {
   productId: string;
   /** Hook so the parent can re-fetch when the product mutates. */
   refreshKey?: number;
+  /** Map of zone id → human name, so zone moves read as names not UUIDs. */
+  zoneNames?: Record<string, string>;
 }
 
 const ACTION_LABELS: Record<string, { label: string; cls: string }> = {
@@ -31,11 +33,53 @@ const FIELD_LABELS: Record<string, string> = {
   color: 'Couleur',
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  stock: 'En stock',
+  display: 'En vitrine',
+  displayed: 'En rayon',
+  sold: 'Vendu',
+  returned: 'Retourné',
+  returned_to_sorting: 'Retour tri',
+  received: 'Reçu',
+  sorted: 'Trié',
+  tagged: 'Étiqueté',
+  discounted: 'Démarqué',
+  deep_discounted: 'Démarque -50%',
+  donated: 'Donné',
+};
+
+function formatPrice(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  const n = Number(value);
+  if (Number.isNaN(n)) return String(value);
+  return `${n.toFixed(2).replace('.', ',')} €`;
+}
+
+function formatZone(value: unknown, zoneNames?: Record<string, string>): string {
+  if (value === null || value === undefined || value === '') return 'Sans zone';
+  const id = String(value);
+  return zoneNames?.[id] || `Zone ${id.slice(0, 8)}…`;
+}
+
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'number') return String(value);
   if (typeof value === 'string') return value;
   return JSON.stringify(value);
+}
+
+/** Field-aware rendering so a price reads "29,50 €" and a zone reads its name. */
+function formatFieldValue(
+  field: string,
+  value: unknown,
+  zoneNames?: Record<string, string>,
+): string {
+  if (field === 'sale_price') return formatPrice(value);
+  if (field === 'zone_id') return formatZone(value, zoneNames);
+  if (field === 'status') {
+    return value == null ? '—' : STATUS_LABELS[String(value)] || String(value);
+  }
+  return formatValue(value);
 }
 
 function formatDate(s: string): string {
@@ -51,7 +95,11 @@ function formatDate(s: string): string {
   );
 }
 
-export default function ProductHistory({ productId, refreshKey }: ProductHistoryProps) {
+export default function ProductHistory({
+  productId,
+  refreshKey,
+  zoneNames,
+}: ProductHistoryProps) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -142,11 +190,11 @@ export default function ProductHistory({ productId, refreshKey }: ProductHistory
                         {FIELD_LABELS[field] || field} :
                       </span>
                       <span className="text-red-500 line-through">
-                        {formatValue(change?.before)}
+                        {formatFieldValue(field, change?.before, zoneNames)}
                       </span>
                       <span className="text-gray-400">→</span>
                       <span className="text-vz-teal font-medium">
-                        {formatValue(change?.after)}
+                        {formatFieldValue(field, change?.after, zoneNames)}
                       </span>
                     </li>
                   );
@@ -158,10 +206,9 @@ export default function ProductHistory({ productId, refreshKey }: ProductHistory
               <p className="mt-1 text-xs text-gray-500">
                 Création — prix initial{' '}
                 <strong className="text-vz-teal">
-                  {formatValue(
+                  {formatPrice(
                     (entry.data as Record<string, unknown> | null)?.sale_price,
-                  )}{' '}
-                  €
+                  )}
                 </strong>
               </p>
             )}

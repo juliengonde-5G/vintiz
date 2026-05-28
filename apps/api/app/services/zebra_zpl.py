@@ -57,6 +57,10 @@ class LabelData:
     location: str | None = None
     entry_date: datetime | None = None
     week_number: int | None = None
+    # Genre hérité de la catégorie (``homme`` | ``femme`` | ``enfant`` |
+    # ``mixte``). Affiché en abrégé sur l'étiquette info à côté du nom + taille
+    # ; ``mixte`` / vide → rien d'imprimé. Voir ``_gender_token``.
+    gender: str | None = None
 
 
 def _sanitize(text: str | None, *, max_length: int | None = None) -> str:
@@ -90,6 +94,18 @@ def _week_label(data: LabelData) -> str:
 def _price_str(price: float) -> str:
     """12.5 → '12,50 €'."""
     return f"{price:.2f} €".replace(".", ",")
+
+
+# Genre abrégé imprimé à côté du nom + taille. On n'imprime que les genres
+# déterminés ; ``mixte`` (unisexe) et l'inconnu ne donnent rien ("si existant").
+_GENDER_TOKENS = {"homme": "H", "femme": "F", "enfant": "E"}
+
+
+def _gender_token(gender: str | None) -> str:
+    """femme→F, homme→H, enfant→E ; mixte / vide / inconnu → '' (rien imprimé)."""
+    if not gender:
+        return ""
+    return _GENDER_TOKENS.get(str(gender).strip().lower(), "")
 
 
 def _barcode_layout(
@@ -137,11 +153,19 @@ def build_info_label_zpl(
     md = max(-30, min(30, int(media_darkness)))
 
     size = _sanitize(data.size, max_length=5)
-    # La taille s'affiche à côté du nom ; on raccourcit le nom quand une
-    # taille est présente pour que l'ensemble tienne sur une ligne (640 dots).
+    gender = _gender_token(data.gender)
+    # Le nom partage sa ligne avec la taille (T.xx) et le genre (H/F/E) : on
+    # raccourcit le nom selon ce qui l'accompagne pour tenir sur une ligne
+    # (640 dots). Le suffixe genre coûte ~3 caractères.
     name_max = 18 if size else 28
+    if gender:
+        name_max = max(8, name_max - 3)
     name = _sanitize(data.product_name, max_length=name_max) or "Article"
-    title = f"{name}  T.{size}" if size else name
+    title = name
+    if size:
+        title += f"  T.{size}"
+    if gender:
+        title += f"  {gender}"
     ref  = _sanitize(data.barcode, max_length=24) or "VTZ-NOREF"
     week = _week_label(data)
 
@@ -216,7 +240,12 @@ _FLOOR_STATUS_VALUES = {"display", "displayed", "discounted", "deep_discounted"}
 
 def product_to_label_data(product: Any) -> LabelData:
     """Adapte un ORM Product en LabelData."""
-    category_name = product.category.name if getattr(product, "category", None) else "Article"
+    category = getattr(product, "category", None)
+    category_name = category.name if category else "Article"
+    # Le genre vit sur la catégorie (enum Gender) — on le réduit à sa valeur
+    # str ("homme"/"femme"/…) ; _gender_token() fait l'abréviation côté gabarit.
+    gender_raw = getattr(category, "gender", None) if category else None
+    gender = getattr(gender_raw, "value", gender_raw)
     shelf = getattr(product, "displayed_at", None) or getattr(product, "shelf_date", None)
     received = getattr(product, "received_at", None)
 
@@ -235,4 +264,5 @@ def product_to_label_data(product: Any) -> LabelData:
         location=location,
         entry_date=received,
         week_number=getattr(product, "week_number", None),
+        gender=gender,
     )

@@ -449,13 +449,13 @@ async def get_product(
     return ProductResponse.model_validate(product)
 
 
-@router.get("/products/{product_id}/score")
-async def get_product_score(
-    product_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-):
-    """Compute and return detailed score for a product."""
+async def _compute_product_score(db: AsyncSession, product: Product) -> dict:
+    """Gather the scoring inputs and run the V3 engine for one product.
+
+    Shared by ``GET /products/{id}/score`` and ``POST /products/{id}/reprice``
+    so both surface the exact same note. Pure orchestration over the existing
+    scoring services — no scoring logic lives here.
+    """
     from app.services.brand_tiers import get_brand_score
     from app.services.category_trends import get_category_trend
     from app.services.category_velocity import get_velocity_for_category
@@ -463,18 +463,13 @@ async def get_product_score(
     from app.services.scoring_config import get_scoring_config
     from app.services.scoring_service import compute_score
 
-    result = await db.execute(select(Product).where(Product.id == product_id))
-    product = result.scalar_one_or_none()
-    if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
-
     config = await get_scoring_config(db)
     trend = await get_category_trend(db, product.category_id)
     brand_score = await get_brand_score(db, product.brand)
     velocity = await get_velocity_for_category(db, product.category_id)
     market_estimate = await get_or_refresh_estimate(db, product)
 
-    score = compute_score(
+    return compute_score(
         shelf_date=product.shelf_date,
         sale_price=float(product.sale_price),
         market_price_estimate=market_estimate,
@@ -485,6 +480,21 @@ async def get_product_score(
         condition=getattr(product, "condition", None),
         config=config,
     )
+
+
+@router.get("/products/{product_id}/score")
+async def get_product_score(
+    product_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Compute and return detailed score for a product."""
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    score = await _compute_product_score(db, product)
     await db.commit()
     return score
 
@@ -551,6 +561,100 @@ async def update_product(
             detail=f"Erreur base de données : {type(exc).__name__}",
         )
     return ProductResponse.model_validate(product)
+
+
+class RepriceRequest(BaseModel):
+    new_price: float
+    reason: str | None = None
+
+
+@router.post("/products/{product_id}/reprice")
+async def reprice_product(
+    product_id: uuid.UUID,
+    request: RepriceRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Change the price, refresh the Vintiz note and propose a move.
+
+    Single round-trip behind the "Modifier le prix" button on the product
+    sheet, wiring the existing engines together:
+
+    1. Persist the new ``sale_price``. The audit listener records the
+       before/after as a "Prix" entry in the movement history automatically.
+    2. Re-run the scoring engine (``compute_score``) and persist the refreshed
+       note on ``trend_score`` — what the catalogue shows and what the
+       merchandising engine reads.
+    3. Ask the merchandising engine (``suggest_zone``) where the product should
+       now live. A move is *proposed* (never applied here) when the suggested
+       zone differs from the current one; the operator confirms it through the
+       standard ``PUT /products/{id}`` (which logs the move to history too).
+
+    No new engine is introduced — only orchestration over existing services.
+    """
+    from app.services.merchandising import MerchandisingService
+
+    if request.new_price is None or request.new_price < 0:
+        raise HTTPException(status_code=400, detail="Prix invalide")
+
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    old_price = float(product.sale_price)
+    new_price = round(float(request.new_price), 2)
+    price_changed = abs(new_price - old_price) > 1e-9
+
+    # 1. Apply the new price only when it actually moved — avoids a no-op
+    #    "Prix : X → X" entry in the audit history. The audit listener turns a
+    #    real change into a movement-history row on flush.
+    if price_changed:
+        product.sale_price = new_price
+    _stamp_lifecycle_dates(product)
+
+    # 2. Refresh the note with the new price and persist it. ``trend_score``
+    #    isn't an audited field, so this adds no noise to the history.
+    score = await _compute_product_score(db, product)
+    product.trend_score = float(score["total_score"])
+
+    # 3. Propose a placement from the refreshed note (suggest_zone reads
+    #    product.trend_score) — "si la note rend le déplacement nécessaire".
+    suggestion = await MerchandisingService(db).suggest_zone(product)
+    current_zone_id = str(product.zone_id) if product.zone_id else None
+    current_zone_name: str | None = None
+    if product.zone_id is not None:
+        zrow = await db.execute(
+            select(StoreZone.name).where(StoreZone.id == product.zone_id)
+        )
+        current_zone_name = zrow.scalar_one_or_none()
+
+    move_recommended = (
+        suggestion.primary_zone_id is not None
+        and suggestion.primary_zone_id != current_zone_id
+    )
+
+    await db.commit()
+    await db.refresh(product)
+
+    return {
+        "product": ProductResponse.model_validate(product).model_dump(mode="json"),
+        "old_price": old_price,
+        "new_price": new_price,
+        "price_changed": price_changed,
+        "score": score,
+        "move": {
+            "recommended": move_recommended,
+            "current_zone_id": current_zone_id,
+            "current_zone_name": current_zone_name,
+            "suggested_zone_id": suggestion.primary_zone_id,
+            "suggested_zone_name": suggestion.primary_zone_name,
+            "alternative_zone_id": suggestion.alternative_zone_id,
+            "alternative_zone_name": suggestion.alternative_zone_name,
+            "should_go_to_window": suggestion.should_go_to_window,
+            "rationale": suggestion.rationale,
+        },
+    }
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)

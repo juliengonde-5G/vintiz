@@ -10,6 +10,7 @@ import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
 import PhotoGallery from '@/components/inventory/PhotoGallery';
 import ProductHistory from '@/components/inventory/ProductHistory';
+import RepriceModal from '@/components/inventory/RepriceModal';
 import { api } from '@/lib/api';
 
 interface ProductDetail {
@@ -102,6 +103,11 @@ export default function ProductDetailPage() {
   const [satoSending, setSatoSending] = useState(false);
   const [satoMsg, setSatoMsg] = useState('');
 
+  // Reprice flow + movement history
+  const [showReprice, setShowReprice] = useState(false);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [zoneNames, setZoneNames] = useState<Record<string, string>>({});
+
   const fetchProduct = useCallback(async () => {
     setLoading(true);
     try {
@@ -126,6 +132,47 @@ export default function ProductDetailPage() {
   useEffect(() => {
     fetchProduct();
   }, [fetchProduct]);
+
+  // Zone id → name map, so the movement history shows zone moves as names.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get('/api/admin/zones');
+        if (res.ok) {
+          const zones: Array<{ id: string; name: string }> = await res.json();
+          const map: Record<string, string> = {};
+          for (const z of zones) map[z.id] = z.name;
+          setZoneNames(map);
+        }
+      } catch {
+        /* zone names are best-effort — history still renders without them */
+      }
+    })();
+  }, []);
+
+  // Silent refresh (no full-page spinner) used after a reprice / move so the
+  // price, the score card and the history all reflect the change in place.
+  const reloadProductAndScore = useCallback(async () => {
+    try {
+      const [prodRes, scoreRes] = await Promise.all([
+        api.get(`/api/inventory/products/${productId}`),
+        api.get(`/api/inventory/products/${productId}/score`),
+      ]);
+      if (prodRes.ok) {
+        const p = await prodRes.json();
+        setProduct(p);
+        setEditing(p);
+      }
+      if (scoreRes.ok) setScore(await scoreRes.json());
+    } catch {
+      /* keep the current view on transient errors */
+    }
+  }, [productId]);
+
+  const handleRepriceApplied = useCallback(() => {
+    reloadProductAndScore();
+    setHistoryRefresh((k) => k + 1);
+  }, [reloadProductAndScore]);
 
   // Auto-open label if redirected from creation
   useEffect(() => {
@@ -227,6 +274,11 @@ export default function ProductDetailPage() {
             <h1 className="text-xl font-bold text-black truncate max-w-xs">{product.name}</h1>
           </div>
           <div className="flex gap-3">
+            {!isEditing && (
+              <Button variant="outline" onClick={() => setShowReprice(true)}>
+                💶 Modifier le prix
+              </Button>
+            )}
             <Button variant="outline" onClick={handleGenerateLabel}>
               🏷 Générer étiquette
             </Button>
@@ -398,7 +450,11 @@ export default function ProductDetailPage() {
             </Card>
 
             <Card title="Historique des mouvements">
-              <ProductHistory productId={product.id} />
+              <ProductHistory
+                productId={product.id}
+                refreshKey={historyRefresh}
+                zoneNames={zoneNames}
+              />
             </Card>
 
             <Card title="Transactions">
@@ -418,6 +474,16 @@ export default function ProductDetailPage() {
             </Card>
           </div>
         </div>
+
+        {/* Reprice flow : new price → refreshed note → move proposal → label */}
+        <RepriceModal
+          open={showReprice}
+          onClose={() => setShowReprice(false)}
+          productId={product.id}
+          currentPrice={product.sale_price}
+          onApplied={handleRepriceApplied}
+          onPrintLabel={handleGenerateLabel}
+        />
 
         {/* Label Modal */}
         <Modal open={showLabel} onClose={() => { setShowLabel(false); setLabelUrl(''); }} title="Étiquette produit">

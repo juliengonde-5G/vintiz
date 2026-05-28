@@ -251,6 +251,7 @@ GET    /api/labels/sheet?ids=…&cols=2&rows=4  Mode dégradé : planche A4 HTML
 GET    /api/pos/transactions/{id}/escpos      Bytes ESC/POS bruts pour WebUSB (mode tablette)
 GET    /api/hardware/receipt/test-escpos     Bytes ESC/POS pour ticket test WebUSB
 GET    /api/inventory/products/{id}/score    Score détaillé
+POST   /api/inventory/products/{id}/reprice  Change le prix → recalcule+persiste la note (trend_score) → propose un déplacement (suggest_zone). Audit logge le prix. Body: new_price
 GET    /api/inventory/products/{id}/photos   Liste multi-photos
 POST   /api/inventory/products/{id}/photos   Ajouter une photo (url + AI fields)
 POST   /api/inventory/products/{id}/photos/{pid}/primary  Définir la photo primaire
