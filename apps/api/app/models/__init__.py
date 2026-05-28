@@ -66,6 +66,7 @@ from app.models.accounting import (
     AccountingExportLine,
     ExportStatus,
 )
+from app.models.database_backup import DatabaseBackup, DatabaseBackupConfig
 
 __all__ = [
     "Base",
@@ -100,4 +101,5 @@ __all__ = [
     "CashMovement", "CashMovementDirection", "CashMovementReason",
     "SumUpTerminal", "SumUpTerminalStatus",
     "AccountingConfig", "AccountingExport", "AccountingExportLine", "ExportStatus",
+    "DatabaseBackup", "DatabaseBackupConfig",
 ]

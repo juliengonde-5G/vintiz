@@ -73,6 +73,14 @@ class Settings(BaseSettings):
     GOOGLE_SITE_VERIFICATION: str | None = None
     GSC_PROPERTY: str | None = None
 
+    # Database backups (gestionnaire de base de données).
+    # ``BACKUP_DIR`` is where nightly + manual dumps land on the prod server
+    # (persisted via the ``vintiz_data`` volume). ``BACKUP_ALERT_EMAIL`` gets a
+    # mail when a backup fails — overridable per-store in the manager settings,
+    # and falls back to SMTP_FROM when both are blank.
+    BACKUP_DIR: str = "data/backups"
+    BACKUP_ALERT_EMAIL: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [s.strip() for s in self.CORS_ORIGINS.split(",") if s.strip()]

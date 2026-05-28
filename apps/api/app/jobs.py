@@ -333,6 +333,31 @@ async def run_daily_loyalty_expiry() -> None:
         logger.exception("Loyalty expiry job failed: %s", exc)
 
 
+async def run_nightly_database_backup() -> None:
+    """Full database backup at 03:00 Paris (gestionnaire de base de données).
+
+    Skips when disabled in the manager settings. On failure the backup service
+    records a 'failed' row and emails the alert recipient — this wrapper only
+    guards the cron loop."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services import database_backup
+
+        async with AsyncSession(engine) as db:
+            cfg = await database_backup.get_config(db)
+            await db.commit()
+            if not cfg.enabled:
+                logger.info("Nightly DB backup skipped (disabled in settings)")
+                return
+            backup = await database_backup.run_backup(db, trigger="auto")
+            logger.info(
+                "Nightly DB backup: status=%s file=%s", backup.status, backup.filename
+            )
+    except Exception as exc:
+        logger.exception("Nightly DB backup job failed: %s", exc)
+
+
 async def run_weekly_fashion_book() -> None:
     """Pre-generate the Fashion Book every Monday at 07:30 Paris.
 
@@ -459,6 +484,12 @@ def register_all_jobs(scheduler) -> None:
         run_daily_rgpd_purge,
         CronTrigger(hour=3, minute=0),
         id="daily_rgpd_purge",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_nightly_database_backup,
+        CronTrigger(hour=3, minute=0),
+        id="nightly_database_backup",
         replace_existing=True,
     )
     scheduler.add_job(

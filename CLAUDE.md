@@ -165,6 +165,12 @@ ZEBRA_CLOUD_SERIAL=               # n° de série de l'imprimante enrôlée (mod
 ZEBRA_CLOUD_ENDPOINT=             # optionnel: override (défaut api.zebra.com/v2/devices/printers/send)
 VINTIZ_HARDWARE_CONFIG=           # chemin custom du fichier hardware.json (défaut: data/hardware.json)
 
+# Sauvegarde base de données (gestionnaire admin /admin/database)
+# Dump complet (pg_dump | gzip) chaque nuit à 3h + déclenchement manuel.
+# Rétention / email d'alerte / activation du cron sont éditables dans l'UI.
+BACKUP_DIR=data/backups          # dossier des dumps (persisté via volume vintiz_data en prod)
+BACKUP_ALERT_EMAIL=              # destinataire mail si échec (repli: SMTP_FROM ; éditable dans l'UI)
+
 # Email transactional (P4-003) — gateway unifié Brevo > SMTP > simulation.
 # Si BREVO_API_KEY est posée → Brevo. Sinon → fallback SMTP. Sinon → simulation.
 BREVO_API_KEY=                    # xkeysib-xxx
@@ -326,6 +332,14 @@ PUT    /api/seo/reviews/{id}/reply           Enregistrer la réponse
 GET    /api/admin/weather                    Météo Vernon
 GET    /api/admin/audit-logs                 Journal AuditLog (manager only, filtres entity/action/user_id)
 GET    /api/admin/fiscal-export?from=&to=&format=xml|json  Export fiscal NF525/DGFiP (manager only)
+GET    /api/admin/database/state            État base : volumes/table, taille, dernière sauvegarde (manager only)
+GET    /api/admin/database/config           Lire réglages sauvegarde (rétention/email/cron) (manager only)
+PUT    /api/admin/database/config           Modifier réglages sauvegarde (manager only)
+GET    /api/admin/database/backups          Liste des sauvegardes (manager only)
+POST   /api/admin/database/backups/run      Lancer une sauvegarde manuelle (manager only)
+GET    /api/admin/database/backups/{id}/download  Télécharger un dump .sql.gz (manager only)
+DELETE /api/admin/database/backups/{id}      Supprimer une sauvegarde (fichier + ligne) (manager only)
+GET    /api/admin/database/export?table=…    Export CSV d'une table whitelistée (manager only)
 GET    /api/admin/data-quality?days=7        Volumes events_log + courbe (manager only)
 POST   /api/admin/embeddings/recompute       Recalcul embeddings catalogue (manager only)
 POST   /api/admin/embeddings/customer/{id}   Refresh taste profile cliente (manager only)
@@ -543,6 +557,19 @@ GET    /api/admin/predictive/audience?period_days=90  Snapshot debug dominant ta
   `hibernating`) + birthday <7 j + milestone fidélité <14 pts.
 - Fiche client admin `/clients/[id]` : 6 onglets (Synthèse / Achats / Fidélité /
   Goûts / RGPD / Audit) chargés en 1 requête `GET /crm/clients/{id}/full`.
+
+### 12. Gestionnaire de base de données (admin `/admin/database`, manager only)
+- **État de la base** : moteur, taille, volumes par table, dernière sauvegarde.
+- **Sauvegarde nocturne** : cron APScheduler 03:00 Europe/Paris
+  (`run_nightly_database_backup`, jobs.py) → dump complet `pg_dump | gzip` dans
+  `BACKUP_DIR` (le conteneur API embarque `postgresql-client`). Chaque dump =
+  une ligne `DatabaseBackup` (succès/échec, taille, durée). **Mail d'alerte en
+  cas d'échec** via la passerelle email (destinataire configurable).
+- **Déclenchement manuel** + **téléchargement** de chaque sauvegarde (.sql.gz).
+- **Réglages éditables** (`DatabaseBackupConfig` singleton) : rétention en jours
+  (purge auto fichiers + lignes), email d'alerte, activation du cron nocturne.
+- **Exports CSV** par table whitelistée (produits, catégories, clients,
+  transactions, newsletter). Service : `app/services/database_backup.py`.
 
 ## Design tokens (Tailwind)
 

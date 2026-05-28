@@ -15,6 +15,13 @@ FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
+# postgresql-client provides pg_dump for the nightly database backup
+# (gestionnaire de base de données). The backup service degrades gracefully
+# (failed row + alert email) if it is ever missing or version-mismatched.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN addgroup --system app && adduser --system --ingroup app app
 
 COPY --from=builder /install /usr/local
