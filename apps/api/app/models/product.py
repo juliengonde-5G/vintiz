@@ -17,6 +17,12 @@ class Gender(str, enum.Enum):
     mixte = "mixte"
 
 
+# Shared enum type instance so ``categories.gender`` and ``products.gender``
+# map to the SAME Postgres ``gender`` type (a second ``Enum(Gender, name=...)``
+# instance would make create_all attempt a duplicate CREATE TYPE on boot).
+GENDER_ENUM = Enum(Gender, name="gender")
+
+
 class ProductStatus(str, enum.Enum):
     """Explicit life cycle of a thrift item from intake to terminal.
 
@@ -57,7 +63,7 @@ class Category(Base):
         UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True
     )
     gender: Mapped[Gender] = mapped_column(
-        Enum(Gender, name="gender"), nullable=False, default=Gender.mixte
+        GENDER_ENUM, nullable=False, default=Gender.mixte
     )
 
     parent: Mapped["Category | None"] = relationship(
@@ -107,6 +113,12 @@ class Product(Base):
         default=ProductStatus.stock,
     )
     condition: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Genre du produit (homme | femme | enfant | mixte/unisexe). Saisi à
+    # l'étape 2 de l'assistant d'ajout (proposé par la détection image) et
+    # base de l'affectation automatique des zones (merchandising.suggest_zone).
+    # Nullable + ajouté en additif : les fiches existantes restent à NULL et
+    # retombent sur le genre de leur catégorie. Voir migration 0048.
+    gender: Mapped[Gender | None] = mapped_column(GENDER_ENUM, nullable=True)
     week_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Life-cycle anchors (P1-006). ``received_at`` is set on first arrival

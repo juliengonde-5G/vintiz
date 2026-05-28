@@ -96,13 +96,14 @@ def _price_str(price: float) -> str:
     return f"{price:.2f} €".replace(".", ",")
 
 
-# Genre abrégé imprimé à côté du nom + taille. On n'imprime que les genres
-# déterminés ; ``mixte`` (unisexe) et l'inconnu ne donnent rien ("si existant").
-_GENDER_TOKENS = {"homme": "H", "femme": "F", "enfant": "E"}
+# Genre abrégé imprimé en 3e variable de la 1re ligne, à côté du nom + taille.
+# Le genre est désormais un attribut produit explicite (homme/femme/enfant/
+# mixte) → unisexe = "U". Vide / inconnu → rien (fiches sans genre).
+_GENDER_TOKENS = {"homme": "H", "femme": "F", "enfant": "E", "mixte": "U"}
 
 
 def _gender_token(gender: str | None) -> str:
-    """femme→F, homme→H, enfant→E ; mixte / vide / inconnu → '' (rien imprimé)."""
+    """homme→H, femme→F, enfant→E, mixte(unisexe)→U ; vide / inconnu → ''."""
     if not gender:
         return ""
     return _GENDER_TOKENS.get(str(gender).strip().lower(), "")
@@ -242,9 +243,12 @@ def product_to_label_data(product: Any) -> LabelData:
     """Adapte un ORM Product en LabelData."""
     category = getattr(product, "category", None)
     category_name = category.name if category else "Article"
-    # Le genre vit sur la catégorie (enum Gender) — on le réduit à sa valeur
-    # str ("homme"/"femme"/…) ; _gender_token() fait l'abréviation côté gabarit.
-    gender_raw = getattr(category, "gender", None) if category else None
+    # Le genre du PRODUIT (saisi à l'ajout / proposé par l'image) est la source
+    # de la 3e variable ; à défaut (fiches antérieures au champ) on retombe sur
+    # le genre de la catégorie. _gender_token() fait l'abréviation côté gabarit.
+    gender_raw = getattr(product, "gender", None)
+    if gender_raw is None and category is not None:
+        gender_raw = getattr(category, "gender", None)
     gender = getattr(gender_raw, "value", gender_raw)
     shelf = getattr(product, "displayed_at", None) or getattr(product, "shelf_date", None)
     received = getattr(product, "received_at", None)

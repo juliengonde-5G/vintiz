@@ -221,6 +221,11 @@ async def create_from_photo(
     color = vision_payload.get("couleur")
     size = vision_payload.get("taille")
     condition = _normalize_condition(vision_payload.get("etat"))
+    # Genre proposé par la détection image (déjà normalisé par
+    # normalize_vision_payload → homme|femme|enfant|mixte ou None). Base de
+    # l'affectation de zone et 3e variable de l'étiquette.
+    genre_raw = vision_payload.get("genre")
+    gender = Gender(genre_raw) if genre_raw in ai_vision.ALLOWED_GENDERS else None
     sale_price = round(
         _gamme_to_price_hint(vision_payload.get("gamme_estimee"), sale_price_hint),
         2,
@@ -241,6 +246,7 @@ async def create_from_photo(
         size=size[:20] if size else None,
         color=color[:50] if color else None,
         brand=brand[:100] if brand else None,
+        gender=gender,
         purchase_price=float(purchase_price),
         sale_price=float(sale_price),
         status=ProductStatus.stock,
@@ -323,6 +329,7 @@ async def create_from_photo(
             "color": product.color,
             "brand": product.brand,
             "condition": product.condition,
+            "gender": product.gender.value if product.gender else None,
             "sale_price": float(product.sale_price),
             "purchase_price": float(product.purchase_price),
             "status": product.status.value if hasattr(product.status, "value") else str(product.status),

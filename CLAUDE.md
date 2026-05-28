@@ -424,6 +424,12 @@ GET    /api/admin/predictive/audience?period_days=90  Snapshot debug dominant ta
 - Fiche produit cliquable avec score détaillé (6 composantes)
 - Date de mise en rayon, emplacement zone
 - Édition inline prix / zone / statut
+- **Genre produit** (`Product.gender` : homme/femme/enfant/mixte) saisi à
+  l'étape 2 de l'assistant d'ajout (proposé par la détection image). C'est la
+  **base de l'affectation automatique des zones** (`suggest_zone` privilégie le
+  genre produit, repli sur le genre de la catégorie) et la **3ᵉ variable de la
+  1ʳᵉ ligne de l'étiquette** (H/F/E/U). Additif : colonne nullable, les fiches
+  antérieures restent à NULL (repli catégorie). Voir migration 0048.
 - Bouton "Générer étiquette" → PNG téléchargeable/imprimable
 - **Photo vitrine auto** : à chaque upload, une copie détourée (fond
   supprimé + canvas off-white charte + logo Vintiz) est générée en back et
@@ -457,7 +463,7 @@ GET    /api/admin/predictive/audience?period_days=90  Snapshot debug dominant ta
 - Reçu renvoyable par email/SMS
 
 ### 3. IA Booster
-- **Analyse photo** : Claude Vision détecte type, couleur, marque, état
+- **Analyse photo** : Claude Vision détecte type, couleur, marque, état, **genre** (H/F/E/U)
 - **Checklist hebdo** : recommandations actionnables (mise en avant, prix, vitrine)
 - **Tendances mode** : social/Vinted/retail printemps-été 2026
 - **Rapport marketing** : analyse boutique par persona manager

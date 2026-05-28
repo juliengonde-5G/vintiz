@@ -25,6 +25,7 @@ A partir de la photo, tu dois identifier :
 13. **description** : une description courte (1-2 phrases) pour l'etiquette/fiche produit
 14. **gamme_estimee** : entree, moyenne, premium (basee sur la qualite apparente, la marque, la matiere)
 15. **confiance** : 0.0-1.0 — ton niveau de certitude global (faible si la photo est floue ou partielle)
+16. **genre** : un seul mot parmi homme, femme, enfant, mixte (mixte = unisexe). Base sur la coupe, le type et les codes du vetement. Si tu hesites entre homme et femme sans indice clair, reponds "mixte".
 
 Reponds UNIQUEMENT en JSON valide, sans texte autour. Format :
 {
@@ -43,5 +44,6 @@ Reponds UNIQUEMENT en JSON valide, sans texte autour. Format :
   "defauts": ["..."],
   "description": "...",
   "gamme_estimee": "entree|moyenne|premium",
+  "genre": "homme|femme|enfant|mixte",
   "confiance": 0.0-1.0
 }

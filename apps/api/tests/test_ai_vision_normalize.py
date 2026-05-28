@@ -2,9 +2,11 @@
 
 from app.services.ai_vision import (
     ALLOWED_CUTS,
+    ALLOWED_GENDERS,
     ALLOWED_OCCASIONS,
     ALLOWED_PATTERNS,
     ALLOWED_STYLES,
+    normalize_gender,
     normalize_vision_payload,
 )
 
@@ -86,6 +88,39 @@ def test_confiance_handles_string_or_missing():
     assert normalize_vision_payload({"confiance": "0.7"})["confiance"] == 0.7
     out = normalize_vision_payload({"confiance": "abc"})
     assert out["confiance"] is None or out["confiance"] == "abc"
+
+
+def test_normalize_gender_canonical_values():
+    assert normalize_gender("homme") == "homme"
+    assert normalize_gender("Femme") == "femme"
+    assert normalize_gender("  ENFANT ") == "enfant"
+    assert normalize_gender("mixte") == "mixte"
+
+
+def test_normalize_gender_synonyms_and_accents():
+    assert normalize_gender("féminin") == "femme"
+    assert normalize_gender("women") == "femme"
+    assert normalize_gender("unisexe") == "mixte"
+    assert normalize_gender("garçon") == "enfant"
+
+
+def test_normalize_gender_unknown_or_missing_is_none():
+    assert normalize_gender("alien") is None
+    assert normalize_gender(None) is None
+    assert normalize_gender("") is None
+    assert normalize_gender(42) is None
+
+
+def test_vision_payload_includes_normalized_gender():
+    out = normalize_vision_payload({"genre": "FEMME"})
+    assert out["genre"] == "femme"
+    # Unknown gender falls back to None so callers spot the gap.
+    assert normalize_vision_payload({"genre": "robot"})["genre"] is None
+    assert normalize_vision_payload({})["genre"] is None
+
+
+def test_allowed_genders_aligned_with_enum():
+    assert ALLOWED_GENDERS == {"homme", "femme", "enfant", "mixte"}
 
 
 def test_allowlists_are_non_empty_safety_check():

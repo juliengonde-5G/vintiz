@@ -113,7 +113,7 @@ def test_info_label_does_not_contain_category():
 
 
 # ---------------------------------------------------------------------------
-# Étiquette 1 — Genre (H / F / E) à côté du nom + taille
+# Étiquette 1 — Genre (H / F / E / U) en 3e variable, à côté du nom + taille
 # ---------------------------------------------------------------------------
 
 
@@ -121,10 +121,12 @@ def test_gender_token_mapping():
     assert _gender_token("homme") == "H"
     assert _gender_token("femme") == "F"
     assert _gender_token("enfant") == "E"
-    # mixte (unisexe) et inconnu → rien ("si existant")
-    assert _gender_token("mixte") == ""
+    # mixte = unisexe → "U" (genre désormais explicite sur le produit)
+    assert _gender_token("mixte") == "U"
+    # vide / inconnu → rien (fiches sans genre)
     assert _gender_token(None) == ""
     assert _gender_token("") == ""
+    assert _gender_token("alien") == ""
     # tolérant à la casse (vient de l'enum Gender)
     assert _gender_token("HOMME") == "H"
 
@@ -165,15 +167,15 @@ def test_info_label_gender_without_size():
     assert "  H" in zpl     # mais le genre reste
 
 
-def test_info_label_mixte_gender_not_printed():
+def test_info_label_mixte_gender_prints_u():
     data = LabelData(
         product_name="Echarpe", category="Accessoires", size="TU", condition=None,
         sale_price=5.0, barcode="VTZ-M", shelf_date=None, gender="mixte",
     )
     zpl = build_info_label_zpl(data)
     assert "T.TU" in zpl
-    # mixte → aucun suffixe genre
-    assert "  H" not in zpl and "  F" not in zpl and "  E" not in zpl
+    # mixte = unisexe → "U" en 3e variable
+    assert "  U" in zpl
 
 
 def test_info_label_no_gender_when_absent():

@@ -41,6 +41,7 @@ interface VisionResult {
   etat?: string;
   saison?: string;
   style?: string;
+  genre?: string;
   description?: string;
   gamme_estimee?: string;
   confiance?: number;
@@ -109,6 +110,16 @@ const CONDITIONS = [
   { code: 'correct', label: 'Correct' },
 ];
 
+// Gender codes — match the API Gender enum (homme/femme/enfant/mixte). This is
+// the basis for automatic zone assignment + the 3rd label variable. "mixte"
+// is shown as "Unisexe" to the operator.
+const GENDERS = [
+  { code: 'homme', label: 'Homme' },
+  { code: 'femme', label: 'Femme' },
+  { code: 'enfant', label: 'Enfant' },
+  { code: 'mixte', label: 'Unisexe' },
+];
+
 // Map a free-form AI ``etat`` to one of our condition codes.
 function normalizeCondition(etat?: string): string {
   if (!etat) return '';
@@ -117,6 +128,20 @@ function normalizeCondition(etat?: string): string {
   if (e.includes('tres bon') || e.includes('tres_bon')) return 'tres_bon';
   if (e.includes('correct')) return 'correct';
   if (e.includes('bon')) return 'bon';
+  return '';
+}
+
+// Map a free-form AI ``genre`` to one of our gender codes (mirrors the backend
+// normalize_gender so the wizard pre-selects what Vision proposed). Exact-match
+// to avoid substring collisions (e.g. "women" contains "men").
+function normalizeGender(genre?: string): string {
+  if (!genre) return '';
+  const g = genre.toLowerCase().replace(/[éè]/g, 'e').replace(/ç/g, 'c').trim();
+  if (['homme', 'femme', 'enfant', 'mixte'].includes(g)) return g;
+  if (['enfant', 'kid', 'kids', 'child', 'fille', 'garcon', 'bebe', 'junior'].includes(g)) return 'enfant';
+  if (['unisexe', 'unisex', 'u'].includes(g)) return 'mixte';
+  if (['h', 'men', 'man', 'masculin'].includes(g)) return 'homme';
+  if (['f', 'women', 'woman', 'feminin', 'feminine'].includes(g)) return 'femme';
   return '';
 }
 
@@ -158,7 +183,7 @@ export default function NewProductWizard() {
   // Form
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
-  const [form, setForm] = useState({ name: '', brand: '', category_id: '', color: '', size: '', condition: '' });
+  const [form, setForm] = useState({ name: '', brand: '', category_id: '', color: '', size: '', condition: '', gender: '' });
   const [price, setPrice] = useState('');
   // Surfaced on the exit screen so the operator knows the photo didn't attach.
   const [photoUploadFailed, setPhotoUploadFailed] = useState(false);
@@ -226,6 +251,8 @@ export default function NewProductWizard() {
           if (result.marque && result.marque !== 'non identifiee') set('brand', result.marque);
           const cond = normalizeCondition(result.etat);
           if (cond) set('condition', cond);
+          const gen = normalizeGender(result.genre);
+          if (gen) set('gender', gen);
         }
       } else {
         const e = await res.json().catch(() => ({}));
@@ -276,6 +303,7 @@ export default function NewProductWizard() {
         color: form.color || null,
         size: form.size || null,
         condition: form.condition || null,
+        gender: form.gender || null,
         purchase_price: 0,
         sale_price: parseFloat(price) || 0,
         status: 'stock',
@@ -447,7 +475,7 @@ export default function NewProductWizard() {
     setStorefrontStatus(null);
     submittingRef.current = false;
     setVision(null);
-    setForm({ name: '', brand: '', category_id: '', color: '', size: '', condition: '' });
+    setForm({ name: '', brand: '', category_id: '', color: '', size: '', condition: '', gender: '' });
     setPrice('');
     setPriceSuggestion(null);
     setCreated(null);
@@ -641,7 +669,7 @@ export default function NewProductWizard() {
 
           {/* STEP 3 — ATTRIBUTES (couleur / taille) */}
           {step === 'attributes' && (
-            <Card title="Étape 2 — Couleur, taille">
+            <Card title="Étape 2 — Couleur, taille, genre">
               <div className="space-y-5">
                 {(() => {
                   const catName = categories.find(c => c.id === form.category_id)?.name ?? '';
@@ -679,6 +707,23 @@ export default function NewProductWizard() {
                     </>
                   );
                 })()}
+                <div>
+                  <label className="block text-sm font-medium text-black mb-1.5">
+                    Genre
+                    <span className="text-xs font-normal text-gray-400 ml-1">— oriente l&apos;affectation en zone</span>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {GENDERS.map(({ code, label }) => (
+                      <button key={code} type="button" onClick={() => set('gender', form.gender === code ? '' : code)}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${form.gender === code ? 'bg-vz-teal text-white' : 'bg-gray-100 hover:bg-gray-200 text-black'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {vision?.genre && normalizeGender(vision.genre) && (
+                    <p className="text-xs text-vz-teal mt-1.5">Proposé par l&apos;analyse photo</p>
+                  )}
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-black mb-1.5">État</label>
                   <div className="flex flex-wrap gap-2">

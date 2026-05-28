@@ -50,6 +50,41 @@ ALLOWED_PATTERNS = {
 ALLOWED_CUTS = {
     "slim", "droit", "oversize", "cintre", "fluide", "ample", "ajuste",
 }
+# Genre détecté — aligné sur l'enum Gender (modèle) : base de l'affectation
+# automatique des zones. "mixte" = unisexe / indéterminé.
+ALLOWED_GENDERS = {"homme", "femme", "enfant", "mixte"}
+
+
+_GENDER_SYNONYMS = {
+    "homme": "homme", "h": "homme", "men": "homme", "man": "homme",
+    "masculin": "homme",
+    "femme": "femme", "f": "femme", "women": "femme", "woman": "femme",
+    "feminin": "femme", "feminine": "femme",
+    "enfant": "enfant", "kid": "enfant", "kids": "enfant", "child": "enfant",
+    "fille": "enfant", "garcon": "enfant", "bebe": "enfant", "junior": "enfant",
+    "mixte": "mixte", "unisexe": "mixte", "unisex": "mixte", "u": "mixte",
+}
+
+
+def normalize_gender(value) -> str | None:
+    """Map a free-form gender to one of homme|femme|enfant|mixte (or None).
+
+    Tolerant to FR/EN synonyms and accents so a slightly off Vision answer
+    still lands on a valid value; unknown → None (caller decides the default).
+    """
+    if not isinstance(value, str):
+        return None
+    s = value.strip().lower()
+    for accented, plain in (
+        ("é", "e"), ("è", "e"), ("ê", "e"), ("ë", "e"), ("ç", "c"), ("à", "a"),
+    ):
+        s = s.replace(accented, plain)
+    if not s:
+        return None
+    mapped = _GENDER_SYNONYMS.get(s)
+    if mapped:
+        return mapped
+    return s if s in ALLOWED_GENDERS else None
 
 
 def normalize_vision_payload(payload: dict) -> dict:
@@ -80,6 +115,7 @@ def normalize_vision_payload(payload: dict) -> dict:
     out["style"] = _filter(payload.get("style"), ALLOWED_STYLES)
     out["motif"] = _filter(payload.get("motif"), ALLOWED_PATTERNS)
     out["coupe"] = _filter(payload.get("coupe"), ALLOWED_CUTS)
+    out["genre"] = normalize_gender(payload.get("genre"))
 
     raw_occ = payload.get("occasion")
     if isinstance(raw_occ, str):

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.product import Category, Product, ProductPhoto, ProductStatus
+from app.models.product import Category, Gender, Product, ProductPhoto, ProductStatus
 from app.models.inventory import Supplier, Order
 from app.models.brand_tier import BrandTier
 from app.models.store import StoreZone
@@ -63,6 +63,24 @@ def _stamp_lifecycle_dates(product: Product) -> None:
             product.displayed_at = now
         if product.shelf_date is None:
             product.shelf_date = now
+
+
+def _coerce_gender(value: str | None) -> Gender | None:
+    """Validate a free-form gender string into the Gender enum (or None).
+
+    ``None`` / empty → None (the column is nullable and additive). An unknown
+    value is a client error rather than silently dropped.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return Gender(value)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"genre invalide : {value}. Valeurs autorisées : "
+                   f"{[g.value for g in Gender]}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +266,8 @@ async def create_product(
                    f"{[s.value for s in ProductStatus]}",
         )
 
+    gender_enum = _coerce_gender(product_in.gender)
+
     product = Product(
         barcode=barcode_value,
         name=product_in.name,
@@ -256,6 +276,7 @@ async def create_product(
         color=product_in.color,
         brand=product_in.brand,
         condition=product_in.condition,
+        gender=gender_enum,
         purchase_price=product_in.purchase_price,
         sale_price=product_in.sale_price,
         status=status_enum,
@@ -542,6 +563,10 @@ async def update_product(
                     status_code=400,
                     detail=f"status invalide : {value}",
                 )
+        # Same for the gender enum (homme/femme/enfant/mixte) — base de
+        # l'affectation des zones, donc on rejette une valeur inconnue.
+        if field == "gender":
+            value = _coerce_gender(value if isinstance(value, str) else None)
         setattr(product, field, value)
 
     # Moving a product onto the floor (mise en rayon) stamps the shelf date

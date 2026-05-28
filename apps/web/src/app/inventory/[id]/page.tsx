@@ -21,6 +21,7 @@ interface ProductDetail {
   category: { id: string; name: string } | null;
   size: string | null;
   color: string | null;
+  gender: string | null;
   purchase_price: number;
   sale_price: number;
   status: string;
@@ -31,6 +32,15 @@ interface ProductDetail {
   trend_score: number | null;
   zone_id: string | null;
 }
+
+const GENDER_OPTIONS = [
+  { code: 'homme', label: 'Homme' },
+  { code: 'femme', label: 'Femme' },
+  { code: 'enfant', label: 'Enfant' },
+  { code: 'mixte', label: 'Unisexe' },
+];
+const genderLabel = (g: string | null | undefined) =>
+  GENDER_OPTIONS.find((o) => o.code === g)?.label ?? '—';
 
 interface ScoreDetail {
   total_score: number;
@@ -191,6 +201,7 @@ export default function ProductDetailPage() {
         brand: editing.brand,
         size: editing.size,
         color: editing.color,
+        gender: editing.gender || null,
         purchase_price: Number(editing.purchase_price),
         sale_price: Number(editing.sale_price),
         status: editing.status,
@@ -352,6 +363,17 @@ export default function ProductDetailPage() {
                       <Input value={editing.color || ''} onChange={e => setEditing(p => ({...p, color: e.target.value}))} placeholder="Autre couleur..." />
                     </div>
                     <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Genre</label>
+                      <div className="flex flex-wrap gap-2">
+                        {GENDER_OPTIONS.map(({ code, label }) => (
+                          <button key={code} type="button" onClick={() => setEditing(p => ({...p, gender: p.gender === code ? '' : code}))}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${editing.gender === code ? 'bg-vz-teal text-white' : 'bg-gray-100 hover:bg-gray-200 text-black'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
                       <label className="block text-sm font-medium text-black mb-1.5">Statut</label>
                       <select value={editing.status || 'stock'} onChange={e => setEditing(p => ({...p, status: e.target.value}))}
                         className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal">
@@ -387,6 +409,7 @@ export default function ProductDetailPage() {
                     <div><p className="text-xs text-gray-500 mb-0.5">Catégorie</p><p className="text-sm text-gray-700">{product.category?.name || '—'}</p></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Taille</p><p className="text-sm text-gray-700">{product.size || '—'}</p></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Couleur</p><p className="text-sm text-gray-700">{product.color || '—'}</p></div>
+                    <div><p className="text-xs text-gray-500 mb-0.5">Genre</p><p className="text-sm text-gray-700">{genderLabel(product.gender)}</p></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Statut</p><Badge variant={statusVariants[product.status] || 'stock'}>{statusOptions.find(o => o.value === product.status)?.label || product.status}</Badge></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Prix d&apos;achat</p><p className="text-sm text-gray-700">{product.purchase_price?.toFixed(2)} €</p></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Prix de vente</p><p className="text-sm font-bold text-vz-teal">{product.sale_price?.toFixed(2)} €</p></div>

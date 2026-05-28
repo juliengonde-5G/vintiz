@@ -326,9 +326,16 @@ class MerchandisingService:
             )
             category = cat_row.scalar_one_or_none()
 
-        gender_token = (
-            category.gender.value if category and category.gender is not None else None
-        )
+        # Le genre du PRODUIT (saisi à l'ajout / proposé par l'image) prime ;
+        # à défaut (fiches antérieures au champ), on retombe sur celui de la
+        # catégorie. C'est la base de l'affectation de zone.
+        product_gender = getattr(product, "gender", None)
+        if product_gender is not None:
+            gender_token = product_gender.value
+        elif category and category.gender is not None:
+            gender_token = category.gender.value
+        else:
+            gender_token = None
         color_norm = _normalize(product.color)
         size_class = classify_size(product.size)
         score = product.trend_score

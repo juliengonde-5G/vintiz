@@ -28,6 +28,9 @@ class ProductCreate(BaseModel):
     color: str | None = None
     brand: str | None = None
     condition: str | None = None
+    # homme | femme | enfant | mixte (mixte = unisexe). Optionnel : proposé par
+    # la détection image et validé à l'étape 2 de l'assistant d'ajout.
+    gender: str | None = None
     purchase_price: float = 0
     sale_price: float = 0
     status: str = "stock"
@@ -42,6 +45,7 @@ class ProductUpdate(BaseModel):
     brand: str | None = None
     condition: str | None = None
     photo_url: str | None = None
+    gender: str | None = None
     purchase_price: float | None = None
     sale_price: float | None = None
     status: str | None = None
@@ -60,6 +64,8 @@ class ProductResponse(BaseModel):
     color: str | None
     brand: str | None
     condition: str | None = None
+    # homme | femme | enfant | mixte — None pour les fiches antérieures au champ.
+    gender: str | None = None
     photo_url: str | None
     # Branded background-removed copy of the primary photo for the storefront.
     storefront_photo_url: str | None = None
