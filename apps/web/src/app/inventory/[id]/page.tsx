@@ -118,6 +118,12 @@ export default function ProductDetailPage() {
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [zoneNames, setZoneNames] = useState<Record<string, string>>({});
 
+  // Permanent delete (manager-only — for a product created by mistake)
+  const [role, setRole] = useState<string | null>(null);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
   const fetchProduct = useCallback(async () => {
     setLoading(true);
     try {
@@ -183,6 +189,28 @@ export default function ProductDetailPage() {
     reloadProductAndScore();
     setHistoryRefresh((k) => k + 1);
   }, [reloadProductAndScore]);
+
+  // The permanent-delete affordance is manager-only (the API enforces it too).
+  useEffect(() => {
+    setRole(localStorage.getItem('role'));
+  }, []);
+
+  const handlePermanentDelete = async () => {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const res = await api.delete(`/api/inventory/products/${productId}/permanent`);
+      if (res.ok) {
+        router.push('/inventory');
+        return;
+      }
+      const e = await res.json().catch(() => ({}));
+      setDeleteError(e.detail || 'Suppression impossible.');
+    } catch {
+      setDeleteError('Erreur réseau.');
+    }
+    setDeleting(false);
+  };
 
   // Auto-open label if redirected from creation
   useEffect(() => {
@@ -300,6 +328,11 @@ export default function ProductDetailPage() {
                 <Button variant="outline" onClick={() => { setIsEditing(false); setEditing(product); }}>Annuler</Button>
                 <Button onClick={handleSave} disabled={saving}>{saving ? 'Sauvegarde...' : 'Sauvegarder'}</Button>
               </>
+            )}
+            {role === 'manager' && !isEditing && (
+              <Button variant="danger" onClick={() => { setDeleteError(''); setShowDelete(true); }}>
+                🗑 Supprimer
+              </Button>
             )}
           </div>
         </div>
@@ -497,6 +530,34 @@ export default function ProductDetailPage() {
             </Card>
           </div>
         </div>
+
+        {/* Permanent delete — product created by mistake (manager-only) */}
+        <Modal
+          open={showDelete}
+          onClose={() => setShowDelete(false)}
+          title="Supprimer définitivement ce produit ?"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">
+              Cette action supprime <strong>définitivement</strong> «&nbsp;{product.name}&nbsp;»
+              (réf. <span className="font-mono">{product.barcode}</span>) du catalogue.
+              À utiliser pour un produit <strong>créé par erreur</strong> (ex.&nbsp;doublon
+              déjà présent en base). Action irréversible.
+            </p>
+            <p className="text-xs text-gray-500">
+              Un produit déjà vendu ne peut pas être supprimé (utilisez plutôt un retour au tri).
+            </p>
+            {deleteError && (
+              <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{deleteError}</div>
+            )}
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowDelete(false)}>Annuler</Button>
+              <Button variant="danger" onClick={handlePermanentDelete} disabled={deleting}>
+                {deleting ? 'Suppression…' : 'Supprimer définitivement'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         {/* Reprice flow : new price → refreshed note → move proposal → label */}
         <RepriceModal

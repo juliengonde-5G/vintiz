@@ -12,7 +12,7 @@ from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import RoleChecker, get_current_user
 from app.models.product import Category, Gender, Product, ProductPhoto, ProductStatus
 from app.models.inventory import Supplier, Order
 from app.models.brand_tier import BrandTier
@@ -695,6 +695,70 @@ async def delete_product(
         raise HTTPException(status_code=404, detail="Product not found")
     product.status = ProductStatus.returned
     await db.flush()
+
+
+@router.delete(
+    "/products/{product_id}/permanent",
+    dependencies=[Depends(RoleChecker(["manager"]))],
+)
+async def permanently_delete_product(
+    product_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Hard-delete a product created by mistake (e.g. a duplicate).
+
+    Manager-only. Unlike the soft delete above (which marks the item
+    ``returned``), this physically removes the row so a fat-fingered or
+    duplicate entry leaves no trace in the catalogue.
+
+    Fiscal guard: refuses (409) when the product appears in any
+    transaction (sold / refunded) — those must stay for the NF525 trail and
+    should go through "retour au tri" instead. Dependent rows that FK
+    ``products.id`` (photos, zone link, embedding, supplier order lines,
+    analytics events) are cleared first; the deletion itself is recorded in
+    the audit log.
+    """
+    from sqlalchemy import delete as sa_delete, func
+
+    from app.models.embeddings import ProductEmbedding
+    from app.models.events import EventLog
+    from app.models.inventory import OrderItem
+    from app.models.pos import TransactionItem
+    from app.models.store import ZoneProduct
+
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    tx_count = (
+        await db.execute(
+            select(func.count(TransactionItem.id)).where(
+                TransactionItem.product_id == product_id
+            )
+        )
+    ).scalar_one()
+    if tx_count and tx_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Produit présent dans {tx_count} transaction(s) — suppression "
+                "définitive impossible (traçabilité fiscale). Utilisez « Retour "
+                "au tri » à la place."
+            ),
+        )
+
+    name = product.name
+    barcode = product.barcode
+    # Clear FK dependents that have no ORM cascade from Product. Photos are
+    # cascade-deleted via the relationship when the product is removed.
+    for model in (ProductEmbedding, ZoneProduct, OrderItem, EventLog):
+        await db.execute(sa_delete(model).where(model.product_id == product_id))
+
+    await db.delete(product)  # cascades to product_photos + audited as a delete
+    await db.commit()
+    return {"deleted": True, "id": str(product_id), "name": name, "barcode": barcode}
 
 
 # ---------------------------------------------------------------------------

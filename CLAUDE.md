@@ -261,6 +261,8 @@ DELETE /api/inventory/products/{id}/photos/{pid}          Supprimer une photo
 POST   /api/inventory/products/import-csv    Import en masse CSV (multipart, ?dry_run=true)
 GET    /api/inventory/products/{id}/history  Historique mouvements (audit_logs)
 POST   /api/inventory/products/{id}/transition  Transition cycle de vie produit (FSM)
+DELETE /api/inventory/products/{id}          Soft-delete (statut → returned)
+DELETE /api/inventory/products/{id}/permanent  Suppression définitive d'un produit créé à tort (manager only, 409 si déjà vendu, nettoie photos/zone/embedding/order/events, audité)
 POST   /api/inventory/batches                Créer un lot d'arrivage (carton)
 GET    /api/inventory/batches                Liste des lots
 GET    /api/inventory/batches/{id}           Détail lot + produits assignés
