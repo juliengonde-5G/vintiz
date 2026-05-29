@@ -251,11 +251,16 @@ class PersonalShopperService:
             "products": [
                 {
                     "id": str(p.id),
+                    # ``product_id`` + ``price_cents`` mirror the text-search
+                    # payload so the espace-client front renders one consistent
+                    # shape (no more ``NaN €`` from a missing ``price_cents``).
+                    "product_id": str(p.id),
                     "name": p.name,
                     "size": p.size,
                     "color": p.color,
                     "brand": p.brand,
                     "sale_price": float(p.sale_price),
+                    "price_cents": int(round(float(p.sale_price) * 100)),
                     "score": round(float(score), 4),
                     "photo_url": p.photo_url,
                 }
@@ -481,11 +486,13 @@ class PersonalShopperService:
             "products": [
                 {
                     "id": str(p.id),
+                    "product_id": str(p.id),
                     "name": p.name,
                     "size": p.size,
                     "color": p.color,
                     "brand": p.brand,
                     "sale_price": float(p.sale_price),
+                    "price_cents": int(round(float(p.sale_price) * 100)),
                     "score": None,
                     "photo_url": p.photo_url,
                 }

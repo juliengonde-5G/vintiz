@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import AccountShell from "@/components/account/AccountShell";
 import { mediaUrl } from "@/lib/media";
+import { formatPriceCents } from "@/lib/format";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -14,6 +15,7 @@ interface CurationItem {
   size: string | null;
   color: string | null;
   sale_price: number;
+  price_cents: number;
   photo_url: string | null;
   reason: string;
 }
@@ -113,7 +115,7 @@ export default function AccountSelectionPage() {
                 {it.reason && (
                   <p className="mt-2 text-xs text-vz-ink-soft italic leading-relaxed">« {it.reason} »</p>
                 )}
-                <p className="mt-3 font-display text-lg text-vz-teal">{it.sale_price.toFixed(0)} €</p>
+                <p className="mt-3 font-display text-lg text-vz-teal">{formatPriceCents(it.price_cents)}</p>
               </div>
             </article>
           ))}

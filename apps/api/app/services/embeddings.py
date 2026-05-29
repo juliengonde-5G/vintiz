@@ -224,25 +224,36 @@ class EmbeddingService:
     # -- Customer taste centroid --------------------------------------------
 
     async def recompute_taste_profile(
-        self, customer_id, max_purchases: int = 50
+        self, customer_id, max_transactions: int = 15
     ) -> CustomerTasteProfile | None:
-        """Build a customer's taste centroid from her last ``max_purchases``
-        sold items, weighted exponentially by recency.
+        """Build a customer's taste centroid from the products bought across
+        her last ``max_transactions`` sale transactions, weighted exponentially
+        by the transaction date.
 
-        Returns the (possibly newly inserted) ``CustomerTasteProfile`` row,
-        or ``None`` if the customer has no analyzable purchases.
+        A purchase = one transaction = 1+ products; **all** products of those
+        transactions feed the centroid (not the last N items). Returns the
+        (possibly newly inserted) ``CustomerTasteProfile`` row, or ``None`` if
+        the customer has no analyzable purchases.
         """
-        # Fetch sold items from this customer's transactions, newest first.
-        query = (
-            select(TransactionItem, Transaction.created_at)
-            .join(Transaction, TransactionItem.transaction_id == Transaction.id)
+        # 1. The customer's most-recent sale transactions (newest first).
+        #    V2 will exclude is_gift / exclude_from_taste here and down-weight
+        #    atypical (gift) purchases to 0.3 — kept additive on purpose.
+        recent_tx = (
+            select(Transaction.id, Transaction.created_at)
             .where(
                 Transaction.client_id == customer_id,
                 Transaction.transaction_type == TransactionType.sale,
-                TransactionItem.product_id.is_not(None),
             )
             .order_by(Transaction.created_at.desc())
-            .limit(max_purchases)
+            .limit(max_transactions)
+            .subquery()
+        )
+        # 2. Every line item of those transactions, carrying the transaction
+        #    date for the recency weighting below.
+        query = (
+            select(TransactionItem, recent_tx.c.created_at)
+            .join(recent_tx, TransactionItem.transaction_id == recent_tx.c.id)
+            .where(TransactionItem.product_id.is_not(None))
         )
         result = await self.db.execute(query)
         rows = result.all()

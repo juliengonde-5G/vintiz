@@ -438,3 +438,78 @@ async def test_find_similar_products_excludes_unavailable_statuses(session):
     ids = [p.id for p, _ in results]
     assert p_in_stock.id in ids
     assert p_sold.id not in ids
+
+
+# ---------------------------------------------------------------------------
+# Taste profile window (V0 — 15 transactions instead of 50 items)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_taste_profile_counts_all_items_of_one_transaction(session):
+    """A single transaction with several products feeds them all into the
+    centroid (1 achat = 1 transaction = 1+ produits)."""
+    user, client = await _make_user_and_client(session)
+    p1 = await _make_product(session, name="A", brand="Sandro")
+    p2 = await _make_product(session, name="B", brand="Maje")
+    svc = EmbeddingService(session)
+    await svc.compute_for_product(p1)
+    await svc.compute_for_product(p2)
+
+    tx = Transaction(
+        transaction_number=int(uuid.uuid4().int % 1_000_000_000),
+        transaction_type=TransactionType.sale,
+        user_id=user.id,
+        client_id=client.id,
+        total_ht=0,
+        total_tva=0,
+        total_ttc=float(p1.sale_price) + float(p2.sale_price),
+        hash_chain="x",
+        created_at=datetime.now(timezone.utc),
+    )
+    session.add(tx)
+    await session.flush()
+    session.add_all(
+        [
+            TransactionItem(
+                transaction_id=tx.id, product_id=p1.id, quantity=1,
+                unit_price=float(p1.sale_price), discount_percent=0,
+                line_total=float(p1.sale_price),
+            ),
+            TransactionItem(
+                transaction_id=tx.id, product_id=p2.id, quantity=1,
+                unit_price=float(p2.sale_price), discount_percent=0,
+                line_total=float(p2.sale_price),
+            ),
+        ]
+    )
+    await session.flush()
+
+    profile = await svc.recompute_taste_profile(client.id)
+    assert profile is not None
+    assert profile.n_purchases_analyzed == 2
+
+
+@pytest.mark.anyio
+async def test_taste_profile_uses_only_last_15_transactions(session):
+    """Transactions beyond the 15 most recent are ignored (window change)."""
+    user, client = await _make_user_and_client(session)
+    svc = EmbeddingService(session)
+
+    products = []
+    for i in range(16):
+        p = await _make_product(session, name=f"P{i}", brand=f"Brand{i}")
+        await svc.compute_for_product(p)
+        products.append(p)
+
+    base = datetime.now(timezone.utc)
+    for i, p in enumerate(products):
+        # i=0 is the oldest (16 days ago); i=15 is the newest (today).
+        await _record_purchase(
+            session, user, client, p, when=base - timedelta(days=16 - i)
+        )
+
+    profile = await svc.recompute_taste_profile(client.id)
+    assert profile is not None
+    # Only the 15 most-recent transactions contribute; the oldest is dropped.
+    assert profile.n_purchases_analyzed == 15
