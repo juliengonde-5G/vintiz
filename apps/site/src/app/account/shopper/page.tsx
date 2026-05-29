@@ -38,6 +38,9 @@ export default function AccountShopperPage() {
   const [loading, setLoading] = useState(false);
   const [gate, setGate] = useState<GateReason>(null);
   const [items, setItems] = useState<ShopperItem[]>([]);
+  // Assumed-empty-state copy returned by the live feed when there's no taste
+  // signal yet or nothing in stock matches (PS 360 §3.2 / §5.2).
+  const [feedMessage, setFeedMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<ShopperItem[] | null>(null);
   const [searchCacheHit, setSearchCacheHit] = useState(false);
@@ -78,6 +81,7 @@ export default function AccountShopperPage() {
         setError("Impossible de charger les recommandations.");
       } else {
         setItems(body.products ?? []);
+        setFeedMessage(body.message ?? "");
         setEmailLocked(true);
       }
     } catch {
@@ -380,15 +384,15 @@ export default function AccountShopperPage() {
               couleur et marque, puis croisée avec le stock réel de la boutique.
             </p>
 
-            <ProductGrid
-              items={searchResults ?? items}
-              empty={
-                searchResults
-                  ? "Aucun produit ne correspond à cette recherche."
-                  : "Pas encore de recommandations — passez quelques achats en boutique pour démarrer votre profil."
-              }
-              cacheHit={searchResults ? searchCacheHit : false}
-            />
+            {searchResults === null && items.length === 0 && !loading ? (
+              <AssumedEmptyState message={feedMessage} />
+            ) : (
+              <ProductGrid
+                items={searchResults ?? items}
+                empty="Aucun produit ne correspond à cette recherche."
+                cacheHit={searchResults ? searchCacheHit : false}
+              />
+            )}
           </>
         )}
 
@@ -397,6 +401,44 @@ export default function AccountShopperPage() {
         )}
       </>
     </AccountShell>
+  );
+}
+
+/**
+ * Assumed empty state for the live feed (PS 360 §3.2 "assumer l'attente").
+ * Shown when the member has no taste signal yet or nothing in stock matches —
+ * we own the wait rather than padding with generic stock.
+ */
+function AssumedEmptyState({ message }: { message: string }) {
+  return (
+    <section className="bg-vz-surface border border-vz-line rounded-2xl p-8 max-w-2xl text-center">
+      <p className="text-3xl mb-3">🪡</p>
+      <h2 className="text-xl font-display font-semibold text-vz-ink mb-2">
+        Rien de neuf pour vous aujourd&apos;hui
+      </h2>
+      <p className="text-vz-ink-soft leading-relaxed mb-6">
+        {message ||
+          "Dès qu'une pièce qui vous ressemble arrive en boutique, on vous écrit. Notre stock est unique et tourne vite — pas de pièce générique ici."}
+      </p>
+      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        <Link
+          href="/account/onboarding"
+          className="inline-flex items-center justify-center rounded-full bg-vz-teal text-white px-6 py-3 text-sm font-medium hover:bg-vz-teal-deep"
+        >
+          Affiner mon profil
+        </Link>
+        <Link
+          href="/account/selection"
+          className="inline-flex items-center justify-center rounded-full border border-vz-line text-vz-ink px-6 py-3 text-sm font-medium hover:border-vz-teal"
+        >
+          Voir la sélection du moment
+        </Link>
+      </div>
+      <p className="mt-4 text-xs text-vz-ink-mute">
+        Vous recevrez une alerte e-mail dès qu&apos;une nouveauté correspond à
+        vos goûts.
+      </p>
+    </section>
   );
 }
 

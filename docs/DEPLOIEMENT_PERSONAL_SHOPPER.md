@@ -120,3 +120,56 @@ Cron trend_alerts (11:00) :
   (« t-shirt blanc taille M » → `{type:tshirt, color:white, size:M}`).
 - `services/trend_alerts.py` — cron quotidien 11:00.
 - `services/embeddings.py` — calcul embeddings produits / clientes.
+
+---
+
+## Vague V1 — Activation & Web (PS 360)
+
+Réf. audit `Vintiz_Audit_Personal_Shopper_360.md` §5, §7.1, §8, roadmap §10.
+V1 = rendre le dispositif « live » côté client. **Non-cassant.** Migration
+additive `0051` (deux colonnes nullable sur `clients`).
+
+### Livré dans le code
+
+| Item | Où | Détail |
+|---|---|---|
+| **Onboarding en couches** | `services/onboarding.py`, `/api/crm/account/onboarding`, `apps/site/.../account/onboarding/page.tsx` | L1 genre + tranche d'âge déclaratifs (obligatoire) ; L2 cold-start visuel (`/api/crm/onboarding/visual-candidates` → likes mean-poolés en `visual_centroid` réel) ; L3 styles/occasions/budget **+ marques** (facultatif). |
+| **Colonnes déclaratives** | migration `0051`, `models/client.py` | `clients.gender_profile` (femme/homme/mixte) + `clients.age_band` (`<25/25-34/35-44/45-54/55+`). Les signaux *calculés* (saison, prix, affinité tendance) restent en V2. |
+| **État vide assumé** | `services/personal_shopper.py:_cold_start`, `apps/site/.../account/shopper/page.tsx` | Plus de dump « dernières arrivées » génériques : profil vide / aucun match → message « Rien de neuf pour vous aujourd'hui — on vous écrit dès qu'une pièce arrive » + CTA affiner le profil. |
+| **Photoroom sur les cartes** | `/api/crm/curation/current`, `personal_shopper.recommend` | `photo_url` = `storefront_photo_url` (détourée, fond charte) avec repli sur la photo brute. |
+| **Adhésion gratuite** | `services/loyalty_config.py` | Mode par défaut déjà `free` — aucune action (vérifier `PUT /api/admin/loyalty/config` si modifié). |
+
+### À faire côté OPS (hors code)
+
+Ces items de la vague V1 ne sont pas du ressort du code applicatif :
+
+1. **Google Business Profile + réseaux sociaux** : créer/activer GBP (NAP
+   complet : tél, email, horaires), Instagram (bio + lien + highlights
+   « Personal Shopper »), brancher GSC. Cf. audit §5.1 + `docs/audits/03_SEO_POSITIONNEMENT.md`.
+2. **Wallet pass — signing** : poser les secrets de signature Apple
+   (`WALLET_TEAM_IDENTIFIER`, certificat `.p12`) et Google
+   (`WALLET_GOOGLE_ISSUER_ID`). Le payload est prêt (`services/wallet.py`),
+   seule la signature est « à plugger côté ops ».
+3. **Scripts caisse (éléments de langage salariés)** — à afficher au comptoir :
+   - *Accroche fidélité + consentement* : « Vous repassez par Vernon ? Notre
+     carte vous prévient dès qu'une pièce qui vous ressemble arrive — c'est
+     gratuit et vous gardez la main sur vos préférences. Je vous l'active ? »
+     (puis email de confirmation de consentement automatique.)
+   - *Pépites pour vous* : « J'ai trois pièces rentrées cette semaine qui
+     collent à ce que vous aimez — je vous les montre ? »
+   - *Cadeau* : « C'est pour vous ou pour offrir ? » (le flag cadeau lui-même
+     arrive en **V2**.)
+   - *Ton* : vouvoiement ; **jamais** « bonne affaire », « powered by AI »,
+     « dépôt-vente », ni moralisme ESS.
+
+### Décision produit — pas de réservation (tranché)
+
+Le positionnement « suggestion only, pas de réservation/blocage en ligne —
+générateur de visites » (audit §5.2, §7.4) est **acté**. Toute mention de
+réservation ou de mise de côté produit a été retirée du site public : pages
+`/personal-shopper` (FR + EN), `/produits` + fiches produit, capsules,
+formulaire de contact, pages EN et un article du journal. Les CTA renvoient
+désormais vers une **vérification de disponibilité + venue en boutique**
+(« Demander à la voir », « Écrivez-nous pour vérifier sa disponibilité »),
+jamais une réservation 24-48 h. La promesse mise en avant devient « on vous
+prévient dès qu'une pièce qui vous ressemble arrive ».

@@ -20,15 +20,26 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.client import Client
-from app.models.embeddings import CustomerTasteProfile
-from app.services.embeddings import _encode_features
+from app.models.embeddings import (
+    EMBEDDING_DIM,
+    CustomerTasteProfile,
+    ProductEmbedding,
+)
+from app.models.product import Gender, Product, ProductStatus
+from app.services.embeddings import _encode_features, _l2_normalize
 
 
 COLD_START_ALGO_VERSION = "cold-start-v1-2026-04"
+
+# V1 onboarding "layer 1" — declarative qualification vocabularies. Locked by
+# the PS 360 audit (§4.2 + §11 décision #6). Kept here so the API request
+# models, the options endpoint and the persistence path share one source.
+VALID_GENDERS = ("femme", "homme", "mixte")
+VALID_AGE_BANDS = ("<25", "25-34", "35-44", "45-54", "55+")
 
 
 # Each style key maps to a bag of (feature_name, value) pairs. They feed the
@@ -72,6 +83,7 @@ def _features_from_choices(
     preferred_occasions: list[str] | None,
     preferred_price_buckets: list[str] | None,
     preferred_categories: list[str] | None,
+    preferred_brands: list[str] | None = None,
 ) -> list[tuple[str, str]]:
     """Translate the onboarding answers into encoder features."""
     features: list[tuple[str, str]] = []
@@ -96,29 +108,139 @@ def _features_from_choices(
         if norm:
             features.append(("category_label", norm))
 
+    # L3 — marques préférées. Same ``brand`` feature key the product encoder
+    # uses (see embeddings._visual_features), so a declared brand lands near
+    # that brand's pieces.
+    for brand in (preferred_brands or []):
+        norm = brand.strip().lower()
+        if norm:
+            features.append(("brand", norm))
+
     return features
+
+
+async def _liked_products_centroid(
+    db: AsyncSession, liked_product_ids: list[str] | None
+) -> tuple[list[float] | None, list[float] | None]:
+    """Mean-pool the real ``ProductEmbedding`` vectors of the liked products.
+
+    This is the "cold-start visuel" (layer 2): the customer hand-picks pieces
+    she likes, and we average their existing catalogue embeddings into a first
+    ``visual_centroid`` from *real* items (no recency decay — these are
+    explicit, equally-weighted likes). Returns ``(None, None)`` when there is
+    nothing to pool, so the caller can fall back to the declarative features.
+    """
+    if not liked_product_ids:
+        return None, None
+
+    ids: list = []
+    for raw in liked_product_ids:
+        try:
+            ids.append(uuid.UUID(str(raw)))
+        except (ValueError, TypeError, AttributeError):
+            continue
+    if not ids:
+        return None, None
+
+    result = await db.execute(
+        select(ProductEmbedding).where(ProductEmbedding.product_id.in_(ids))
+    )
+    embeddings = result.scalars().all()
+
+    visual_sum = [0.0] * EMBEDDING_DIM
+    text_sum = [0.0] * EMBEDDING_DIM
+    n_visual = 0
+    n_text = 0
+    for emb in embeddings:
+        if emb.visual_embedding is not None:
+            for i in range(EMBEDDING_DIM):
+                visual_sum[i] += emb.visual_embedding[i]
+            n_visual += 1
+        if emb.text_embedding is not None:
+            for i in range(EMBEDDING_DIM):
+                text_sum[i] += emb.text_embedding[i]
+            n_text += 1
+
+    visual = _l2_normalize(visual_sum) if n_visual else None
+    text = _l2_normalize(text_sum) if n_text else None
+    return visual, text
+
+
+def _blend(a: list[float] | None, b: list[float] | None) -> list[float] | None:
+    """Combine two L2-normalised centroids into one (re-normalised) centroid.
+
+    Returns whichever is present when only one is, ``None`` when neither is.
+    Equal weight is deliberate for V1 — the declarative layers and the visual
+    likes both deserve a say while the catalogue is cold.
+    """
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return _l2_normalize([a[i] + b[i] for i in range(len(a))])
 
 
 async def cold_start_taste_profile(
     db: AsyncSession,
     client: Client,
     *,
-    liked_style_keys: list[str],
+    gender: str | None = None,
+    age_band: str | None = None,
+    liked_style_keys: list[str] | None = None,
     preferred_occasions: list[str] | None = None,
     preferred_price_buckets: list[str] | None = None,
     preferred_categories: list[str] | None = None,
-) -> CustomerTasteProfile:
-    """Synthesise (or refresh) a cold-start CustomerTasteProfile."""
-    visual_features = _features_from_choices(
-        liked_style_keys,
+    preferred_brands: list[str] | None = None,
+    liked_product_ids: list[str] | None = None,
+) -> CustomerTasteProfile | None:
+    """Run the layered onboarding for ``client`` and persist the outcome.
+
+    - **Layer 1** (declarative, obligatoire): ``gender`` + ``age_band`` are
+      stored on the ``Client`` row when valid.
+    - **Layer 2** (cold-start visuel): ``liked_product_ids`` mean-pool into a
+      first *real* ``visual_centroid`` from hand-picked pieces.
+    - **Layer 3** (détaillé, facultatif): styles / occasions / budget / brands
+      feed the hashing-trick encoder.
+
+    Layers 2 and 3 are blended into one centroid (equal weight). Returns the
+    upserted ``CustomerTasteProfile`` — or ``None`` when only layer 1 was
+    completed (no style/visual signal yet): we deliberately do **not** write an
+    all-zero centroid. The assumed empty state + trend alerts carry her until a
+    real signal arrives.
+    """
+    # --- Layer 1: declarative qualification on the Client row ---------------
+    if gender:
+        g = gender.strip().lower()
+        if g in VALID_GENDERS:
+            client.gender_profile = g
+    if age_band:
+        band = age_band.strip()
+        if band in VALID_AGE_BANDS:
+            client.age_band = band
+
+    # --- Layer 3: declarative style features (same bag for both axes) -------
+    decl_features = _features_from_choices(
+        liked_style_keys or [],
         preferred_occasions,
         preferred_price_buckets,
         preferred_categories,
+        preferred_brands,
     )
-    text_features = list(visual_features)  # same bag — works fine for v1
+    decl_centroid = _encode_features(decl_features) if decl_features else None
 
-    visual_centroid = _encode_features(visual_features)
-    text_centroid = _encode_features(text_features)
+    # --- Layer 2: visual cold-start from real liked items -------------------
+    liked_visual, liked_text = await _liked_products_centroid(
+        db, liked_product_ids
+    )
+
+    visual_centroid = _blend(decl_centroid, liked_visual)
+    text_centroid = _blend(decl_centroid, liked_text)
+
+    if visual_centroid is None and text_centroid is None:
+        # Layer 1 only — nothing to anchor a centroid on yet. The declarative
+        # fields are already set above; flush so they persist, then stop.
+        await db.flush()
+        return None
 
     existing = await db.execute(
         select(CustomerTasteProfile).where(
@@ -181,4 +303,113 @@ def list_available_price_buckets() -> list[dict]:
         {"key": "50-100", "label": "50 – 100 €"},
         {"key": "100-200", "label": "100 – 200 €"},
         {"key": ">=200", "label": "200 € et plus"},
+    ]
+
+
+def list_available_genders() -> list[dict]:
+    """Layer 1 — declarative gender picker (vouvoiement, sans 'enfant')."""
+    return [
+        {"key": "femme", "label": "Femme"},
+        {"key": "homme", "label": "Homme"},
+        {"key": "mixte", "label": "Peu importe"},
+    ]
+
+
+def list_available_age_bands() -> list[dict]:
+    """Layer 1 — declarative age band picker (bornes verrouillées §11)."""
+    return [
+        {"key": "<25", "label": "Moins de 25 ans"},
+        {"key": "25-34", "label": "25 – 34 ans"},
+        {"key": "35-44", "label": "35 – 44 ans"},
+        {"key": "45-54", "label": "45 – 54 ans"},
+        {"key": "55+", "label": "55 ans et plus"},
+    ]
+
+
+async def list_available_brands(db: AsyncSession, limit: int = 24) -> list[dict]:
+    """Layer 3 — preferred-brands picker, drawn from the live catalogue.
+
+    Returns the most-represented in-stock brands so the customer recognises the
+    options. Empty list (the UI hides the section) when the catalogue is bare.
+    """
+    result = await db.execute(
+        select(Product.brand, func.count(Product.id))
+        .where(
+            Product.status.in_([ProductStatus.stock, ProductStatus.display]),
+            Product.brand.is_not(None),
+            Product.brand != "",
+        )
+        .group_by(Product.brand)
+        .order_by(func.count(Product.id).desc())
+        .limit(limit)
+    )
+    return [
+        {"key": brand, "label": brand}
+        for brand, _count in result.all()
+        if brand
+    ]
+
+
+async def pick_visual_candidates(
+    db: AsyncSession, *, gender: str | None = None, n: int = 6
+) -> list[dict]:
+    """Layer 2 — products to show in the 5-photo "j'aime / j'aime pas" step.
+
+    Picks a diverse (one-per-category), attractive set of in-stock pieces that
+    actually have a photo, optionally narrowed to the declared gender (always
+    keeping ``mixte`` / unset pieces). Prefers the Photoroom-styled image so
+    the picker matches the editorial look of the rest of the espace client.
+    """
+    query = (
+        select(Product)
+        .where(
+            Product.status.in_([ProductStatus.stock, ProductStatus.display]),
+            Product.photo_url.is_not(None),
+            Product.photo_url != "",
+        )
+    )
+    g = (gender or "").strip().lower()
+    if g in ("femme", "homme"):
+        query = query.where(
+            Product.gender.in_([Gender(g), Gender.mixte])
+            | Product.gender.is_(None)
+        )
+    # Surface attractive pieces first; NULL trend scores sort last.
+    query = query.order_by(
+        Product.trend_score.is_(None),
+        Product.trend_score.desc(),
+        Product.created_at.desc(),
+    ).limit(max(n * 6, 24))
+
+    rows = (await db.execute(query)).scalars().all()
+
+    diversified: list[Product] = []
+    seen_categories: set = set()
+    for product in rows:
+        if product.category_id in seen_categories:
+            continue
+        diversified.append(product)
+        seen_categories.add(product.category_id)
+        if len(diversified) >= n:
+            break
+    # Top up from the remaining pool if categories were too few to reach n.
+    if len(diversified) < n:
+        for product in rows:
+            if product in diversified:
+                continue
+            diversified.append(product)
+            if len(diversified) >= n:
+                break
+
+    return [
+        {
+            "id": str(p.id),
+            "name": p.name,
+            "brand": p.brand,
+            "size": p.size,
+            "color": p.color,
+            "price_cents": int(round(float(p.sale_price or 0) * 100)),
+            "photo_url": p.storefront_photo_url or p.photo_url,
+        }
+        for p in diversified
     ]

@@ -32,7 +32,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.client import Client, LoyaltyAccount
+from app.models.client import Client
 from app.models.embeddings import CustomerTasteProfile
 from app.models.events import EventSource, EventType
 from app.models.pos import Transaction, TransactionItem, TransactionType
@@ -262,7 +262,9 @@ class PersonalShopperService:
                     "sale_price": float(p.sale_price),
                     "price_cents": int(round(float(p.sale_price) * 100)),
                     "score": round(float(score), 4),
-                    "photo_url": p.photo_url,
+                    # Prefer the Photoroom-styled (detourée, off-white) copy so
+                    # the espace-client cards stay editorial (audit décision #11).
+                    "photo_url": p.storefront_photo_url or p.photo_url,
                 }
                 for p, score in diversified
             ],
@@ -451,56 +453,32 @@ class PersonalShopperService:
     async def _cold_start(
         self, customer: Client, recommendation_set_id: uuid.UUID, top_n: int
     ) -> dict:
-        """Fall back to "newest in stock" when we have no taste signal."""
-        result = await self.db.execute(
-            select(Product)
-            .where(
-                Product.status.in_(
-                    [ProductStatus.display, ProductStatus.stock]
-                )
-            )
-            .order_by(desc(Product.created_at))
-            .limit(top_n)
-        )
-        products = result.scalars().all()
-        if not products:
-            return {
-                "recommendation_set_id": str(recommendation_set_id),
-                "message": (
-                    f"Bonjour {customer.first_name} ! Notre stock actuel est "
-                    "réduit, repassez en boutique cette semaine — nous aurons "
-                    "de nouvelles arrivées."
-                ),
-                "products": [],
-                "algo_version": ALGO_VERSION,
-                "prompt_version": PROMPT_VERSION,
-                "fallback_used": True,
-            }
-        message = (
-            f"Bonjour {customer.first_name} ! Voici nos dernières arrivées "
-            "qui pourraient vous plaire ; venez les essayer en boutique."
-        )
+        """Assumed empty state — no taste signal yet (or no in-stock match).
+
+        Per the PS 360 audit (§3.2 "assumer l'attente", §5.2 "ne plus servir
+        de stock générique"), we no longer dump generic newest-stock here. A
+        profile-less or unmatched member gets an honest empty state and relies
+        on the trend-alert email to be pulled back in. Real recommendations
+        come from the layered onboarding (genre/âge + styles + visual likes)
+        or from purchases — until one exists, we wait rather than pad with
+        pieces that have nothing to do with her.
+
+        ``top_n`` is accepted for call-site symmetry but unused: an empty state
+        has no list to size.
+        """
         return {
             "recommendation_set_id": str(recommendation_set_id),
-            "message": message,
-            "products": [
-                {
-                    "id": str(p.id),
-                    "product_id": str(p.id),
-                    "name": p.name,
-                    "size": p.size,
-                    "color": p.color,
-                    "brand": p.brand,
-                    "sale_price": float(p.sale_price),
-                    "price_cents": int(round(float(p.sale_price) * 100)),
-                    "score": None,
-                    "photo_url": p.photo_url,
-                }
-                for p in products
-            ],
+            "message": (
+                f"Bonjour {customer.first_name} ! Rien de neuf pour vous "
+                "aujourd'hui — dès qu'une pièce qui vous ressemble arrive, "
+                "on vous écrit. En attendant, affinez votre profil pour des "
+                "suggestions sur-mesure."
+            ),
+            "products": [],
             "algo_version": ALGO_VERSION,
             "prompt_version": PROMPT_VERSION,
             "fallback_used": True,
+            "empty_state": True,
         }
 
     # -- Message rendering --------------------------------------------------

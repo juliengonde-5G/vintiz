@@ -19,6 +19,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -72,10 +73,24 @@ class ConsentToggleRequest(BaseModel):
     granted: bool
 
 class OnboardingRequest(BaseModel):
+    """Layered onboarding payload (PS 360 V1).
+
+    Every field is optional so a customer can submit any subset of layers —
+    L1 alone (genre/âge), L2 alone (visual likes), L3 alone (détaillé), or a
+    full pass. Invalid enum values are rejected with 422 by the ``Literal``s.
+    """
+
+    # Layer 1 — déclaratif (obligatoire côté UI, tolérant côté API).
+    gender: Literal["femme", "homme", "mixte"] | None = None
+    age_band: Literal["<25", "25-34", "35-44", "45-54", "55+"] | None = None
+    # Layer 2 — cold-start visuel : ids des pièces "j'aime".
+    liked_product_ids: list[str] = []
+    # Layer 3 — détaillé (facultatif).
     liked_style_keys: list[str] = []
     preferred_occasions: list[str] = []
     preferred_price_buckets: list[str] = []
     preferred_categories: list[str] = []
+    preferred_brands: list[str] = []
 
 class PublicOnboardingRequest(OnboardingRequest):
     email: str
@@ -462,16 +477,24 @@ async def public_submit_onboarding(
 
     profile = await cold_start_taste_profile(
         db, client,
+        gender=request.gender,
+        age_band=request.age_band,
         liked_style_keys=request.liked_style_keys,
         preferred_occasions=request.preferred_occasions,
         preferred_price_buckets=request.preferred_price_buckets,
         preferred_categories=request.preferred_categories,
+        preferred_brands=request.preferred_brands,
+        liked_product_ids=request.liked_product_ids,
     )
     await db.commit()
     return {
         "client_email": cleaned,
-        "profile_id": str(profile.id),
-        "algo_version": profile.algo_version,
+        # ``profile`` is None when only layer 1 (genre/âge) was submitted — no
+        # centroid yet, but the declarative fields were still persisted.
+        "profile_id": str(profile.id) if profile else None,
+        "algo_version": profile.algo_version if profile else None,
+        "gender_profile": client.gender_profile,
+        "age_band": client.age_band,
     }
 
 @router.get("/account/wallet")
