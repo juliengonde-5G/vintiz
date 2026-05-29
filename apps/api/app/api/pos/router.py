@@ -88,6 +88,10 @@ class CreateTransactionRequest(BaseModel):
     # Override manager du plafond espèces : motif obligatoire, manager
     # uniquement, tracé en audit log.
     cash_override_reason: str | None = None
+    # PS 360 V2 — réponse à la micro-question caisse « Cet achat est-il pour
+    # vous ? ». True = cadeau → gardé pour le CA + la fidélité mais exclu du
+    # profil de goûts (un cadeau pollue le centroïde).
+    is_gift: bool = False
 
 
 class ValidateCouponRequest(BaseModel):
@@ -262,6 +266,13 @@ async def create_transaction(
             "total_ttc": float(transaction.total_ttc),
             "replayed": True,
         }
+
+    # V2 — gift flag from the POS micro-question. A gift counts for CA +
+    # loyalty but is excluded from the taste profile (the nightly recompute
+    # then drops it from the centroid).
+    if request.is_gift:
+        transaction.is_gift = True
+        transaction.exclude_from_taste = True
 
     # Generate fiscal hash chain
     await fiscal_service.sign_transaction(transaction)

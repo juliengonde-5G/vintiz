@@ -347,6 +347,8 @@ async def get_client_full(
             "created_at": t.created_at.isoformat() if t.created_at else None,
             "item_count": len(t.items or []),
             "payment_methods": sorted({p.method.value for p in (t.payments or [])}),
+            # V2 — flag gifts so the fiche can list "achats hors-profil".
+            "is_gift": bool(getattr(t, "is_gift", False)),
         })
 
     # Loyalty ledger — last 30 entries.
@@ -400,6 +402,22 @@ async def get_client_full(
         }
         for purpose in ConsentPurpose
     ]
+    profiling_granted = any(
+        c["purpose"] == "profiling" and c["granted"] for c in consents
+    )
+
+    # Qualification (PS 360 V2). Declarative L1 (genre/âge) is shown to the
+    # manager regardless; the *computed* signals (season/price/trend) are only
+    # surfaced when the member granted profiling consent (audit §9.6).
+    qualification = {
+        "profiling_consent": profiling_granted,
+        "gender_profile": client.gender_profile,
+        "age_band": client.age_band,
+        "season_bias": client.season_bias if profiling_granted else None,
+        "price_ceiling_cents": client.price_ceiling_cents if profiling_granted else None,
+        "price_sensitivity": client.price_sensitivity if profiling_granted else None,
+        "trend_affinity": client.trend_affinity if profiling_granted else None,
+    }
 
     # Audit log — entity_id == client.id is the simplest scoping; the
     # audit service writes one row per Client mutation already.
@@ -459,6 +477,7 @@ async def get_client_full(
         },
         "loyalty": loyalty_block,
         "taste_profile": taste,
+        "qualification": qualification,
         "transactions": transactions,
         "consents": consents,
         "coupons": coupons,
