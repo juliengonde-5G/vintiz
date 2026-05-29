@@ -44,6 +44,15 @@ interface ClientFull {
     last_visit: string | null;
     days_since_last_visit: number | null;
   };
+  qualification: {
+    profiling_consent: boolean;
+    gender_profile: string | null;
+    age_band: string | null;
+    season_bias: string | null;
+    price_ceiling_cents: number | null;
+    price_sensitivity: number | null;
+    trend_affinity: number | null;
+  };
   transactions: {
     id: string;
     transaction_number: number;
@@ -52,6 +61,7 @@ interface ClientFull {
     created_at: string | null;
     item_count: number;
     payment_methods: string[];
+    is_gift?: boolean;
   }[];
   consents: {
     purpose: string;
@@ -83,6 +93,18 @@ const CONSENT_LABELS: Record<string, string> = {
   profiling: 'Profilage Personal Shopper',
   trend_alerts: 'Alertes nouveautés tendance',
   data_sharing: 'Partage B2B',
+};
+
+const GENDER_LABELS: Record<string, string> = {
+  femme: 'Femme',
+  homme: 'Homme',
+  mixte: 'Mixte',
+};
+
+const SEASON_LABELS: Record<string, string> = {
+  winter: 'Hiver',
+  summer: 'Été',
+  all: 'Toute saison',
 };
 
 
@@ -276,6 +298,11 @@ export default function ClientDetailPage() {
                         <Badge variant={t.transaction_type === 'refund' ? 'default' : 'sold'}>
                           {t.transaction_type === 'refund' ? 'Retour' : 'Vente'}
                         </Badge>
+                        {t.is_gift && (
+                          <span className="ml-1 inline-block rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
+                            Cadeau · hors-profil
+                          </span>
+                        )}
                       </td>
                       <td className="p-2 text-right font-medium">{formatCurrency(t.total_ttc)}</td>
                       <td className="p-2 text-right text-gray-600">{t.item_count}</td>
@@ -329,6 +356,49 @@ export default function ClientDetailPage() {
         )}
 
         {tab === 'gouts' && (
+          <div className="space-y-4">
+          <Card title="Qualification — Personal Shopper">
+            {!data.qualification.profiling_consent ? (
+              <p className="text-sm text-gray-500">
+                Profilage non consenti — les signaux calculés (saison, budget,
+                affinité tendance) ne sont pas calculés. Genre/âge déclarés à
+                l&apos;onboarding restent visibles.
+              </p>
+            ) : null}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-1">
+              <QualStat label="Genre déclaré" value={GENDER_LABELS[data.qualification.gender_profile || ''] || '—'} />
+              <QualStat label="Tranche d'âge" value={data.qualification.age_band || '—'} />
+              <QualStat label="Saison" value={SEASON_LABELS[data.qualification.season_bias || ''] || '—'} />
+              <QualStat
+                label="Budget habituel"
+                value={
+                  data.qualification.price_ceiling_cents
+                    ? formatCurrency(data.qualification.price_ceiling_cents / 100)
+                    : '—'
+                }
+              />
+            </div>
+            <div className="mt-3">
+              <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                <span>Affinité tendance</span>
+                <span>
+                  {data.qualification.trend_affinity !== null
+                    ? `${Math.round(data.qualification.trend_affinity * 100)}%`
+                    : '—'}
+                </span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="h-full bg-vz-teal"
+                  style={{ width: `${Math.round((data.qualification.trend_affinity || 0) * 100)}%` }}
+                />
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-gray-500">
+              Achats exclus du profil (cadeaux) :{' '}
+              {data.transactions.filter((t) => t.is_gift).length}
+            </p>
+          </Card>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card title="Catégories favorites">
               {data.taste_profile.favorite_categories.length === 0 ? (
@@ -364,6 +434,7 @@ export default function ClientDetailPage() {
               <Row label="Haut" value={data.taste_profile.size_profile.haut || '—'} />
               <Row label="Bas" value={data.taste_profile.size_profile.bas || '—'} />
             </Card>
+          </div>
           </div>
         )}
 
@@ -424,6 +495,15 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between text-sm py-1">
       <span className="text-gray-500">{label}</span>
       <span className="text-black font-medium">{value}</span>
+    </div>
+  );
+}
+
+function QualStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+      <div className="text-[11px] uppercase tracking-wider text-gray-500">{label}</div>
+      <div className="mt-1 text-sm font-medium text-black">{value}</div>
     </div>
   );
 }
