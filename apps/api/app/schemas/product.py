@@ -10,11 +10,19 @@ class CategoryCreate(BaseModel):
     gender: str = "mixte"
 
 
+class CategoryUpdate(BaseModel):
+    name: str | None = None
+    parent_id: uuid.UUID | None = None
+    gender: str | None = None
+    is_active: bool | None = None
+
+
 class CategoryResponse(BaseModel):
     id: uuid.UUID
     name: str
     parent_id: uuid.UUID | None
     gender: str
+    is_active: bool = True
     created_at: datetime
 
     model_config = {"from_attributes": True}

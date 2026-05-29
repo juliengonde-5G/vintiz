@@ -65,6 +65,11 @@ class Category(Base):
     gender: Mapped[Gender] = mapped_column(
         GENDER_ENUM, nullable=False, default=Gender.mixte
     )
+    # Désactivée = masquée des sélecteurs (création produit, picker zone) sans
+    # toucher aux produits existants qui y sont rattachés. Additif : colonne
+    # NOT NULL default true → les catégories existantes restent actives.
+    # Voir migration 0050.
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     parent: Mapped["Category | None"] = relationship(
         "Category", remote_side="Category.id", lazy="selectin"

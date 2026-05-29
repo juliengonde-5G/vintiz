@@ -90,7 +90,7 @@ const STEP_LABELS: Record<Step, string> = {
   done: 'Étiquette',
 };
 
-const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '4XL', '5XL', '6XL', 'TU', '34', '36', '38', '40', '42', '44', '46', '48', '50', '52', '54'];
+const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '4XL', '5XL', '6XL', 'TU', '32', '34', '36', '38', '40', '42', '44', '46', '48', '50', '52', '54'];
 const SHOE_SIZES = ['35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47'];
 const COLORS = [
   { l: 'Noir', c: '#1a1a1a' }, { l: 'Blanc', c: '#f0f0f0' }, { l: 'Gris', c: '#9ca3af' },

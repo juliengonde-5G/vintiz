@@ -354,7 +354,7 @@ export default function ProductDetailPage() {
                       {(() => {
                         const catName = editing.category?.name ?? product?.category?.name ?? '';
                         const isShoe = /chaussure|basket/i.test(catName);
-                        const clothingSizes = ['XS','S','M','L','XL','XXL','XXXL','4XL','5XL','6XL','TU','34','36','38','40','42','44','46','48','50','52','54'];
+                        const clothingSizes = ['XS','S','M','L','XL','XXL','XXXL','4XL','5XL','6XL','TU','32','34','36','38','40','42','44','46','48','50','52','54'];
                         const shoeSizes = ['35','36','37','38','39','40','41','42','43','44','45','46','47'];
                         const sizeList = isShoe ? shoeSizes : clothingSizes;
                         const sizeLabel = isShoe ? 'Pointure' : 'Taille';

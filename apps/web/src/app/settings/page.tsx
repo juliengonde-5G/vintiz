@@ -17,6 +17,7 @@ interface Category {
   id: string;
   name: string;
   gender: string;
+  is_active: boolean;
 }
 
 interface Zone {
@@ -29,8 +30,6 @@ interface Zone {
   product_types?: string[];
   color_code?: string;
 }
-
-const ALL_PRODUCT_TYPES = ['Robes', 'Hauts', 'Pantalons', 'Jupes', 'Vestes', 'Blousons', 'Manteaux', 'Shorts / Bermuda', 'Accessoires', 'Chaussures', 'Baskets', 'Sacs', 'Bijoux', 'Enfant'];
 
 interface HardwareConfig {
   receipt_printer: {
@@ -101,6 +100,10 @@ export default function SettingsPage() {
   // New category form
   const [newCatName, setNewCatName] = useState('');
   const [newCatGender, setNewCatGender] = useState('femme');
+  // Inline category edit
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editCatName, setEditCatName] = useState('');
+  const [editCatGender, setEditCatGender] = useState('femme');
 
   // Zone edit modal
   const [showZoneModal, setShowZoneModal] = useState(false);
@@ -157,7 +160,7 @@ export default function SettingsPage() {
     if (tab === 'store') loadShopInfo();
     if (tab === 'communication') loadEmailConfig();
     if (tab === 'categories') loadCategories();
-    if (tab === 'zones') loadZones();
+    if (tab === 'zones') { loadZones(); loadCategories(); }
     if (tab === 'hardware') loadHardware();
     if (tab === 'cahier') loadCahierData();
     if (tab === 'fidelite') loadLoyaltyConfig();
@@ -608,9 +611,45 @@ export default function SettingsPage() {
 
   const loadCategories = async () => {
     setLoading(true);
-    const res = await api.get('/api/inventory/categories');
+    // include_inactive so the management screen can show + re-enable disabled ones.
+    const res = await api.get('/api/inventory/categories?include_inactive=true');
     if (res.ok) setCategories(await res.json());
     setLoading(false);
+  };
+
+  const startEditCat = (c: Category) => {
+    setEditingCatId(c.id);
+    setEditCatName(c.name);
+    setEditCatGender(c.gender);
+  };
+
+  const saveCat = async (id: string) => {
+    setError('');
+    const res = await api.put(`/api/inventory/categories/${id}`, {
+      name: editCatName.trim(),
+      gender: editCatGender,
+    });
+    if (res.ok) {
+      setEditingCatId(null);
+      await loadCategories();
+      setMessage('Categorie modifiee');
+      setTimeout(() => setMessage(''), 3000);
+    } else {
+      const e = await res.json().catch(() => ({}));
+      setError(e.detail || 'Erreur lors de la modification');
+    }
+  };
+
+  const toggleCatActive = async (c: Category) => {
+    setError('');
+    const res = await api.put(`/api/inventory/categories/${c.id}`, { is_active: !c.is_active });
+    if (res.ok) {
+      await loadCategories();
+      setMessage(c.is_active ? 'Categorie desactivee' : 'Categorie activee');
+      setTimeout(() => setMessage(''), 3000);
+    } else {
+      setError('Erreur lors du changement de statut');
+    }
   };
 
   const loadZones = async () => {
@@ -1214,24 +1253,65 @@ export default function SettingsPage() {
                       <tr className="border-b border-gray-200">
                         <th className="pb-2 text-sm font-semibold text-gray-600">Nom</th>
                         <th className="pb-2 text-sm font-semibold text-gray-600">Genre</th>
+                        <th className="pb-2 text-sm font-semibold text-gray-600">Statut</th>
+                        <th className="pb-2 text-sm font-semibold text-gray-600 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {categories.map((c) => (
-                        <tr key={c.id} className="border-b border-gray-50">
-                          <td className="py-2 text-sm text-black">{c.name}</td>
+                      {categories.map((c) => {
+                        const editing = editingCatId === c.id;
+                        return (
+                        <tr key={c.id} className={`border-b border-gray-50 ${c.is_active ? '' : 'opacity-60'}`}>
+                          <td className="py-2 text-sm text-black">
+                            {editing ? (
+                              <Input value={editCatName} onChange={(e) => setEditCatName(e.target.value)} />
+                            ) : c.name}
+                          </td>
                           <td className="py-2">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                              c.gender === 'femme' ? 'bg-vz-accent-soft text-vz-accent' :
-                              c.gender === 'homme' ? 'bg-blue-100 text-blue-700' :
-                              c.gender === 'enfant' ? 'bg-purple-100 text-purple-700' :
-                              'bg-gray-100 text-gray-700'
-                            }`}>
-                              {c.gender}
+                            {editing ? (
+                              <select value={editCatGender} onChange={(e) => setEditCatGender(e.target.value)}
+                                className="min-h-[40px] px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-sm">
+                                <option value="femme">Femme</option>
+                                <option value="homme">Homme</option>
+                                <option value="enfant">Enfant</option>
+                                <option value="mixte">Mixte</option>
+                              </select>
+                            ) : (
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                                c.gender === 'femme' ? 'bg-vz-accent-soft text-vz-accent' :
+                                c.gender === 'homme' ? 'bg-blue-100 text-blue-700' :
+                                c.gender === 'enfant' ? 'bg-purple-100 text-purple-700' :
+                                'bg-gray-100 text-gray-700'
+                              }`}>
+                                {c.gender}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${c.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>
+                              {c.is_active ? 'Active' : 'Désactivée'}
                             </span>
                           </td>
+                          <td className="py-2">
+                            <div className="flex justify-end gap-3 text-sm">
+                              {editing ? (
+                                <>
+                                  <button onClick={() => saveCat(c.id)} className="text-vz-teal font-medium hover:underline">Enregistrer</button>
+                                  <button onClick={() => setEditingCatId(null)} className="text-gray-400 hover:underline">Annuler</button>
+                                </>
+                              ) : (
+                                <>
+                                  <button onClick={() => startEditCat(c)} className="text-vz-teal hover:underline">Modifier</button>
+                                  <button onClick={() => toggleCatActive(c)} className={c.is_active ? 'text-amber-600 hover:underline' : 'text-green-600 hover:underline'}>
+                                    {c.is_active ? 'Désactiver' : 'Activer'}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1302,9 +1382,10 @@ export default function SettingsPage() {
                         className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-black mb-2">Types de produits acceptés</label>
+                      <label className="block text-sm font-medium text-black mb-2">Catégories à affecter (préférence)</label>
+                      <p className="text-[11px] text-gray-400 mb-2">Les produits de ces catégories seront orientés vers cette zone par le moteur d&apos;affectation.</p>
                       <div className="flex flex-wrap gap-2">
-                        {ALL_PRODUCT_TYPES.map(t => (
+                        {Array.from(new Set([...categories.map(c => c.name), ...zoneForm.product_types])).map(t => (
                           <button key={t} type="button" onClick={() => toggleProductType(t)}
                             className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${zoneForm.product_types.includes(t) ? 'bg-vz-teal text-white border-vz-teal' : 'bg-white text-gray-600 border-gray-300 hover:border-vz-teal'}`}>
                             {t}

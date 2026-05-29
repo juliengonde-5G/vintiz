@@ -25,6 +25,7 @@ from app.services import storefront_photo
 from app.schemas.product import (
     CategoryCreate,
     CategoryResponse,
+    CategoryUpdate,
     ProductCreate,
     ProductResponse,
     ProductUpdate,
@@ -814,11 +815,74 @@ async def list_brands(
 async def list_categories(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    include_inactive: bool = False,
 ):
-    """List all categories, alphabetically."""
-    result = await db.execute(select(Category).order_by(Category.name))
+    """List categories, alphabetically.
+
+    Active only by default so disabled categories drop out of the product
+    creation dropdown + zone pickers. The settings management screen passes
+    ``include_inactive=true`` to show + re-enable them.
+    """
+    stmt = select(Category).order_by(Category.name)
+    if not include_inactive:
+        stmt = stmt.where(Category.is_active.is_(True))
+    result = await db.execute(stmt)
     categories = result.scalars().all()
     return [CategoryResponse.model_validate(c) for c in categories]
+
+
+@router.put("/categories/{category_id}", response_model=CategoryResponse)
+async def update_category(
+    category_id: uuid.UUID,
+    category_in: CategoryUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Edit a category (name / gender / parent) or toggle its active flag.
+
+    Renaming is guarded against case-insensitive duplicates so the catalogue
+    can't end up with "Robes" + "robes" again.
+    """
+    result = await db.execute(select(Category).where(Category.id == category_id))
+    category = result.scalar_one_or_none()
+    if category is None:
+        raise HTTPException(status_code=404, detail="Catégorie introuvable")
+
+    data = category_in.model_dump(exclude_unset=True)
+
+    if "name" in data and data["name"] is not None:
+        name = data["name"].strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="nom de catégorie manquant")
+        dup = await db.execute(
+            select(Category).where(
+                Category.name.ilike(name), Category.id != category_id
+            ).limit(1)
+        )
+        if dup.scalars().first() is not None:
+            raise HTTPException(status_code=409, detail=f"La catégorie « {name} » existe déjà")
+        category.name = name
+
+    if "gender" in data and data["gender"] is not None:
+        try:
+            category.gender = Gender(data["gender"])
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"genre invalide : {data['gender']}. Valeurs : {[g.value for g in Gender]}",
+            )
+
+    if "parent_id" in data:
+        if data["parent_id"] == category_id:
+            raise HTTPException(status_code=400, detail="Une catégorie ne peut être son propre parent")
+        category.parent_id = data["parent_id"]
+
+    if "is_active" in data and data["is_active"] is not None:
+        category.is_active = bool(data["is_active"])
+
+    await db.flush()
+    await db.refresh(category)
+    return CategoryResponse.model_validate(category)
 
 
 @router.post("/categories", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)

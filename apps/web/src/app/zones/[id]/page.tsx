@@ -76,6 +76,7 @@ export default function ZoneDetailPage() {
   const [zone, setZone] = useState<Zone | null>(null);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResponse, setAiResponse] = useState<any>(null);
@@ -114,6 +115,14 @@ export default function ZoneDetailPage() {
       const productsRes = await api.get(`/api/admin/zones/${zoneId}/products`);
       if (productsRes.ok) setProducts(await productsRes.json());
     } catch { /* products optional */ }
+    try {
+      // Active categories — drive the "categories to assign" picker below.
+      const catRes = await api.get('/api/inventory/categories');
+      if (catRes.ok) {
+        const cats: Array<{ name: string }> = await catRes.json();
+        setCategories(cats.map((c) => c.name));
+      }
+    } catch { /* categories optional */ }
   }, [zoneId]);
 
   useEffect(() => {
@@ -164,7 +173,7 @@ export default function ZoneDetailPage() {
   };
 
   const RULE_COLORS = ['rose', 'rouge', 'bleu', 'blanc', 'violet', 'vert', 'noir', 'marron', 'jaune', 'orange', 'gris', 'camel', 'beige'];
-  type ChipField = 'match_genders' | 'match_colors' | 'match_size_classes';
+  type ChipField = 'match_genders' | 'match_colors' | 'match_size_classes' | 'product_types';
   const toggleChip = (field: ChipField, value: string) => {
     const arr = (form[field] as string[] | null | undefined) ?? [];
     const next = arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value];
@@ -517,6 +526,17 @@ export default function ZoneDetailPage() {
 
             <Card className="mt-6" title="Regles d'affectation automatique" subtitle="Conditions utilisees par le moteur predictif pour suggerer cette zone">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <span className="text-xs font-medium text-gray-600">Catégories à affecter (préférence)</span>
+                  <p className="text-[11px] text-gray-400 mb-1.5">Vide = toutes catégories. Les produits de ces catégories sont orientés vers cette zone.</p>
+                  {renderChips(
+                    'product_types',
+                    Array.from(new Set([...categories, ...(((form.product_types as string[] | null | undefined)) ?? [])])),
+                  )}
+                  {categories.length === 0 && (
+                    <p className="text-[11px] text-gray-400 mt-1">Aucune catégorie active — créez-en dans Paramètres › Categories.</p>
+                  )}
+                </div>
                 <div className="md:col-span-2">
                   <span className="text-xs font-medium text-gray-600">Genres</span>
                   <p className="text-[11px] text-gray-400 mb-1.5">Vide = tous genres</p>
