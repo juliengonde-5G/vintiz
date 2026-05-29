@@ -440,6 +440,9 @@ GET    /api/admin/predictive/audience?period_days=90  Snapshot debug dominant ta
 POST   /api/pos/transactions                       Crée vente (accepte is_gift? → exclut du profil de goûts)
 POST   /api/crm/account/transactions/{id}/gift     Cliente marque un achat « c'était un cadeau » (public, body: email, is_gift)
 POST   /api/admin/qualification/run                Trigger manuel recalcul qualification (saison/prix/affinité, manager)
+
+# Personal Shopper 360 — V3: aide à la vente
+GET    /api/pos/clients/{id}/picks                 « Pépites du jour » : top 5 pièces présentes, filtrées dur genre+taille, classées cosinus puis trend_score, zone physique affichée, frequency cap 24h, log customer_picks_shown (manager ; non-membre/sans-consent → gated+CTA)
 ```
 
 ## Fonctionnalités principales
