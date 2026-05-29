@@ -1389,6 +1389,7 @@ async def public_curation_current(db: AsyncSession = Depends(get_db)):
                 "size": p.size,
                 "color": p.color,
                 "sale_price": float(p.sale_price or 0),
+                "price_cents": int(round(float(p.sale_price or 0) * 100)),
                 "photo_url": p.photo_url,
                 "reason": reasons.get(str(p.id), ""),
             }

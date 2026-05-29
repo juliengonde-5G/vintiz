@@ -7,6 +7,7 @@ import AccountShell from "@/components/account/AccountShell";
 import AiBadge from "@/components/AiBadge";
 import AiDisclaimer from "@/components/AiDisclaimer";
 import { mediaUrl } from "@/lib/media";
+import { formatPriceCents } from "@/lib/format";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -28,10 +29,6 @@ interface SearchResponse {
   filters: Record<string, string | number | null>;
   cache_hit: boolean;
   normalized_query: string;
-}
-
-function formatPrice(cents: number): string {
-  return (cents / 100).toFixed(2).replace(".", ",") + " €";
 }
 
 export default function AccountShopperPage() {
@@ -454,7 +451,7 @@ function ProductGrid({
               <p className="text-xs text-gray-500">
                 {[item.size, item.color].filter(Boolean).join(" · ") || "—"}
               </p>
-              <p className="text-base font-semibold text-vz-teal mt-auto">{formatPrice(item.price_cents)}</p>
+              <p className="text-base font-semibold text-vz-teal mt-auto">{formatPriceCents(item.price_cents)}</p>
               <p className="text-xs text-gray-500">En boutique · Vernon</p>
             </div>
           </article>

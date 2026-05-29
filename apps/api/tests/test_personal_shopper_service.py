@@ -11,6 +11,8 @@ from app.models import Base
 from app.models.client import (
     AvoirTransaction,
     Client,
+    Consent,
+    ConsentPurpose,
     LoyaltyAccount,
     LoyaltyTransaction,
 )
@@ -49,6 +51,7 @@ async def engine():
         Product.__table__,
         ProductPhoto.__table__,
         Client.__table__,
+        Consent.__table__,
         Transaction.__table__,
         TransactionItem.__table__,
         Payment.__table__,
@@ -107,6 +110,28 @@ async def _make_client(session: AsyncSession, *, email: str = "julie@example.com
         avoir_credit=0,
     )
     session.add(c)
+    await session.flush()
+    # Personal Shopper is members-only with explicit profiling consent (PR2
+    # gating). Every test client is therefore a consenting loyalty member so
+    # recommend() runs past _enforce_gating.
+    session.add(
+        LoyaltyAccount(
+            client_id=c.id,
+            points=0,
+            membership_number=f"V{uuid.uuid4().int % 1_000_000:06d}",
+        )
+    )
+    c.loyalty_subscribed_at = datetime.now(timezone.utc)
+    c.loyalty_expires_at = datetime.now(timezone.utc) + timedelta(days=730)
+    session.add(
+        Consent(
+            client_id=c.id,
+            purpose=ConsentPurpose.profiling,
+            granted=True,
+            policy_version="v2",
+            source="test",
+        )
+    )
     await session.flush()
     return c
 
@@ -385,3 +410,39 @@ async def test_record_click_emits_event(session):
     assert rows[0].session_id == set_id
     assert rows[0].customer_id == client.id
     assert rows[0].meta["position_in_list"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Price contract (V0 — fix « NaN € » on the espace client cards)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_recommend_payload_exposes_price_cents_and_product_id(session):
+    """The front reads ``price_cents`` + ``product_id``; both must be present
+    and consistent so a card never renders ``NaN €``."""
+    user, client = await _seed_minimal_history(session)
+    svc = PersonalShopperService(session)
+    result = await svc.recommend(client.id, top_n=4)
+
+    assert result["products"]
+    for p in result["products"]:
+        assert isinstance(p["price_cents"], int)
+        assert p["price_cents"] == round(p["sale_price"] * 100)
+        assert p["product_id"] == p["id"]
+
+
+@pytest.mark.anyio
+async def test_cold_start_payload_exposes_price_cents(session):
+    """The cold-start fallback must carry the same price contract."""
+    client = await _make_client(session, email="cold@example.com")
+    await _make_product(session, name="Veste neuve", category_name="Vestes")
+
+    svc = PersonalShopperService(session)
+    result = await svc.recommend(client.id, top_n=4)
+
+    assert result["fallback_used"] is True
+    assert result["products"]  # cold start serves the latest arrivals
+    for p in result["products"]:
+        assert isinstance(p["price_cents"], int)
+        assert p["product_id"] == p["id"]

@@ -368,8 +368,11 @@ POST   /api/ai/persona/juridique             Audit RGPD IA
 
 # CRM clients + RGPD
 GET    /api/crm/clients/lookup?email=…       Lookup client public
-GET    /api/crm/clients/personal-shopper?email=…  Personal shopper v1 (legacy règles)
-GET    /api/crm/clients/{id}/personal-shopper-v2  Personal shopper v2 (embeddings + Claude Haiku)
+# Personal Shopper : le pipeline embeddings est l'UNIQUE voie de reco
+# (cosinus visual+text → diversification catégorie → narrative Haiku, gated
+# membre+consent profilage). Pas d'endpoint « v1 à règles ». Note : l'ALGO_VERSION
+# interne reste "personal-shopper-v1-2026-04" pour la continuité des events loggés.
+GET    /api/crm/clients/{id}/personal-shopper-v2  Personal shopper (embeddings + Claude Haiku, manager)
 GET    /api/crm/personal-shopper-v2?email=        Personal shopper v2 public (lookup email)
 POST   /api/crm/personal-shopper-v2/click         Log click sur recommandation
 GET    /api/crm/onboarding/options                Catalogue styles/occasions/budgets (public)
