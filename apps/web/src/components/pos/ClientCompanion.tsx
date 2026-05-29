@@ -15,6 +15,26 @@ interface Suggestion {
   score: number;
 }
 
+interface Pick {
+  id: string;
+  product_id: string;
+  name: string;
+  size: string | null;
+  color: string | null;
+  brand: string | null;
+  price_cents: number;
+  score: number;
+  photo_url: string | null;
+  zone_name: string | null;
+}
+
+interface PicksResponse {
+  gated: string | null;
+  cta: string | null;
+  picks: Pick[];
+  message?: string;
+}
+
 interface CouponPreview {
   code: string;
   discount_type: string;
@@ -70,6 +90,29 @@ export default function ClientCompanion({
 }: Props) {
   const [payload, setPayload] = useState<CompanionPayload | null>(null);
   const [loading, setLoading] = useState(false);
+  // « Pépites du jour » — loaded on demand (independent of the cart).
+  const [picks, setPicks] = useState<PicksResponse | null>(null);
+  const [picksLoading, setPicksLoading] = useState(false);
+  const [picksOpen, setPicksOpen] = useState(false);
+
+  // Reset the picks panel only when the client changes — NOT on cart edits.
+  useEffect(() => {
+    setPicks(null);
+    setPicksOpen(false);
+  }, [clientId]);
+
+  const loadPicks = async () => {
+    if (!clientId) return;
+    setPicksOpen(true);
+    setPicksLoading(true);
+    try {
+      const res = await api.get(`/api/pos/clients/${clientId}/picks?top_n=5`);
+      setPicks(res.ok ? await res.json() : null);
+    } catch {
+      setPicks(null);
+    }
+    setPicksLoading(false);
+  };
 
   useEffect(() => {
     if (!clientId) {
@@ -234,6 +277,72 @@ export default function ClientCompanion({
               </p>
             </section>
           )}
+
+          {/* « Pépites du jour » — independent of the cart, guides the
+              salesperson to the physical zone. No add action (V3, §6.5). */}
+          <section>
+            {!picksOpen ? (
+              <button
+                type="button"
+                onClick={loadPicks}
+                className="w-full text-xs font-medium px-3 py-2 rounded-lg bg-vz-teal text-white hover:bg-vz-teal-deep"
+              >
+                ✨ Pépites du jour pour {payload.client.first_name}
+              </button>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-black">✨ Pépites du jour</p>
+                  {picksLoading && <span className="text-[10px] text-gray-400">…</span>}
+                </div>
+                {picks?.gated ? (
+                  <p className="text-[11px] bg-vz-accent-soft/40 text-vz-ink rounded-lg p-2">
+                    {picks.cta || 'Réservé aux membres avec profilage activé.'}
+                  </p>
+                ) : picks && picks.picks.length > 0 ? (
+                  <ul className="grid grid-cols-3 gap-1.5">
+                    {picks.picks.map((p) => (
+                      <li
+                        key={p.id}
+                        className="bg-white rounded-lg overflow-hidden border border-gray-200"
+                      >
+                        <div className="aspect-square bg-gray-100">
+                          {p.photo_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={mediaUrl(p.photo_url)} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-2xl text-gray-300">
+                              👗
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-1.5">
+                          <p className="text-[10px] text-black truncate">{p.name}</p>
+                          <p className="text-[10px] text-vz-teal font-semibold">
+                            {formatEur(p.price_cents)}
+                          </p>
+                          {p.zone_name && (
+                            <p className="text-[9px] text-gray-500 truncate" title={p.zone_name}>
+                              📍 {p.zone_name}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-[11px] text-gray-500">
+                    {picksLoading
+                      ? 'Chargement…'
+                      : picks?.message || 'Rien à proposer aujourd\'hui.'}
+                  </p>
+                )}
+                <p className="text-[10px] text-gray-400">
+                  Pièces présentes en boutique, classées selon ses goûts.
+                </p>
+              </div>
+            )}
+          </section>
         </>
       ) : (
         <p className="text-xs text-gray-500">
