@@ -214,15 +214,15 @@ export default function ProductPage({ params }: PageProps) {
                 {product.available ? (
                   <>
                     <Link
-                      href={`/contact?subject=reservation%20${encodeURIComponent(product.slug)}`}
+                      href={`/contact?subject=disponibilite%20${encodeURIComponent(product.slug)}`}
                       className="inline-flex items-center justify-center rounded-full bg-vz-teal text-white px-7 py-3 text-sm font-medium hover:bg-vz-teal-deep transition-colors"
                     >
-                      Réserver 24-48h
+                      Demander à la voir
                     </Link>
                     <a
-                      href={`mailto:contact@vintiz.fr?subject=R%C3%A9servation%20%E2%80%94%20${encodeURIComponent(
+                      href={`mailto:contact@vintiz.fr?subject=Disponibilit%C3%A9%20%E2%80%94%20${encodeURIComponent(
                         product.slug,
-                      )}&body=Bonjour%2C%0A%0AJe%20souhaite%20r%C3%A9server%20cette%20pi%C3%A8ce%20%3A%20${encodeURIComponent(
+                      )}&body=Bonjour%2C%0A%0ACette%20pi%C3%A8ce%20est-elle%20toujours%20disponible%20%3A%20${encodeURIComponent(
                         product.brand + " — " + product.name,
                       )}%0A%0AMerci%20%21`}
                       className="inline-flex items-center justify-center rounded-full border border-vz-teal/40 text-vz-teal px-7 py-3 text-sm font-medium hover:bg-vz-teal hover:text-white transition-colors"
@@ -276,10 +276,10 @@ export default function ProductPage({ params }: PageProps) {
             </p>
           </div>
           <Link
-            href={`/contact?subject=reservation%20${encodeURIComponent(product.slug)}`}
+            href={`/contact?subject=disponibilite%20${encodeURIComponent(product.slug)}`}
             className="inline-flex items-center justify-center rounded-full bg-vz-teal text-white px-5 py-2.5 text-sm font-medium whitespace-nowrap"
           >
-            Réserver 24-48h
+            Demander à la voir
           </Link>
         </div>
       )}

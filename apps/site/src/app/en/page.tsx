@@ -127,8 +127,8 @@ export default function HomeEnPage() {
                 </h3>
                 <p className="text-vz-ink-soft leading-relaxed">
                   Tell us your style, sizes, brands, budget. Our AI cross-
-                  references with our real in-store inventory. Reserve your
-                  pieces 24-48h before you arrive.
+                  references with our real in-store inventory. We email you the
+                  moment a piece that matches you arrives — come try it in store.
                 </p>
               </div>
               <div className="rounded-2xl bg-vz-surface border border-black/5 p-8">

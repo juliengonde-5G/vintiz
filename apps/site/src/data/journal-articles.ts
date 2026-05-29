@@ -176,7 +176,7 @@ En seconde main, ces pièces se revendent à 80-150 € — et c'est un marché 
 
 Sézane joue dans une autre catégorie : direct-to-consumer, drop limité, communauté Instagram active. Conséquence en seconde main premium : les pièces emblématiques (la robe Pascale, le pull Aragon, la chemise Ludo) gardent leur valeur étonnamment longtemps.
 
-Une pièce Sézane bien curée part en moins d'une semaine chez Vintiz. Notre conseil : si vous voyez une Sézane dans votre taille en bon état, ne traînez pas pour la réserver.
+Une pièce Sézane bien curée part en moins d'une semaine chez Vintiz. Notre conseil : si vous voyez une Sézane dans votre taille en bon état, ne traînez pas pour passer l'essayer en boutique.
 
 ## Polène : l'iconique cuir français
 

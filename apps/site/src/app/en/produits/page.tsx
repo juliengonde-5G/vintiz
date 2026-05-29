@@ -58,8 +58,9 @@ export default function ProductsEnPage() {
           </p>
 
           <p className="mt-3 text-sm text-vz-ink-mute">
-            Reserve any piece 24-48h before your visit by emailing
-            contact@vintiz.fr or via the AI Personal Shopper.
+            Email contact@vintiz.fr to check whether a piece is still
+            available, or let the AI Personal Shopper alert you when one
+            matches your style.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-2">

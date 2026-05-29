@@ -36,7 +36,7 @@ export interface VitrineProduct {
   /** Prix neuf approximatif pour afficher la décote. */
   retail_price_eur?: number;
   description: string;
-  /** False = vendu / réservé — la fiche reste accessible mais en `noindex`. */
+  /** False = vendu — la fiche reste accessible mais en `noindex`. */
   available: boolean;
 }
 
