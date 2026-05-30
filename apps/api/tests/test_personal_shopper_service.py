@@ -29,6 +29,7 @@ from app.models.pos import (
     TransactionType,
 )
 from app.models.product import Category, Product, ProductPhoto, ProductStatus
+from app.models.store import StoreZone
 from app.models.user import User, UserRole
 from app.services.embeddings import EmbeddingService
 from app.services.personal_shopper import (
@@ -62,6 +63,7 @@ async def engine():
         ProductEmbedding.__table__,
         CustomerTasteProfile.__table__,
         EventLog.__table__,
+        StoreZone.__table__,
     ]
     async with eng.begin() as conn:
         await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=tables))
@@ -433,6 +435,77 @@ async def test_recommend_payload_exposes_price_cents_and_product_id(session):
         assert isinstance(p["price_cents"], int)
         assert p["price_cents"] == round(p["sale_price"] * 100)
         assert p["product_id"] == p["id"]
+
+
+# ---------------------------------------------------------------------------
+# daily_picks() — « Pépites du jour » (V3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_daily_picks_returns_picks_and_logs_event(session):
+    user, client = await _seed_minimal_history(session)
+    svc = PersonalShopperService(session)
+    result = await svc.daily_picks(client.id, top_n=3)
+
+    assert result["gated"] is None
+    assert len(result["picks"]) >= 1
+    for p in result["picks"]:
+        assert "zone_name" in p  # key present even when None
+        assert isinstance(p["price_cents"], int)
+        assert p["product_id"] == p["id"]
+    # One customer_picks_shown event per surfaced pick.
+    rows = (await session.execute(
+        select(EventLog).where(
+            EventLog.event_type == EventType.customer_picks_shown,
+            EventLog.customer_id == client.id,
+        )
+    )).scalars().all()
+    assert len(rows) == len(result["picks"])
+
+
+@pytest.mark.anyio
+async def test_daily_picks_annotates_zone(session):
+    user, client = await _seed_minimal_history(session)
+    # Give one display product a physical zone.
+    zone = StoreZone(name="Tendance — tête de gondole")
+    session.add(zone)
+    await session.flush()
+    prod = (await session.execute(
+        select(Product).where(Product.status == ProductStatus.display).limit(1)
+    )).scalars().first()
+    prod.zone_id = zone.id
+    await session.flush()
+
+    result = await PersonalShopperService(session).daily_picks(client.id, top_n=5)
+    matching = [p for p in result["picks"] if p["id"] == str(prod.id)]
+    assert matching and matching[0]["zone_name"] == "Tendance — tête de gondole"
+
+
+@pytest.mark.anyio
+async def test_daily_picks_gated_non_member_returns_cta(session):
+    # A bare client with no loyalty + no consent.
+    bare = Client(first_name="Non", last_name="Membre", email="bare@example.com")
+    session.add(bare)
+    await session.flush()
+
+    result = await PersonalShopperService(session).daily_picks(bare.id)
+    assert result["gated"] == "loyalty_required"
+    assert result["cta"]
+    assert result["picks"] == []
+
+
+@pytest.mark.anyio
+async def test_daily_picks_frequency_cap_excludes_recent(session):
+    user, client = await _seed_minimal_history(session)
+    svc = PersonalShopperService(session)
+    first = await svc.daily_picks(client.id, top_n=2)
+    ids1 = {p["id"] for p in first["picks"]}
+    assert ids1
+    second = await svc.daily_picks(client.id, top_n=2)
+    ids2 = {p["id"] for p in second["picks"]}
+    # The pieces shown <24h ago are not surfaced again (enough candidates exist).
+    assert ids1.isdisjoint(ids2)
 
 
 @pytest.mark.anyio

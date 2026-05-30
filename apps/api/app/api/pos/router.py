@@ -1818,6 +1818,30 @@ async def pos_companion(
     return payload
 
 
+@router.get("/clients/{client_id}/picks")
+async def pos_daily_picks(
+    client_id: uuid.UUID,
+    top_n: int = 5,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """« Pépites du jour pour CE client » — POS panel, independent of the cart
+    (PS 360 V3, §6.5). Hard-filtered by gender + size, ranked cosine then
+    trend_score, with the physical zone to go fetch the piece. A non-member /
+    non-consenting client returns ``gated`` + ``cta`` (no error) so the POS can
+    pitch the loyalty card."""
+    from app.services.personal_shopper import PersonalShopperService
+
+    try:
+        payload = await PersonalShopperService(db).daily_picks(
+            client_id, top_n=max(1, min(top_n, 8))
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    await db.commit()  # persist the customer_picks_shown events
+    return payload
+
+
 def _serialize_client_for_pos(client) -> dict:
     loyalty = client.loyalty_account
     return {
