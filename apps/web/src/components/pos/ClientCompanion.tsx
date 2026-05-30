@@ -12,7 +12,21 @@ interface Suggestion {
   reason: string;
   size: string | null;
   color: string | null;
+  zone_name: string | null;
   score: number;
+}
+
+// Unified payload for the mini product sheet (modal overlay) — used by both
+// the complementary suggestions and the « Pépites du jour ».
+interface PeekItem {
+  product_id: string;
+  name: string;
+  price_cents: number;
+  photo_url: string | null;
+  zone_name: string | null;
+  size: string | null;
+  color: string | null;
+  canAdd: boolean;
 }
 
 interface Pick {
@@ -94,11 +108,14 @@ export default function ClientCompanion({
   const [picks, setPicks] = useState<PicksResponse | null>(null);
   const [picksLoading, setPicksLoading] = useState(false);
   const [picksOpen, setPicksOpen] = useState(false);
+  // Mini product sheet (modal overlay) — null when closed.
+  const [peek, setPeek] = useState<PeekItem | null>(null);
 
-  // Reset the picks panel only when the client changes — NOT on cart edits.
+  // Reset the picks panel + modal only when the client changes — NOT on cart edits.
   useEffect(() => {
     setPicks(null);
     setPicksOpen(false);
+    setPeek(null);
   }, [clientId]);
 
   const loadPicks = async () => {
@@ -245,19 +262,22 @@ export default function ClientCompanion({
                   <li key={s.product_id}>
                     <button
                       type="button"
-                      onClick={() => onAddSuggestion?.(s.product_id)}
-                      disabled={!onAddSuggestion}
+                      onClick={() =>
+                        setPeek({
+                          product_id: s.product_id,
+                          name: s.name,
+                          price_cents: s.price_cents,
+                          photo_url: s.photo_url,
+                          zone_name: s.zone_name,
+                          size: s.size,
+                          color: s.color,
+                          canAdd: Boolean(onAddSuggestion),
+                        })
+                      }
                       className="block w-full bg-white rounded-lg overflow-hidden border border-gray-200 text-left p-0 hover:border-vz-teal hover:shadow-sm transition-all"
                     >
                       <div className="aspect-square bg-gray-100">
-                        {s.photo_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={mediaUrl(s.photo_url)} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-2xl text-gray-300">
-                            👗
-                          </div>
-                        )}
+                        <Thumb url={s.photo_url} />
                       </div>
                       <div className="p-1.5">
                         <p className="text-[10px] text-black truncate">{s.name}</p>
@@ -273,7 +293,7 @@ export default function ClientCompanion({
                 ))}
               </ul>
               <p className="text-[10px] text-gray-400 mt-1">
-                {onAddSuggestion ? 'Tap pour ajouter au panier' : 'Voir le détail produit'}
+                Touchez une pièce pour voir sa fiche
               </p>
             </section>
           )}
@@ -302,31 +322,38 @@ export default function ClientCompanion({
                 ) : picks && picks.picks.length > 0 ? (
                   <ul className="grid grid-cols-3 gap-1.5">
                     {picks.picks.map((p) => (
-                      <li
-                        key={p.id}
-                        className="bg-white rounded-lg overflow-hidden border border-gray-200"
-                      >
-                        <div className="aspect-square bg-gray-100">
-                          {p.photo_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={mediaUrl(p.photo_url)} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-2xl text-gray-300">
-                              👗
-                            </div>
-                          )}
-                        </div>
-                        <div className="p-1.5">
-                          <p className="text-[10px] text-black truncate">{p.name}</p>
-                          <p className="text-[10px] text-vz-teal font-semibold">
-                            {formatEur(p.price_cents)}
-                          </p>
-                          {p.zone_name && (
-                            <p className="text-[9px] text-gray-500 truncate" title={p.zone_name}>
-                              📍 {p.zone_name}
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPeek({
+                              product_id: p.product_id,
+                              name: p.name,
+                              price_cents: p.price_cents,
+                              photo_url: p.photo_url,
+                              zone_name: p.zone_name,
+                              size: p.size,
+                              color: p.color,
+                              canAdd: false,
+                            })
+                          }
+                          className="block w-full bg-white rounded-lg overflow-hidden border border-gray-200 text-left p-0 hover:border-vz-teal hover:shadow-sm transition-all"
+                        >
+                          <div className="aspect-square bg-gray-100">
+                            <Thumb url={p.photo_url} />
+                          </div>
+                          <div className="p-1.5">
+                            <p className="text-[10px] text-black truncate">{p.name}</p>
+                            <p className="text-[10px] text-vz-teal font-semibold">
+                              {formatEur(p.price_cents)}
                             </p>
-                          )}
-                        </div>
+                            {p.zone_name && (
+                              <p className="text-[9px] text-gray-500 truncate" title={p.zone_name}>
+                                📍 {p.zone_name}
+                              </p>
+                            )}
+                          </div>
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -349,6 +376,91 @@ export default function ClientCompanion({
           {loading ? 'Chargement…' : 'Pas de données.'}
         </p>
       )}
+
+      {/* Mini fiche produit — modale en overlay (n'affecte pas la mise en
+          page « tout sur une page » du POS). */}
+      {peek && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPeek(null)}
+        >
+          <div
+            className="w-full max-w-xs bg-white rounded-2xl overflow-hidden shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="aspect-square bg-gray-100 relative">
+              <Thumb url={peek.photo_url} big />
+              <button
+                type="button"
+                onClick={() => setPeek(null)}
+                aria-label="Fermer"
+                className="absolute top-2 right-2 h-8 w-8 rounded-full bg-white/90 text-gray-700 text-xl leading-none shadow"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              <h4 className="font-medium text-black leading-snug">{peek.name}</h4>
+              {(peek.size || peek.color) && (
+                <p className="text-xs text-gray-500">
+                  {[peek.size, peek.color].filter(Boolean).join(' · ')}
+                </p>
+              )}
+              <p className="text-sm text-gray-700 flex items-center gap-1.5">
+                <span aria-hidden>📍</span>
+                {peek.zone_name || 'Emplacement non défini'}
+              </p>
+              <p className="text-lg font-semibold text-vz-teal">
+                {formatEur(peek.price_cents)}
+              </p>
+              {peek.canAdd && onAddSuggestion && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAddSuggestion(peek.product_id);
+                    setPeek(null);
+                  }}
+                  className="w-full py-2.5 bg-vz-teal text-white rounded-lg font-medium hover:bg-vz-teal-deep"
+                >
+                  Ajouter au panier
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
+  );
+}
+
+/**
+ * Robust product thumbnail: renders the image, and falls back to the 👗 glyph
+ * when the URL is missing OR fails to load (a storefront copy can 404 on the
+ * POS). Prevents the broken-image icon on suggestion / pick cards.
+ */
+function Thumb({ url, big }: { url: string | null; big?: boolean }) {
+  const [failed, setFailed] = useState(false);
+  if (!url || failed) {
+    return (
+      <div
+        className={
+          'w-full h-full flex items-center justify-center text-gray-300 ' +
+          (big ? 'text-5xl' : 'text-2xl')
+        }
+      >
+        👗
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={mediaUrl(url)}
+      alt=""
+      className="w-full h-full object-cover"
+      onError={() => setFailed(true)}
+    />
   );
 }
