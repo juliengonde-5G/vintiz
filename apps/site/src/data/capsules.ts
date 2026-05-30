@@ -52,7 +52,7 @@ export const CAPSULES: VitrineCapsule[] = [
       "robe-isabel-marant-etoile-bohème-taille-38",
     ],
     outro:
-      "Toutes ces pièces existent en un seul exemplaire. Réservation 24-48h possible avant votre passage en boutique — il suffit de nous écrire.",
+      "Toutes ces pièces existent en un seul exemplaire. Écrivez-nous pour vérifier leur disponibilité, puis passez les voir en boutique.",
   },
 ];
 

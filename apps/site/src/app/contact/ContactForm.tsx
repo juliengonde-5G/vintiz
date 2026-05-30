@@ -120,7 +120,7 @@ export default function ContactForm() {
             Sujet de votre message
           </option>
           <option value="demande générale">Demande générale</option>
-          <option value="réservation pièce">Réservation d&apos;une pièce</option>
+          <option value="disponibilité pièce">Disponibilité d&apos;une pièce</option>
           <option value="personal shopper">Personal Shopper</option>
           <option value="rachat vêtements">Rachat de vêtements de marque</option>
           <option value="presse / partenariat">Presse / partenariat</option>

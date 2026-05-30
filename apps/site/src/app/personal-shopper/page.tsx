@@ -8,7 +8,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://vintiz.fr";
 export const metadata: Metadata = {
   title: "Personal Shopper IA",
   description:
-    "Le Personal Shopper IA Vintiz : une sélection sur-mesure de pièces seconde main premium à Vernon, dictée par vos goûts. Réservation, retrait, désactivation libre.",
+    "Le Personal Shopper IA Vintiz : une sélection sur-mesure de pièces seconde main premium à Vernon, dictée par vos goûts. On vous prévient dès qu'une pièce qui vous ressemble arrive — essayage en boutique, désactivation libre.",
   alternates: {
     canonical: `${SITE_URL}/personal-shopper`,
     languages: {
@@ -149,11 +149,13 @@ export default function PersonalShopperPage() {
                   03
                 </div>
                 <h3 className="font-display text-xl text-vz-ink mb-3">
-                  Vous réservez, vous récupérez
+                  On vous prévient, vous passez
                 </h3>
                 <p className="text-vz-ink-soft leading-relaxed">
-                  Réservation 24 à 48h. Vous venez essayer en boutique, vous
-                  prenez ce que vous aimez, vous repartez. Aucun engagement.
+                  Dès qu&apos;une pièce qui vous ressemble arrive, on vous
+                  écrit. Vous passez l&apos;essayer en boutique, vous prenez ce
+                  que vous aimez, vous repartez. Aucune réservation, aucun
+                  engagement.
                 </p>
               </div>
             </div>
@@ -180,9 +182,9 @@ export default function PersonalShopperPage() {
               </h3>
               <p className="text-vz-ink-soft leading-relaxed">
                 Chaque recommandation correspond à une pièce physique présente
-                à Vernon, immédiatement réservable. Pas de catalogue infini
-                qui n&apos;existe nulle part — uniquement ce que vous pouvez
-                vraiment essayer.
+                à Vernon, prête à être essayée. Pas de catalogue infini qui
+                n&apos;existe nulle part — uniquement ce que vous pouvez
+                vraiment voir et essayer en boutique.
               </p>
             </div>
 
@@ -215,7 +217,7 @@ export default function PersonalShopperPage() {
               </h3>
               <p className="text-vz-ink-soft leading-relaxed">
                 Plus vous interagissez, plus la sélection devient juste.
-                Chaque clic, chaque réservation, chaque essai affine notre
+                Chaque clic, chaque coup de cœur, chaque essai affine notre
                 compréhension de votre style.
               </p>
             </div>
@@ -226,8 +228,8 @@ export default function PersonalShopperPage() {
               </h3>
               <p className="text-vz-ink-soft leading-relaxed">
                 L&apos;IA recommande, elle ne pousse jamais à acheter. Vous
-                réservez ce qui vous parle, vous laissez ce qui ne vous parle
-                pas. Aucune pénalité, aucun jugement.
+                venez essayer ce qui vous parle, vous laissez ce qui ne vous
+                parle pas. Aucune pénalité, aucun jugement.
               </p>
             </div>
 

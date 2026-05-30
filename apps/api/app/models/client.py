@@ -85,6 +85,20 @@ class Client(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Declarative qualification — Personal Shopper 360 V1 onboarding "layer 1"
+    # (base obligatoire). Collected on the espace-client onboarding wizard and
+    # used to seed the taste profile, filter the visual cold-start candidates,
+    # and (later) target communications. Additive + nullable (migration 0051):
+    # existing rows stay NULL. The *computed* qualification signals
+    # (season_bias / price_ceiling / price_sensitivity / trend_affinity) land
+    # in V2 via the customer_qualification service — intentionally not here.
+    gender_profile: Mapped[str | None] = mapped_column(
+        String(10), nullable=True
+    )  # femme | homme | mixte
+    age_band: Mapped[str | None] = mapped_column(
+        String(10), nullable=True
+    )  # <25 | 25-34 | 35-44 | 45-54 | 55+
+
     loyalty_account: Mapped["LoyaltyAccount | None"] = relationship(
         "LoyaltyAccount", back_populates="client", uselist=False, lazy="selectin"
     )

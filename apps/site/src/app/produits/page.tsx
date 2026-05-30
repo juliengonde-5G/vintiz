@@ -89,8 +89,8 @@ export default function ProduitsPage({ searchParams }: PageProps) {
           </h1>
           <p className="mt-6 text-lg text-vz-ink-soft max-w-2xl leading-relaxed">
             Chaque pièce ci-dessous existe en un seul exemplaire et vous
-            attend rue Saint-Jacques. Réservation 24-48h possible avant
-            votre visite — il suffit de nous écrire.
+            attend rue Saint-Jacques. Une pièce vous plaît ? Écrivez-nous pour
+            vérifier qu&apos;elle est toujours disponible, puis passez l&apos;essayer.
           </p>
 
           {/* Notice placeholder pré-ouverture */}
@@ -178,9 +178,10 @@ export default function ProduitsPage({ searchParams }: PageProps) {
               href="/contact"
               className="underline underline-offset-2 hover:text-vz-teal"
             >
-              Réservez 24-48h
+              Écrivez-nous
             </Link>{" "}
-            ou venez la voir directement au 6 rue Saint-Jacques.
+            pour vérifier sa disponibilité, ou venez la voir directement au 6
+            rue Saint-Jacques.
           </p>
         </section>
       </main>

@@ -132,11 +132,12 @@ export default function PersonalShopperEnPage() {
                   03
                 </div>
                 <h3 className="font-display text-xl text-vz-ink mb-3">
-                  Reserve and collect
+                  We notify you, you drop by
                 </h3>
                 <p className="text-vz-ink-soft leading-relaxed">
-                  24-48h reservation. Try in store at 6 rue Saint-Jacques.
-                  Take what you love, leave what you don&apos;t. Zero
+                  As soon as a piece that matches you arrives, we email you.
+                  Come try it in store at 6 rue Saint-Jacques. Take what you
+                  love, leave what you don&apos;t. No reservation, zero
                   pressure.
                 </p>
               </div>

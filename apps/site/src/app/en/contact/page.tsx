@@ -248,7 +248,7 @@ export default function ContactEnPage() {
                   <li className="flex gap-3">
                     <span className="text-vz-teal">→</span>
                     <span>
-                      24-48h reservation before your visit
+                      We email you when a matching piece arrives
                     </span>
                   </li>
                 </ul>

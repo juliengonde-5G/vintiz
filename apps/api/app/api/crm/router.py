@@ -1161,20 +1161,45 @@ async def personal_shopper_override(
 # ---------------------------------------------------------------------------
 
 @router.get("/onboarding/options")
-async def onboarding_options():
-    """Public catalogue of style profiles, occasions and price buckets the
-    picker UI displays. Static data — no DB hit."""
+async def onboarding_options(db: AsyncSession = Depends(get_db)):
+    """Public catalogue for the layered onboarding picker UI.
+
+    Genders + age bands + occasions + price buckets are static; the styles are
+    a fixed palette; the brands list is drawn live from the in-stock catalogue
+    (empty → the UI hides that section)."""
     from app.services.onboarding import (
+        list_available_age_bands,
+        list_available_brands,
+        list_available_genders,
         list_available_occasions,
         list_available_price_buckets,
         list_available_style_profiles,
     )
 
     return {
+        "genders": list_available_genders(),
+        "age_bands": list_available_age_bands(),
         "styles": list_available_style_profiles(),
         "occasions": list_available_occasions(),
         "price_buckets": list_available_price_buckets(),
+        "brands": await list_available_brands(db),
     }
+
+
+@router.get("/onboarding/visual-candidates")
+async def onboarding_visual_candidates(
+    gender: str | None = Query(default=None),
+    n: int = Query(default=6, ge=1, le=12),
+    db: AsyncSession = Depends(get_db),
+):
+    """Layer 2 — pieces for the "j'aime / j'aime pas" cold-start step.
+
+    Public (the onboarding flow runs before any session auth). Optionally
+    narrowed to the declared gender; mixte / unset pieces are always kept."""
+    from app.services.onboarding import pick_visual_candidates
+
+    items = await pick_visual_candidates(db, gender=gender, n=n)
+    return {"items": items}
 
 @router.post("/clients/{client_id}/onboarding")
 async def submit_onboarding(
@@ -1194,17 +1219,28 @@ async def submit_onboarding(
 
     profile = await cold_start_taste_profile(
         db, client,
+        gender=request.gender,
+        age_band=request.age_band,
         liked_style_keys=request.liked_style_keys,
         preferred_occasions=request.preferred_occasions,
         preferred_price_buckets=request.preferred_price_buckets,
         preferred_categories=request.preferred_categories,
+        preferred_brands=request.preferred_brands,
+        liked_product_ids=request.liked_product_ids,
     )
     await db.commit()
     return {
         "client_id": str(client.id),
-        "profile_id": str(profile.id),
-        "algo_version": profile.algo_version,
-        "computed_at": profile.computed_at.isoformat() if profile.computed_at else None,
+        # None when only layer 1 (genre/âge) was submitted — fields still saved.
+        "profile_id": str(profile.id) if profile else None,
+        "algo_version": profile.algo_version if profile else None,
+        "computed_at": (
+            profile.computed_at.isoformat()
+            if profile and profile.computed_at
+            else None
+        ),
+        "gender_profile": client.gender_profile,
+        "age_band": client.age_band,
     }
 
 @router.post("/personal-shopper-v2/click")
@@ -1390,7 +1426,9 @@ async def public_curation_current(db: AsyncSession = Depends(get_db)):
                 "color": p.color,
                 "sale_price": float(p.sale_price or 0),
                 "price_cents": int(round(float(p.sale_price or 0) * 100)),
-                "photo_url": p.photo_url,
+                # Photoroom-styled (detourée, off-white) copy for editorial
+                # consistency on the selection cards (audit §5.2 + décision #11).
+                "photo_url": p.storefront_photo_url or p.photo_url,
                 "reason": reasons.get(str(p.id), ""),
             }
         )

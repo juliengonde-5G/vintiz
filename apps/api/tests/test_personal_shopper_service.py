@@ -313,21 +313,24 @@ async def test_recommend_unknown_customer_raises_lookup(session):
 
 
 @pytest.mark.anyio
-async def test_cold_start_returns_recent_products(session):
-    """A brand-new customer with no purchases gets the latest arrivals."""
+async def test_cold_start_returns_assumed_empty_state(session):
+    """A profile-less customer gets the assumed empty state — NOT a generic
+    newest-stock dump (PS 360 §3.2 / §5.2)."""
     user = await _make_user(session)
     client = await _make_client(session, email="newbie@example.com")
 
-    p1 = await _make_product(session, name="Veste 1", category_name="Vestes")
-    p2 = await _make_product(session, name="Robe 2", category_name="Robes")
-    # No purchases, no embeddings, no taste profile.
+    await _make_product(session, name="Veste 1", category_name="Vestes")
+    await _make_product(session, name="Robe 2", category_name="Robes")
+    # No purchases, no embeddings, no taste profile → assumed empty state.
 
     svc = PersonalShopperService(session)
     result = await svc.recommend(client.id, top_n=4)
 
     assert result["fallback_used"] is True
-    # cold_start can return up to top_n products without embeddings
-    assert len(result["products"]) <= 4
+    assert result["empty_state"] is True
+    assert result["products"] == []  # we no longer pad with generic stock
+    assert "Rien de neuf" in result["message"]
+    assert client.first_name in result["message"]
     # cold_start does NOT log recommendation_shown events (we'd be biasing
     # the funnel with non-personalised data) — assert that.
     rows = (await session.execute(
@@ -433,8 +436,9 @@ async def test_recommend_payload_exposes_price_cents_and_product_id(session):
 
 
 @pytest.mark.anyio
-async def test_cold_start_payload_exposes_price_cents(session):
-    """The cold-start fallback must carry the same price contract."""
+async def test_cold_start_empty_state_has_no_products(session):
+    """The assumed empty state carries no products (so no price contract to
+    honour) but flags ``empty_state`` for the front to render the wait."""
     client = await _make_client(session, email="cold@example.com")
     await _make_product(session, name="Veste neuve", category_name="Vestes")
 
@@ -442,7 +446,5 @@ async def test_cold_start_payload_exposes_price_cents(session):
     result = await svc.recommend(client.id, top_n=4)
 
     assert result["fallback_used"] is True
-    assert result["products"]  # cold start serves the latest arrivals
-    for p in result["products"]:
-        assert isinstance(p["price_cents"], int)
-        assert p["product_id"] == p["id"]
+    assert result["empty_state"] is True
+    assert result["products"] == []

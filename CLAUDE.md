@@ -375,9 +375,10 @@ GET    /api/crm/clients/lookup?email=…       Lookup client public
 GET    /api/crm/clients/{id}/personal-shopper-v2  Personal shopper (embeddings + Claude Haiku, manager)
 GET    /api/crm/personal-shopper-v2?email=        Personal shopper v2 public (lookup email)
 POST   /api/crm/personal-shopper-v2/click         Log click sur recommandation
-GET    /api/crm/onboarding/options                Catalogue styles/occasions/budgets (public)
-POST   /api/crm/clients/{id}/onboarding           Cold-start taste profile (manager)
-POST   /api/crm/account/onboarding                Cold-start taste profile (public, body: email + choix)
+GET    /api/crm/onboarding/options                Catalogue genres/âges/styles/occasions/budgets/marques (public)
+GET    /api/crm/onboarding/visual-candidates      Pièces du cold-start visuel L2 (public, ?gender=&n=)
+POST   /api/crm/clients/{id}/onboarding           Onboarding en couches (manager — L1 genre/âge, L2 likes, L3 détaillé)
+POST   /api/crm/account/onboarding                Onboarding en couches (public, body: email + L1/L2/L3)
 GET    /api/crm/clients/{id}/avoir                Solde + historique avoir (store credit)
 GET    /api/crm/clients/{id}/consents              Consentements RGPD (état courant + historique)
 POST   /api/crm/clients/{id}/consents              Enregistrer consentement (purpose+granted+source)

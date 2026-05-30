@@ -126,7 +126,7 @@ export default function CapsulePage({ params }: PageProps) {
                 href="/contact"
                 className="mt-6 inline-flex items-center justify-center rounded-full bg-vz-teal text-white px-7 py-3 text-sm font-medium hover:bg-vz-teal-deep transition-colors"
               >
-                Réserver une pièce
+                Nous écrire
               </Link>
             </div>
           </section>
