@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import Navbar from "@/components/Navbar";
+import PublicHeader from "@/components/PublicHeader";
 import Footer from "@/components/Footer";
 import AccountNav from "@/components/account/AccountNav";
 
@@ -21,7 +21,7 @@ export default function AccountShell({
 }) {
   return (
     <main className="min-h-screen bg-vz-bg">
-      <Navbar />
+      <PublicHeader />
       <div className="max-w-6xl mx-auto px-4 pt-12 pb-24 md:flex md:gap-8">
         <AccountNav />
         <section className="flex-1 min-w-0 mt-12 md:mt-0">

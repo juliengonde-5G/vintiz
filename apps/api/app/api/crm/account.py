@@ -95,6 +95,19 @@ class OnboardingRequest(BaseModel):
 class PublicOnboardingRequest(OnboardingRequest):
     email: str
 
+class LoyaltySubscribeRequest(BaseModel):
+    """Self-service loyalty subscription from the espace client (#3).
+
+    The client already exists (magic-link login resolved a Client row), so we
+    only need the email + the RGPD opt-ins. Name fields are optional overrides
+    used only if the stored client somehow has none."""
+    email: str
+    optin_newsletter: bool = False
+    optin_profiling: bool = False
+    optin_sms: bool = False
+    first_name: str | None = None
+    last_name: str | None = None
+
 
 
 def _normalize_email(value: str) -> str:
@@ -525,6 +538,26 @@ async def public_submit_onboarding(
         preferred_brands=request.preferred_brands,
         liked_product_ids=request.liked_product_ids,
     )
+
+    # Completing the Personal Shopper questionnaire is an explicit profiling
+    # opt-in (the page states the purpose). Record it so the live selection
+    # works right after onboarding instead of hitting a 403 gate. Idempotent:
+    # only add a grant row when the latest decision isn't already "granted".
+    latest = await db.execute(
+        select(Consent)
+        .where(
+            Consent.client_id == client.id,
+            Consent.purpose == ConsentPurpose.profiling,
+        )
+        .order_by(Consent.created_at.desc())
+        .limit(1)
+    )
+    current = latest.scalar_one_or_none()
+    if current is None or not current.granted:
+        await _record_consent_toggle(
+            db, client, ConsentPurpose.profiling, True, source="site_onboarding"
+        )
+
     await db.commit()
     return {
         "client_email": cleaned,

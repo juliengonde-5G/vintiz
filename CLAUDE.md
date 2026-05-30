@@ -438,6 +438,8 @@ GET    /api/crm/account/coupons?email=             Liste coupons actifs cliente 
 GET    /api/crm/account/transactions?email=        Historique paginé avec items (public, limit ≤100)
 GET    /api/crm/account/consents?email=            Liste consents lisible (5 purposes, granted/source/recorded_at)
 POST   /api/crm/account/consents/{purpose}         Toggle consent générique (body: email, granted)
+GET    /api/crm/account/loyalty/status?email=      État adhésion fidélité (active, n° carte, mode) — espace client
+POST   /api/crm/account/loyalty/subscribe          Adhésion self-service depuis l'espace client (public, body: email, opt-ins ; idempotent ; pas de paiement en ligne)
 
 # Refonte Relation Client — PR4: companion POS + fiche client + predictive
 GET    /api/pos/clients/{id}/companion?cart_total_cents=&items=  Cart-aware up-sells (manager)

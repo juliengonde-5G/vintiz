@@ -392,11 +392,13 @@ async def search(
 
 
 def _serialize(product: Product) -> dict[str, Any]:
-    photo_url: str | None = None
+    # Prefer the detourée (Photoroom) copy for the espace-client search (#5):
+    # storefront column → primary photo's processed_url → raw upload.
+    photo_url: str | None = getattr(product, "storefront_photo_url", None)
     photos = getattr(product, "photos", None) or []
-    if photos:
+    if not photo_url and photos:
         photo = photos[0]
-        photo_url = getattr(photo, "url", None)
+        photo_url = getattr(photo, "processed_url", None) or getattr(photo, "url", None)
     return {
         "product_id": str(product.id),
         "name": product.name,

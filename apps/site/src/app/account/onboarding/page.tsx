@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import Navbar from "@/components/Navbar";
+import { useRouter } from "next/navigation";
+import PublicHeader from "@/components/PublicHeader";
 import Footer from "@/components/Footer";
 import { mediaUrl } from "@/lib/media";
 import { formatPriceCents } from "@/lib/format";
@@ -44,6 +45,7 @@ const FALLBACK_GRADIENTS = [
 type Step = 1 | 2 | 3;
 
 export default function OnboardingPage() {
+  const router = useRouter();
   const [step, setStep] = useState<Step>(1);
 
   const [email, setEmail] = useState("");
@@ -165,7 +167,19 @@ export default function OnboardingPage() {
       if (!res.ok) {
         setError(body?.detail || "Erreur lors de l'enregistrement.");
       } else {
+        // Persist the email so the shopper page auto-loads the selection
+        // without re-asking it (#4), then land on the selection (#9). The
+        // shopper handles the loyalty gate with a one-click subscribe (#3).
+        try {
+          window.localStorage.setItem(
+            "vintiz_account_email",
+            email.trim().toLowerCase(),
+          );
+        } catch {
+          /* private mode — shopper will ask once */
+        }
         setDone(true);
+        router.push("/account/shopper");
       }
     } catch {
       setError("Impossible de contacter le serveur.");
@@ -177,7 +191,7 @@ export default function OnboardingPage() {
 
   return (
     <>
-      <Navbar />
+      <PublicHeader />
       <main className="min-h-screen bg-vz-bg py-12 px-4">
         <div className="max-w-3xl mx-auto">
           <h1 className="text-3xl font-bold text-vz-ink font-display mb-2">
