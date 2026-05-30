@@ -9,13 +9,17 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 type Step = "email" | "code";
 type Channel = "email" | "sms";
+type Mode = "login" | "register";
 
 export default function AccountLoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>("login");
   const [step, setStep] = useState<Step>("email");
   const [channel, setChannel] = useState<Channel>("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [optinNewsletter, setOptinNewsletter] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -55,6 +59,34 @@ export default function AccountLoginPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const registerAccount = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setInfo("");
+    setBusy(true);
+    try {
+      // Always 202 — same response whether the email is new or known
+      // (anti-enumeration). Creates the Client if needed + sends a magic link.
+      await fetch(`${API_URL}/api/crm/account/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          first_name: firstName.trim() || null,
+          optin_newsletter: optinNewsletter,
+        }),
+      });
+      setStep("code");
+      setInfo(
+        "Votre espace est prêt ! Un email vient de partir : cliquez sur le " +
+          "lien de connexion (ou saisissez le code ci-dessous) pour y accéder.",
+      );
+    } catch {
+      setError("Erreur réseau. Réessayez.");
+    }
+    setBusy(false);
+  };
 
   const requestCode = async (e: FormEvent) => {
     e.preventDefault();
@@ -124,10 +156,33 @@ export default function AccountLoginPage() {
       <Navbar />
       <section className="max-w-md mx-auto px-4 pt-16 pb-24">
         <h1 className="text-3xl font-display font-bold text-black mb-2">Mon espace Vintiz</h1>
-        <p className="text-gray-600 mb-8">
+        <p className="text-gray-600 mb-6">
           Recevez un email&nbsp;: cliquez sur le lien de connexion, ou saisissez
           le code à 6 chiffres — aucun mot de passe à retenir.
         </p>
+
+        {step === "email" && (
+          <div className="mb-6 inline-flex border border-vz-line rounded-full p-0.5 text-sm font-medium">
+            <button
+              type="button"
+              onClick={() => { setMode("login"); setError(""); setInfo(""); }}
+              className={`px-5 py-2 rounded-full transition-colors ${
+                mode === "login" ? "bg-vz-teal text-white" : "text-vz-ink-mute hover:text-vz-ink"
+              }`}
+            >
+              Se connecter
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode("register"); setChannel("email"); setError(""); setInfo(""); }}
+              className={`px-5 py-2 rounded-full transition-colors ${
+                mode === "register" ? "bg-vz-teal text-white" : "text-vz-ink-mute hover:text-vz-ink"
+              }`}
+            >
+              Créer mon espace
+            </button>
+          </div>
+        )}
 
         {linkBusy && (
           <div className="mb-6 p-3 bg-vz-teal/10 text-vz-teal rounded-lg text-sm">
@@ -136,7 +191,8 @@ export default function AccountLoginPage() {
         )}
 
         {step === "email" && (
-          <form onSubmit={requestCode} className="space-y-4">
+          <form onSubmit={mode === "register" ? registerAccount : requestCode} className="space-y-4">
+            {mode === "login" && (
             <div className="inline-flex border border-vz-line rounded-full p-0.5 text-xs font-medium">
               <button
                 type="button"
@@ -157,32 +213,70 @@ export default function AccountLoginPage() {
                 Par SMS
               </button>
             </div>
+            )}
+            {mode === "register" && (
+              <div>
+                <label className="block text-sm text-gray-700 mb-1" htmlFor="firstname-input">
+                  Prénom <span className="text-vz-ink-mute">(facultatif)</span>
+                </label>
+                <input
+                  id="firstname-input"
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="Léa"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
+                />
+              </div>
+            )}
             <div>
               <label className="block text-sm text-gray-700 mb-1" htmlFor="email-input">
-                {channel === "email" ? "Email" : "Téléphone"}
+                {mode === "register" || channel === "email" ? "Email" : "Téléphone"}
               </label>
               <input
                 id="email-input"
-                type={channel === "email" ? "email" : "tel"}
-                inputMode={channel === "email" ? "email" : "tel"}
+                type={mode === "register" || channel === "email" ? "email" : "tel"}
+                inputMode={mode === "register" || channel === "email" ? "email" : "tel"}
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder={channel === "email" ? "vous@email.fr" : "+33 6 12 34 56 78"}
+                placeholder={mode === "register" || channel === "email" ? "vous@email.fr" : "+33 6 12 34 56 78"}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
               />
               <p className="text-xs text-vz-ink-mute mt-1">
-                {channel === "email"
+                {mode === "register"
+                  ? "Nous vous envoyons un lien de connexion pour activer votre espace."
+                  : channel === "email"
                   ? "Le code arrive en 30 s. Vérifiez vos spams si besoin."
                   : "Le SMS arrive en quelques secondes. Tarif opérateur standard."}
               </p>
             </div>
+            {mode === "register" && (
+              <label className="flex items-start gap-2 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={optinNewsletter}
+                  onChange={(e) => setOptinNewsletter(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Je souhaite recevoir les nouveautés et offres Vintiz par email.
+                  Vous pourrez vous désinscrire à tout moment.
+                </span>
+              </label>
+            )}
             <button
               type="submit"
               disabled={busy || !email}
               className="w-full bg-vz-teal text-white py-3 rounded-lg font-medium hover:bg-vz-teal/90 disabled:opacity-50"
             >
-              {busy ? "Envoi…" : channel === "email" ? "Recevoir mon code par email" : "Recevoir mon code par SMS"}
+              {busy
+                ? "Envoi…"
+                : mode === "register"
+                ? "Créer mon espace"
+                : channel === "email"
+                ? "Recevoir mon code par email"
+                : "Recevoir mon code par SMS"}
             </button>
           </form>
         )}

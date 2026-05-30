@@ -21,7 +21,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,6 +108,21 @@ class LoyaltySubscribeRequest(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
 
+class AccountRegisterRequest(BaseModel):
+    """Self-service account creation from the public site.
+
+    Privacy by design: the endpoint always responds 200 ("check your email")
+    and never reveals whether the email already existed. A new Client row is
+    created when needed; in all cases a magic-link (code + clickable link) is
+    sent so the visitor proves ownership of the address before the session is
+    granted. No password is ever stored.
+    """
+    email: str
+    first_name: str | None = None
+    last_name: str | None = None
+    optin_newsletter: bool = False
+    optin_sms: bool = False
+
 
 
 def _normalize_email(value: str) -> str:
@@ -141,6 +156,67 @@ async def _record_consent_toggle(
         )
     )
     await db.flush()
+
+@router.post("/account/register", status_code=202)
+async def public_account_register(
+    request: AccountRegisterRequest,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a client account from the public site (self-service).
+
+    Always returns 202 with the same body — never discloses whether the email
+    already existed (anti-enumeration, like magic-link/request). Flow:
+
+    1. Normalise the email; create a ``Client`` if none exists (no duplicate).
+    2. Record the RGPD opt-ins the visitor checked (newsletter / SMS).
+    3. Issue a magic-link (6-digit code + clickable link) so the visitor
+       confirms ownership and lands logged-in — no password, no code to type
+       if they use the link.
+    """
+    from app.services.magic_link import issue
+
+    cleaned = _normalize_email(request.email)
+    row = await db.execute(select(Client).where(Client.email == cleaned))
+    client = row.scalar_one_or_none()
+    created = False
+    if client is None:
+        client = Client(
+            first_name=(request.first_name or "").strip() or "Cliente",
+            last_name=(request.last_name or "").strip() or "Vintiz",
+            email=cleaned,
+            email_optin=request.optin_newsletter,
+            sms_optin=request.optin_sms,
+        )
+        db.add(client)
+        await db.flush()
+        created = True
+        # RGPD consent ledger for the boxes ticked at sign-up.
+        if request.optin_newsletter:
+            await _record_consent_toggle(
+                db, client, ConsentPurpose.email_marketing, True,
+                source="site_self_register",
+            )
+        if request.optin_sms:
+            await _record_consent_toggle(
+                db, client, ConsentPurpose.sms_marketing, True,
+                source="site_self_register",
+            )
+
+    # Send the magic-link in all cases (new account OR existing email →
+    # effectively a login), so the response never leaks which path ran.
+    client_ip = http_request.client.host if http_request.client else None
+    await issue(db, cleaned, ip=client_ip)
+    await db.commit()
+
+    logger.info("account self-register: email processed (created=%s)", created)
+    return {
+        "status": "ok",
+        "message": (
+            "Compte prêt. Vérifiez votre email : cliquez sur le lien de "
+            "connexion (ou saisissez le code) pour accéder à votre espace."
+        ),
+    }
 
 @router.get("/account/data-export")
 async def public_account_data_export(

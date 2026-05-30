@@ -435,6 +435,7 @@ GET    /api/crm/account/personal-shopper/live      Sélection PS live gated (mem
 POST   /api/admin/trend-alerts/run                 Trigger manuel cron alertes tendance (manager)
 
 # Refonte Relation Client — PR3: espace client RGPD (6 zones)
+POST   /api/crm/account/register                   Créer son espace client depuis le site (public, 202 toujours, anti-énumération ; crée le Client + opt-ins + envoie le magic-link)
 GET    /api/crm/account/coupons?email=             Liste coupons actifs cliente (public)
 GET    /api/crm/account/transactions?email=        Historique paginé avec items (public, limit ≤100)
 GET    /api/crm/account/consents?email=            Liste consents lisible (5 purposes, granted/source/recorded_at)
