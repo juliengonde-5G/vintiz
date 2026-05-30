@@ -3,7 +3,6 @@
 import math
 import uuid
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 
 import pytest
 from sqlalchemy import select
@@ -21,6 +20,7 @@ from app.models.embeddings import (
     CustomerTasteProfile,
     ProductEmbedding,
 )
+from app.models.events import EventLog, EventSource, EventType
 from app.models.pos import (
     Payment,
     Receipt,
@@ -30,12 +30,16 @@ from app.models.pos import (
 )
 from app.models.product import Category, Product, ProductPhoto, ProductStatus
 from app.models.user import User, UserRole
+from app.services import visual_encoder
 from app.services.embeddings import (
     ALGO_VERSION,
     EmbeddingService,
     _cosine,
     _encode_features,
+    _encode_visual,
     _l2_normalize,
+    _resize_vector,
+    _visual_features,
 )
 
 
@@ -62,6 +66,7 @@ async def engine():
         AvoirTransaction.__table__,
         ProductEmbedding.__table__,
         CustomerTasteProfile.__table__,
+        EventLog.__table__,
     ]
     async with eng.begin() as conn:
         await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=tables))
@@ -513,3 +518,56 @@ async def test_taste_profile_uses_only_last_15_transactions(session):
     assert profile is not None
     # Only the 15 most-recent transactions contribute; the oldest is dropped.
     assert profile.n_purchases_analyzed == 15
+
+
+# ---------------------------------------------------------------------------
+# V4 — pluggable visual encoder + click feedback
+# ---------------------------------------------------------------------------
+
+
+def test_resize_vector_folds_to_embedding_dim():
+    long_vec = [float(i) for i in range(512)]
+    out = _resize_vector(long_vec, EMBEDDING_DIM)
+    assert len(out) == EMBEDDING_DIM
+    norm = math.sqrt(sum(x * x for x in out))
+    assert abs(norm - 1.0) < 1e-9
+
+
+@pytest.mark.anyio
+async def test_visual_backend_defaults_to_structured(session):
+    """With the default backend, _encode_visual == the structured encoder."""
+    assert visual_encoder.backend_active() is False
+    p = await _make_product(session, brand="Sandro", color="noir")
+    assert _encode_visual(p) == _encode_features(_visual_features(p))
+
+
+@pytest.mark.anyio
+async def test_click_feedback_pulls_centroid_toward_clicked_piece(session):
+    """A clicked-but-not-bought piece nudges the centroid toward it (§9.3)."""
+    user, client = await _make_user_and_client(session)
+    bought = await _make_product(session, brand="Sandro", color="noir")
+    clicked = await _make_product(session, brand="Kiabi", color="rose", sale_price=8.0)
+    svc = EmbeddingService(session)
+    await svc.compute_for_product(bought)
+    clicked_emb = await svc.compute_for_product(clicked)
+    clicked_vec = list(clicked_emb.visual_embedding)
+
+    await _record_purchase(session, user, client, bought)
+    before = await svc.recompute_taste_profile(client.id)
+    sim_before = _cosine(before.visual_centroid, clicked_vec)
+
+    # Log a click on the opposite-style piece, then recompute.
+    session.add(
+        EventLog(
+            occurred_at=datetime.now(timezone.utc),
+            event_type=EventType.customer_recommendation_clicked,
+            source=EventSource.site,
+            customer_id=client.id,
+            product_id=clicked.id,
+        )
+    )
+    await session.flush()
+    after = await svc.recompute_taste_profile(client.id)
+    sim_after = _cosine(after.visual_centroid, clicked_vec)
+
+    assert sim_after > sim_before
