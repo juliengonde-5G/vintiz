@@ -451,6 +451,9 @@ POST   /api/admin/qualification/run                Trigger manuel recalcul quali
 
 # Personal Shopper 360 — V3: aide à la vente
 GET    /api/pos/clients/{id}/picks                 « Pépites du jour » : top 5 pièces présentes, filtrées dur genre+taille, classées cosinus puis trend_score, zone physique affichée, frequency cap 24h, log customer_picks_shown (manager ; non-membre/sans-consent → gated+CTA)
+
+# Personal Shopper 360 — V5: appro prescriptif
+GET    /api/admin/appro-brief                       Brief d'appro hebdo dans l'IA Booster : demande (goûts membres + skew genre) vs stock → recommandations niveau carton (catégorie×genre×qualité, action demander/réduire/maintenir). Cold-start = gaps déclaratifs (manager)
 ```
 
 ## Fonctionnalités principales
