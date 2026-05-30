@@ -205,16 +205,49 @@ async def run_trend_alerts(db: AsyncSession) -> dict[str, int]:
             continue
 
         matched += 1
-        message = _build_email(client, best[0], best[1])
+        from app.services.communications import log_communication, render_template
+
+        product = best[0]
+        rendered = await render_template(
+            db,
+            "trend_alert",
+            {
+                "prenom": client.first_name or "",
+                "produit": product.name,
+                "prix": f"{float(product.sale_price):.2f} €",
+            },
+        )
+        fallback = _build_email(client, product, best[1])
+        subject = rendered.subject or fallback.subject
+        status = "failed"
+        backend = None
+        detail = None
         try:
-            send_email(message)
+            result = send_email(
+                EmailMessage(
+                    to=client.email or "",
+                    subject=subject,
+                    html=rendered.html or fallback.html,
+                    text=rendered.text or fallback.text,
+                    to_name=f"{client.first_name} {client.last_name}".strip(),
+                )
+            )
+            status = result.status
+            backend = result.backend
+            detail = result.detail
             sent += 1
             client.last_trend_alert_at = _now()
         except EmailDeliveryError as exc:
             failed += 1
+            detail = str(exc)
             logger.warning("trend_alerts: send failed for %s: %s", client.email, exc)
+        await log_communication(
+            db, client_id=client.id, channel="email", kind="trend_alert",
+            status=status, to_address=client.email, subject=subject,
+            backend=backend, detail=detail, template_key=rendered.template_key,
+        )
 
-    if sent:
+    if sent or matched:
         await db.flush()
 
     summary = {

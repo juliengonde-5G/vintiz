@@ -10,7 +10,7 @@ import Badge from '@/components/ui/Badge';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
 
-type Tab = 'synthese' | 'achats' | 'fidelite' | 'gouts' | 'rgpd' | 'audit';
+type Tab = 'synthese' | 'achats' | 'fidelite' | 'gouts' | 'comms' | 'rgpd' | 'audit';
 
 interface ClientFull {
   client: {
@@ -77,6 +77,16 @@ interface ClientFull {
     source: string | null;
     valid_until: string | null;
   }[];
+  communications: {
+    id: string;
+    channel: string;
+    kind: string;
+    subject: string | null;
+    status: string;
+    backend: string | null;
+    to_address: string | null;
+    created_at: string | null;
+  }[];
   audit: {
     id: string;
     action: string;
@@ -105,6 +115,22 @@ const SEASON_LABELS: Record<string, string> = {
   winter: 'Hiver',
   summer: 'Été',
   all: 'Toute saison',
+};
+
+const COMM_KIND_LABELS: Record<string, string> = {
+  anniversary: 'Anniversaire',
+  new_arrivals: 'Nouveautés',
+  trend_alert: 'Alerte tendance',
+  magic_link: 'Connexion',
+  consent_confirmation: 'Confirmation consentement',
+  manual: 'Manuel',
+};
+
+const COMM_STATUS_LABELS: Record<string, string> = {
+  sent: 'Envoyé',
+  simulated: 'Simulé',
+  failed: 'Échec',
+  skipped: 'Ignoré',
 };
 
 
@@ -209,6 +235,7 @@ export default function ClientDetailPage() {
             ['achats', `Achats (${data.transactions.length})`],
             ['fidelite', 'Fidélité'],
             ['gouts', 'Goûts'],
+            ['comms', `Communications (${data.communications.length})`],
             ['rgpd', 'RGPD'],
             ['audit', `Audit (${data.audit.length})`],
           ] as [Tab, string][]).map(([key, label]) => (
@@ -436,6 +463,41 @@ export default function ClientDetailPage() {
             </Card>
           </div>
           </div>
+        )}
+
+        {tab === 'comms' && (
+          <Card title="Communications envoyées">
+            {data.communications.length === 0 ? (
+              <p className="text-gray-500">Aucune communication envoyée.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="text-xs text-gray-500">
+                  <tr>
+                    <th className="text-left p-2">Date</th>
+                    <th className="text-left p-2">Canal</th>
+                    <th className="text-left p-2">Type</th>
+                    <th className="text-left p-2">Objet</th>
+                    <th className="text-left p-2">Statut</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.communications.map((c) => (
+                    <tr key={c.id} className="border-t border-gray-100">
+                      <td className="p-2 text-gray-600">{formatDate(c.created_at)}</td>
+                      <td className="p-2">{c.channel === 'sms' ? '📱 SMS' : '✉️ Email'}</td>
+                      <td className="p-2">{COMM_KIND_LABELS[c.kind] || c.kind}</td>
+                      <td className="p-2 text-gray-600">{c.subject || '—'}</td>
+                      <td className="p-2">
+                        <Badge variant={c.status === 'failed' ? 'default' : 'sold'}>
+                          {COMM_STATUS_LABELS[c.status] || c.status}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
         )}
 
         {tab === 'rgpd' && (

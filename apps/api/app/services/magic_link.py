@@ -278,6 +278,27 @@ async def issue(
         logger.warning("magic_link: email delivery failed: %s", exc)
         delivery_mode = "failed"
 
+    # Communication log (best-effort) — resolve the client when one exists.
+    try:
+        from app.services.communications import log_communication
+
+        cid_row = await db.execute(
+            select(Client.id).where(Client.email == norm_email)
+        )
+        cid = cid_row.scalar_one_or_none()
+        await log_communication(
+            db,
+            client_id=cid,
+            channel="sms" if is_phone else "email",
+            kind="magic_link",
+            status=delivery_mode,
+            to_address=norm_email,
+            subject=None if is_phone else subject,
+            backend=backend,
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.warning("magic_link: comm log failed: %s", exc)
+
     return {"delivery_mode": delivery_mode, "backend": backend, "channel": "sms" if is_phone else "email"}
 
 

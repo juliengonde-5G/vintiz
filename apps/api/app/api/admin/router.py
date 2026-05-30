@@ -1467,6 +1467,68 @@ async def run_customer_qualification(
     return summary
 
 
+# ---------------------------------------------------------------------------
+# Message templates (emails / SMS automatiques) — éditables par le manager
+# ---------------------------------------------------------------------------
+
+
+class MessageTemplatePayload(BaseModel):
+    subject: str | None = None
+    body_html: str | None = None
+    body_text: str | None = None
+    is_active: bool = True
+
+
+def _template_to_dict(t) -> dict:
+    return {
+        "id": str(t.id),
+        "key": t.key,
+        "channel": t.channel.value if hasattr(t.channel, "value") else t.channel,
+        "label": t.label,
+        "description": t.description,
+        "subject": t.subject,
+        "body_html": t.body_html,
+        "body_text": t.body_text,
+        "is_active": bool(t.is_active),
+    }
+
+
+@router.get("/message-templates", dependencies=[Depends(manager_only)])
+async def list_message_templates(db: Annotated[AsyncSession, Depends(get_db)]):
+    """List the editable automatic-message templates (seeds defaults if empty)."""
+    from app.models.communications import MessageTemplate
+    from app.services.communications import seed_default_templates
+
+    added = await seed_default_templates(db)
+    if added:
+        await db.commit()
+    rows = await db.execute(select(MessageTemplate).order_by(MessageTemplate.key))
+    return [_template_to_dict(t) for t in rows.scalars().all()]
+
+
+@router.put("/message-templates/{template_id}", dependencies=[Depends(manager_only)])
+async def update_message_template(
+    template_id: uuid.UUID,
+    payload: MessageTemplatePayload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Edit an automatic-message template (subject / body / active)."""
+    from app.models.communications import MessageTemplate
+
+    row = await db.execute(
+        select(MessageTemplate).where(MessageTemplate.id == template_id)
+    )
+    tpl = row.scalar_one_or_none()
+    if tpl is None:
+        raise HTTPException(status_code=404, detail="Template introuvable")
+    tpl.subject = payload.subject
+    tpl.body_html = payload.body_html
+    tpl.body_text = payload.body_text
+    tpl.is_active = payload.is_active
+    await db.commit()
+    return _template_to_dict(tpl)
+
+
 class KpiConfigPayload(BaseModel):
     store_surface_m2: float | None = None
     avg_piece_weight_kg: float | None = None

@@ -14,6 +14,7 @@ from app.models.client import (
     LoyaltyAccount,
     LoyaltyTransaction,
 )
+from app.models.communications import CommunicationLog, MessageTemplate
 from app.models.product import Category, Gender, Product, ProductPhoto, ProductStatus
 from app.models.user import User
 from app.services.new_arrivals import (
@@ -41,6 +42,8 @@ async def engine():
         Category.__table__,
         Product.__table__,
         ProductPhoto.__table__,
+        MessageTemplate.__table__,
+        CommunicationLog.__table__,
     ]
     async with eng.begin() as conn:
         await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=tables))

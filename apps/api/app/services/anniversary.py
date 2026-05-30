@@ -113,22 +113,54 @@ async def run_anniversary_pass(
             failed += 1
             continue
 
+        from app.services.communications import (
+            log_communication,
+            render_template,
+        )
+
+        first_name = client.first_name or "cliente fidèle"
+        rendered = await render_template(
+            db,
+            "anniversary",
+            {
+                "prenom": first_name,
+                "code_coupon": coupon.code,
+                "valeur": f"{percent_off:.0f} %",
+                "validite_jours": 30,
+            },
+            fallback_subject="🎂 Joyeux anniversaire — un cadeau Vintiz vous attend",
+            fallback_html=_email_html(client, coupon.code, percent_off),
+            fallback_text=_email_text(client, coupon.code, percent_off),
+        )
         message = EmailMessage(
             to=client.email,
             to_name=f"{client.first_name} {client.last_name}".strip() or None,
-            subject="🎂 Joyeux anniversaire — un cadeau Vintiz vous attend",
-            html=_email_html(client, coupon.code, percent_off),
-            text=_email_text(client, coupon.code, percent_off),
+            subject=rendered.subject,
+            html=rendered.html,
+            text=rendered.text,
         )
+        status = "failed"
+        backend = None
+        detail = None
         try:
             outcome = send_email(message)
+            status = outcome.status
+            backend = outcome.backend
+            detail = outcome.detail
             if outcome.status in {"sent", "simulated"}:
                 sent += 1
             else:
                 failed += 1
-        except EmailDeliveryError:
+        except EmailDeliveryError as exc:
             logger.exception("Anniversary email failed for client_id=%s", client.id)
             failed += 1
+            detail = str(exc)
+        await log_communication(
+            db, client_id=client.id, channel="email", kind="anniversary",
+            status=status, to_address=client.email, subject=rendered.subject,
+            backend=backend, detail=detail, template_key=rendered.template_key,
+        )
+        await db.commit()
 
     return {
         "considered": len(clients),

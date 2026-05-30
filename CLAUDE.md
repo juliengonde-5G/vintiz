@@ -363,6 +363,8 @@ GET    /api/admin/brand-tiers                Liste marques + tiers (manager only
 POST   /api/admin/brand-tiers                Créer marque (luxury/premium/mid/basic)
 PUT    /api/admin/brand-tiers/{id}           Modifier marque (manager only)
 DELETE /api/admin/brand-tiers/{id}           Supprimer marque (manager only)
+GET    /api/admin/message-templates          Liste templates emails/SMS auto éditables (manager only ; seed défauts au 1er appel)
+PUT    /api/admin/message-templates/{id}     Éditer objet/corps/actif d'un template (manager only)
 GET    /api/admin/store-plan                 Plan zones + occupation + score moyen (manager only)
 GET    /api/admin/window-display/current     Proposition vitrine semaine courante (manager only)
 POST   /api/admin/window-display/regenerate  Régénérer la proposition (manager only)

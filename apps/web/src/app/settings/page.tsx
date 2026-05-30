@@ -8,6 +8,7 @@ import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import CashManagementSettingsPanel from '@/components/settings/CashManagementSettingsPanel';
 import PosQuickAddPanel from '@/components/settings/PosQuickAddPanel';
+import MessageTemplatesPanel from '@/components/settings/MessageTemplatesPanel';
 import ReceiptInvoiceStudio from '@/components/settings/ReceiptInvoiceStudio';
 import ScoringWeightsPanel from '@/components/settings/ScoringWeightsPanel';
 import SumUpTerminalsPanel from '@/components/settings/SumUpTerminalsPanel';
@@ -72,7 +73,7 @@ interface CompatibilityItem {
 }
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'store' | 'caisse' | 'tickets' | 'communication' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
+  const [tab, setTab] = useState<'store' | 'caisse' | 'tickets' | 'communication' | 'templates' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
   const [hardware, setHardware] = useState<HardwareConfig | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityItem[]>([]);
   const [hwSaving, setHwSaving] = useState(false);
@@ -1044,6 +1045,8 @@ export default function SettingsPage() {
         )}
 
         {/* COMMUNICATION TAB — Email gateway (Brevo / SMTP / simulation) */}
+        {tab === 'templates' && <MessageTemplatesPanel />}
+
         {tab === 'communication' && (
           <div className="space-y-6">
             <Card title="Passerelle email — magic-link OTP, anniversaires, nouvelles arrivées">
