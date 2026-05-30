@@ -99,6 +99,16 @@ class Transaction(Base):
     total_ttc: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     hash_chain: Mapped[str] = mapped_column(String(64), nullable=False)
 
+    # Détection cadeau (PS 360 V2). ``is_gift`` = réponse à la micro-question
+    # caisse « Cet achat est-il pour vous ? » ou marquage par la cliente depuis
+    # /account/historique. ``exclude_from_taste`` retire l'achat du profil de
+    # goûts (un cadeau pollue le centroïde) tout en le gardant pour le CA et la
+    # fidélité. Additif : NOT NULL DEFAULT false (migration 0052).
+    is_gift: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    exclude_from_taste: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
     # Comptabilité — verrouillé après export vers Pennylane/FEC.
     accounting_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     accounting_export_id: Mapped[uuid.UUID | None] = mapped_column(

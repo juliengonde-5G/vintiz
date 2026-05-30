@@ -236,13 +236,14 @@ class EmbeddingService:
         the customer has no analyzable purchases.
         """
         # 1. The customer's most-recent sale transactions (newest first).
-        #    V2 will exclude is_gift / exclude_from_taste here and down-weight
-        #    atypical (gift) purchases to 0.3 — kept additive on purpose.
+        #    V2: gifts (exclude_from_taste) are filtered out — an atypical
+        #    purchase would otherwise pollute the centroid for 180 days.
         recent_tx = (
             select(Transaction.id, Transaction.created_at)
             .where(
                 Transaction.client_id == customer_id,
                 Transaction.transaction_type == TransactionType.sale,
+                Transaction.exclude_from_taste.is_(False),
             )
             .order_by(Transaction.created_at.desc())
             .limit(max_transactions)

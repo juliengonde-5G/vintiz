@@ -433,8 +433,13 @@ POST   /api/crm/account/consents/{purpose}         Toggle consent générique (b
 
 # Refonte Relation Client — PR4: companion POS + fiche client + predictive
 GET    /api/pos/clients/{id}/companion?cart_total_cents=&items=  Cart-aware up-sells (manager)
-GET    /api/crm/clients/{id}/full                  Agrégat 6 sections fiche client admin (manager)
+GET    /api/crm/clients/{id}/full                  Agrégat fiche client admin (+ section qualification V2, manager)
 GET    /api/admin/predictive/audience?period_days=90  Snapshot debug dominant tastes loyal_active (manager)
+
+# Personal Shopper 360 — V2: profilage métier + détection cadeau
+POST   /api/pos/transactions                       Crée vente (accepte is_gift? → exclut du profil de goûts)
+POST   /api/crm/account/transactions/{id}/gift     Cliente marque un achat « c'était un cadeau » (public, body: email, is_gift)
+POST   /api/admin/qualification/run                Trigger manuel recalcul qualification (saison/prix/affinité, manager)
 ```
 
 ## Fonctionnalités principales
