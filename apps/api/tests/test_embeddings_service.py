@@ -571,3 +571,28 @@ async def test_click_feedback_pulls_centroid_toward_clicked_piece(session):
     sim_after = _cosine(after.visual_centroid, clicked_vec)
 
     assert sim_after > sim_before
+
+
+# ---------------------------------------------------------------------------
+# Regression: _cosine must not do truthiness on the vector itself.
+# In production pgvector returns NumPy arrays; ``not a`` / ``if a`` then raises
+# "truth value of an array is ambiguous" → 500 on /personal-shopper/live.
+# SQLite tests use plain lists, so this guard pins the prod behaviour.
+# ---------------------------------------------------------------------------
+
+
+def test_cosine_accepts_numpy_arrays_without_ambiguity():
+    np = pytest.importorskip("numpy")
+    from app.services.embeddings import _cosine
+
+    a = np.array([0.1] * EMBEDDING_DIM, dtype="float32")
+    b = np.array([0.1] * EMBEDDING_DIM, dtype="float32")
+    # Must NOT raise ValueError("truth value of an array ...").
+    val = _cosine(a, b)
+    assert isinstance(val, float)
+    assert val > 0
+    # None / mismatched / empty → 0.0, still no ambiguity error.
+    assert _cosine(None, b) == 0.0
+    assert _cosine(a, None) == 0.0
+    assert _cosine(np.array([], dtype="float32"), b) == 0.0
+    assert _cosine(np.array([0.1, 0.2], dtype="float32"), b) == 0.0
