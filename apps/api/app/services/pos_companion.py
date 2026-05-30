@@ -241,9 +241,11 @@ async def _cart_visual_centroid(
         )
     )
     vecs = [
-        e.visual_embedding for e in rows.scalars().all() if e.visual_embedding
+        e.visual_embedding
+        for e in rows.scalars().all()
+        if e.visual_embedding is not None and len(e.visual_embedding) > 0
     ]
-    if not vecs:
+    if not vecs:  # list of vectors — plain-list truthiness, safe
         return None
     dim = len(vecs[0])
     summed = [0.0] * dim

@@ -173,10 +173,17 @@ def _text_features(product: Product) -> list[tuple[str, str]]:
 
 def _cosine(a: list[float] | None, b: list[float] | None) -> float:
     """Cosine similarity for two pre-normalised vectors. Returns 0.0 if either
-    is missing — the caller decides what to do with a non-comparable pair."""
-    if not a or not b or len(a) != len(b):
+    is missing — the caller decides what to do with a non-comparable pair.
+
+    Note: ``a is None`` / ``len(a) == 0`` rather than ``not a`` — in production
+    pgvector hands these back as NumPy arrays, where ``not a`` raises
+    "truth value of an array is ambiguous". Lists (SQLite tests) work either way.
+    """
+    if a is None or b is None or len(a) != len(b) or len(a) == 0:
         return 0.0
-    return sum(x * y for x, y in zip(a, b))
+    # float() so a NumPy dot (np.float32 in prod) becomes a plain Python float
+    # — keeps callers + JSON serialisation type-stable.
+    return float(sum(x * y for x, y in zip(a, b)))
 
 
 # ---------------------------------------------------------------------------
