@@ -31,11 +31,16 @@ class MagicLinkVerify(BaseModel):
     code: str
 
 
+class MagicLinkTokenVerify(BaseModel):
+    token: str
+
+
 class MagicLinkVerifyResponse(BaseModel):
     access_token: str
     expires_in: int
     client_id: str
     membership_number: str | None
+    email: str | None = None
 
 
 @router.post("/login", response_model=Token, dependencies=[Depends(login_rate_limit)])
@@ -152,4 +157,33 @@ async def magic_link_verify(
         expires_in=result.expires_in,
         client_id=result.client_id,
         membership_number=result.membership_number,
+        email=result.email,
+    )
+
+
+@router.post("/magic-link/verify-token", response_model=MagicLinkVerifyResponse)
+async def magic_link_verify_token(
+    payload: MagicLinkTokenVerify,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Passwordless login via the one-time link token (no code to type).
+
+    Exchanges the opaque token from the email link for the same 1h client
+    JWT as the OTP path. Generic 401 on any invalid/expired/used token."""
+    from app.services.magic_link import MagicLinkError, verify_by_token
+
+    client_ip = request.client.host if request.client else None
+    try:
+        result = await verify_by_token(db, payload.token, ip=client_ip)
+    except MagicLinkError:
+        await db.commit()
+        raise HTTPException(status_code=401, detail="invalid_or_expired")
+    await db.commit()
+    return MagicLinkVerifyResponse(
+        access_token=result.access_token,
+        expires_in=result.expires_in,
+        client_id=result.client_id,
+        membership_number=result.membership_number,
+        email=result.email,
     )

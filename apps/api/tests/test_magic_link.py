@@ -8,8 +8,10 @@ from app.models import Base, Client, MagicLinkToken
 from app.services.magic_link import (
     MagicLinkError,
     _hash_code,
+    _hash_token,
     issue,
     verify,
+    verify_by_token,
 )
 
 
@@ -55,6 +57,30 @@ async def test_issue_and_verify_happy_path(session):
     assert result.access_token
     assert result.client_id
     assert result.expires_in == 3600
+    assert result.email == "alice@x.fr"
+
+
+@pytest.mark.anyio
+async def test_verify_by_token_happy_path(session):
+    """Passwordless link login: a known token logs the client in, no code."""
+    session.add(Client(first_name="Bob", last_name="L", email="bob@x.fr"))
+    await session.flush()
+    tok = await _issue_with_known_code(session, "bob@x.fr")
+    tok.token_hash = _hash_token("LINKTOKEN123")
+    await session.flush()
+
+    result = await verify_by_token(session, "LINKTOKEN123", ip="127.0.0.1")
+    assert result.access_token
+    assert result.email == "bob@x.fr"
+    # Single-use: replay must fail.
+    with pytest.raises(MagicLinkError):
+        await verify_by_token(session, "LINKTOKEN123", ip="127.0.0.1")
+
+
+@pytest.mark.anyio
+async def test_verify_by_token_rejects_unknown(session):
+    with pytest.raises(MagicLinkError):
+        await verify_by_token(session, "does-not-exist", ip="127.0.0.1")
 
 
 @pytest.mark.anyio

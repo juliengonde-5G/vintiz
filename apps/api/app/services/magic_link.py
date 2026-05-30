@@ -76,6 +76,7 @@ class VerifyResult:
     expires_in: int
     client_id: str
     membership_number: str | None
+    email: str | None = None
 
 
 def _hash_code(code: str, salt: bytes | None = None) -> str:
@@ -189,15 +190,32 @@ async def issue(
     )
     await db.flush()
 
+    # Clickable one-time link (passwordless alternative to typing the code).
+    site_url = (
+        os.getenv("PUBLIC_SITE_URL")
+        or os.getenv("NEXT_PUBLIC_SITE_URL")
+        or "https://vintiz.fr"
+    ).rstrip("/")
+    login_link = f"{site_url}/account/login?token={token}"
+
     subject = f"Code de connexion Vintiz : {code}"
     html = (
         "<p>Bonjour,</p>"
-        f"<p>Votre code de connexion à votre espace Vintiz est&nbsp;: <strong style='font-size:24px'>{code}</strong></p>"
-        f"<p>Ce code est valable {CODE_TTL_MINUTES} minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.</p>"
+        "<p>Connectez-vous à votre espace Vintiz en un clic&nbsp;:</p>"
+        f"<p><a href='{login_link}' "
+        "style='display:inline-block;background:#0B7A6A;color:#fff;"
+        "padding:12px 24px;border-radius:9999px;text-decoration:none;"
+        "font-weight:600'>Me connecter</a></p>"
+        "<p>Ou saisissez ce code&nbsp;: "
+        f"<strong style='font-size:24px'>{code}</strong></p>"
+        f"<p>Ce lien et ce code sont valables {CODE_TTL_MINUTES} minutes. "
+        "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.</p>"
         "<p>À très vite en boutique,<br/>L'équipe Vintiz Vernon</p>"
     )
     text = (
-        f"Code de connexion Vintiz : {code}\n"
+        "Connectez-vous à votre espace Vintiz en un clic :\n"
+        f"{login_link}\n\n"
+        f"Ou saisissez ce code : {code}\n"
         f"Valable {CODE_TTL_MINUTES} minutes.\n"
         "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.\n"
     )
@@ -323,17 +341,56 @@ async def verify(
 
     token.used_at = _now()
     await db.flush()
+    return await _issue_jwt_for_email(db, norm_email)
 
-    # Resolve client by email (may be None for clients who haven't been
-    # created yet — most flows want to issue a JWT only when a Client row
-    # exists, so we 401 in that case).
+
+async def verify_by_token(
+    db: AsyncSession,
+    token: str,
+    ip: str | None = None,
+) -> VerifyResult:
+    """Passwordless login via the one-time link token (no code to type).
+
+    The issue() flow already stores an opaque ``token`` (hashed). The login
+    email embeds it as ``/account/login?token=…``; clicking it logs the
+    customer in directly. Same single-use + TTL guarantees as the OTP path.
+
+    Raises ``MagicLinkError("invalid_or_expired")``.
+    """
+    token = (token or "").strip()
+    if not token:
+        raise MagicLinkError("invalid_or_expired")
+    token_hash = _hash_token(token)
+    row = await db.execute(
+        select(MagicLinkToken)
+        .where(
+            MagicLinkToken.token_hash == token_hash,
+            MagicLinkToken.used_at.is_(None),
+            MagicLinkToken.expires_at > _now(),
+        )
+        .order_by(MagicLinkToken.created_at.desc())
+        .limit(1)
+    )
+    mlt: Optional[MagicLinkToken] = row.scalar_one_or_none()
+    if mlt is None:
+        raise MagicLinkError("invalid_or_expired")
+    mlt.used_at = _now()
+    await db.flush()
+    return await _issue_jwt_for_email(db, mlt.email)
+
+
+async def _issue_jwt_for_email(db: AsyncSession, norm_email: str) -> VerifyResult:
+    """Resolve the client by (already-normalised) email and mint a 1h JWT.
+
+    Shared tail of :func:`verify` and :func:`verify_by_token`. 401-style error
+    (generic) when no Client row exists for the verified identifier.
+    """
     client_row = await db.execute(
         select(Client).where(Client.email == norm_email)
     )
     client: Client | None = client_row.scalar_one_or_none()
     if client is None:
-        # Don't leak: keep error generic, but log so ops can see why no JWT.
-        logger.info("magic_link: verified code but no Client for email=%s", norm_email)
+        logger.info("magic_link: verified but no Client for id=%s", norm_email)
         raise MagicLinkError("invalid_or_expired")
 
     membership = None
@@ -353,4 +410,5 @@ async def verify(
         expires_in=JWT_TTL_MINUTES * 60,
         client_id=str(client.id),
         membership_number=membership,
+        email=client.email,
     )
