@@ -569,6 +569,98 @@ async def public_submit_onboarding(
         "age_band": client.age_band,
     }
 
+
+@router.get("/account/loyalty/status")
+async def public_loyalty_status(
+    email: str = Query(..., min_length=5, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Membership state for the espace client (#3) — drives the subscribe CTA."""
+    from app.services.loyalty import loyalty_active
+    from app.services.loyalty_config import get_subscription_config
+
+    client = await _resolve_public_client(db, email)
+    cfg = await get_subscription_config(db)
+    number = (
+        client.loyalty_account.membership_number
+        if client.loyalty_account
+        else None
+    )
+    return {
+        "active": loyalty_active(client),
+        "membership_number": number,
+        "mode": cfg.effective_mode(),
+        "price_cents": cfg.price_cents,
+        "expires_at": client.loyalty_expires_at.isoformat()
+        if client.loyalty_expires_at
+        else None,
+    }
+
+
+@router.post("/account/loyalty/subscribe")
+async def public_loyalty_subscribe(
+    request: LoyaltySubscribeRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Self-service loyalty subscription from the espace client (#3).
+
+    The client must already exist (magic-link login). Idempotent: returns the
+    existing membership if there's already an account. The card is issued in
+    the currently active mode (free / paid / first_purchase); no online
+    payment is taken — a paid mode is simply surfaced so the boutique can
+    settle it on the next visit."""
+    from app.services.loyalty import (
+        LoyaltyDuplicateError,
+        loyalty_active,
+        subscribe,
+    )
+    from app.services.loyalty_config import get_subscription_config
+
+    client = await _resolve_public_client(db, request.email)
+    if client.loyalty_account is not None:
+        return {
+            "membership_number": client.loyalty_account.membership_number,
+            "mode": client.loyalty_subscription_mode,
+            "active": loyalty_active(client),
+            "expires_at": client.loyalty_expires_at.isoformat()
+            if client.loyalty_expires_at
+            else None,
+            "already_member": True,
+        }
+
+    cfg = await get_subscription_config(db)
+    mode = cfg.effective_mode()
+    try:
+        _client, account = await subscribe(
+            db,
+            first_name=client.first_name or request.first_name or "Cliente",
+            last_name=client.last_name or request.last_name or "Vintiz",
+            email=client.email,
+            postal_code=None,
+            mode=mode,
+            optin_newsletter=request.optin_newsletter,
+            optin_profiling=request.optin_profiling,
+            source="site_self_service",
+        )
+    except LoyaltyDuplicateError as exc:
+        return {
+            "membership_number": exc.membership_number,
+            "mode": client.loyalty_subscription_mode,
+            "active": True,
+            "already_member": True,
+        }
+    await db.commit()
+    return {
+        "membership_number": account.membership_number,
+        "mode": mode,
+        "active": True,
+        "expires_at": _client.loyalty_expires_at.isoformat()
+        if _client.loyalty_expires_at
+        else None,
+        "already_member": False,
+    }
+
+
 @router.get("/account/wallet")
 async def public_wallet_pass(
     email: str = Query(..., min_length=5, max_length=255),
