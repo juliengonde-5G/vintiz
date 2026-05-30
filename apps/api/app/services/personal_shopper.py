@@ -405,7 +405,9 @@ class PersonalShopperService:
                 "brand": p.brand,
                 "price_cents": int(round(float(p.sale_price) * 100)),
                 "score": round(float(score), 4),
-                "photo_url": p.storefront_photo_url or p.photo_url,
+                # Raw upload first on the POS (reliable like the search results);
+                # storefront copy can 404 if Photoroom processing was skipped.
+                "photo_url": p.photo_url or p.storefront_photo_url,
                 "zone_name": zones.get(p.zone_id),
             })
 

@@ -35,6 +35,7 @@ from app.models.coupon import Coupon
 from app.models.embeddings import ProductEmbedding
 from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.product import Category, Product, ProductStatus
+from app.models.store import StoreZone
 from app.services.embeddings import _cosine, _l2_normalize
 
 
@@ -177,6 +178,15 @@ async def _suggest_complementary(
                 reverse=True,
             )
 
+    # Resolve physical zone names once (mini-fiche « localisation » on the POS).
+    zone_ids = {p.zone_id for p in products if p.zone_id}
+    zone_names: dict = {}
+    if zone_ids:
+        zrows = await db.execute(
+            select(StoreZone.id, StoreZone.name).where(StoreZone.id.in_(zone_ids))
+        )
+        zone_names = {zid: zname for zid, zname in zrows.all()}
+
     out: list[dict[str, Any]] = []
     seen_categories: set[uuid.UUID] = set()
     for product in products:
@@ -201,12 +211,15 @@ async def _suggest_complementary(
             "product_id": str(product.id),
             "name": product.name,
             "price_cents": int(round(float(product.sale_price) * 100)),
-            # Photoroom-styled copy for editorial cards (décision #11).
-            "photo_url": product.storefront_photo_url or product.photo_url,
+            # Raw upload first — same image the POS search renders reliably.
+            # The storefront (Photoroom) copy can 404 on the POS when processing
+            # was skipped / not persisted, which broke the suggestion thumbnails.
+            "photo_url": product.photo_url or product.storefront_photo_url,
             "score": float(product.trend_score or 0),
             "reason": reason,
             "size": product.size,
             "color": product.color,
+            "zone_name": zone_names.get(product.zone_id),
         })
         if len(out) >= top_n:
             break
