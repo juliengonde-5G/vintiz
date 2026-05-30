@@ -28,7 +28,6 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.client import LoyaltyAccount
 from app.models.embeddings import (
     EMBEDDING_DIM,
     CustomerTasteProfile,
@@ -44,6 +43,11 @@ ALGO_VERSION = "v1-hashing-trick-2026-04"
 # taste centroid. Tuned so a purchase 6 months old has ~half the weight
 # of a fresh one.
 TASTE_HALF_LIFE_DAYS = 180
+
+# V4 — feedback loop (§9.3): clicked-but-not-bought pieces nudge the centroid
+# at a fraction of a real purchase's weight, over a rolling window.
+CLICK_WEIGHT = 0.3
+CLICK_WINDOW_DAYS = 90
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +68,20 @@ def _l2_normalize(vec: list[float]) -> list[float]:
     if norm == 0:
         return vec
     return [x / norm for x in vec]
+
+
+def _resize_vector(vec: list[float], dim: int = EMBEDDING_DIM) -> list[float]:
+    """Fold an arbitrary-length vector (e.g. CLIP's 512) into ``dim`` buckets.
+
+    Deterministic additive folding + L2-normalisation so a real image encoder's
+    output drops into the existing ``EMBEDDING_DIM`` index without changing the
+    schema or the HNSW dimensionality. Identity (modulo normalisation) when the
+    input already has ``dim`` components.
+    """
+    out = [0.0] * dim
+    for i, x in enumerate(vec):
+        out[i % dim] += x
+    return _l2_normalize(out)
 
 
 def _encode_features(features: Iterable[tuple[str, str]], dim: int = EMBEDDING_DIM) -> list[float]:
@@ -123,6 +141,23 @@ def _visual_features(product: Product) -> list[tuple[str, str]]:
     return feats
 
 
+def _encode_visual(product: Product) -> list[float]:
+    """Visual embedding for one product (V4 pluggable backend).
+
+    When ``VISUAL_EMBEDDING_BACKEND=clip`` and the model is available, encodes
+    the product photo with the real CLIP/SigLIP encoder (resized into
+    ``EMBEDDING_DIM``). Falls back — per product — to the dependency-free
+    structured encoder otherwise, so the catalogue always has a vector.
+    """
+    from app.services import visual_encoder
+
+    if visual_encoder.backend_active() and getattr(product, "photo_url", None):
+        raw = visual_encoder.encode_image(product.photo_url)
+        if raw:
+            return _resize_vector(raw, EMBEDDING_DIM)
+    return _encode_features(_visual_features(product))
+
+
 def _text_features(product: Product) -> list[tuple[str, str]]:
     """Tokens that capture what the piece is *called* and *described* as."""
     feats: list[tuple[str, str]] = [
@@ -157,7 +192,7 @@ class EmbeddingService:
 
     async def compute_for_product(self, product: Product) -> ProductEmbedding:
         """Compute (or refresh) the embedding row for one product."""
-        visual = _encode_features(_visual_features(product))
+        visual = _encode_visual(product)
         text = _encode_features(_text_features(product))
 
         result = await self.db.execute(
@@ -258,8 +293,8 @@ class EmbeddingService:
         )
         result = await self.db.execute(query)
         rows = result.all()
-        if not rows:
-            return None
+        # Note: we no longer early-return on an empty purchase set — a customer
+        # with only clicks (V4 feedback loop, below) can still get a centroid.
 
         product_ids = [row[0].product_id for row in rows]
         emb_result = await self.db.execute(
@@ -296,7 +331,27 @@ class EmbeddingService:
             weight_total += weight
             analyzed += 1
 
-        if analyzed == 0:
+        # V4 — feedback loop (§9.3): fold clicked-but-not-bought pieces in at
+        # CLICK_WEIGHT so the centroid learns from engagement, not only sales.
+        clicked_ids = await self._clicked_product_ids(
+            customer_id, exclude=set(product_ids)
+        )
+        if clicked_ids:
+            cemb = await self.db.execute(
+                select(ProductEmbedding).where(
+                    ProductEmbedding.product_id.in_(clicked_ids)
+                )
+            )
+            for emb in cemb.scalars().all():
+                if emb.visual_embedding is None:
+                    continue
+                for i in range(EMBEDDING_DIM):
+                    visual_sum[i] += CLICK_WEIGHT * emb.visual_embedding[i]
+                    if emb.text_embedding is not None:
+                        text_sum[i] += CLICK_WEIGHT * emb.text_embedding[i]
+                weight_total += CLICK_WEIGHT
+
+        if weight_total == 0:
             return None
 
         visual_centroid = _l2_normalize(
@@ -329,6 +384,26 @@ class EmbeddingService:
 
         await self.db.flush()
         return profile
+
+    async def _clicked_product_ids(
+        self, customer_id, exclude: set, days: int = CLICK_WINDOW_DAYS
+    ) -> list:
+        """Distinct products this customer clicked on recommendations within
+        ``days`` (V4 feedback loop), minus those already counted as purchases."""
+        from app.models.events import EventLog, EventType
+
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        rows = await self.db.execute(
+            select(EventLog.product_id)
+            .where(
+                EventLog.customer_id == customer_id,
+                EventLog.event_type == EventType.customer_recommendation_clicked,
+                EventLog.occurred_at >= since,
+                EventLog.product_id.is_not(None),
+            )
+            .distinct()
+        )
+        return [pid for (pid,) in rows.all() if pid and pid not in exclude]
 
     # -- Similarity search --------------------------------------------------
 

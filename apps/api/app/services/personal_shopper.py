@@ -23,6 +23,7 @@ update so old logged events stay attributable.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -169,6 +170,7 @@ class PersonalShopperService:
         Raises ``PersonalShopperGatedError`` if the customer is not a
         loyalty member or hasn't granted profiling consent (PR2 gating).
         """
+        t_start = time.monotonic()
         customer = await self._load_customer(customer_id)
         await self._enforce_gating(customer)
 
@@ -230,6 +232,7 @@ class PersonalShopperService:
 
         # 5. Log one event per surfaced product so click-through can be
         # measured later.
+        latency_ms = int((time.monotonic() - t_start) * 1000)
         events = EventService(self.db)
         for product, score in diversified:
             await events.emit(
@@ -243,6 +246,9 @@ class PersonalShopperService:
                     "score": float(score),
                     "fallback_used": fallback_used,
                     "prompt_version": PROMPT_VERSION,
+                    # V4 observability — A/B + latency budget tracking (§9.3).
+                    "latency_ms": latency_ms,
+                    "visual_backend": settings.VISUAL_EMBEDDING_BACKEND,
                 },
             )
 

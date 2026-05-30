@@ -36,6 +36,16 @@ class Settings(BaseSettings):
     # otherwise the storefront copy is simply skipped.
     PHOTOROOM_API_KEY: str | None = None
 
+    # Visual embedding backend (PS 360 V4, audit §9.2). Default "structured" =
+    # the dependency-free hashing-trick encoder over the Vision attributes.
+    # "clip" activates a real CLIP/SigLIP image encoder (ONNX) — install the
+    # heavy extra (``pip install -e ".[clip]"``) AND point CLIP_MODEL_PATH at a
+    # local .onnx model. The code imports onnxruntime lazily and degrades back
+    # to "structured" per-product when the model/dep is unavailable, so turning
+    # this on is non-breaking.
+    VISUAL_EMBEDDING_BACKEND: str = "structured"  # structured | clip
+    CLIP_MODEL_PATH: str | None = None  # path to a CLIP/SigLIP image-encoder .onnx
+
     # SMTP transactional email (fallback when Brevo is not configured)
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
