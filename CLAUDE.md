@@ -419,8 +419,9 @@ POST   /api/pos/coupons/validate                   Preview coupon (body: code, c
 POST   /api/pos/transactions                       Crée vente (accepte coupon_code? optionnel)
 
 # Refonte Relation Client — PR1: Magic-link + souscription + ticket fidélité
-POST   /api/auth/magic-link/request                Issue OTP 6 chiffres email (public, 204 toujours, anti-énumération)
+POST   /api/auth/magic-link/request                Issue OTP 6 chiffres + lien cliquable email (public, 204 toujours, anti-énumération)
 POST   /api/auth/magic-link/verify                 Échange OTP → JWT client 1h (public)
+POST   /api/auth/magic-link/verify-token           Connexion sans code via le lien email (?token=) → JWT client 1h (public)
 POST   /api/pos/loyalty/subscribe                  Crée carte V###### au POS avec opt-ins RGPD (manager, 409 si email existant)
 GET    /api/pos/clients/identify?q=                Identifie client par V######, email, phone (manager)
 GET    /api/admin/loyalty/config                   Lit config souscription (mode + prix + seuil) (manager)

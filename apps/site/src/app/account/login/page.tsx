@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -19,6 +19,42 @@ export default function AccountLoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  // Passwordless login via the email link: ?token=… → verify directly, no code.
+  const [linkBusy, setLinkBusy] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const token = new URLSearchParams(window.location.search).get("token");
+    if (!token) return;
+    setLinkBusy(true);
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/auth/magic-link/verify-token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          try {
+            window.localStorage.setItem("vintiz_account_token", data.access_token);
+            if (data.email) {
+              window.localStorage.setItem("vintiz_account_email", data.email);
+            }
+          } catch {
+            /* private mode */
+          }
+          router.push("/account");
+          return;
+        }
+        setError("Ce lien de connexion est invalide ou expiré. Demandez-en un nouveau.");
+      } catch {
+        setError("Erreur réseau. Réessayez.");
+      }
+      setLinkBusy(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const requestCode = async (e: FormEvent) => {
     e.preventDefault();
@@ -89,8 +125,15 @@ export default function AccountLoginPage() {
       <section className="max-w-md mx-auto px-4 pt-16 pb-24">
         <h1 className="text-3xl font-display font-bold text-black mb-2">Mon espace Vintiz</h1>
         <p className="text-gray-600 mb-8">
-          Connectez-vous avec un code à 6 chiffres reçu par email — aucun mot de passe à retenir.
+          Recevez un email&nbsp;: cliquez sur le lien de connexion, ou saisissez
+          le code à 6 chiffres — aucun mot de passe à retenir.
         </p>
+
+        {linkBusy && (
+          <div className="mb-6 p-3 bg-vz-teal/10 text-vz-teal rounded-lg text-sm">
+            Connexion en cours…
+          </div>
+        )}
 
         {step === "email" && (
           <form onSubmit={requestCode} className="space-y-4">

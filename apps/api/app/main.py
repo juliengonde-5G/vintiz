@@ -70,8 +70,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Middlewares are applied bottom-up: SecurityHeaders runs last (outermost),
-# then RequestId, then CORS innermost so it touches the actual response.
+# Middlewares are applied bottom-up: the LAST added runs OUTERMOST. CORS must
+# be the outermost so that EVERY response — including 500s produced by the
+# global exception handler — carries Access-Control-Allow-Origin. Otherwise a
+# server error reaches the browser without the CORS header and is reported as a
+# misleading "CORS / access control" error instead of the real 500.
+app.add_middleware(RequestIdMiddleware)
+app.add_middleware(AuditContextMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -80,9 +86,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["x-request-id"],
 )
-app.add_middleware(RequestIdMiddleware)
-app.add_middleware(AuditContextMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
 
 
 # Domain exception → HTTP translation (must be registered before the catch-all below)
