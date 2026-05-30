@@ -126,6 +126,14 @@ ANTHROPIC_API_KEY=sk-ant-...
 # ignorée (la photo originale reste). Voir app/services/storefront_photo.py.
 PHOTOROOM_API_KEY=                # clé API Photoroom
 
+# Embedding visuel Personal Shopper (PS 360 V4). "structured" (défaut) =
+# encodeur hashing-trick sans dépendance. "clip" = vrai encodeur CLIP/SigLIP
+# (ONNX) : installer l'extra (pip install -e ".[clip]") + pointer CLIP_MODEL_PATH
+# sur un .onnx. Repli automatique par produit sur "structured" si modèle/dep
+# absent → activation non bloquante (comme rembg). Voir app/services/visual_encoder.py.
+VISUAL_EMBEDDING_BACKEND=structured   # structured | clip
+CLIP_MODEL_PATH=                      # chemin du modèle image-encoder .onnx (mode clip)
+
 # Météo Vernon (sans cette clé, widget météo indisponible)
 OPENWEATHER_API_KEY=votre-cle-openweather
 

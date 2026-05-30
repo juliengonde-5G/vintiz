@@ -35,6 +35,12 @@ dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0", "httpx>=0.27.0", "ruff>=0.8.0"
 # (PHOTOROOM_API_KEY, dependency-free); the code imports rembg lazily and
 # degrades to "skipped" when this extra isn't installed.
 rembg = ["rembg>=2.0.50", "onnxruntime>=1.16.0"]
+# Real visual embedding (CLIP/SigLIP) for the Personal Shopper (PS 360 V4).
+# Heavy (onnxruntime + Pillow). Install only where VISUAL_EMBEDDING_BACKEND=clip
+# is wanted: ``pip install -e ".[clip]"`` + set CLIP_MODEL_PATH. The encoder
+# imports onnxruntime lazily and falls back to the structured encoder when the
+# dep/model is missing, so it's safe to ship without this extra installed.
+clip = ["onnxruntime>=1.16.0", "Pillow>=10.0.0"]
 
 [build-system]
 requires = ["setuptools>=61", "wheel"]

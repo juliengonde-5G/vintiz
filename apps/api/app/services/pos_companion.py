@@ -32,8 +32,10 @@ from sqlalchemy.orm import selectinload
 
 from app.models.client import Client, LoyaltyTransaction, LoyaltyTxType
 from app.models.coupon import Coupon
+from app.models.embeddings import ProductEmbedding
 from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.product import Category, Product, ProductStatus
+from app.services.embeddings import _cosine, _l2_normalize
 
 
 logger = logging.getLogger("vintiz.pos_companion")
@@ -149,6 +151,32 @@ async def _suggest_complementary(
     rows = await db.execute(stmt)
     products = list(rows.scalars().all())
 
+    # V4 — visual look completion (§6.2): re-rank the complementary candidates
+    # by visual similarity to the cart's anchor pieces. The static mapping above
+    # stays the candidate source / fallback. Uses the real CLIP vector when the
+    # backend is active, the structured one otherwise — and skips silently when
+    # no embedding is available (keeps the trend_score order).
+    anchor = await _cart_visual_centroid(db, excluded_product_ids)
+    look_completion = False
+    if anchor is not None and products:
+        erows = await db.execute(
+            select(ProductEmbedding).where(
+                ProductEmbedding.product_id.in_([p.id for p in products])
+            )
+        )
+        cand_emb = {e.product_id: e for e in erows.scalars().all()}
+        if cand_emb:
+            look_completion = True
+
+            def _visual_sim(p: Product) -> float:
+                e = cand_emb.get(p.id)
+                return _cosine(anchor, e.visual_embedding) if e else -1.0
+
+            products.sort(
+                key=lambda p: (_visual_sim(p), float(p.trend_score or 0)),
+                reverse=True,
+            )
+
     out: list[dict[str, Any]] = []
     seen_categories: set[uuid.UUID] = set()
     for product in products:
@@ -164,12 +192,17 @@ async def _suggest_complementary(
             else "Tendance disponible"
         )
         if category_name:
-            reason = f"{category_name.title()} pour compléter"
+            reason = (
+                f"{category_name.title()} assorti au look"
+                if look_completion
+                else f"{category_name.title()} pour compléter"
+            )
         out.append({
             "product_id": str(product.id),
             "name": product.name,
             "price_cents": int(round(float(product.sale_price) * 100)),
-            "photo_url": product.photo_url,
+            # Photoroom-styled copy for editorial cards (décision #11).
+            "photo_url": product.storefront_photo_url or product.photo_url,
             "score": float(product.trend_score or 0),
             "reason": reason,
             "size": product.size,
@@ -178,6 +211,33 @@ async def _suggest_complementary(
         if len(out) >= top_n:
             break
     return out
+
+
+async def _cart_visual_centroid(
+    db: AsyncSession, product_ids: set[uuid.UUID]
+) -> list[float] | None:
+    """Mean visual embedding of the pieces already in the cart (the look anchor).
+
+    ``None`` when the cart is empty or none of its pieces have an embedding —
+    the caller then keeps the trend-ranked order."""
+    if not product_ids:
+        return None
+    rows = await db.execute(
+        select(ProductEmbedding).where(
+            ProductEmbedding.product_id.in_(product_ids)
+        )
+    )
+    vecs = [
+        e.visual_embedding for e in rows.scalars().all() if e.visual_embedding
+    ]
+    if not vecs:
+        return None
+    dim = len(vecs[0])
+    summed = [0.0] * dim
+    for v in vecs:
+        for i in range(dim):
+            summed[i] += v[i]
+    return _l2_normalize(summed)
 
 
 async def _eligible_coupons(
