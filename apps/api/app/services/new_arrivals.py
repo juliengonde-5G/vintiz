@@ -152,15 +152,34 @@ async def run_new_arrivals_pass(
         products = await _personalized_arrivals(db, client.id) or generic
         if not products:
             continue
+        from app.services.communications import (
+            log_communication,
+            render_template,
+        )
+
+        rendered = await render_template(
+            db,
+            "new_arrivals",
+            {"prenom": client.first_name or "", "nb_pieces": len(products)},
+            fallback_subject="🌿 Vintiz — les nouveautés de la semaine",
+            fallback_html=_render_html(client, products),
+            fallback_text=_render_text(client, products),
+        )
         message = EmailMessage(
             to=client.email,
             to_name=f"{client.first_name} {client.last_name}".strip() or None,
-            subject="🌿 Vintiz — les nouveautés de la semaine",
-            html=_render_html(client, products),
-            text=_render_text(client, products),
+            subject=rendered.subject,
+            html=rendered.html,
+            text=rendered.text,
         )
+        status = "failed"
+        backend = None
+        detail = None
         try:
             outcome = send_email(message)
+            status = outcome.status
+            backend = outcome.backend
+            detail = outcome.detail
             if outcome.status in {"sent", "simulated"}:
                 sent += 1
             else:
@@ -168,6 +187,12 @@ async def run_new_arrivals_pass(
         except EmailDeliveryError as exc:
             logger.warning("New-arrivals email failed for %s: %s", client.email, exc)
             failed += 1
+            detail = str(exc)
+        await log_communication(
+            db, client_id=client.id, channel="email", kind="new_arrivals",
+            status=status, to_address=client.email, subject=rendered.subject,
+            backend=backend, detail=detail, template_key=rendered.template_key,
+        )
 
     return {
         "recipients": len(clients),

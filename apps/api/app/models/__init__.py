@@ -53,6 +53,11 @@ from app.models.local_calendar import (
 )
 from app.models.auth import MagicLinkToken
 from app.models.receipt_template import ReceiptKind, ReceiptTemplate
+from app.models.communications import (
+    CommunicationLog,
+    MessageChannel,
+    MessageTemplate,
+)
 from app.models.payment_attempt import PaymentAttempt, PaymentAttemptStatus
 from app.models.cash_movement import (
     CashMovement,
@@ -97,6 +102,7 @@ __all__ = [
     "LocalEvent", "CommercialOperation", "CahierDayArchive",
     "MagicLinkToken",
     "ReceiptKind", "ReceiptTemplate",
+    "CommunicationLog", "MessageChannel", "MessageTemplate",
     "PaymentAttempt", "PaymentAttemptStatus",
     "CashMovement", "CashMovementDirection", "CashMovementReason",
     "SumUpTerminal", "SumUpTerminalStatus",

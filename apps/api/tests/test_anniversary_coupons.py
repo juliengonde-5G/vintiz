@@ -14,6 +14,7 @@ from app.models.client import (
     LoyaltyAccount,
     LoyaltyTransaction,
 )
+from app.models.communications import CommunicationLog, MessageTemplate
 from app.models.coupon import Coupon, CouponSource
 from app.models.pos import Transaction
 from app.models.user import User
@@ -38,6 +39,8 @@ async def engine():
         Consent.__table__,
         Transaction.__table__,
         Coupon.__table__,
+        MessageTemplate.__table__,
+        CommunicationLog.__table__,
     ]
     async with eng.begin() as conn:
         await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=tables))

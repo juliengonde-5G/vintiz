@@ -439,6 +439,29 @@ async def get_client_full(
         for a in audit_rows.scalars().all()
     ]
 
+    # Communications sent to this client (last 50) — emails + SMS automatiques.
+    from app.models.communications import CommunicationLog
+
+    comm_rows = await db.execute(
+        select(CommunicationLog)
+        .where(CommunicationLog.client_id == client_id)
+        .order_by(CommunicationLog.created_at.desc())
+        .limit(50)
+    )
+    communications = [
+        {
+            "id": str(c.id),
+            "channel": c.channel,
+            "kind": c.kind,
+            "subject": c.subject,
+            "status": c.status,
+            "backend": c.backend,
+            "to_address": c.to_address,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        }
+        for c in comm_rows.scalars().all()
+    ]
+
     # Active coupons attached.
     coupon_rows = await db.execute(
         select(Coupon)
@@ -481,6 +504,7 @@ async def get_client_full(
         "transactions": transactions,
         "consents": consents,
         "coupons": coupons,
+        "communications": communications,
         "audit": audit,
     }
 
@@ -984,7 +1008,9 @@ async def request_client_deletion(
 # ---------------------------------------------------------------------------
 
 class RecommendationClickRequest(BaseModel):
-    recommendation_set_id: uuid.UUID
+    # Optional: a click from the espace-client browsing isn't always tied to a
+    # reco set. When absent we mint one so the event still groups consistently.
+    recommendation_set_id: uuid.UUID | None = None
     product_id: uuid.UUID
     customer_email: str | None = None
     position_in_list: int | None = None
@@ -1281,7 +1307,7 @@ async def personal_shopper_click(
             customer_id = client.id
 
     await PersonalShopperService(db).record_click(
-        recommendation_set_id=request.recommendation_set_id,
+        recommendation_set_id=request.recommendation_set_id or uuid.uuid4(),
         product_id=request.product_id,
         customer_id=customer_id,
         position_in_list=request.position_in_list,

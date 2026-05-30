@@ -432,6 +432,7 @@ export default function AccountShopperPage() {
                 items={searchResults ?? items}
                 empty="Aucun produit ne correspond à cette recherche."
                 cacheHit={searchResults ? searchCacheHit : false}
+                email={email}
               />
             )}
           </>
@@ -487,12 +488,26 @@ function ProductGrid({
   items,
   empty,
   cacheHit,
+  email,
 }: {
   items: ShopperItem[];
   empty: string;
   cacheHit: boolean;
+  email: string;
 }) {
   const [peek, setPeek] = useState<ShopperItem | null>(null);
+  // Log the click as a (masked) purchase-intent signal — feeds the taste
+  // profile (CLICK_WEIGHT) + the analytics funnel. Fire-and-forget.
+  const logClick = (productId: string) => {
+    if (!email) return;
+    void fetch(`${API_URL}/api/crm/personal-shopper-v2/click`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_id: productId, customer_email: email }),
+    }).catch(() => {
+      /* intent logging is best-effort — never block the UI */
+    });
+  };
   if (items.length === 0) {
     return <p className="text-gray-500">{empty}</p>;
   }
@@ -521,7 +536,7 @@ function ProductGrid({
           >
             <button
               type="button"
-              onClick={() => setPeek(item)}
+              onClick={() => { setPeek(item); logClick(item.product_id); }}
               className="aspect-square bg-gray-100 relative block w-full p-0 border-0 cursor-zoom-in"
               aria-label={`Agrandir ${item.name}`}
             >
