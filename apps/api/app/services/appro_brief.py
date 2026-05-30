@@ -7,7 +7,8 @@ the aggregated demand signals into **carton-level** recommendations by
 (it can't deliver by size/colour).
 
 Signals (audit §7.3), degrading gracefully at cold-start:
-1. Dominant tastes of loyal-active members (purchases) — ``compute_audience_snapshot``.
+1. Dominant tastes of the loyalty-active cohort (purchases) —
+   ``predictive_targeting.dominant_tastes_loyal_active``.
 2. Member gender skew (declarative ``Client.gender_profile``).
 3. Current in-stock supply per category × gender.
 (Unsatisfied PS searches + sell-through plug in here once volume exists.)
@@ -25,29 +26,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.client import Client
 from app.models.product import Category, Product, ProductStatus
-from app.services.predictive_targeting import compute_audience_snapshot
+from app.services.predictive_targeting import dominant_tastes_loyal_active
 
 BRIEF_VERSION = "appro-brief-v1-2026-05"
 
-# Below this absolute count, a (category, gender) cell is considered thin enough
-# to warrant a carton even without a strong purchase signal (cold-start).
+# Below this absolute count, a category cell is thin enough to warrant a carton
+# even without a strong purchase signal (cold-start).
 LOW_STOCK_THRESHOLD = 3
 
 
-async def _stock_by_category_gender(db: AsyncSession) -> dict[tuple[str, str], int]:
+async def _stock_by_category(db: AsyncSession) -> dict[str, int]:
+    """In-stock count per (lowercased) category name."""
     rows = await db.execute(
-        select(Category.name, Product.gender, func.count(Product.id))
+        select(Category.name, func.count(Product.id))
         .join(Product, Product.category_id == Category.id)
         .where(Product.status.in_([ProductStatus.stock, ProductStatus.display]))
-        .group_by(Category.name, Product.gender)
+        .group_by(Category.name)
     )
-    out: dict[tuple[str, str], int] = {}
-    for name, gender, count in rows.all():
-        if not name:
-            continue
-        g = gender.value if gender is not None else "mixte"
-        out[(name.lower(), g)] = int(count)
-    return out
+    return {name.lower(): int(c) for name, c in rows.all() if name}
 
 
 async def _member_gender_skew(db: AsyncSession) -> dict[str, int]:
@@ -59,40 +55,35 @@ async def _member_gender_skew(db: AsyncSession) -> dict[str, int]:
     return {g: int(c) for g, c in rows.all() if g}
 
 
-def _cat_stock(stock: dict[tuple[str, str], int], cat: str) -> int:
-    return sum(v for (cn, _g), v in stock.items() if cn == cat)
-
-
 async def build_appro_brief(
     db: AsyncSession, *, period_days: int = 90, max_lines: int = 8
 ) -> dict:
     """Build the weekly approvisionnement brief. See module docstring."""
-    audience = await compute_audience_snapshot(db, period_days=period_days)
-    demand_cats = audience.get("top_categories") or []
-    top_brands = [b.get("name") for b in (audience.get("top_brands") or []) if b.get("name")]
-    n_tx = int(audience.get("n_transactions") or 0)
-    cold_start = n_tx == 0
+    tastes = await dominant_tastes_loyal_active(db, period_days=period_days)
+    demand_cats = tastes.top_categories  # [(name, count)]
+    top_brands = [b for b, _ in tastes.top_brands]
+    total_demand = sum(c for _, c in demand_cats) or 1
 
-    stock = await _stock_by_category_gender(db)
+    stock = await _stock_by_category(db)
     total_stock = sum(stock.values()) or 1
     gender_skew = await _member_gender_skew(db)
     dominant_gender = (
         max(gender_skew, key=gender_skew.get) if gender_skew else "mixte"
     )
-    # Quality dimension: Vintiz is premium 2nd-hand; the demanded brands sharpen it.
-    quality_hint = "premium"
+    cold_start = not demand_cats
+
+    quality_hint = "premium"  # Vintiz positioning; sharpened by the demanded brands
     brands_label = ", ".join(top_brands[:3]) if top_brands else "marques premium"
 
     lines: list[dict] = []
 
     if demand_cats:
-        # Demand-driven: compare each demanded category's share vs its supply.
-        for c in demand_cats[:max_lines]:
-            cat = (c.get("name") or "").lower()
+        for name, count in demand_cats[:max_lines]:
+            cat = (name or "").lower()
             if not cat:
                 continue
-            demand_share = float(c.get("share") or 0)
-            cat_stock = _cat_stock(stock, cat)
+            demand_share = count / total_demand
+            cat_stock = stock.get(cat, 0)
             stock_share = cat_stock / total_stock
             gap = demand_share - stock_share
             if gap > 0.05 or cat_stock <= LOW_STOCK_THRESHOLD:
@@ -121,19 +112,16 @@ async def build_appro_brief(
                 "rationale": rationale,
             })
     else:
-        # Cold-start: no purchase demand yet → surface the thinnest cells for the
-        # dominant member gender so the first cartons fill the obvious gaps.
+        # Cold-start: no purchase demand yet → surface the thinnest categories so
+        # the first cartons fill the obvious gaps for the dominant member gender.
         all_cats = (
-            await db.execute(select(Category.name).where(Category.is_active.is_(True)))
+            await db.execute(
+                select(Category.name).where(Category.is_active.is_(True))
+            )
         ).scalars().all()
-        scored = []
-        for name in all_cats:
-            if not name:
-                continue
-            cat = name.lower()
-            cell = stock.get((cat, dominant_gender), 0) + stock.get((cat, "mixte"), 0)
-            scored.append((cell, cat))
-        scored.sort()  # thinnest first
+        scored = sorted(
+            ((stock.get((n or "").lower(), 0), (n or "").lower()) for n in all_cats if n)
+        )
         for cell, cat in scored[:max_lines]:
             lines.append({
                 "category": cat,
@@ -144,8 +132,8 @@ async def build_appro_brief(
                 "stock_count": cell,
                 "brands": brands_label,
                 "rationale": (
-                    f"Pré-lancement : seulement {cell} pièce(s) en {cat} "
-                    f"{dominant_gender} — carton à demander (signal déclaratif)."
+                    f"Pré-lancement : seulement {cell} pièce(s) en {cat} — "
+                    f"carton à demander (signal déclaratif, audience {dominant_gender})."
                 ),
             })
 
@@ -157,8 +145,7 @@ async def build_appro_brief(
         "dominant_gender": dominant_gender,
         "n_members_profiled": sum(gender_skew.values()),
         "signals": {
-            "n_transactions": n_tx,
-            "n_customers": int(audience.get("n_customers") or 0),
+            "cohort_size": tastes.cohort_size,
             "top_brands": top_brands[:5],
             "gender_skew": gender_skew,
         },

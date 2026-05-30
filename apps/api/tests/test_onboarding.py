@@ -133,15 +133,17 @@ async def test_unknown_style_key_is_silently_ignored(session):
 
 
 @pytest.mark.anyio
-async def test_no_choices_at_all_yields_zero_centroid(session):
-    """Edge case: an empty submission returns a profile with a zero
-    centroid. The recommender treats it as 'no signal' and falls back
-    to its own cold-start branch — no crash."""
+async def test_no_choices_at_all_yields_no_profile(session):
+    """Edge case: an empty submission writes NO taste profile (PS 360 V1).
+
+    We no longer persist an all-zero, useless centroid; the layered onboarding
+    returns ``None`` when neither declarative styles nor visual likes are given,
+    and the recommender falls back to its assumed empty state."""
     client = await _make_client(session)
     profile = await cold_start_taste_profile(
         session, client, liked_style_keys=[],
     )
-    assert all(x == 0.0 for x in profile.visual_centroid)
+    assert profile is None
 
 
 @pytest.mark.anyio

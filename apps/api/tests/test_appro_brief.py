@@ -1,10 +1,9 @@
 """Tests for the approvisionnement brief (Personal Shopper 360 — V5, §7.3)."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -12,9 +11,9 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.models import Base
-from app.models.client import Client
+from app.models.client import Client, LoyaltyAccount
 from app.models.pos import Transaction, TransactionItem, TransactionType
-from app.models.product import Category, Gender, Product, ProductStatus
+from app.models.product import Category, Gender, Product, ProductPhoto, ProductStatus
 from app.models.user import User, UserRole
 from app.services.appro_brief import build_appro_brief
 
@@ -31,7 +30,9 @@ async def engine():
         User.__table__,
         Category.__table__,
         Product.__table__,
+        ProductPhoto.__table__,
         Client.__table__,
+        LoyaltyAccount.__table__,
         Transaction.__table__,
         TransactionItem.__table__,
     ]
@@ -69,20 +70,35 @@ async def _product(session, cat, *, gender=Gender.femme, status=ProductStatus.di
     return p
 
 
+async def _loyal_member(session, *, gender="femme") -> Client:
+    c = Client(
+        first_name="Julie", last_name="M", gender_profile=gender,
+        email=f"{uuid.uuid4().hex[:6]}@x.fr",
+        loyalty_expires_at=datetime.now(timezone.utc) + timedelta(days=365),
+    )
+    session.add(c)
+    await session.flush()
+    session.add(LoyaltyAccount(
+        client_id=c.id, points=0,
+        membership_number=f"V{uuid.uuid4().int % 1_000_000:06d}",
+    ))
+    await session.flush()
+    return c
+
+
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.anyio
 async def test_cold_start_brief_surfaces_thin_cells(session):
-    # Members skew female; no transactions yet.
+    # Members skew female; no loyalty purchases yet → cold-start.
     for _ in range(3):
         session.add(Client(first_name="J", last_name="M", gender_profile="femme",
-                            email=f"{uuid.uuid4().hex[:6]}@x.fr"))
+                           email=f"{uuid.uuid4().hex[:6]}@x.fr"))
     session.add(Client(first_name="H", last_name="M", gender_profile="homme",
                        email=f"{uuid.uuid4().hex[:6]}@x.fr"))
     robes = await _cat(session, "Robes")
     sacs = await _cat(session, "Sacs")
-    # Robes well stocked, Sacs nearly empty → Sacs should be flagged first.
     for _ in range(6):
         await _product(session, robes)
     await _product(session, sacs)
@@ -93,7 +109,6 @@ async def test_cold_start_brief_surfaces_thin_cells(session):
     assert brief["dominant_gender"] == "femme"
     assert brief["n_members_profiled"] == 4
     assert brief["lines"]
-    # The thinnest cell (Sacs) is recommended before the well-stocked Robes.
     cats_in_order = [line["category"] for line in brief["lines"]]
     assert cats_in_order.index("sacs") < cats_in_order.index("robes")
     assert all(line["action"] == "demander" for line in brief["lines"])
@@ -103,20 +118,18 @@ async def test_cold_start_brief_surfaces_thin_cells(session):
 async def test_demand_driven_brief_flags_undersupplied_category(session):
     user = User(username="s", email="s@x.fr", password_hash="x" * 60,
                 role=UserRole.collaborateur, is_active=True)
-    champion = Client(first_name="Julie", last_name="M", rfm_segment="champion",
-                      gender_profile="femme", email="julie@x.fr")
-    session.add_all([user, champion])
+    session.add(user)
     await session.flush()
+    member = await _loyal_member(session)  # loyalty-active → counted in cohort
 
     robes = await _cat(session, "Robes")
-    # Demand on Robes but only 1 in stock → expect a "demander" line.
     bought = await _product(session, robes, status=ProductStatus.sold)
-    await _product(session, robes)  # single remaining piece
+    await _product(session, robes)  # single remaining piece in stock
 
     tx = Transaction(
         transaction_number=int(uuid.uuid4().int % 1_000_000_000),
         transaction_type=TransactionType.sale, user_id=user.id,
-        client_id=champion.id, total_ht=0, total_tva=0, total_ttc=50.0,
+        client_id=member.id, total_ht=0, total_tva=0, total_ttc=50.0,
         hash_chain="x", created_at=datetime.now(timezone.utc),
     )
     session.add(tx)
@@ -129,6 +142,7 @@ async def test_demand_driven_brief_flags_undersupplied_category(session):
 
     brief = await build_appro_brief(session)
     assert brief["cold_start"] is False
+    assert brief["signals"]["cohort_size"] == 1
     robes_lines = [line for line in brief["lines"] if line["category"] == "robes"]
     assert robes_lines
     assert robes_lines[0]["action"] == "demander"
