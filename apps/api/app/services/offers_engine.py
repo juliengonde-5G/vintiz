@@ -470,7 +470,7 @@ async def evaluate_cart(
 LOYALTY_POINT_PER_EURO = 1
 LOYALTY_MILESTONE = 100
 LOYALTY_VOUCHER_VALUE = 8.0
-LOYALTY_VOUCHER_VALID_DAYS = 60
+LOYALTY_VOUCHER_VALID_DAYS = 180  # bon d'achat fidélité valable 6 mois
 
 
 def points_to_credit(amount_ttc: float) -> int:

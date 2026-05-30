@@ -48,28 +48,33 @@ export default function AccountShopperPage() {
   const [toggleBusy, setToggleBusy] = useState(false);
   const [error, setError] = useState("");
 
-  // Hydrate email from PR1 magic-link login if present.
+  // Hydrate email from the PR1 magic-link login AND auto-load the feed: once
+  // logged in we never re-ask the email (#4).
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem("vintiz_account_email");
       if (stored) {
         setEmail(stored);
+        setEmailLocked(true);
+        void loadFeed(undefined, stored);
       }
     } catch {
       /* private mode — let the customer type their email manually */
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadFeed = async (e?: FormEvent) => {
+  const loadFeed = async (e?: FormEvent, emailArg?: string) => {
     if (e) e.preventDefault();
-    if (!email) return;
+    const mail = emailArg || email;
+    if (!mail) return;
     setLoading(true);
     setError("");
     setGate(null);
     setItems([]);
     try {
       const res = await fetch(
-        `${API_URL}/api/crm/account/personal-shopper/live?email=${encodeURIComponent(email)}`,
+        `${API_URL}/api/crm/account/personal-shopper/live?email=${encodeURIComponent(mail)}`,
         { cache: "no-store" }
       );
       const body = await res.json().catch(() => ({}));
@@ -120,7 +125,9 @@ export default function AccountShopperPage() {
         return;
       }
       if (granted) {
-        await loadFeed();
+        // Activation du Personal Shopper → on lance le questionnaire de
+        // création du profil (#6). À la fin, la sélection s'affiche (#9).
+        router.push("/account/onboarding");
       } else {
         // Refus poli : on enregistre Consent(granted=False) côté serveur,
         // puis on ramène la cliente sur son espace avec un message
@@ -134,6 +141,30 @@ export default function AccountShopperPage() {
           /* sessionStorage indispo en mode privé — pas grave */
         }
         router.push("/account");
+      }
+    } catch {
+      setError("Erreur réseau.");
+    }
+    setToggleBusy(false);
+  };
+
+  // Self-service loyalty subscription (#3) — issues the card for the
+  // logged-in client, then re-loads the feed (now past the loyalty gate).
+  const subscribeLoyalty = async () => {
+    if (!email) return;
+    setToggleBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_URL}/api/crm/account/loyalty/subscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, optin_profiling: true }),
+      });
+      if (!res.ok) {
+        setError("Adhésion impossible pour le moment. Réessayez.");
+      } else {
+        setGate(null);
+        await loadFeed(undefined, email);
       }
     } catch {
       setError("Erreur réseau.");
@@ -214,15 +245,25 @@ export default function AccountShopperPage() {
             </h2>
             <p className="text-gray-700 mb-4">
               Le Personal Shopper est inclus dans la carte de fidélité Vintiz.
-              Adhésion 100 % digitale, gratuite ou offerte au 1er achat selon
-              l&apos;opération en cours.
+              Adhésion 100 % digitale et gratuite — activez-la en un clic.
             </p>
-            <Link
-              href="/account/login"
-              className="inline-block bg-vz-teal text-white px-5 py-2 rounded-lg font-medium"
-            >
-              Adhérer en boutique
-            </Link>
+            {email ? (
+              <button
+                type="button"
+                onClick={subscribeLoyalty}
+                disabled={toggleBusy}
+                className="inline-block bg-vz-teal text-white px-5 py-2 rounded-lg font-medium hover:bg-vz-teal-deep disabled:opacity-50"
+              >
+                {toggleBusy ? "Activation…" : "Activer ma carte de fidélité"}
+              </button>
+            ) : (
+              <Link
+                href="/account/login"
+                className="inline-block bg-vz-teal text-white px-5 py-2 rounded-lg font-medium"
+              >
+                Me connecter
+              </Link>
+            )}
           </div>
         )}
 
@@ -451,6 +492,7 @@ function ProductGrid({
   empty: string;
   cacheHit: boolean;
 }) {
+  const [peek, setPeek] = useState<ShopperItem | null>(null);
   if (items.length === 0) {
     return <p className="text-gray-500">{empty}</p>;
   }
@@ -477,7 +519,12 @@ function ProductGrid({
             aria-label={`Recommandation IA : ${item.name}`}
             className="relative bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col"
           >
-            <div className="aspect-square bg-gray-100 relative">
+            <button
+              type="button"
+              onClick={() => setPeek(item)}
+              className="aspect-square bg-gray-100 relative block w-full p-0 border-0 cursor-zoom-in"
+              aria-label={`Agrandir ${item.name}`}
+            >
               {item.photo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={mediaUrl(item.photo_url)} alt={item.name} className="w-full h-full object-cover" />
@@ -487,7 +534,7 @@ function ProductGrid({
                 </div>
               )}
               <AiBadge className="absolute top-2 left-2 shadow-sm" />
-            </div>
+            </button>
             <div className="p-3 flex-1 flex flex-col gap-1">
               <h3 className="text-sm font-medium text-black line-clamp-2">{item.name}</h3>
               <p className="text-xs text-gray-500">
@@ -499,6 +546,47 @@ function ProductGrid({
           </article>
         ))}
       </section>
+
+      {/* #5 — clic sur une pièce : photo en grand + mini descriptif / tarif.
+          Modale en overlay (n'affecte pas la mise en page). */}
+      {peek && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPeek(null)}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-2xl overflow-hidden shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="relative bg-gray-100 aspect-square">
+              {peek.photo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={mediaUrl(peek.photo_url)} alt={peek.name} className="w-full h-full object-contain" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-6xl text-gray-300">👗</div>
+              )}
+              <button
+                type="button"
+                onClick={() => setPeek(null)}
+                aria-label="Fermer"
+                className="absolute top-3 right-3 h-9 w-9 rounded-full bg-white/90 text-gray-700 text-2xl leading-none shadow"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-5 space-y-1.5">
+              <h3 className="text-lg font-display font-semibold text-black">{peek.name}</h3>
+              <p className="text-sm text-gray-500">
+                {[peek.size, peek.color].filter(Boolean).join(" · ") || "—"}
+              </p>
+              <p className="text-xl font-semibold text-vz-teal">{formatPriceCents(peek.price_cents)}</p>
+              <p className="text-xs text-gray-500">Pièce unique · à essayer en boutique à Vernon</p>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
