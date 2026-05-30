@@ -461,6 +461,45 @@ async def public_account_consent_toggle(
     await db.commit()
     return Response(status_code=204)
 
+class GiftMarkRequest(BaseModel):
+    email: str
+    is_gift: bool = True
+
+
+@router.post("/account/transactions/{transaction_id}/gift")
+async def public_mark_transaction_gift(
+    transaction_id: uuid.UUID,
+    payload: GiftMarkRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Client-side « c'était un cadeau » toggle on a past purchase (§4.3/§5.2).
+
+    Excludes the purchase from the taste profile (kept for CA + loyalty) and
+    refreshes the centroid + qualification so the espace client reflects the
+    change right away. 404 if the transaction isn't the caller's."""
+    client = await _resolve_public_client(db, payload.email)
+    row = await db.execute(
+        select(Transaction).where(
+            Transaction.id == transaction_id,
+            Transaction.client_id == client.id,
+        )
+    )
+    tx = row.scalar_one_or_none()
+    if tx is None:
+        raise HTTPException(status_code=404, detail="Transaction introuvable")
+    tx.is_gift = payload.is_gift
+    tx.exclude_from_taste = payload.is_gift
+    await db.flush()
+
+    from app.services.customer_qualification import compute_qualification
+    from app.services.embeddings import EmbeddingService
+
+    await EmbeddingService(db).recompute_taste_profile(client.id)
+    await compute_qualification(db, client.id)
+    await db.commit()
+    return {"transaction_id": str(transaction_id), "is_gift": tx.is_gift}
+
+
 @router.post("/account/onboarding")
 async def public_submit_onboarding(
     request: PublicOnboardingRequest,

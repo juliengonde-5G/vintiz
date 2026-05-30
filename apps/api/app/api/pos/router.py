@@ -88,6 +88,10 @@ class CreateTransactionRequest(BaseModel):
     # Override manager du plafond espèces : motif obligatoire, manager
     # uniquement, tracé en audit log.
     cash_override_reason: str | None = None
+    # PS 360 V2 — réponse à la micro-question caisse « Cet achat est-il pour
+    # vous ? ». True = cadeau → gardé pour le CA + la fidélité mais exclu du
+    # profil de goûts (un cadeau pollue le centroïde).
+    is_gift: bool = False
 
 
 class ValidateCouponRequest(BaseModel):
@@ -262,6 +266,13 @@ async def create_transaction(
             "total_ttc": float(transaction.total_ttc),
             "replayed": True,
         }
+
+    # V2 — gift flag from the POS micro-question. A gift counts for CA +
+    # loyalty but is excluded from the taste profile (the nightly recompute
+    # then drops it from the centroid).
+    if request.is_gift:
+        transaction.is_gift = True
+        transaction.exclude_from_taste = True
 
     # Generate fiscal hash chain
     await fiscal_service.sign_transaction(transaction)
@@ -1804,6 +1815,30 @@ async def pos_companion(
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    return payload
+
+
+@router.get("/clients/{client_id}/picks")
+async def pos_daily_picks(
+    client_id: uuid.UUID,
+    top_n: int = 5,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """« Pépites du jour pour CE client » — POS panel, independent of the cart
+    (PS 360 V3, §6.5). Hard-filtered by gender + size, ranked cosine then
+    trend_score, with the physical zone to go fetch the piece. A non-member /
+    non-consenting client returns ``gated`` + ``cta`` (no error) so the POS can
+    pitch the loyalty card."""
+    from app.services.personal_shopper import PersonalShopperService
+
+    try:
+        payload = await PersonalShopperService(db).daily_picks(
+            client_id, top_n=max(1, min(top_n, 8))
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    await db.commit()  # persist the customer_picks_shown events
     return payload
 
 

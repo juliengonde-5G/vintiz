@@ -52,6 +52,9 @@ class EventType(str, enum.Enum):
     customer_visited = "customer.visited"
     customer_recommendation_shown = "customer.recommendation_shown"
     customer_recommendation_clicked = "customer.recommendation_clicked"
+    # PS 360 V3 — « Pépites du jour » shown on the POS client panel. Drives the
+    # 24 h frequency cap (don't re-surface a piece already shown) + adoption KPI.
+    customer_picks_shown = "customer.picks_shown"
 
     # Cashier sessions
     cashier_session_opened = "cashier.session_opened"

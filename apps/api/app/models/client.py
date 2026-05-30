@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -98,6 +98,18 @@ class Client(Base):
     age_band: Mapped[str | None] = mapped_column(
         String(10), nullable=True
     )  # <25 | 25-34 | 35-44 | 45-54 | 55+
+
+    # Computed qualification signals — Personal Shopper 360 V2. Refreshed by
+    # ``customer_qualification`` (per transaction + nightly batch) from the last
+    # 15 sale transactions, gifts excluded. Additive + nullable (migration
+    # 0052); NULL = not enough history yet. Enrich the reco + the appro brief
+    # without touching the embedding engine.
+    season_bias: Mapped[str | None] = mapped_column(
+        String(10), nullable=True
+    )  # winter | summer | all
+    price_ceiling_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_sensitivity: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0..1
+    trend_affinity: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0..1
 
     loyalty_account: Mapped["LoyaltyAccount | None"] = relationship(
         "LoyaltyAccount", back_populates="client", uselist=False, lazy="selectin"

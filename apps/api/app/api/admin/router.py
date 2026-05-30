@@ -1451,6 +1451,22 @@ async def run_rfm_segmentation(
     return summary
 
 
+@router.post("/qualification/run", dependencies=[Depends(manager_only)])
+async def run_customer_qualification(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Manually trigger the customer qualification pass (PS 360 V2).
+
+    Recomputes season_bias / price_ceiling / price_sensitivity / trend_affinity
+    for every consenting member with a purchase history. Same effect as the
+    nightly pass folded into the 04:00 embedding refresh. Manager only."""
+    from app.services.customer_qualification import recompute_all_qualifications
+
+    summary = await recompute_all_qualifications(db)
+    await db.commit()
+    return summary
+
+
 class KpiConfigPayload(BaseModel):
     store_surface_m2: float | None = None
     avg_piece_weight_kg: float | None = None

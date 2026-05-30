@@ -19,8 +19,8 @@ async def run_daily_embedding_refresh() -> None:
         from sqlalchemy import select
         from sqlalchemy.ext.asyncio import AsyncSession
 
-        from app.models.client import Client
         from app.models.pos import Transaction, TransactionType
+        from app.services.customer_qualification import compute_qualification
         from app.services.embeddings import EmbeddingService
 
         async with AsyncSession(engine) as db:
@@ -36,16 +36,22 @@ async def run_daily_embedding_refresh() -> None:
                 .distinct()
             )).scalars().all()
             taste_count = 0
+            qualif_count = 0
             for cid in customer_ids:
                 profile = await svc.recompute_taste_profile(cid)
                 if profile is not None:
                     taste_count += 1
+                # V2 — refresh the computed qualification signals (season,
+                # price ceiling/sensitivity, trend affinity) in the same pass.
+                if await compute_qualification(db, cid) is not None:
+                    qualif_count += 1
             await db.commit()
             logger.info(
-                "Embedding refresh: products=%d (recomputed=%d), tastes=%d",
+                "Embedding refresh: products=%d (recomputed=%d), tastes=%d, qualif=%d",
                 product_summary["scanned"],
                 product_summary["recomputed"],
                 taste_count,
+                qualif_count,
             )
     except Exception as exc:
         logger.exception("Embedding refresh job failed: %s", exc)

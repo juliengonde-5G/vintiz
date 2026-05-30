@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from sqlalchemy import desc, select
@@ -36,7 +36,8 @@ from app.models.client import Client
 from app.models.embeddings import CustomerTasteProfile
 from app.models.events import EventSource, EventType
 from app.models.pos import Transaction, TransactionItem, TransactionType
-from app.models.product import Product, ProductStatus
+from app.models.product import Gender, Product, ProductStatus
+from app.models.store import StoreZone
 from app.services.embeddings import EmbeddingService
 from app.services.events import EventService
 
@@ -290,6 +291,139 @@ class PersonalShopperService:
             algo_version=ALGO_VERSION,
             meta={"position_in_list": position_in_list},
         )
+
+    async def daily_picks(
+        self, customer_id: uuid.UUID, *, top_n: int = 5
+    ) -> dict:
+        """« Pépites du jour pour CE client » — POS panel button (PS 360 V3, §6.5).
+
+        Independent of the cart. Returns up to ``top_n`` in-stock pieces, hard
+        filtered by the declared gender + preferred sizes, ranked by visual
+        cosine then ``trend_score``, with the physical ``zone_name`` so the
+        salesperson can go fetch the piece. Excludes pieces shown to this
+        client in the last 24 h (frequency cap) and logs ``customer_picks_shown``.
+
+        Gating never raises: a non-member / non-consenting client returns a
+        ``gated`` reason + a ``cta`` so the POS can pitch the loyalty card.
+        """
+        customer = await self._load_customer(customer_id)
+        set_id = uuid.uuid4()
+
+        try:
+            await self._enforce_gating(customer)
+        except PersonalShopperGatedError as exc:
+            cta = (
+                "Proposer la carte fidélité"
+                if exc.reason == "loyalty_required"
+                else "Proposer l'activation du Personal Shopper"
+            )
+            return {
+                "gated": exc.reason,
+                "cta": cta,
+                "picks": [],
+                "recommendation_set_id": str(set_id),
+            }
+
+        profile = await self._load_or_build_profile(customer_id)
+        if profile is None:
+            return {
+                "gated": None,
+                "cta": None,
+                "picks": [],
+                "recommendation_set_id": str(set_id),
+                "message": "Profil encore vide — proposez l'onboarding Personal Shopper.",
+            }
+
+        wide = await EmbeddingService(self.db).find_similar_products(
+            profile,
+            top_k=top_n * 8,
+            statuses=[ProductStatus.stock, ProductStatus.display],
+        )
+
+        # Hard gender filter from the declared profile (mixte / unset kept).
+        gender = (customer.gender_profile or "").strip().lower()
+        if gender in ("femme", "homme"):
+            target = Gender(gender)
+            wide = [
+                (p, s) for p, s in wide
+                if p.gender in (target, Gender.mixte) or p.gender is None
+            ]
+
+        # Hard size filter (don't empty the list if it kills everything).
+        sizes = await self._preferred_sizes(customer_id)
+        if sizes:
+            wide = [
+                (p, s) for p, s in wide
+                if not p.size or p.size.lower() in sizes
+            ] or wide
+
+        # Frequency cap — drop pieces already shown in the last 24 h.
+        recent = await self._recently_shown_pick_ids(customer_id)
+        if recent:
+            wide = [(p, s) for p, s in wide if p.id not in recent] or wide
+
+        # Rank: visual cosine desc, then trend_score desc.
+        wide.sort(
+            key=lambda ps: (ps[1], float(ps[0].trend_score or 0.0)),
+            reverse=True,
+        )
+        chosen = wide[:top_n]
+
+        # Resolve physical zone names in one query.
+        zone_ids = {p.zone_id for p, _ in chosen if p.zone_id}
+        zones: dict = {}
+        if zone_ids:
+            rows = await self.db.execute(
+                select(StoreZone.id, StoreZone.name).where(StoreZone.id.in_(zone_ids))
+            )
+            zones = {zid: zname for zid, zname in rows.all()}
+
+        events = EventService(self.db)
+        picks = []
+        for idx, (p, score) in enumerate(chosen):
+            await events.emit(
+                EventType.customer_picks_shown,
+                source=EventSource.pos,
+                customer_id=customer_id,
+                product_id=p.id,
+                session_id=set_id,
+                algo_version=ALGO_VERSION,
+                meta={"position": idx, "score": float(score)},
+            )
+            picks.append({
+                "id": str(p.id),
+                "product_id": str(p.id),
+                "name": p.name,
+                "size": p.size,
+                "color": p.color,
+                "brand": p.brand,
+                "price_cents": int(round(float(p.sale_price) * 100)),
+                "score": round(float(score), 4),
+                "photo_url": p.storefront_photo_url or p.photo_url,
+                "zone_name": zones.get(p.zone_id),
+            })
+
+        return {
+            "gated": None,
+            "cta": None,
+            "picks": picks,
+            "recommendation_set_id": str(set_id),
+        }
+
+    async def _recently_shown_pick_ids(self, customer_id: uuid.UUID) -> set:
+        """Product ids surfaced as picks to this client within the last 24 h."""
+        from app.models.events import EventLog
+
+        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        rows = await self.db.execute(
+            select(EventLog.product_id).where(
+                EventLog.customer_id == customer_id,
+                EventLog.event_type == EventType.customer_picks_shown,
+                EventLog.occurred_at >= since,
+                EventLog.product_id.is_not(None),
+            )
+        )
+        return {pid for (pid,) in rows.all() if pid}
 
     # ------------------------------------------------------------------
     # Internals
