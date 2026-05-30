@@ -126,6 +126,14 @@ ANTHROPIC_API_KEY=sk-ant-...
 # ignorée (la photo originale reste). Voir app/services/storefront_photo.py.
 PHOTOROOM_API_KEY=                # clé API Photoroom
 
+# Embedding visuel Personal Shopper (PS 360 V4). "structured" (défaut) =
+# encodeur hashing-trick sans dépendance. "clip" = vrai encodeur CLIP/SigLIP
+# (ONNX) : installer l'extra (pip install -e ".[clip]") + pointer CLIP_MODEL_PATH
+# sur un .onnx. Repli automatique par produit sur "structured" si modèle/dep
+# absent → activation non bloquante (comme rembg). Voir app/services/visual_encoder.py.
+VISUAL_EMBEDDING_BACKEND=structured   # structured | clip
+CLIP_MODEL_PATH=                      # chemin du modèle image-encoder .onnx (mode clip)
+
 # Météo Vernon (sans cette clé, widget météo indisponible)
 OPENWEATHER_API_KEY=votre-cle-openweather
 
@@ -443,6 +451,9 @@ POST   /api/admin/qualification/run                Trigger manuel recalcul quali
 
 # Personal Shopper 360 — V3: aide à la vente
 GET    /api/pos/clients/{id}/picks                 « Pépites du jour » : top 5 pièces présentes, filtrées dur genre+taille, classées cosinus puis trend_score, zone physique affichée, frequency cap 24h, log customer_picks_shown (manager ; non-membre/sans-consent → gated+CTA)
+
+# Personal Shopper 360 — V5: appro prescriptif
+GET    /api/admin/appro-brief                       Brief d'appro hebdo dans l'IA Booster : demande (goûts membres + skew genre) vs stock → recommandations niveau carton (catégorie×genre×qualité, action demander/réduire/maintenir). Cold-start = gaps déclaratifs (manager)
 ```
 
 ## Fonctionnalités principales

@@ -20,6 +20,7 @@ from app.models.client import (
     LoyaltyTransaction,
 )
 from app.models.embeddings import CustomerTasteProfile, ProductEmbedding
+from app.models.events import EventLog
 from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.product import Category, Gender, Product, ProductPhoto, ProductStatus
 from app.models.user import User, UserRole
@@ -52,6 +53,7 @@ async def engine():
         TransactionItem.__table__,
         ProductEmbedding.__table__,
         CustomerTasteProfile.__table__,
+        EventLog.__table__,
     ]
     async with eng.begin() as conn:
         await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=tables))
