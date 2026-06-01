@@ -21,14 +21,31 @@ export default function MentionsLegalesPage() {
             Vintiz<br />
             6 rue Saint-Jacques<br />
             27200 Vernon<br />
-            France
+            France<br />
+            Téléphone : À COMPLÉTER<br />
+            E-mail : contact@vintiz.fr
+          </p>
+
+          <h2 className="font-serif text-xl text-vz-ink mt-8 mb-3">
+            Identité de l&apos;entreprise
+          </h2>
+          {/* Mentions obligatoires (LCEN art. 6-III, C. com. art. R123-237).
+              À renseigner avec les valeurs réelles d'immatriculation. */}
+          <p className="text-vz-ink/70 leading-relaxed">
+            Forme juridique : À COMPLÉTER<br />
+            Capital social : À COMPLÉTER<br />
+            SIREN / SIRET : À COMPLÉTER<br />
+            RCS (ou RM) : À COMPLÉTER — greffe de À COMPLÉTER<br />
+            N° TVA intracommunautaire : À COMPLÉTER<br />
+            Directeur / responsable de la publication : À COMPLÉTER
           </p>
 
           <h2 className="font-serif text-xl text-vz-ink mt-8 mb-3">Hébergement</h2>
           <p className="text-vz-ink/70 leading-relaxed">
             Scaleway SAS<br />
             8 rue de la Ville l&apos;Évêque<br />
-            75008 Paris, France
+            75008 Paris, France<br />
+            Téléphone : +33 (0)1 84 13 00 00
           </p>
 
           <h2 className="font-serif text-xl text-vz-ink mt-8 mb-3">
@@ -36,11 +53,12 @@ export default function MentionsLegalesPage() {
           </h2>
           <p className="text-vz-ink/70 leading-relaxed">
             Le responsable de traitement des données collectées sur ce site est
-            Vintiz, immatriculé à Vernon. Vous pouvez exercer vos droits
-            d&apos;accès, rectification, suppression et portabilité directement
-            depuis votre espace client (rubrique <em>Confidentialité &amp;
-            RGPD</em>) ou par email auprès du Délégué à la Protection des
-            Données&nbsp;:
+            <strong> Vintiz</strong> (responsable unique), immatriculé à Vernon.
+            La fonction de Délégué à la Protection des Données (DPO) est assurée
+            par notre partenaire Solidarité Textiles. Vous pouvez exercer vos
+            droits d&apos;accès, rectification, suppression et portabilité
+            directement depuis votre espace client (rubrique
+            <em> Confidentialité &amp; RGPD</em>) ou par email auprès du DPO&nbsp;:
             {" "}
             <a
               href="mailto:dpo@solidarite-textiles.fr"
@@ -70,6 +88,10 @@ export default function MentionsLegalesPage() {
               <strong>Scaleway SAS</strong> — hébergement applicatif et base
               de données.
             </li>
+            <li>
+              <strong>api.qrserver.com</strong> — génération de l&apos;image QR
+              de la carte de fidélité (numéro de carte uniquement).
+            </li>
           </ul>
 
           <h2 className="font-serif text-xl text-vz-ink mt-8 mb-3">Cookies</h2>
@@ -88,6 +110,30 @@ export default function MentionsLegalesPage() {
             L&apos;ensemble du contenu de ce site (textes, images, logo) est la
             propriété exclusive de Vintiz. Toute reproduction est interdite
             sans autorisation préalable.
+          </p>
+
+          <h2 className="font-serif text-xl text-vz-ink mt-8 mb-3">
+            Marques citées
+          </h2>
+          <p className="text-vz-ink/70 leading-relaxed">
+            Vintiz est une boutique indépendante de vêtements de seconde main.
+            Les marques citées sur ce site (Sandro, Maje, Sézane, Polène, IRO,
+            Isabel Marant, Ba&amp;sh, Vanessa Bruno, The Kooples, etc.)
+            appartiennent à leurs propriétaires respectifs. Leur citation a pour
+            seul objet de décrire des articles authentiques d&apos;occasion
+            proposés à la revente&nbsp;; elle n&apos;implique aucun partenariat,
+            parrainage ni affiliation avec ces marques.
+          </p>
+
+          <h2 className="font-serif text-xl text-vz-ink mt-8 mb-3">
+            Médiation de la consommation
+          </h2>
+          <p className="text-vz-ink/70 leading-relaxed">
+            Conformément à l&apos;article L612-1 du Code de la consommation, le
+            consommateur peut recourir gratuitement à un médiateur de la
+            consommation en vue de la résolution amiable d&apos;un litige.
+            Médiateur désigné par Vintiz&nbsp;: <strong>À COMPLÉTER</strong>{" "}
+            (nom, adresse postale et site internet du médiateur).
           </p>
         </div>
       </section>
