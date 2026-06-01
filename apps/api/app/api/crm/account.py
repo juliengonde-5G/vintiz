@@ -746,6 +746,71 @@ async def public_loyalty_subscribe(
     }
 
 
+@router.get("/account/selection")
+async def public_account_selection(
+    email: str | None = Query(default=None, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """« Sélection du moment » pour les NON-membres Personal Shopper (#7).
+
+    Renvoie jusqu'à 10 pièces en stock, **une par catégorie**, classées par
+    meilleure note (``trend_score``). ``ps_member`` indique si l'email (s'il
+    est fourni et connu) a un profilage actif → le front masque la page pour
+    ces membres (ils ont déjà leur feed personnalisé /account/shopper)."""
+    from app.models.product import Product, ProductStatus
+    from app.services.loyalty import loyalty_active
+
+    # Determine PS-member status (best-effort; anonymous visitor = non-member).
+    ps_member = False
+    if email:
+        cleaned = email.strip().lower()
+        row = await db.execute(select(Client).where(Client.email == cleaned))
+        client = row.scalar_one_or_none()
+        if client is not None and loyalty_active(client):
+            consent = await db.execute(
+                select(Consent)
+                .where(
+                    Consent.client_id == client.id,
+                    Consent.purpose == ConsentPurpose.profiling,
+                )
+                .order_by(Consent.created_at.desc())
+                .limit(1)
+            )
+            c = consent.scalar_one_or_none()
+            ps_member = bool(c and c.granted)
+
+    # Best-rated in-stock pieces, NULL trend_score last.
+    rows = await db.execute(
+        select(Product)
+        .where(Product.status.in_([ProductStatus.stock, ProductStatus.display]))
+        .order_by(Product.trend_score.is_(None), Product.trend_score.desc())
+        .limit(120)
+    )
+    products = rows.scalars().all()
+
+    # One product per category, keeping the score order, up to 10.
+    seen_categories: set = set()
+    items: list[dict] = []
+    for p in products:
+        if p.category_id in seen_categories:
+            continue
+        seen_categories.add(p.category_id)
+        items.append({
+            "id": str(p.id),
+            "name": p.name,
+            "brand": p.brand,
+            "size": p.size,
+            "color": p.color,
+            "price_cents": int(round(float(p.sale_price or 0) * 100)),
+            "photo_url": p.storefront_photo_url or p.photo_url,
+            "score": round(float(p.trend_score), 1) if p.trend_score is not None else None,
+        })
+        if len(items) >= 10:
+            break
+
+    return {"ps_member": ps_member, "items": items}
+
+
 @router.get("/account/wallet")
 async def public_wallet_pass(
     email: str = Query(..., min_length=5, max_length=255),
