@@ -1,29 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import AccountShell from "@/components/account/AccountShell";
 import { mediaUrl } from "@/lib/media";
 import { formatPriceCents } from "@/lib/format";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-interface CurationItem {
+interface SelectionItem {
   id: string;
   name: string;
-  barcode: string;
   brand: string | null;
   size: string | null;
   color: string | null;
-  sale_price: number;
   price_cents: number;
   photo_url: string | null;
-  reason: string;
+  score: number | null;
 }
 
-interface CurationPayload {
-  items: CurationItem[];
-  curator_note: string;
-  updated_at: string;
+interface SelectionPayload {
+  ps_member: boolean;
+  items: SelectionItem[];
 }
 
 const FALLBACK_GRADIENTS = [
@@ -36,16 +34,23 @@ const FALLBACK_GRADIENTS = [
 ];
 
 export default function AccountSelectionPage() {
-  const [data, setData] = useState<CurationPayload | null>(null);
+  const [data, setData] = useState<SelectionPayload | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_URL}/api/crm/curation/current`, { cache: "no-store" })
+    let email = "";
+    try {
+      email = window.localStorage.getItem("vintiz_account_email") || "";
+    } catch {
+      /* private mode */
+    }
+    const qs = email ? `?email=${encodeURIComponent(email)}` : "";
+    fetch(`${API_URL}/api/crm/account/selection${qs}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (cancelled || !d) return;
-        setData(d as CurationPayload);
+        setData(d as SelectionPayload);
       })
       .catch(() => undefined)
       .finally(() => !cancelled && setLoading(false));
@@ -56,70 +61,94 @@ export default function AccountSelectionPage() {
 
   const items = data?.items ?? [];
 
+  // #7 — réservée aux non-membres PS : un membre avec profilage actif a déjà
+  // son feed personnalisé, on le renvoie vers /account/shopper.
+  if (!loading && data?.ps_member) {
+    return (
+      <AccountShell
+        title="Sélection du moment"
+        intro="Vous avez activé votre Personal Shopper."
+      >
+        <div className="bg-vz-surface rounded-vz-lg border border-vz-line p-6 max-w-2xl">
+          <p className="text-vz-ink-soft">
+            Votre Personal Shopper vous propose déjà une sélection personnalisée,
+            calibrée sur vos goûts.
+          </p>
+          <Link
+            href="/account/shopper"
+            className="inline-block mt-4 bg-vz-teal text-white px-5 py-2.5 rounded-lg font-medium hover:bg-vz-teal-deep"
+          >
+            Voir ma sélection personnalisée
+          </Link>
+        </div>
+      </AccountShell>
+    );
+  }
+
   return (
     <AccountShell
       title="Sélection du moment"
-      intro="Les coups de cœur de l'équipe boutique cette semaine, choisis pour l'ambiance et la saison."
+      intro="Nos pièces les mieux notées du moment, une par catégorie. Activez votre Personal Shopper pour une sélection sur-mesure."
     >
       {loading && <p className="text-vz-ink-mute">Chargement…</p>}
-
-      {!loading && data?.curator_note && (
-        <blockquote className="border-l-2 border-vz-teal pl-4 mb-8 max-w-2xl">
-          <p className="font-display text-lg italic text-vz-ink-soft leading-relaxed">
-            « {data.curator_note} »
-          </p>
-          {data.updated_at && (
-            <footer className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-vz-ink-mute">
-              — Curation mise à jour le {new Date(data.updated_at).toLocaleDateString("fr-FR")}
-            </footer>
-          )}
-        </blockquote>
-      )}
 
       {!loading && items.length === 0 ? (
         <div className="bg-vz-surface rounded-vz-lg border border-vz-line p-6">
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-vz-teal">
-            Curation en cours
+            Sélection en cours
           </p>
           <p className="text-vz-ink-soft mt-2">
-            La sélection est mise à jour chaque semaine par l&apos;équipe boutique. Passez à Vernon pour découvrir les pièces choisies en vitrine.
+            Aucune pièce à afficher pour le moment. Passez à Vernon pour
+            découvrir les nouveautés en boutique.
           </p>
           <p className="text-sm text-vz-ink-mute mt-3 font-mono">
             6 rue Saint-Jacques · 27200 Vernon
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
-          {items.map((it, i) => (
-            <article key={it.id} className="bg-vz-surface rounded-vz-lg border border-vz-line overflow-hidden">
-              <div
-                className="aspect-[4/5] flex items-end p-3"
-                style={{
-                  background: it.photo_url
-                    ? `url(${mediaUrl(it.photo_url)}) center/cover`
-                    : FALLBACK_GRADIENTS[i % FALLBACK_GRADIENTS.length],
-                }}
+        !loading && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+              {items.map((it, i) => (
+                <article key={it.id} className="bg-vz-surface rounded-vz-lg border border-vz-line overflow-hidden">
+                  <div
+                    className="aspect-[4/5] flex items-end p-3"
+                    style={{
+                      background: it.photo_url
+                        ? `url(${mediaUrl(it.photo_url)}) center/cover`
+                        : FALLBACK_GRADIENTS[i % FALLBACK_GRADIENTS.length],
+                    }}
+                  >
+                    <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-white/90 bg-black/30 px-2 py-0.5 rounded">
+                      N° {String(i + 1).padStart(2, "0")}
+                    </span>
+                  </div>
+                  <div className="p-4">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-vz-ink-mute">
+                      {it.brand || "Sans marque"}
+                    </p>
+                    <p className="mt-1 font-display text-base text-vz-ink leading-tight">
+                      <em className="not-italic">{it.name}</em>
+                      {it.size && <span className="text-vz-ink-soft text-sm">, T. {it.size}</span>}
+                    </p>
+                    <p className="mt-3 font-display text-lg text-vz-teal">{formatPriceCents(it.price_cents)}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="mt-8 bg-vz-teal-soft/30 border border-vz-teal/20 rounded-vz-lg p-5 max-w-2xl">
+              <p className="text-vz-ink-soft">
+                Envie d&apos;une sélection vraiment faite pour vous ?
+              </p>
+              <Link
+                href="/account/shopper"
+                className="inline-block mt-3 bg-vz-teal text-white px-5 py-2.5 rounded-lg font-medium hover:bg-vz-teal-deep"
               >
-                <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-white/90 bg-black/30 px-2 py-0.5 rounded">
-                  N° {String(i + 1).padStart(2, "0")}
-                </span>
-              </div>
-              <div className="p-4">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-vz-ink-mute">
-                  {it.brand || "Sans marque"}
-                </p>
-                <p className="mt-1 font-display text-base text-vz-ink leading-tight">
-                  <em className="not-italic">{it.name}</em>
-                  {it.size && <span className="text-vz-ink-soft text-sm">, T. {it.size}</span>}
-                </p>
-                {it.reason && (
-                  <p className="mt-2 text-xs text-vz-ink-soft italic leading-relaxed">« {it.reason} »</p>
-                )}
-                <p className="mt-3 font-display text-lg text-vz-teal">{formatPriceCents(it.price_cents)}</p>
-              </div>
-            </article>
-          ))}
-        </div>
+                Activer mon Personal Shopper
+              </Link>
+            </div>
+          </>
+        )
       )}
     </AccountShell>
   );
