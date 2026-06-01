@@ -34,7 +34,11 @@ async def expire_inactive_points(db: AsyncSession) -> int:
     ``adjust`` we just inserted will not re-trigger because ``points``
     is now 0.
     """
-    cutoff = _now() - timedelta(days=EXPIRY_DAYS)
+    # Points validity is admin-configurable (#1); default = EXPIRY_DAYS (730).
+    from app.services.loyalty_config import get_earning_config
+
+    cfg = await get_earning_config(db)
+    cutoff = _now() - timedelta(days=cfg.points_expiry_days or EXPIRY_DAYS)
 
     rows = await db.execute(
         select(LoyaltyAccount).where(LoyaltyAccount.points > 0)

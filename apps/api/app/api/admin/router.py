@@ -2014,6 +2014,48 @@ async def update_loyalty_config(
     return cfg.to_dict()
 
 
+class LoyaltyEarningRequest(BaseModel):
+    euro_per_point: int = 1
+    voucher_value_cents: int = 800
+    voucher_threshold: int = 100
+    voucher_valid_days: int = 180
+    points_expiry_days: int = 730
+
+
+@router.get("/loyalty/earning-config", dependencies=[Depends(manager_only)])
+async def get_loyalty_earning_config(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Read the loyalty earning rules (points/€, voucher value+threshold,
+    validity). Editable from admin/operations (#1)."""
+    from app.services.loyalty_config import get_earning_config
+
+    cfg = await get_earning_config(db)
+    return cfg.to_dict()
+
+
+@router.put("/loyalty/earning-config", dependencies=[Depends(manager_only)])
+async def update_loyalty_earning_config(
+    request: LoyaltyEarningRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Set the loyalty earning rules: 1 point per X €, voucher of X € every X
+    points, voucher + points validity (days). Manager only (#1)."""
+    from app.services.loyalty_config import set_earning_config
+
+    try:
+        cfg = await set_earning_config(
+            db,
+            euro_per_point=request.euro_per_point,
+            voucher_value_cents=request.voucher_value_cents,
+            voucher_threshold=request.voucher_threshold,
+            voucher_valid_days=request.voucher_valid_days,
+            points_expiry_days=request.points_expiry_days,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await db.commit()
+    return cfg.to_dict()
+
+
 # ---------------------------------------------------------------------------
 # Trend alerts manual trigger (PR2)
 # ---------------------------------------------------------------------------

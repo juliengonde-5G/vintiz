@@ -598,15 +598,15 @@ class PosService:
         )
         from app.models.coupon import Coupon, CouponDiscountType, CouponSource
         from app.services.coupon import _draw_unique_code  # collision-safe helper
+        from app.services.loyalty_config import get_earning_config
         from app.services.offers_engine import (
-            LOYALTY_VOUCHER_VALID_DAYS,
-            LOYALTY_VOUCHER_VALUE,
             milestones_crossed,
             points_to_credit,
         )
 
+        cfg = await get_earning_config(self.db)
         amount = float(transaction.total_ttc or 0)
-        points = points_to_credit(amount)
+        points = points_to_credit(amount, cfg.euro_per_point)
         if points <= 0:
             return
 
@@ -651,19 +651,20 @@ class PosService:
             description=sale_marker,
         ))
 
-        crossed = milestones_crossed(before, account.points)
+        crossed = milestones_crossed(before, account.points, cfg.voucher_threshold)
         if crossed <= 0:
             return
 
         now = datetime.now(timezone.utc)
-        valid_until = now + timedelta(days=LOYALTY_VOUCHER_VALID_DAYS)
+        valid_until = now + timedelta(days=cfg.voucher_valid_days)
+        voucher_value = cfg.voucher_value_cents / 100.0
         for _ in range(crossed):
             code = await _draw_unique_code(self.db, "LOYAL")
             self.db.add(Coupon(
                 code=code,
                 client_id=transaction.client_id,
                 discount_type=CouponDiscountType.amount,
-                discount_value=LOYALTY_VOUCHER_VALUE,
+                discount_value=voucher_value,
                 source=CouponSource.loyalty_milestone,
                 valid_from=now,
                 valid_until=valid_until,

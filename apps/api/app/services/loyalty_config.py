@@ -107,6 +107,86 @@ async def get_subscription_config(db: AsyncSession) -> LoyaltyConfig:
     )
 
 
+# ---------------------------------------------------------------------------
+# Earning config (#1) — how points are earned + converted into a voucher.
+# Editable from admin/operations. Defaults mirror the historical hard-coded
+# constants so existing behaviour is unchanged until a manager edits them.
+# ---------------------------------------------------------------------------
+
+KEY_EURO_PER_POINT = "loyalty_euro_per_point"          # € spent to earn 1 point
+KEY_VOUCHER_VALUE = "loyalty_voucher_value_cents"      # voucher value (cents)
+KEY_VOUCHER_THRESHOLD = "loyalty_voucher_threshold"    # points per voucher
+KEY_VOUCHER_VALID_DAYS = "loyalty_voucher_valid_days"  # voucher validity (days)
+KEY_POINTS_EXPIRY_DAYS = "loyalty_points_expiry_days"  # points validity (days)
+
+# Defaults = the historical constants (offers_engine / loyalty).
+DEFAULT_EURO_PER_POINT = 1
+DEFAULT_VOUCHER_VALUE_CENTS = 800      # 8 €
+DEFAULT_VOUCHER_THRESHOLD = 100        # 100 pts → 1 voucher
+DEFAULT_VOUCHER_VALID_DAYS = 180       # 6 months
+DEFAULT_POINTS_EXPIRY_DAYS = 730       # 24 months
+
+
+@dataclass
+class LoyaltyEarningConfig:
+    euro_per_point: int = DEFAULT_EURO_PER_POINT
+    voucher_value_cents: int = DEFAULT_VOUCHER_VALUE_CENTS
+    voucher_threshold: int = DEFAULT_VOUCHER_THRESHOLD
+    voucher_valid_days: int = DEFAULT_VOUCHER_VALID_DAYS
+    points_expiry_days: int = DEFAULT_POINTS_EXPIRY_DAYS
+
+    def to_dict(self) -> dict:
+        return {
+            "euro_per_point": self.euro_per_point,
+            "voucher_value_cents": self.voucher_value_cents,
+            "voucher_threshold": self.voucher_threshold,
+            "voucher_valid_days": self.voucher_valid_days,
+            "points_expiry_days": self.points_expiry_days,
+        }
+
+
+async def get_earning_config(db: AsyncSession) -> LoyaltyEarningConfig:
+    """Read the loyalty earning config; defaults = historical constants."""
+    return LoyaltyEarningConfig(
+        euro_per_point=max(1, _to_int(
+            await _get_setting(db, KEY_EURO_PER_POINT), DEFAULT_EURO_PER_POINT)),
+        voucher_value_cents=max(0, _to_int(
+            await _get_setting(db, KEY_VOUCHER_VALUE), DEFAULT_VOUCHER_VALUE_CENTS)),
+        voucher_threshold=max(1, _to_int(
+            await _get_setting(db, KEY_VOUCHER_THRESHOLD), DEFAULT_VOUCHER_THRESHOLD)),
+        voucher_valid_days=max(1, _to_int(
+            await _get_setting(db, KEY_VOUCHER_VALID_DAYS), DEFAULT_VOUCHER_VALID_DAYS)),
+        points_expiry_days=max(1, _to_int(
+            await _get_setting(db, KEY_POINTS_EXPIRY_DAYS), DEFAULT_POINTS_EXPIRY_DAYS)),
+    )
+
+
+async def set_earning_config(
+    db: AsyncSession,
+    *,
+    euro_per_point: int,
+    voucher_value_cents: int,
+    voucher_threshold: int,
+    voucher_valid_days: int,
+    points_expiry_days: int,
+) -> LoyaltyEarningConfig:
+    """Persist the loyalty earning config (manager only). Validates positives."""
+    if euro_per_point < 1:
+        raise ValueError("euro_per_point doit être ≥ 1")
+    if voucher_threshold < 1:
+        raise ValueError("voucher_threshold doit être ≥ 1")
+    if voucher_value_cents < 0:
+        raise ValueError("voucher_value_cents doit être ≥ 0")
+    if voucher_valid_days < 1 or points_expiry_days < 1:
+        raise ValueError("les durées de validité doivent être ≥ 1 jour")
+    await _set_setting(db, KEY_EURO_PER_POINT, str(euro_per_point))
+    await _set_setting(db, KEY_VOUCHER_VALUE, str(voucher_value_cents))
+    await _set_setting(db, KEY_VOUCHER_THRESHOLD, str(voucher_threshold))
+    await _set_setting(db, KEY_VOUCHER_VALID_DAYS, str(voucher_valid_days))
+    await _set_setting(db, KEY_POINTS_EXPIRY_DAYS, str(points_expiry_days))
+    return await get_earning_config(db)
+
+
 def _validate_iso_date(value: str | None) -> str | None:
     if value is None or value == "":
         return None

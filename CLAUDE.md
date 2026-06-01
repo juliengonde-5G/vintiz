@@ -428,6 +428,8 @@ POST   /api/pos/loyalty/subscribe                  Crée carte V###### au POS av
 GET    /api/pos/clients/identify?q=                Identifie client par V######, email, phone (manager)
 GET    /api/admin/loyalty/config                   Lit config souscription (mode + prix + seuil) (manager)
 PUT    /api/admin/loyalty/config                   Modifie config 3 modes free/paid/first_purchase (manager)
+GET    /api/admin/loyalty/earning-config           Lit règles cumul fidélité (pts/€, bon valeur+seuil, validités) (manager)
+PUT    /api/admin/loyalty/earning-config           Modifie règles cumul (1 pt/X€, bon X€/X pts, validité bon+points) — admin/operations (manager)
 
 # Refonte Relation Client — PR2: Personal Shopper + alertes tendance
 POST   /api/crm/account/personal-shopper/toggle    Pose/retire consent profilage (public, body: email, enabled)
