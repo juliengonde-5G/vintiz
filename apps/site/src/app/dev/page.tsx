@@ -102,18 +102,6 @@ export default function DevHome() {
         </p>
       </section>
 
-      {/* MARQUEE TEAL */}
-      <section className="bg-vz-teal overflow-hidden">
-        <div className="flex whitespace-nowrap animate-[marquee_22s_linear_infinite] py-5 text-white text-sm tracking-[0.25em]">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <span key={i} className="mx-6 flex items-center gap-6">
-              · LES VESTES À -50 %
-              <span className="font-mockSerif italic tracking-widest text-base">VINTIZ</span>
-            </span>
-          ))}
-        </div>
-      </section>
-
       {/* NOTRE CONCEPT */}
       <section className="max-w-7xl mx-auto px-6 py-16 lg:py-24">
         <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-start">

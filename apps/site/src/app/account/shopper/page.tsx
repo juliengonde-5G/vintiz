@@ -4,8 +4,6 @@ import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AccountShell from "@/components/account/AccountShell";
-import AiBadge from "@/components/AiBadge";
-import AiDisclaimer from "@/components/AiDisclaimer";
 import { mediaUrl } from "@/lib/media";
 import { formatPriceCents } from "@/lib/format";
 
@@ -207,9 +205,6 @@ export default function AccountShopperPage() {
       intro="Une sélection en temps réel des pièces disponibles à Vernon, choisies en fonction de vos goûts. Réservé aux membres du programme fidélité Vintiz, avec votre consentement explicite."
     >
       <>
-        {/* AI Act art. 50 — disclaimer permanent visible avant toute interaction. */}
-        <AiDisclaimer variant="inline" className="mb-6" />
-
         {!emailLocked && (
           <form onSubmit={loadFeed} className="bg-white rounded-2xl shadow-sm p-6 mb-8 max-w-md">
             <label className="block text-sm font-medium text-black mb-1" htmlFor="account-email">
@@ -279,13 +274,17 @@ export default function AccountShopperPage() {
               id="ps-consent-title"
               className="text-2xl font-display font-semibold text-vz-ink mb-3 leading-tight"
             >
-              Activez votre Personal Shopper IA
+              Activez votre Personal Shopper
             </h2>
             <p className="text-vz-ink-soft leading-relaxed mb-6">
               Pour vous proposer des pièces qui correspondent vraiment à votre
-              style, nous analysons vos préférences via une intelligence
-              artificielle. Avant d&apos;activer le service, voici exactement
-              ce que nous faisons et ce que vous contrôlez.
+              style, nous analysons vos préférences. Avant d&apos;activer le
+              service, voici exactement ce que nous faisons et ce que vous
+              contrôlez (détails dans nos{" "}
+              <Link href="/cgv" className="underline hover:text-vz-teal">
+                conditions générales
+              </Link>
+              ).
             </p>
 
             <div className="grid sm:grid-cols-2 gap-5 mb-6">
@@ -340,12 +339,6 @@ export default function AccountShopperPage() {
 
             <div className="rounded-xl bg-vz-teal-soft/40 border border-vz-teal/20 p-4 text-sm text-vz-ink-soft leading-relaxed mb-6">
               <p>
-                <strong className="text-vz-ink">L&apos;IA utilisée :</strong>{" "}
-                Claude Haiku 4.5 (Anthropic Ireland, hébergement UE).
-                Anthropic ne réutilise pas vos données pour entraîner ses
-                modèles.
-              </p>
-              <p className="mt-2">
                 <strong className="text-vz-ink">Conservation :</strong>{" "}
                 profil supprimé après 24&nbsp;mois sans activité ; logs de
                 scoring conservés 6&nbsp;mois ; historique d&apos;achats 10&nbsp;ans
@@ -399,7 +392,7 @@ export default function AccountShopperPage() {
               aria-describedby="shopper-search-hint"
             >
               <label htmlFor="shopper-search" className="sr-only">
-                Recherche libre, interprétée par notre IA
+                Recherche libre dans le stock de la boutique
               </label>
               <input
                 id="shopper-search"
@@ -421,8 +414,8 @@ export default function AccountShopperPage() {
               id="shopper-search-hint"
               className="text-xs text-vz-ink-mute mb-8"
             >
-              Votre requête est interprétée par notre IA pour extraire taille,
-              couleur et marque, puis croisée avec le stock réel de la boutique.
+              Votre requête est analysée pour en extraire taille, couleur et
+              marque, puis croisée avec le stock réel de la boutique.
             </p>
 
             {searchResults === null && items.length === 0 && !loading ? (
@@ -517,12 +510,12 @@ function ProductGrid({
         <p className="text-xs text-gray-400 mb-3">Résultat servi depuis le cache (24 h)</p>
       )}
       {/*
-        AI Act art. 50-2 — marquage machine-readable des sorties IA :
-        data-ai-generated="true" + role="region" + aria-label sur le
-        conteneur, badge IA sur chaque card.
+        AI Act art. 50-2 — marquage machine-readable invisible (data-ai-*) sur
+        le conteneur. Aucune mention IA visible côté client : la transparence
+        détaillée vit dans les CGV.
       */}
       <section
-        aria-label="Recommandations générées par intelligence artificielle"
+        aria-label="Votre sélection personnalisée"
         data-ai-generated="true"
         data-ai-source="claude-haiku-4-5"
         className="grid grid-cols-2 md:grid-cols-4 gap-4"
@@ -531,7 +524,7 @@ function ProductGrid({
           <article
             key={item.product_id}
             data-ai-generated="true"
-            aria-label={`Recommandation IA : ${item.name}`}
+            aria-label={item.name}
             className="relative bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col"
           >
             <button
@@ -548,7 +541,6 @@ function ProductGrid({
                   👗
                 </div>
               )}
-              <AiBadge className="absolute top-2 left-2 shadow-sm" />
             </button>
             <div className="p-3 flex-1 flex flex-col gap-1">
               <h3 className="text-sm font-medium text-black line-clamp-2">{item.name}</h3>

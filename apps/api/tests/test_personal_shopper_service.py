@@ -28,7 +28,7 @@ from app.models.pos import (
     TransactionItem,
     TransactionType,
 )
-from app.models.product import Category, Product, ProductPhoto, ProductStatus
+from app.models.product import Category, Gender, Product, ProductPhoto, ProductStatus
 from app.models.store import StoreZone
 from app.models.user import User, UserRole
 from app.services.embeddings import EmbeddingService
@@ -148,6 +148,7 @@ async def _make_product(
     sale_price: float = 49.0,
     category_name: str = "Robes",
     status: ProductStatus = ProductStatus.display,
+    gender=None,
 ) -> Product:
     cat_result = await session.execute(
         select(Category).where(Category.name == category_name)
@@ -166,6 +167,7 @@ async def _make_product(
         size=size,
         sale_price=sale_price,
         status=status,
+        gender=gender,
     )
     session.add(p)
     await session.flush()
@@ -341,6 +343,44 @@ async def test_cold_start_returns_assumed_empty_state(session):
         )
     )).scalars().all()
     assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# Gender filter (#6 — a man must NOT get women's pieces)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_recommend_hard_filters_by_declared_gender(session):
+    """recommend() must exclude opposite-gender pieces (mixte/unset kept)."""
+    user = await _make_user(session)
+    client = await _make_client(session)
+    client.gender_profile = "homme"  # declared man
+
+    bought = await _make_product(
+        session, name="Chemise homme", category_name="Chemises",
+        gender=Gender.homme, status=ProductStatus.sold,
+    )
+    cand_homme = await _make_product(
+        session, name="Pull homme", category_name="Pulls", gender=Gender.homme,
+    )
+    cand_femme = await _make_product(
+        session, name="Robe femme", category_name="Robes", gender=Gender.femme,
+    )
+    cand_mixte = await _make_product(
+        session, name="Écharpe mixte", category_name="Accessoires", gender=Gender.mixte,
+    )
+
+    emb = EmbeddingService(session)
+    for p in (bought, cand_homme, cand_femme, cand_mixte):
+        await emb.compute_for_product(p)
+    await _record_purchase(session, user, client, bought)
+    await emb.recompute_taste_profile(client.id)
+
+    result = await PersonalShopperService(session).recommend(client.id, top_n=5)
+    names = {p["name"] for p in result["products"]}
+    assert "Robe femme" not in names           # opposite gender excluded
+    assert "Pull homme" in names or "Écharpe mixte" in names  # own/mixte kept
 
 
 # ---------------------------------------------------------------------------

@@ -189,6 +189,19 @@ class PersonalShopperService:
             statuses=[ProductStatus.stock, ProductStatus.display],
         )
 
+        # 1b. HARD gender filter from the declared profile (#6 bug fix). The
+        # cosine search is gender-blind, so without this a man gets women's
+        # pieces. Keep mixte / unset pieces. Mirrors daily_picks(); never
+        # empties the pool (fall back to the unfiltered set if it would).
+        gender = (customer.gender_profile or "").strip().lower()
+        if gender in ("femme", "homme"):
+            target = Gender(gender)
+            gender_filtered = [
+                (p, score) for p, score in wide_candidates
+                if p.gender in (target, Gender.mixte) or p.gender is None
+            ]
+            wide_candidates = gender_filtered or wide_candidates
+
         # 2. Apply size filter (best-effort: keep candidates whose size is in
         # the customer's preferred set OR whose size is unknown).
         preferred_sizes = await self._preferred_sizes(customer_id)

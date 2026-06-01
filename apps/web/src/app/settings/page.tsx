@@ -785,6 +785,7 @@ export default function SettingsPage() {
     { key: 'caisse' as const, label: 'Caisse' },
     { key: 'tickets' as const, label: 'Tickets & Factures' },
     { key: 'communication' as const, label: 'Communication' },
+    { key: 'templates' as const, label: 'Modeles de messages' },
     { key: 'cahier' as const, label: 'Cahier de travail' },
     { key: 'fidelite' as const, label: 'Fidelite' },
     { key: 'categories' as const, label: 'Categories' },

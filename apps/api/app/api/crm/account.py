@@ -65,8 +65,14 @@ _CONSENT_LABELS = {
     ConsentPurpose.sms_marketing: "SMS commerciaux",
     ConsentPurpose.profiling: "Profilage Personal Shopper",
     ConsentPurpose.trend_alerts: "Alertes nouveautés tendance",
-    ConsentPurpose.data_sharing: "Partage de données B2B",
 }
+
+# Purposes exposed publicly. ``data_sharing`` (B2B) is DELIBERATELY excluded:
+# Vintiz will never enable B2B data sharing. The enum value is kept for
+# migration history but is inert — never surfaced, never togglable.
+_PUBLIC_CONSENT_PURPOSES = [
+    p for p in ConsentPurpose if p != ConsentPurpose.data_sharing
+]
 
 class ConsentToggleRequest(BaseModel):
     email: str
@@ -502,7 +508,7 @@ async def public_account_consents(
         latest.setdefault(row.purpose, row)
 
     out = []
-    for purpose in ConsentPurpose:
+    for purpose in _PUBLIC_CONSENT_PURPOSES:
         row = latest.get(purpose)
         out.append({
             "purpose": purpose.value,
@@ -530,6 +536,9 @@ async def public_account_consent_toggle(
     try:
         consent_purpose = ConsentPurpose(purpose)
     except ValueError:
+        raise HTTPException(status_code=404, detail="unknown_purpose")
+    # B2B data sharing is permanently disabled — never togglable (#8).
+    if consent_purpose == ConsentPurpose.data_sharing:
         raise HTTPException(status_code=404, detail="unknown_purpose")
 
     client = await _resolve_public_client(db, payload.email)
