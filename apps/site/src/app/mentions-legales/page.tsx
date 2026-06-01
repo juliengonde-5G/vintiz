@@ -1,5 +1,7 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import LegalDraftNotice from "@/components/LegalDraftNotice";
+import { LEGAL_INFO, isPlaceholder, legalValue } from "@/data/legal-info";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -16,28 +18,31 @@ export default function MentionsLegalesPage() {
         <div className="max-w-3xl mx-auto prose prose-sm">
           <h1 className="font-serif text-3xl text-vz-ink mb-8">Mentions légales</h1>
 
+          <LegalDraftNotice />
+
           <h2 className="font-serif text-xl text-vz-ink mt-8 mb-3">Éditeur du site</h2>
           <p className="text-vz-ink/70 leading-relaxed">
-            Vintiz<br />
+            {LEGAL_INFO.tradeName}<br />
             6 rue Saint-Jacques<br />
             27200 Vernon<br />
             France<br />
-            Téléphone : À COMPLÉTER<br />
-            E-mail : contact@vintiz.fr
+            Téléphone : {legalValue(LEGAL_INFO.phone)}<br />
+            E-mail : {LEGAL_INFO.email}
           </p>
 
           <h2 className="font-serif text-xl text-vz-ink mt-8 mb-3">
             Identité de l&apos;entreprise
           </h2>
           {/* Mentions obligatoires (LCEN art. 6-III, C. com. art. R123-237).
-              À renseigner avec les valeurs réelles d'immatriculation. */}
+              Valeurs centralisées dans data/legal-info.ts (point unique). */}
           <p className="text-vz-ink/70 leading-relaxed">
-            Forme juridique : À COMPLÉTER<br />
-            Capital social : À COMPLÉTER<br />
-            SIREN / SIRET : À COMPLÉTER<br />
-            RCS (ou RM) : À COMPLÉTER — greffe de À COMPLÉTER<br />
-            N° TVA intracommunautaire : À COMPLÉTER<br />
-            Directeur / responsable de la publication : À COMPLÉTER
+            Forme juridique : {legalValue(LEGAL_INFO.legalForm)}<br />
+            Capital social : {legalValue(LEGAL_INFO.capital)}<br />
+            SIREN / SIRET : {legalValue(LEGAL_INFO.siret)}<br />
+            RCS : {legalValue(LEGAL_INFO.rcs)}<br />
+            N° TVA intracommunautaire : {legalValue(LEGAL_INFO.vatNumber)}<br />
+            Directeur / responsable de la publication :{" "}
+            {legalValue(LEGAL_INFO.publicationDirector)}
           </p>
 
           <h2 className="font-serif text-xl text-vz-ink mt-8 mb-3">Hébergement</h2>
@@ -132,8 +137,26 @@ export default function MentionsLegalesPage() {
             Conformément à l&apos;article L612-1 du Code de la consommation, le
             consommateur peut recourir gratuitement à un médiateur de la
             consommation en vue de la résolution amiable d&apos;un litige.
-            Médiateur désigné par Vintiz&nbsp;: <strong>À COMPLÉTER</strong>{" "}
-            (nom, adresse postale et site internet du médiateur).
+            Médiateur désigné par {LEGAL_INFO.tradeName}&nbsp;:{" "}
+            <strong>{legalValue(LEGAL_INFO.mediator.name)}</strong>
+            {!isPlaceholder(LEGAL_INFO.mediator.address) && (
+              <> — {LEGAL_INFO.mediator.address}</>
+            )}
+            {!isPlaceholder(LEGAL_INFO.mediator.url) && (
+              <>
+                {" "}(
+                <a
+                  href={LEGAL_INFO.mediator.url}
+                  className="text-vz-teal underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {LEGAL_INFO.mediator.url}
+                </a>
+                )
+              </>
+            )}
+            .
           </p>
         </div>
       </section>
