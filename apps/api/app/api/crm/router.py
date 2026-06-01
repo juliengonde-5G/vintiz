@@ -400,7 +400,9 @@ async def get_client_full(
             "recorded_at": latest_per_purpose[purpose].created_at.isoformat()
             if purpose in latest_per_purpose and latest_per_purpose[purpose].created_at else None,
         }
+        # data_sharing (B2B) is permanently disabled — never surfaced (#8).
         for purpose in ConsentPurpose
+        if purpose != ConsentPurpose.data_sharing
     ]
     profiling_granted = any(
         c["purpose"] == "profiling" and c["granted"] for c in consents

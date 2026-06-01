@@ -28,7 +28,7 @@ class ConsentPurpose(str, enum.Enum):
     sms_marketing = "sms_marketing"
     profiling = "profiling"        # Personal Shopper / AI recommendations
     trend_alerts = "trend_alerts"  # Email push when a trending product matches taste profile
-    data_sharing = "data_sharing"  # Future B2B sharing — kept for forward compat
+    data_sharing = "data_sharing"  # B2B sharing — PERMANENTLY DISABLED, never surfaced/togglable (#8). Kept only for migration history.
 
 
 class Client(Base):

@@ -18,7 +18,7 @@ const FAQ = [
   },
   {
     q: "Comment j'utilise mes points ?",
-    a: "Tous les 100 points, un bon d'achat de 8 € est généré automatiquement et associé à votre carte. Il s'applique au prochain passage en caisse, valable 60 jours.",
+    a: "Tous les 100 points, un bon d'achat de 8 € est généré automatiquement et associé à votre carte. Il s'applique au prochain passage en caisse, valable 6 mois.",
   },
   {
     q: "Mes points expirent-ils ?",
@@ -88,7 +88,7 @@ export default function AccountFidelitePage() {
     <AccountShell title="Ma fidélité" intro="Présentez ce QR à la caisse pour cumuler vos points.">
       {data?.loyalty && (
         <div className="space-y-8">
-          <WalletCard email={email} />
+          <WalletCard email={email} showBigQr />
           <section>
             <h2 className="text-xl font-display font-semibold text-black mb-3">
               Mécanique simple

@@ -24,7 +24,13 @@ const TIER_LABELS: Record<string, string> = {
   gold: "Or",
 };
 
-export default function WalletCard({ email }: { email: string }) {
+export default function WalletCard({
+  email,
+  showBigQr = false,
+}: {
+  email: string;
+  showBigQr?: boolean;
+}) {
   const [data, setData] = useState<WalletPayload | null>(null);
   const [error, setError] = useState("");
 
@@ -72,7 +78,7 @@ export default function WalletCard({ email }: { email: string }) {
     );
   }
 
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
     data.qr_payload,
   )}`;
 
@@ -81,7 +87,12 @@ export default function WalletCard({ email }: { email: string }) {
   const SECONDARY_CLASS =
     'text-[11px] bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 font-medium transition-colors';
 
+  const bigQrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=8&data=${encodeURIComponent(
+    data.qr_payload,
+  )}`;
+
   return (
+    <>
     <div
       className="rounded-2xl p-5 text-white shadow-md"
       style={{ background: `linear-gradient(135deg, #0B7A6A 0%, ${data.primary_color} 100%)` }}
@@ -100,7 +111,7 @@ export default function WalletCard({ email }: { email: string }) {
         <img
           src={qrSrc}
           alt="QR membership"
-          className="w-20 h-20 rounded-md bg-white p-1"
+          className="w-24 h-24 rounded-md bg-white p-1"
         />
       </div>
 
@@ -176,5 +187,23 @@ export default function WalletCard({ email }: { email: string }) {
         </a>
       </div>
     </div>
+
+    {showBigQr && (
+      <div className="mt-6 bg-white rounded-2xl shadow-sm p-6 flex flex-col items-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={bigQrSrc}
+          alt="QR code de votre carte de fidélité"
+          className="w-64 h-64 sm:w-72 sm:h-72"
+        />
+        <p className="mt-3 font-mono text-sm text-vz-ink">
+          {data.membership_number}
+        </p>
+        <p className="mt-1 text-xs text-vz-ink-mute text-center">
+          Présentez ce code à la caisse pour cumuler vos points.
+        </p>
+      </div>
+    )}
+    </>
   );
 }
