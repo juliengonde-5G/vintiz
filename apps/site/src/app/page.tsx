@@ -1,257 +1,174 @@
-"use client";
-
-import Image from "next/image";
 import Link from "next/link";
-import { useState, FormEvent } from "react";
+import Image from "next/image";
+import PublicHeader from "@/components/PublicHeader";
+import PublicFooter from "@/components/PublicFooter";
+import NewsletterCard from "@/components/home/NewsletterCard";
+import AddressBlock from "@/components/home/AddressBlock";
 
-const INSTAGRAM_URL = "https://www.instagram.com/vintiz.fr/";
-const FACEBOOK_URL = "https://www.facebook.com/vintiz.fr";
-const TIKTOK_URL = "https://www.tiktok.com/@vintiz.fr";
+const PRODUCTS = [
+  { name: "Bonnet en crochet", price: "18,00 €", src: "/dev/product-bonnet.jpg" },
+  { name: "Foulard en dentelle", price: "14,00 €", src: "/dev/product-foulard-dentelle.jpg" },
+  { name: "Foulard en crochet", price: "18,00 €", src: "/dev/product-foulard-crochet.jpg" },
+  { name: "Pantalon « gigi »", price: "49,00 €", src: "/dev/product-pantalon-gigi.jpg" },
+];
+
+const MOSAIC = [
+  { src: "/dev/shop-pink-racks.jpg", alt: "Portants de la boutique Vintiz" },
+  { src: "/dev/shop-mirrors.jpg", alt: "Cabines d'essayage Vintiz" },
+  { src: "/dev/shop-counter.jpg", alt: "Comptoir caisse Vintiz" },
+  { src: "/dev/shop-showroom.jpg", alt: "Showroom intérieur Vintiz" },
+];
 
 export default function Home() {
-  const [email, setEmail] = useState("");
-  const [consent, setConsent] = useState(false);
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [message, setMessage] = useState("");
-
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!consent) {
-      setStatus("error");
-      setMessage("Merci de cocher la case de consentement pour recevoir nos e-mails.");
-      return;
-    }
-    setStatus("loading");
-    try {
-      const res = await fetch("/api/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, consent, source: "site_landing" }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setStatus("success");
-        setMessage(data.message);
-        setEmail("");
-        setConsent(false);
-      } else {
-        setStatus("error");
-        setMessage(data.error || data.detail || "Une erreur est survenue.");
-      }
-    } catch {
-      setStatus("error");
-      setMessage("Une erreur est survenue. Veuillez reessayer.");
-    }
-  }
-
   return (
-    <main className="min-h-screen flex flex-col">
-      <section className="flex-1 flex items-center justify-center px-6 py-16 bg-vz-bg">
-        <div className="max-w-2xl mx-auto text-center">
-          <div className="animate-fade-in-up">
-            <Image
-              src="/logo-teal.png"
-              alt="Vintiz - Boutique seconde main premium Vernon"
-              width={200}
-              height={200}
-              priority
-              className="mx-auto mb-8 h-32 w-auto sm:h-40"
-            />
-          </div>
-
-          <h1 className="animate-fade-in-up animation-delay-200 font-display font-[450] text-4xl sm:text-5xl lg:text-6xl text-vz-ink mb-6 leading-tight tracking-[-0.015em]">
-            Votre nouvelle destination
-            <br />
-            <em className="text-vz-teal not-italic">Slow Fashion</em> premium.
-          </h1>
-
-          <p className="animate-fade-in-up animation-delay-400 text-lg sm:text-xl text-vz-ink-soft max-w-xl mx-auto mb-10 leading-relaxed">
-            Des pièces uniques sélectionnées avec soin. Marques recherchées,
-            qualité irréprochable, prix justes.
-          </p>
-
-          <div className="animate-fade-in-up animation-delay-600 inline-flex flex-col items-center gap-2 bg-vz-surface/70 rounded-2xl px-8 py-6 border border-vz-accent-soft/30 backdrop-blur-sm mb-8">
-            <p className="text-xs uppercase tracking-[0.12em] text-vz-teal font-medium">
-              Ouverture prochaine
-            </p>
-            <p className="text-xl font-display text-vz-ink">
-              6 rue Saint-Jacques
-            </p>
-            <p className="text-sm text-vz-ink-mute">27200 Vernon — Normandie</p>
-            <a
-              href="#newsletter"
-              className="mt-3 text-sm font-medium text-vz-teal hover:underline"
-            >
-              Être prévenue de l&apos;ouverture ↓
-            </a>
-          </div>
-
-          <div
-            id="newsletter"
-            className="animate-fade-in-up animation-delay-800 max-w-lg mx-auto bg-vz-surface rounded-2xl shadow-sm border border-vz-accent-soft/30 px-6 py-7 mb-10"
-          >
-            <h2 className="font-display text-xl text-vz-ink mb-1">
-              Soyez la première informée
-            </h2>
-            <p className="text-sm text-vz-ink-mute mb-5">
-              Laissez votre e-mail : vous serez prévenue en avant-première de
-              l&apos;ouverture, des ventes privées et des nouveautés.
-            </p>
-            {status === "success" ? (
-              <div className="bg-vz-teal/10 border border-vz-teal/30 rounded-lg p-4 text-vz-teal">
-                {message}
+    <>
+      <PublicHeader />
+      <main className="bg-vz-bg">
+        {/* HERO */}
+        <section className="max-w-7xl mx-auto px-6 pt-10 pb-16 lg:pt-16 lg:pb-24">
+          <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+            <div>
+              <h1 className="font-mockSerif text-5xl md:text-6xl lg:text-7xl text-vz-teal leading-[1.05]">
+                Vintiz,
+                <br />
+                <span className="italic">une mode qui fait sens.</span>
+              </h1>
+              <p className="mt-6 text-base md:text-lg text-black/80 leading-relaxed max-w-xl">
+                Votre destination slow fashion à Vernon.
+                <br />
+                Bienvenue dans la boutique de seconde main premium pour celles et ceux
+                qui aiment la mode chic et tendance. Retrouvez des vêtements, chaussures
+                et accessoires soigneusement sélectionnés pour leur qualité et leur style.
+              </p>
+              <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                <Link
+                  href="/produits"
+                  className="inline-flex items-center justify-center rounded-full bg-vz-teal px-8 py-3.5 text-sm font-medium text-white hover:bg-vz-teal-deep transition-colors"
+                >
+                  Découvrir la boutique
+                </Link>
+                <Link
+                  href="/personal-shopper"
+                  className="inline-flex items-center justify-center rounded-full border border-vz-teal/40 px-8 py-3.5 text-sm font-medium text-vz-teal hover:bg-vz-teal hover:text-white transition-colors"
+                >
+                  Mon Personal Shopper
+                </Link>
               </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <label htmlFor="email" className="sr-only">
-                    Adresse email
-                  </label>
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    placeholder="votre@email.fr"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="flex-1 px-4 py-3 rounded-lg bg-vz-bg/50 border border-black/10 text-vz-ink placeholder:text-vz-ink/40 focus:outline-none focus:ring-2 focus:ring-vz-teal"
-                  />
-                  <button
-                    type="submit"
-                    disabled={status === "loading" || !consent}
-                    className="px-6 py-3 bg-vz-teal text-white font-medium rounded-lg hover:bg-vz-teal-deep disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                  >
-                    {status === "loading" ? "Envoi…" : "Me prévenir"}
-                  </button>
-                </div>
-                <label className="flex items-start gap-2 text-left text-xs text-vz-ink-mute cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={consent}
-                    onChange={(e) => setConsent(e.target.checked)}
-                    required
-                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-black/30 text-vz-teal focus:ring-vz-teal"
-                  />
-                  <span>
-                    J&apos;accepte de recevoir par e-mail les actualités de Vintiz
-                    (ouverture, ventes privées, nouveautés). Je peux me désinscrire
-                    à tout moment via le lien présent dans chaque e-mail.
-                  </span>
-                </label>
-              </form>
-            )}
-            {status === "error" && (
-              <p className="mt-3 text-sm text-red-600">{message}</p>
-            )}
-          </div>
-
-          <div className="animate-fade-in-up animation-delay-1000">
-            <p className="text-xs uppercase tracking-[0.12em] text-vz-ink/50 mb-4">
-              Suivez-nous
-            </p>
-            <div className="flex gap-3 justify-center">
-              <a
-                href={INSTAGRAM_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Instagram Vintiz"
-                className="w-11 h-11 rounded-full border border-vz-teal/30 flex items-center justify-center text-vz-teal hover:bg-vz-teal hover:text-white transition-colors"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
-                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
-                </svg>
-              </a>
-              <a
-                href={FACEBOOK_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Facebook Vintiz"
-                className="w-11 h-11 rounded-full border border-vz-teal/30 flex items-center justify-center text-vz-teal hover:bg-vz-teal hover:text-white transition-colors"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
-                </svg>
-              </a>
-              <a
-                href={TIKTOK_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="TikTok Vintiz"
-                className="w-11 h-11 rounded-full border border-vz-teal/30 flex items-center justify-center text-vz-teal hover:bg-vz-teal hover:text-white transition-colors"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
-                </svg>
-              </a>
+            </div>
+            <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-slate-900">
+              <Image
+                src="/dev/storefront-vintiz.jpg"
+                alt="Devanture Vintiz — 6 rue Saint-Jacques, Vernon"
+                fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                className="object-cover"
+                priority
+              />
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <footer className="bg-black text-white">
-        <div className="max-w-4xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Image
-              src="/logo-rose.png"
-              alt=""
-              width={44}
-              height={44}
-              className="h-8 w-auto"
-            />
-            <p className="text-xs text-white/40">
-              &copy; 2026 Vintiz — Vernon, Normandie
-            </p>
+        {/* MOSAIQUE BOUTIQUE */}
+        <section className="w-full">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 px-2 md:px-3">
+            {MOSAIC.map((m) => (
+              <div key={m.src} className="relative aspect-[3/4] overflow-hidden bg-stone-200">
+                <Image src={m.src} alt={m.alt} fill sizes="(max-width: 768px) 50vw, 25vw" className="object-cover" />
+              </div>
+            ))}
           </div>
-          <div className="flex gap-5 text-xs text-white/40">
-            <Link
-              href="/mentions-legales"
-              className="hover:text-vz-accent-soft transition-colors"
-            >
-              Mentions légales
-            </Link>
-            <Link href="/cgv" className="hover:text-vz-accent-soft transition-colors">
-              CGV
-            </Link>
-            <Link
-              href="/confidentialite"
-              className="hover:text-vz-accent-soft transition-colors"
-            >
-              Confidentialité
+        </section>
+
+        {/* COUPS DE COEUR */}
+        <section className="max-w-7xl mx-auto px-6 py-16 lg:py-20">
+          <div className="mb-6">
+            <h2 className="font-mockSerif text-3xl md:text-4xl text-vz-teal flex items-center gap-3">
+              <span aria-hidden>❤️</span> Nos coups de cœur en boutique
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            {PRODUCTS.map((p) => (
+              <article key={p.name} className="group">
+                <div className="relative aspect-square rounded-md overflow-hidden bg-stone-100">
+                  <Image src={p.src} alt={p.name} fill sizes="(max-width: 768px) 50vw, 25vw" className="object-cover" />
+                </div>
+                <div className="mt-3">
+                  <p className="text-sm text-black">{p.name}</p>
+                  <p className="text-sm text-black/60">{p.price}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="mt-8 text-center">
+            <Link href="/produits" className="text-sm font-medium text-vz-teal underline underline-offset-4 hover:text-vz-teal-deep">
+              Voir toute la boutique →
             </Link>
           </div>
-        </div>
-      </footer>
-    </main>
+        </section>
+
+        {/* CITATION */}
+        <section className="bg-vz-bg py-14">
+          <p className="max-w-4xl mx-auto px-6 text-center font-mockSerif text-3xl md:text-4xl lg:text-5xl text-vz-teal leading-snug">
+            Vintiz : affirmez votre style,<br />
+            faites briller vos valeurs.
+          </p>
+        </section>
+
+        {/* NOTRE CONCEPT */}
+        <section className="max-w-7xl mx-auto px-6 py-16 lg:py-24">
+          <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-start">
+            <div>
+              <h2 className="font-mockSerif text-4xl md:text-5xl text-vz-teal mb-6">Notre concept</h2>
+              <div className="relative aspect-[4/3] rounded-md overflow-hidden bg-stone-200">
+                <Image src="/dev/shop-local.jpg" alt="Intérieur boutique Vintiz" fill sizes="(max-width: 1024px) 100vw, 50vw" className="object-cover" />
+              </div>
+            </div>
+            <div className="pt-6 lg:pt-20 text-center lg:text-left">
+              <p className="text-base md:text-lg text-black/80 leading-relaxed">
+                La mission de Vintiz est claire : proposer une expérience shopping
+                personnalisée, grâce à des articles de qualité, en excellent état,
+                avec une sélection de marques renouvelée régulièrement. Des vêtements,
+                chaussures et accessoires à petits prix pour se faire plaisir tout en
+                respectant la planète.
+              </p>
+              <p className="mt-6 text-base md:text-lg text-black/80 leading-relaxed">
+                Nous sélectionnons soigneusement les pièces de seconde main auprès
+                de notre partenaire exclusif Solidarité Textiles.
+              </p>
+              <Link
+                href="/a-propos"
+                className="mt-8 inline-flex items-center justify-center rounded-full bg-vz-teal px-8 py-3.5 text-sm font-medium text-white hover:bg-vz-teal-deep transition-colors"
+              >
+                Découvrir notre concept
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* NEWSLETTER */}
+        <section className="pb-20">
+          <NewsletterCard />
+        </section>
+
+        {/* ZONE ADRESSE */}
+        <section className="bg-vz-bg border-t border-black/5">
+          <div className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-3 gap-10 items-center">
+            <div>
+              <p className="font-mockSerif text-4xl text-vz-teal tracking-[0.35em]">V I N T I Z</p>
+              <div className="mt-6">
+                <AddressBlock />
+              </div>
+            </div>
+            <div className="relative aspect-[3/4] rounded-md overflow-hidden bg-stone-200">
+              <Image src="/dev/look-femme.jpg" alt="Look femme Vintiz" fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover" />
+            </div>
+            <div className="relative aspect-[3/4] rounded-md overflow-hidden bg-stone-200">
+              <Image src="/dev/look-homme.jpg" alt="Look homme Vintiz" fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover" />
+            </div>
+          </div>
+        </section>
+      </main>
+      <PublicFooter />
+    </>
   );
 }

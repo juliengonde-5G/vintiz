@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Lexend_Mega, Poppins } from "next/font/google";
+import { Lexend_Mega, Poppins, DM_Serif_Display } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import CookieBanner from "@/components/CookieBanner";
@@ -17,6 +17,15 @@ const poppins = Poppins({
   subsets: ["latin"],
   weight: ["300", "400", "500", "600", "700"],
   variable: "--font-body",
+  display: "swap",
+});
+
+// Serif éditorial (héros / citations) — utilisé par la home + /a-propos.
+const dmSerif = DM_Serif_Display({
+  subsets: ["latin"],
+  weight: ["400"],
+  style: ["normal", "italic"],
+  variable: "--font-mock-serif",
   display: "swap",
 });
 
@@ -202,7 +211,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" className={`${lexendMega.variable} ${poppins.variable}`}>
+    <html lang="fr" className={`${lexendMega.variable} ${poppins.variable} ${dmSerif.variable}`}>
       <head>
         {/* icon, apple-touch-icon, manifest et canonical sont émis par
             Next.js depuis `metadata` ci-dessus — pas de balises manuelles
