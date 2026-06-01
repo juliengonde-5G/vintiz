@@ -59,20 +59,22 @@ export default function CookieBanner() {
               </Link>
             </p>
           </div>
+          {/* Refus aussi simple et visible que l'acceptation (lignes directrices
+              CNIL/EDPB) : mêmes dimensions, contraste équivalent. */}
           <div className="flex gap-3 shrink-0">
             <button
               type="button"
               onClick={decline}
               data-testid="cookie-decline"
-              className="px-4 py-2 text-sm font-medium text-black/70 border border-black/20 rounded-lg hover:bg-black/5 transition-colors"
+              className="flex-1 sm:flex-none sm:min-w-[150px] px-4 py-2 text-sm font-medium text-vz-teal border border-vz-teal rounded-lg hover:bg-vz-teal/5 transition-colors"
             >
-              Refuser
+              Continuer sans accepter
             </button>
             <button
               type="button"
               onClick={accept}
               data-testid="cookie-accept"
-              className="px-4 py-2 text-sm font-medium text-white bg-vz-teal rounded-lg hover:bg-vz-teal-deep transition-colors"
+              className="flex-1 sm:flex-none sm:min-w-[150px] px-4 py-2 text-sm font-medium text-white bg-vz-teal rounded-lg hover:bg-vz-teal-deep transition-colors"
             >
               Tout accepter
             </button>
