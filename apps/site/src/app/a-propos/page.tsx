@@ -46,12 +46,52 @@ const aboutJsonLd = {
   },
 };
 
+// FAQ factuelle — affichée sur la page ET exposée en FAQPage JSON-LD.
+// Réponses courtes et explicites : favorable au SEO et aux moteurs IA (SGE),
+// qui citent volontiers ce type de contenu structuré.
+const ABOUT_FAQ: { q: string; a: string }[] = [
+  {
+    q: "Où se trouve la boutique Vintiz ?",
+    a: "Au 6 rue Saint-Jacques, 27200 Vernon, en Normandie — à 10 minutes de Giverny. Ouverture du mardi au samedi, de 10h30 à 19h.",
+  },
+  {
+    q: "Qu'est-ce que Vintiz vend exactement ?",
+    a: "Des vêtements, chaussures et accessoires de seconde main premium, authentifiés et sélectionnés à la pièce : marques françaises iconiques (Sandro, Maje, Sézane, Ba&sh, IRO, Polène, Isabel Marant) et créateurs, en excellent état.",
+  },
+  {
+    q: "D'où viennent les pièces ?",
+    a: "Elles sont sélectionnées auprès de notre partenaire Solidarité Textiles, acteur de l'économie sociale et solidaire. Chaque pièce est triée, vérifiée et authentifiée avant mise en rayon.",
+  },
+  {
+    q: "Les achats se font-ils en ligne ?",
+    a: "Non. Vintiz est une boutique physique à Vernon. Le site présente la sélection et le Personal Shopper prépare votre visite, mais l'achat se fait en boutique.",
+  },
+  {
+    q: "Comment fonctionne le programme de fidélité ?",
+    a: "La carte est 100 % digitale (Apple Wallet / Google Wallet). Vous cumulez 1 point par euro dépensé ; un bon d'achat est généré automatiquement aux paliers. L'adhésion se fait en boutique.",
+  },
+];
+
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: ABOUT_FAQ.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: { "@type": "Answer", text: item.a },
+  })),
+};
+
 export default function AboutPage() {
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
       <PublicHeader />
       <main className="bg-vz-bg">
@@ -292,6 +332,21 @@ export default function AboutPage() {
                 </li>
               </ul>
             </div>
+          </div>
+        </section>
+
+        {/* FAQ — réponses factuelles (SEO + moteurs IA/SGE) */}
+        <section className="max-w-3xl mx-auto px-6 py-16">
+          <h2 className="font-display text-3xl sm:text-4xl text-vz-ink leading-tight mb-8">
+            Questions fréquentes
+          </h2>
+          <div className="space-y-6">
+            {ABOUT_FAQ.map((item) => (
+              <div key={item.q}>
+                <h3 className="font-display text-lg text-vz-ink mb-2">{item.q}</h3>
+                <p className="text-vz-ink-soft leading-relaxed">{item.a}</p>
+              </div>
+            ))}
           </div>
         </section>
 

@@ -8,6 +8,7 @@ import {
   CATEGORY_LABEL,
   CONDITION_LABEL,
   PRODUCTS,
+  brandSlug,
   discountPercent,
   findProduct,
   relatedProducts,
@@ -207,10 +208,22 @@ export default function ProductPage({ params }: PageProps) {
 
               <dl className="mt-8 grid grid-cols-2 gap-y-4 text-sm">
                 <dt className="text-vz-ink-mute">Marque</dt>
-                <dd className="text-vz-ink font-medium">{product.brand}</dd>
+                <dd className="text-vz-ink font-medium">
+                  <Link
+                    href={`/produits/marque/${brandSlug(product.brand)}`}
+                    className="underline underline-offset-2 hover:text-vz-teal"
+                  >
+                    {product.brand}
+                  </Link>
+                </dd>
                 <dt className="text-vz-ink-mute">Catégorie</dt>
                 <dd className="text-vz-ink font-medium">
-                  {CATEGORY_LABEL[product.category]}
+                  <Link
+                    href={`/produits?categorie=${product.category}`}
+                    className="underline underline-offset-2 hover:text-vz-teal"
+                  >
+                    {CATEGORY_LABEL[product.category]}
+                  </Link>
                 </dd>
                 <dt className="text-vz-ink-mute">Taille</dt>
                 <dd className="text-vz-ink font-medium">{product.size}</dd>
@@ -287,6 +300,20 @@ export default function ProductPage({ params }: PageProps) {
                 {related.map((p) => (
                   <ProductCard key={p.slug} product={p} />
                 ))}
+              </div>
+              <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                <Link
+                  href={`/produits/marque/${brandSlug(product.brand)}`}
+                  className="font-medium text-vz-teal underline underline-offset-4 hover:text-vz-teal-deep"
+                >
+                  Voir plus de {product.brand} →
+                </Link>
+                <Link
+                  href={`/produits?categorie=${product.category}`}
+                  className="font-medium text-vz-teal underline underline-offset-4 hover:text-vz-teal-deep"
+                >
+                  Toute la catégorie {CATEGORY_LABEL[product.category]} →
+                </Link>
               </div>
             </div>
           </section>
