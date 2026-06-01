@@ -92,7 +92,32 @@ export default function CGVPage() {
           </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">
-            Article 6 — Programme fidélité
+            Article 6 — Garanties légales
+          </h2>
+          <p className="text-black/70 leading-relaxed">
+            Indépendamment des retours commerciaux ci-dessus, le consommateur
+            bénéficie des garanties légales d&apos;ordre public&nbsp;:
+          </p>
+          <ul className="list-disc pl-6 mt-2 space-y-2 text-black/70">
+            <li>
+              la <strong>garantie légale de conformité</strong> (art. L217-3 et
+              suivants du Code de la consommation), qui s&apos;applique aux
+              biens d&apos;occasion&nbsp;; l&apos;état d&apos;usage de chaque
+              pièce, décrit sur l&apos;étiquette et accepté à l&apos;achat, ne
+              constitue pas un défaut de conformité&nbsp;;
+            </li>
+            <li>
+              la <strong>garantie contre les vices cachés</strong>
+              {" "}(art. 1641 et suivants du Code civil).
+            </li>
+          </ul>
+          <p className="text-black/70 leading-relaxed mt-3">
+            Pour mettre en œuvre ces garanties, contactez-nous à
+            contact@vintiz.fr ou présentez-vous en boutique avec votre ticket.
+          </p>
+
+          <h2 className="font-display text-xl text-black mt-8 mb-3">
+            Article 7 — Programme fidélité
           </h2>
           <p className="text-black/70 leading-relaxed">
             Le programme de fidélité Vintiz est <strong>100 % digital</strong>{" "}
@@ -104,8 +129,9 @@ export default function CGVPage() {
             souscription. Mécanique unique&nbsp;:{" "}
             <strong>1 € dépensé = 1 point</strong>. Tous les{" "}
             <strong>100 points</strong>, un bon d&apos;achat de 8 € est généré
-            automatiquement (valable 60 jours). Les points expirent au bout de{" "}
-            <strong>24 mois sans activité</strong>. Vintiz se réserve le droit
+            automatiquement (durée de validité affichée en boutique et dans
+            votre espace client, par défaut 6 mois). Les points expirent au
+            bout de <strong>24 mois sans activité</strong>. Vintiz se réserve le droit
             de modifier les conditions du programme avec préavis affiché en
             boutique et envoyé par email aux membres opt-in.
           </p>
@@ -123,7 +149,7 @@ export default function CGVPage() {
           </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">
-            Article 7 — Avoir (store credit)
+            Article 8 — Avoir (store credit)
           </h2>
           <p className="text-black/70 leading-relaxed">
             Un avoir vous est remis lorsque vous demandez le remboursement
@@ -139,7 +165,7 @@ export default function CGVPage() {
           </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">
-            Article 8 — Données personnelles
+            Article 9 — Données personnelles
           </h2>
           <p className="text-black/70 leading-relaxed">
             Le traitement de vos données personnelles est encadré par notre{" "}
@@ -155,15 +181,21 @@ export default function CGVPage() {
           </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">
-            Article 9 — Litiges
+            Article 10 — Litiges et médiation
           </h2>
           <p className="text-black/70 leading-relaxed">
             Les présentes CGV sont soumises au droit français. En cas de litige,
             une solution amiable sera recherchée en premier lieu (contact&nbsp;:
             contact@vintiz.fr). À défaut, le tribunal compétent sera celui de
-            Vernon. Conformément à la réglementation, vous pouvez recourir à
-            une procédure de médiation conventionnelle ou à tout autre mode de
-            résolution amiable des différends.
+            Vernon.
+          </p>
+          <p className="text-black/70 leading-relaxed mt-3">
+            Conformément à l&apos;article L612-1 du Code de la consommation, vous
+            pouvez recourir gratuitement au médiateur de la consommation désigné
+            par Vintiz en vue de la résolution amiable de tout litige&nbsp;:
+            {" "}<strong>À COMPLÉTER</strong> (nom, adresse et site internet du
+            médiateur). Le recours à la médiation est possible après une
+            réclamation écrite préalable restée sans réponse satisfaisante.
           </p>
         </div>
       </section>

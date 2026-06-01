@@ -27,8 +27,11 @@ export default function ConfidentialitePage() {
             Responsable du traitement
           </h2>
           <p className="text-black/70 leading-relaxed">
-            Vintiz — 6 rue Saint-Jacques, 27200 Vernon, France. Contact :
-            dpo@solidarite-textiles.fr.
+            Le responsable de traitement est <strong>Vintiz</strong> — 6 rue
+            Saint-Jacques, 27200 Vernon, France (responsable unique). La
+            fonction de Délégué à la Protection des Données (DPO) est assurée
+            par notre partenaire Solidarité Textiles&nbsp;; vous pouvez le
+            contacter à <strong>dpo@solidarite-textiles.fr</strong>.
           </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">
@@ -204,9 +207,21 @@ export default function ConfidentialitePage() {
               un identifiant de transaction non nominatif.
             </li>
             <li>
-              <strong>Twilio / fournisseur SMTP</strong> — uniquement pour
-              l&apos;envoi de votre ticket par e-mail/SMS lorsque vous nous le
-              demandez.
+              <strong>Brevo (Sendinblue)</strong> — envoi des newsletters, des
+              emails et SMS transactionnels et marketing (adresse e-mail /
+              numéro de téléphone uniquement). Sous-traitant établi dans
+              l&apos;Union européenne.
+            </li>
+            <li>
+              <strong>Twilio</strong> (fournisseur SMS de secours) — uniquement
+              pour l&apos;envoi de votre code de connexion ou de votre ticket par
+              SMS lorsque vous nous le demandez.
+            </li>
+            <li>
+              <strong>api.qrserver.com</strong> (génération d&apos;image QR, UE) —
+              reçoit uniquement le numéro de votre carte de fidélité (format
+              <code className="font-mono mx-1">V######</code>) pour produire le
+              QR affiché dans votre espace. Aucune donnée nominative.
             </li>
           </ul>
           <p className="text-black/70 leading-relaxed mt-2">
