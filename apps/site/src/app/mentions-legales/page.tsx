@@ -1,5 +1,5 @@
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import PublicHeader from "@/components/PublicHeader";
+import PublicFooter from "@/components/PublicFooter";
 import LegalDraftNotice from "@/components/LegalDraftNotice";
 import { LEGAL_INFO, isPlaceholder, legalValue } from "@/data/legal-info";
 import type { Metadata } from "next";
@@ -13,8 +13,8 @@ export const metadata: Metadata = {
 export default function MentionsLegalesPage() {
   return (
     <>
-      <Navbar />
-      <section className="pt-28 pb-20 px-6 bg-vz-bg min-h-screen">
+      <PublicHeader />
+      <section className="pt-12 pb-20 px-6 bg-vz-bg min-h-screen">
         <div className="max-w-3xl mx-auto prose prose-sm">
           <h1 className="font-serif text-3xl text-vz-ink mb-8">Mentions légales</h1>
 
@@ -156,7 +156,7 @@ export default function MentionsLegalesPage() {
           </p>
         </div>
       </section>
-      <Footer />
+      <PublicFooter />
     </>
   );
 }

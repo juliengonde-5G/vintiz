@@ -1,5 +1,5 @@
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import PublicHeader from "@/components/PublicHeader";
+import PublicFooter from "@/components/PublicFooter";
 import Link from "next/link";
 import type { Metadata } from "next";
 
@@ -49,8 +49,8 @@ export default async function UnsubscribePage({
 
   return (
     <>
-      <Navbar />
-      <section className="pt-28 pb-20 px-6 bg-vz-bg min-h-screen">
+      <PublicHeader />
+      <section className="pt-12 pb-20 px-6 bg-vz-bg min-h-screen">
         <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-sm border border-vz-accent-soft/30 px-6 py-8 text-center">
           <h1 className="font-display text-2xl text-black mb-4">
             Désinscription newsletter
@@ -89,7 +89,7 @@ export default async function UnsubscribePage({
           )}
         </div>
       </section>
-      <Footer />
+      <PublicFooter />
     </>
   );
 }

@@ -2,8 +2,8 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import PublicHeader from "@/components/PublicHeader";
+import PublicFooter from "@/components/PublicFooter";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -153,8 +153,8 @@ export default function AccountLoginPage() {
 
   return (
     <main className="min-h-screen bg-vz-bg">
-      <Navbar />
-      <section className="max-w-md mx-auto px-4 pt-16 pb-24">
+      <PublicHeader />
+      <section className="max-w-md mx-auto px-4 pt-12 pb-24">
         <h1 className="text-3xl font-display font-bold text-black mb-2">Mon espace Vintiz</h1>
         <p className="text-gray-600 mb-6">
           Recevez un email&nbsp;: cliquez sur le lien de connexion, ou saisissez
@@ -344,7 +344,7 @@ export default function AccountLoginPage() {
           1 € dépensé = 1 point. 100 points = bon de 8 €. Validité 24 mois sans activité.
         </p>
       </section>
-      <Footer />
+      <PublicFooter />
     </main>
   );
 }
