@@ -1,12 +1,21 @@
 import Link from "next/link";
 import {
   CONDITION_LABEL,
+  type ProductCondition,
   type VitrineProduct,
   discountPercent,
 } from "@/data/vitrine-products";
 
+const CONDITION_LABEL_EN: Record<ProductCondition, string> = {
+  excellent: "Excellent condition",
+  "tres-bon": "Very good condition",
+  bon: "Good condition",
+};
+
 interface ProductCardProps {
   product: VitrineProduct;
+  /** "fr" (default) keeps FR pages untouched; "en" renders English chrome. */
+  locale?: "fr" | "en";
 }
 
 /**
@@ -17,9 +26,16 @@ interface ProductCardProps {
  * marque en gros sert de placeholder visuel jusqu'au shoot pro
  * (cf. audit marketing M7).
  */
-export default function ProductCard({ product }: ProductCardProps) {
+export default function ProductCard({
+  product,
+  locale = "fr",
+}: ProductCardProps) {
   const discount = discountPercent(product);
   const sold = !product.available;
+  const isEn = locale === "en";
+  const conditionLabel = isEn
+    ? CONDITION_LABEL_EN[product.condition]
+    : CONDITION_LABEL[product.condition];
 
   return (
     <Link
@@ -45,7 +61,7 @@ export default function ProductCard({ product }: ProductCardProps) {
         )}
         {sold && (
           <span className="absolute inset-0 flex items-center justify-center bg-vz-ink/70 text-white font-display text-xl tracking-wider">
-            Vendu
+            {isEn ? "Sold" : "Vendu"}
           </span>
         )}
       </div>
@@ -58,7 +74,8 @@ export default function ProductCard({ product }: ProductCardProps) {
           {product.name}
         </h3>
         <p className="text-xs text-vz-ink-mute">
-          Taille {product.size} · {product.color} · {CONDITION_LABEL[product.condition]}
+          {isEn ? "Size" : "Taille"} {product.size} · {product.color} ·{" "}
+          {conditionLabel}
         </p>
         <div className="mt-2 flex items-baseline gap-2">
           <span className="text-base font-semibold text-vz-teal">

@@ -40,11 +40,29 @@ export default function sitemap(): MetadataRoute.Sitemap {
     }),
   );
 
+  // Miroir EN des pages marque (mêmes slugs de marque).
+  const brandEntriesEn: MetadataRoute.Sitemap = listAvailableBrands().map(
+    (brand) => ({
+      url: `${SITE_URL}/en/produits/marque/${brandSlug(brand)}`,
+      lastModified: productsLastModified,
+      changeFrequency: 'weekly',
+      priority: 0.65,
+    }),
+  );
+
   const capsuleEntries: MetadataRoute.Sitemap = CAPSULES.map((c) => ({
     url: `${SITE_URL}/capsules/${c.slug}`,
     lastModified: new Date(c.published_at),
     changeFrequency: 'monthly',
     priority: 0.7,
+  }));
+
+  // Miroir EN des capsules (slugs partagés avec le FR).
+  const capsuleEntriesEn: MetadataRoute.Sitemap = CAPSULES.map((c) => ({
+    url: `${SITE_URL}/en/capsules/${c.slug}`,
+    lastModified: new Date(c.published_at),
+    changeFrequency: 'monthly',
+    priority: 0.65,
   }));
 
   const journalEntries: MetadataRoute.Sitemap = JOURNAL_ARTICLES.map((a) => ({
@@ -53,6 +71,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
     changeFrequency: 'monthly',
     priority: 0.65,
   }));
+
+  // Miroir EN des articles de journal (slugs partagés avec le FR).
+  const journalEntriesEn: MetadataRoute.Sitemap = JOURNAL_ARTICLES.map(
+    (a) => ({
+      url: `${SITE_URL}/en/journal/${a.slug}`,
+      lastModified: new Date(a.published_at),
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    }),
+  );
 
   return [
     {
@@ -133,9 +161,24 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly',
       priority: 0.85,
     },
+    {
+      url: `${SITE_URL}/en/capsules`,
+      lastModified: newPagesLastModified,
+      changeFrequency: 'monthly',
+      priority: 0.65,
+    },
+    {
+      url: `${SITE_URL}/en/journal`,
+      lastModified: newPagesLastModified,
+      changeFrequency: 'weekly',
+      priority: 0.7,
+    },
     ...brandEntries,
+    ...brandEntriesEn,
     ...capsuleEntries,
+    ...capsuleEntriesEn,
     ...journalEntries,
+    ...journalEntriesEn,
     ...productEntries,
   ];
 }
