@@ -1,5 +1,5 @@
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import PublicHeader from "@/components/PublicHeader";
+import PublicFooter from "@/components/PublicFooter";
 import LegalDraftNotice from "@/components/LegalDraftNotice";
 import { LEGAL_INFO, isPlaceholder, legalValue } from "@/data/legal-info";
 import Link from "next/link";
@@ -15,8 +15,8 @@ export const metadata: Metadata = {
 export default function CGVPage() {
   return (
     <>
-      <Navbar />
-      <section className="pt-28 pb-20 px-6 bg-vz-bg min-h-screen">
+      <PublicHeader />
+      <section className="pt-12 pb-20 px-6 bg-vz-bg min-h-screen">
         <div className="max-w-3xl mx-auto">
           <h1 className="font-display text-3xl text-black mb-8">
             Conditions Générales de Vente
@@ -212,7 +212,7 @@ export default function CGVPage() {
           </p>
         </div>
       </section>
-      <Footer />
+      <PublicFooter />
     </>
   );
 }

@@ -1,5 +1,5 @@
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import PublicHeader from "@/components/PublicHeader";
+import PublicFooter from "@/components/PublicFooter";
 import Link from "next/link";
 import type { Metadata } from "next";
 
@@ -13,8 +13,8 @@ export const metadata: Metadata = {
 export default function ConfidentialitePage() {
   return (
     <>
-      <Navbar />
-      <section className="pt-28 pb-20 px-6 bg-vz-bg min-h-screen">
+      <PublicHeader />
+      <section className="pt-12 pb-20 px-6 bg-vz-bg min-h-screen">
         <div className="max-w-3xl mx-auto">
           <h1 className="font-display text-3xl text-black mb-8">
             Politique de confidentialité
@@ -312,7 +312,7 @@ export default function ConfidentialitePage() {
           </p>
         </div>
       </section>
-      <Footer />
+      <PublicFooter />
     </>
   );
 }
