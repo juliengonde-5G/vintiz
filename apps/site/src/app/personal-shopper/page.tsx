@@ -59,12 +59,57 @@ const serviceJsonLd = {
   url: `${SITE_URL}/personal-shopper`,
 };
 
+// FAQPage — miroir de la FAQ visible en bas de page. Très favorable aux
+// résultats riches Google + aux réponses génératives (SGE / moteurs IA).
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: [
+    {
+      "@type": "Question",
+      name: "Le Personal Shopper est-il payant ?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Non. Le service est inclus gratuitement pour les membres du programme de fidélité Vintiz.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Combien de pièces vais-je recevoir en recommandation ?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Entre 3 et 5 pièces par session, sélectionnées dans le stock réel de la boutique, sans jamais sortir de votre budget.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Et si une recommandation ne me convient pas ?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Vous nous le dites en une phrase et la sélection se réajuste immédiatement. Notre équipe peut aussi intervenir manuellement sous 24 h.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Le service repose-t-il sur une intelligence artificielle ?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Oui, et c'est précisé en permanence dans l'interface. Vous pouvez à tout moment demander à échanger avec un conseiller humain de Vintiz via le formulaire de contact.",
+      },
+    },
+  ],
+};
+
 export default function PersonalShopperPage() {
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
       <PublicHeader />
       <main className="bg-vz-bg">

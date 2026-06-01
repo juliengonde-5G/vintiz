@@ -129,6 +129,21 @@ export default function ArticlePage({ params }: PageProps) {
     inLanguage: "fr",
   };
 
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Accueil", item: SITE_URL },
+      { "@type": "ListItem", position: 2, name: "Journal", item: `${SITE_URL}/journal` },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: article.title,
+        item: `${SITE_URL}/journal/${article.slug}`,
+      },
+    ],
+  };
+
   const date = new Date(article.published_at).toLocaleDateString("fr-FR", {
     year: "numeric",
     month: "long",
@@ -140,6 +155,10 @@ export default function ArticlePage({ params }: PageProps) {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       <PublicHeader />
       <main className="bg-vz-bg">

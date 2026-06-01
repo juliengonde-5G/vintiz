@@ -101,11 +101,38 @@ export default function ProductPage({ params }: PageProps) {
     },
   };
 
+  // Fil d'Ariane structuré (BreadcrumbList) — miroir du fil visuel ci-dessous.
+  // Aide Google + moteurs IA à situer la page dans la hiérarchie du site.
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Accueil", item: SITE_URL },
+      { "@type": "ListItem", position: 2, name: "Boutique", item: `${SITE_URL}/produits` },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: CATEGORY_LABEL[product.category],
+        item: `${SITE_URL}/produits?categorie=${product.category}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 4,
+        name: `${product.brand} — ${product.name}`,
+        item: `${SITE_URL}/produits/${product.slug}`,
+      },
+    ],
+  };
+
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       <PublicHeader />
       <main className="bg-vz-bg pb-24 sm:pb-12">
