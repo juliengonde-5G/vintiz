@@ -217,13 +217,12 @@ export default function ConfidentialitePage() {
               pour l&apos;envoi de votre code de connexion ou de votre ticket par
               SMS lorsque vous nous le demandez.
             </li>
-            <li>
-              <strong>api.qrserver.com</strong> (génération d&apos;image QR, UE) —
-              reçoit uniquement le numéro de votre carte de fidélité (format
-              <code className="font-mono mx-1">V######</code>) pour produire le
-              QR affiché dans votre espace. Aucune donnée nominative.
-            </li>
           </ul>
+          <p className="text-black/70 leading-relaxed mt-2">
+            Le QR code de votre carte de fidélité est généré localement (dans
+            votre navigateur ou sur nos serveurs)&nbsp;: votre numéro de carte
+            n&apos;est transmis à aucun service tiers.
+          </p>
           <p className="text-black/70 leading-relaxed mt-2">
             Aucun transfert hors Union européenne n&apos;est effectué pour les
             données de profil&nbsp;; l&apos;API Claude est utilisée via une
