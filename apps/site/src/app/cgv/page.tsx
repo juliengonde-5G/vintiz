@@ -1,5 +1,7 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import LegalDraftNotice from "@/components/LegalDraftNotice";
+import { LEGAL_INFO, isPlaceholder, legalValue } from "@/data/legal-info";
 import Link from "next/link";
 import type { Metadata } from "next";
 
@@ -22,6 +24,8 @@ export default function CGVPage() {
           <p className="text-xs text-black/50 mb-8">
             Dernière mise à jour : avril 2026
           </p>
+
+          <LegalDraftNotice />
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">
             Article 1 — Objet
@@ -192,10 +196,19 @@ export default function CGVPage() {
           <p className="text-black/70 leading-relaxed mt-3">
             Conformément à l&apos;article L612-1 du Code de la consommation, vous
             pouvez recourir gratuitement au médiateur de la consommation désigné
-            par Vintiz en vue de la résolution amiable de tout litige&nbsp;:
-            {" "}<strong>À COMPLÉTER</strong> (nom, adresse et site internet du
-            médiateur). Le recours à la médiation est possible après une
-            réclamation écrite préalable restée sans réponse satisfaisante.
+            par {LEGAL_INFO.tradeName} en vue de la résolution amiable de tout
+            litige&nbsp;: <strong>{legalValue(LEGAL_INFO.mediator.name)}</strong>
+            {!isPlaceholder(LEGAL_INFO.mediator.url) && (
+              <>
+                {" "}(
+                <a href={LEGAL_INFO.mediator.url} className="text-vz-teal underline" target="_blank" rel="noopener noreferrer">
+                  {LEGAL_INFO.mediator.url}
+                </a>
+                )
+              </>
+            )}
+            . Le recours à la médiation est possible après une réclamation
+            écrite préalable restée sans réponse satisfaisante.
           </p>
         </div>
       </section>
