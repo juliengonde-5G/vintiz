@@ -93,10 +93,6 @@ export default function MentionsLegalesPage() {
               <strong>Scaleway SAS</strong> — hébergement applicatif et base
               de données.
             </li>
-            <li>
-              <strong>api.qrserver.com</strong> — génération de l&apos;image QR
-              de la carte de fidélité (numéro de carte uniquement).
-            </li>
           </ul>
 
           <h2 className="font-serif text-xl text-vz-ink mt-8 mb-3">Cookies</h2>

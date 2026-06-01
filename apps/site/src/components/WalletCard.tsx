@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import { isAndroid, isIOS } from "@/lib/platform";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -33,6 +34,7 @@ export default function WalletCard({
 }) {
   const [data, setData] = useState<WalletPayload | null>(null);
   const [error, setError] = useState("");
+  const [qrDataUrl, setQrDataUrl] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +68,26 @@ export default function WalletCard({
     return null;
   }, [data]);
 
+  // QR généré localement (plus aucun appel à un service tiers type qrserver) :
+  // le numéro de carte ne quitte plus le navigateur. Voir audit juridique §6.
+  useEffect(() => {
+    const payload = data?.qr_payload;
+    if (!payload) return;
+    let cancelled = false;
+    QRCode.toDataURL(payload, {
+      width: 512,
+      margin: 4,
+      errorCorrectionLevel: "M",
+    })
+      .then((url) => {
+        if (!cancelled) setQrDataUrl(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.qr_payload]);
+
   if (error) {
     return (
       <p className="text-sm text-gray-400 text-center py-2">{error}</p>
@@ -78,18 +100,10 @@ export default function WalletCard({
     );
   }
 
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
-    data.qr_payload,
-  )}`;
-
   const PRIMARY_CLASS =
     'text-xs bg-white text-vz-teal-deep hover:bg-white/90 rounded-full px-3 py-1.5 font-semibold transition-colors';
   const SECONDARY_CLASS =
     'text-[11px] bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 font-medium transition-colors';
-
-  const bigQrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=8&data=${encodeURIComponent(
-    data.qr_payload,
-  )}`;
 
   return (
     <>
@@ -107,12 +121,16 @@ export default function WalletCard({
             {data.membership_number}
           </p>
         </div>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={qrSrc}
-          alt="QR membership"
-          className="w-24 h-24 rounded-md bg-white p-1"
-        />
+        {qrDataUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={qrDataUrl}
+            alt="QR membership"
+            className="w-24 h-24 rounded-md bg-white p-1"
+          />
+        ) : (
+          <div className="w-24 h-24 rounded-md bg-white/40 animate-pulse" />
+        )}
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -190,12 +208,16 @@ export default function WalletCard({
 
     {showBigQr && (
       <div className="mt-6 bg-white rounded-2xl shadow-sm p-6 flex flex-col items-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={bigQrSrc}
-          alt="QR code de votre carte de fidélité"
-          className="w-64 h-64 sm:w-72 sm:h-72"
-        />
+        {qrDataUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={qrDataUrl}
+            alt="QR code de votre carte de fidélité"
+            className="w-64 h-64 sm:w-72 sm:h-72"
+          />
+        ) : (
+          <div className="w-64 h-64 sm:w-72 sm:h-72 bg-vz-bg-alt animate-pulse rounded-md" />
+        )}
         <p className="mt-3 font-mono text-sm text-vz-ink">
           {data.membership_number}
         </p>
