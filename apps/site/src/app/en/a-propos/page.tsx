@@ -47,9 +47,47 @@ const aboutJsonLd = {
   },
 };
 
+const ABOUT_FAQ_EN: { q: string; a: string }[] = [
+  {
+    q: "Where is the Vintiz boutique?",
+    a: "At 6 rue Saint-Jacques, 27200 Vernon, Normandy — 10 minutes from Giverny. Open Tuesday to Saturday, 10:30am to 7pm.",
+  },
+  {
+    q: "What exactly does Vintiz sell?",
+    a: "Premium second-hand clothing, shoes and accessories, authenticated and curated piece by piece: iconic French brands (Sandro, Maje, Sézane, Ba&sh, IRO, Polène, Isabel Marant) and designers, in excellent condition.",
+  },
+  {
+    q: "Where do the pieces come from?",
+    a: "They are sourced through our partner Solidarité Textiles, a social-economy organisation. Every piece is sorted, checked and authenticated before going on the rails.",
+  },
+  {
+    q: "Can I buy online?",
+    a: "No. Vintiz is a physical boutique in Vernon. The website showcases the selection and the Personal Shopper prepares your visit, but purchases are made in store.",
+  },
+  {
+    q: "How does the loyalty programme work?",
+    a: "The card is fully digital (Apple Wallet / Google Wallet). You earn 1 point per euro spent; a voucher is generated automatically at each threshold. Sign-up happens in store.",
+  },
+];
+
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  inLanguage: "en",
+  mainEntity: ABOUT_FAQ_EN.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: { "@type": "Answer", text: item.a },
+  })),
+};
+
 export default function AboutEnPage() {
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutJsonLd) }}
@@ -219,6 +257,21 @@ export default function AboutEnPage() {
                 </li>
               </ul>
             </div>
+          </div>
+        </section>
+
+        {/* FAQ — factual answers (SEO + AI/SGE answer engines) */}
+        <section className="max-w-3xl mx-auto px-6 py-16">
+          <h2 className="font-display text-3xl sm:text-4xl text-vz-ink leading-tight mb-8">
+            Frequently asked questions
+          </h2>
+          <div className="space-y-6">
+            {ABOUT_FAQ_EN.map((item) => (
+              <div key={item.q}>
+                <h3 className="font-display text-lg text-vz-ink mb-2">{item.q}</h3>
+                <p className="text-vz-ink-soft leading-relaxed">{item.a}</p>
+              </div>
+            ))}
           </div>
         </section>
 
