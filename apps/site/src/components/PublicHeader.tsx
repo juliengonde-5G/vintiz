@@ -16,6 +16,8 @@ const NAV_FR = [
 
 const NAV_EN = [
   { href: "/en/produits", label: "Shop" },
+  { href: "/en/capsules", label: "Capsules" },
+  { href: "/en/journal", label: "Journal" },
   { href: "/en/a-propos", label: "About" },
   { href: "/en/personal-shopper", label: "AI Personal Shopper" },
   { href: "/en/contact", label: "Visit us" },
@@ -23,7 +25,9 @@ const NAV_EN = [
 
 const EN_TO_FR: Record<string, string> = {
   "/en": "/",
-  "/en/produits": "/produits/made-in-france",
+  "/en/produits": "/produits",
+  "/en/capsules": "/capsules",
+  "/en/journal": "/journal",
   "/en/personal-shopper": "/personal-shopper",
   "/en/a-propos": "/a-propos",
   "/en/contact": "/contact",
@@ -31,11 +35,42 @@ const EN_TO_FR: Record<string, string> = {
 
 const FR_TO_EN: Record<string, string> = {
   "/": "/en",
+  "/produits": "/en/produits",
   "/produits/made-in-france": "/en/produits",
+  "/capsules": "/en/capsules",
+  "/journal": "/en/journal",
   "/personal-shopper": "/en/personal-shopper",
   "/a-propos": "/en/a-propos",
   "/contact": "/en/contact",
 };
+
+/**
+ * Routes dynamiques à slug partagé FR↔EN (capsules, journal, marque). Le
+ * slug est identique dans les deux langues, donc le toggle de langue
+ * préserve simplement le slug en changeant le préfixe.
+ */
+const SHARED_SLUG_PREFIXES = [
+  { fr: "/capsules/", en: "/en/capsules/" },
+  { fr: "/journal/", en: "/en/journal/" },
+  { fr: "/produits/marque/", en: "/en/produits/marque/" },
+];
+
+function resolveSwitchHref(pathname: string, isEn: boolean): string {
+  // Routes statiques d'abord (mapping explicite).
+  const direct = isEn ? EN_TO_FR[pathname] : FR_TO_EN[pathname];
+  if (direct) return direct;
+
+  // Routes dynamiques à slug partagé.
+  for (const { fr, en } of SHARED_SLUG_PREFIXES) {
+    const from = isEn ? en : fr;
+    const to = isEn ? fr : en;
+    if (pathname.startsWith(from) && pathname.length > from.length) {
+      return to + pathname.slice(from.length);
+    }
+  }
+
+  return isEn ? "/" : "/en/personal-shopper";
+}
 
 /**
  * Header de navigation pour les pages publiques (hors landing `/`).
@@ -48,9 +83,7 @@ export default function PublicHeader() {
 
   const isEn = pathname?.startsWith("/en") ?? false;
   const NAV = isEn ? NAV_EN : NAV_FR;
-  const switchHref = isEn
-    ? EN_TO_FR[pathname ?? ""] ?? "/"
-    : FR_TO_EN[pathname ?? ""] ?? "/en/personal-shopper";
+  const switchHref = resolveSwitchHref(pathname ?? "", isEn);
   const switchLabel = isEn ? "FR" : "EN";
 
   return (

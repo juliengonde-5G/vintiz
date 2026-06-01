@@ -36,6 +36,8 @@ export default function PublicFooter() {
         sectionHeading: "Vintiz",
         nav: [
           { href: "/en/produits", label: "Shop" },
+          { href: "/en/capsules", label: "Capsules" },
+          { href: "/en/journal", label: "Journal" },
           { href: "/en/a-propos", label: "About" },
           { href: "/en/personal-shopper", label: "AI Personal Shopper" },
           { href: "/en/contact", label: "Visit us" },
