@@ -5,6 +5,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
+import LoyaltyCardConfig from '@/components/admin/LoyaltyCardConfig';
 import { api } from '@/lib/api';
 
 type OfferType =
@@ -277,12 +278,14 @@ export default function OperationsPage() {
           <p className="text-sm text-gray-500 mt-1 max-w-2xl">
             Définis les règles d’offres appliquées en caisse. Les offres ne baissent jamais
             le prix de vente unitaire — elles ajoutent une remise au panier ou émettent un
-            bon d’achat. Cumul fidélité : 1 € = 1 pt, palier 100 pts = bon de 8 € (auto, 2 mois).
+            bon d’achat. Les règles de cumul fidélité se paramètrent ci-dessous.
           </p>
         </header>
 
         {message && <div className="p-3 bg-green-50 text-green-700 rounded-lg text-sm">{message}</div>}
         {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
+
+        <LoyaltyCardConfig />
 
         <Card title="Modèles d’offres">
           <p className="text-xs text-gray-400 mb-3">Cliquez sur un modèle pour pré-remplir les paramètres.</p>

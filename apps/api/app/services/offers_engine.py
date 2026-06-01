@@ -473,13 +473,23 @@ LOYALTY_VOUCHER_VALUE = 8.0
 LOYALTY_VOUCHER_VALID_DAYS = 180  # bon d'achat fidélité valable 6 mois
 
 
-def points_to_credit(amount_ttc: float) -> int:
-    """Return the number of loyalty points earned for a given net amount."""
-    return max(0, int(float(amount_ttc) // 1) * LOYALTY_POINT_PER_EURO)
+def points_to_credit(amount_ttc: float, euro_per_point: int = LOYALTY_POINT_PER_EURO) -> int:
+    """Return the number of loyalty points earned for a given net amount.
+
+    ``euro_per_point`` = euros spent to earn 1 point (admin-configurable, #1).
+    """
+    epp = max(1, int(euro_per_point or 1))
+    return max(0, int(float(amount_ttc) // epp))
 
 
-def milestones_crossed(before: int, after: int) -> int:
-    """Number of 100-pt milestones crossed when going from ``before`` to ``after``."""
+def milestones_crossed(
+    before: int, after: int, threshold: int = LOYALTY_MILESTONE
+) -> int:
+    """Number of voucher milestones crossed from ``before`` to ``after``.
+
+    ``threshold`` = points per voucher (admin-configurable, #1).
+    """
     if after <= before:
         return 0
-    return (after // LOYALTY_MILESTONE) - (before // LOYALTY_MILESTONE)
+    t = max(1, int(threshold or LOYALTY_MILESTONE))
+    return (after // t) - (before // t)
