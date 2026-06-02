@@ -1,13 +1,15 @@
 import type { MetadataRoute } from 'next';
 import { CAPSULES } from '@/data/capsules';
 import { JOURNAL_ARTICLES } from '@/data/journal-articles';
-import {
-  brandSlug,
-  listAvailableBrands,
-  PRODUCTS,
-} from '@/data/vitrine-products';
+import { brandSlug } from '@/data/vitrine-products';
+import { listPublicProducts } from '@/lib/storefront-api';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://vintiz.fr';
+
+// Sitemap régénéré toutes les 10 min — synchrone avec le cache produits
+// (ISR 5 min) en gardant une marge pour Google qui ne re-fetch pas le
+// sitemap aussi vite que ça.
+export const revalidate = 600;
 
 /**
  * Sitemap = uniquement les URLs publiques *indexables*. Les pages légales
@@ -17,21 +19,32 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://vintiz.fr';
  * Les fiches produit indisponibles sont aussi exclues : leur metadata
  * met `robots.index = false` quand `available === false`.
  */
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const homeLastModified = new Date('2026-05-08T00:00:00Z');
   const newPagesLastModified = new Date('2026-05-08T00:00:00Z');
-  const productsLastModified = new Date('2026-05-08T00:00:00Z');
+  const productsLastModified = new Date();
 
-  const productEntries: MetadataRoute.Sitemap = PRODUCTS.filter(
-    (p) => p.available,
-  ).map((p) => ({
+  // On tire le catalogue de l'API publique : produits dispo + marques
+  // observées dans le rayon réel. Si l'API tombe, le helper retombe sur
+  // le dataset démo — donc le sitemap reste utilisable.
+  const apiProducts = await listPublicProducts();
+  const availableProducts = apiProducts.filter((p) => p.available);
+  const brandsFromInventory = Array.from(
+    new Set(
+      availableProducts
+        .map((p) => p.brand)
+        .filter((b): b is string => Boolean(b)),
+    ),
+  );
+
+  const productEntries: MetadataRoute.Sitemap = availableProducts.map((p) => ({
     url: `${SITE_URL}/produits/${p.slug}`,
     lastModified: productsLastModified,
     changeFrequency: 'weekly',
     priority: 0.6,
   }));
 
-  const brandEntries: MetadataRoute.Sitemap = listAvailableBrands().map(
+  const brandEntries: MetadataRoute.Sitemap = brandsFromInventory.map(
     (brand) => ({
       url: `${SITE_URL}/produits/marque/${brandSlug(brand)}`,
       lastModified: productsLastModified,
@@ -41,7 +54,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   );
 
   // Miroir EN des pages marque (mêmes slugs de marque).
-  const brandEntriesEn: MetadataRoute.Sitemap = listAvailableBrands().map(
+  const brandEntriesEn: MetadataRoute.Sitemap = brandsFromInventory.map(
     (brand) => ({
       url: `${SITE_URL}/en/produits/marque/${brandSlug(brand)}`,
       lastModified: productsLastModified,

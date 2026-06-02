@@ -4,12 +4,18 @@ import PublicFooter from "@/components/PublicFooter";
 import PublicHeader from "@/components/PublicHeader";
 import ProductCard from "@/components/ProductCard";
 import {
-  CATEGORY_LABEL,
-  PRODUCTS,
-  type ProductCategory,
-} from "@/data/vitrine-products";
+  listPublicProducts,
+  listPublicCategories,
+  type ApiProductCategory,
+  PUBLIC_CATEGORY_LABELS,
+} from "@/lib/storefront-api";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://vintiz.fr";
+
+// ISR — Next regenerates the page every 5 min. Stays static between
+// regenerations so the page is hyper-rapide. A manager qui rétague un
+// produit le voit remonter sur le site dans les 5 min, sans rebuild.
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "Boutique",
@@ -30,33 +36,36 @@ interface PageProps {
   searchParams?: { categorie?: string };
 }
 
-export default function ProduitsPage({ searchParams }: PageProps) {
+export default async function ProduitsPage({ searchParams }: PageProps) {
   const requested = searchParams?.categorie?.toLowerCase();
 
-  const allCategories = Array.from(
-    new Set(PRODUCTS.map((p) => p.category)),
-  ) as ProductCategory[];
-  const activeCategory: ProductCategory | null =
-    requested && allCategories.includes(requested as ProductCategory)
-      ? (requested as ProductCategory)
+  // Catalogue temps réel (API boutique) avec fallback démo. Pas de
+  // pagination côté API → on filtre/trie côté serveur.
+  const [products, categories] = await Promise.all([
+    listPublicProducts(),
+    listPublicCategories(),
+  ]);
+
+  const activeCategory: ApiProductCategory | null =
+    requested && (Object.keys(PUBLIC_CATEGORY_LABELS) as string[]).includes(requested)
+      ? (requested as ApiProductCategory)
       : null;
 
   const filtered = activeCategory
-    ? PRODUCTS.filter((p) => p.category === activeCategory)
-    : PRODUCTS;
+    ? products.filter((p) => p.category === activeCategory)
+    : products;
 
-  // Tri : disponibles d'abord, puis par marque alphabétique
+  // Tri : disponibles d'abord, puis marque alphabétique
   const sorted = [...filtered].sort((a, b) => {
     if (a.available !== b.available) return a.available ? -1 : 1;
-    return a.brand.localeCompare(b.brand);
+    return (a.brand || "").localeCompare(b.brand || "");
   });
 
-  // JSON-LD ItemList — aide Google à comprendre la nature de la page
   const itemListJsonLd = {
     "@context": "https://schema.org",
     "@type": "ItemList",
     name: activeCategory
-      ? `${CATEGORY_LABEL[activeCategory]} seconde main premium — Vintiz Vernon`
+      ? `${PUBLIC_CATEGORY_LABELS[activeCategory]} seconde main premium — Vintiz Vernon`
       : "Boutique Vintiz — pièces seconde main premium",
     url: activeCategory
       ? `${SITE_URL}/produits?categorie=${activeCategory}`
@@ -69,6 +78,19 @@ export default function ProduitsPage({ searchParams }: PageProps) {
       url: `${SITE_URL}/produits/${p.slug}`,
     })),
   };
+
+  // Compte total pour le chip « Tout »
+  const allCount = products.length;
+  // Map des comptages (le fallback API a déjà calculé, sinon recompute
+  // localement à partir de la liste qu'on a).
+  const countMap = new Map<string, number>();
+  for (const c of categories) countMap.set(c.key, c.count);
+  if (countMap.size === 0) {
+    for (const p of products) {
+      if (!p.category) continue;
+      countMap.set(p.category, (countMap.get(p.category) ?? 0) + 1);
+    }
+  }
 
   return (
     <>
@@ -93,39 +115,7 @@ export default function ProduitsPage({ searchParams }: PageProps) {
             vérifier qu&apos;elle est toujours disponible, puis passez l&apos;essayer.
           </p>
 
-          {/* Notice placeholder pré-ouverture */}
-          <div className="mt-6 inline-flex items-start gap-2 rounded-xl bg-vz-teal-soft/40 border border-vz-teal/20 px-4 py-3 text-sm text-vz-ink-soft max-w-2xl">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-              className="mt-0.5 shrink-0 text-vz-teal"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="16" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12.01" y2="8" />
-            </svg>
-            <p className="leading-relaxed">
-              Aperçu pré-ouverture. Les photographies définitives des pièces
-              seront mises en ligne d&apos;ici l&apos;ouverture boutique en
-              septembre&nbsp;2026.{" "}
-              <Link
-                href="/#newsletter"
-                className="underline underline-offset-2 hover:text-vz-teal"
-              >
-                Soyez prévenue
-              </Link>
-              .
-            </p>
-          </div>
-
-          {/* Filtres catégorie */}
+          {/* Filtres catégorie — chips dynamiques basées sur les comptages API */}
           <nav
             aria-label="Filtrer par catégorie"
             className="mt-10 flex flex-wrap gap-2"
@@ -138,25 +128,27 @@ export default function ProduitsPage({ searchParams }: PageProps) {
                   : "bg-vz-surface border border-black/10 text-vz-ink hover:border-vz-teal/40"
               }`}
             >
-              Tout ({PRODUCTS.length})
+              Tout ({allCount})
             </Link>
-            {allCategories.map((cat) => {
-              const count = PRODUCTS.filter((p) => p.category === cat).length;
-              const active = cat === activeCategory;
-              return (
-                <Link
-                  key={cat}
-                  href={`/produits?categorie=${cat}`}
-                  className={`inline-flex items-center rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                    active
-                      ? "bg-vz-teal text-white"
-                      : "bg-vz-surface border border-black/10 text-vz-ink hover:border-vz-teal/40"
-                  }`}
-                >
-                  {CATEGORY_LABEL[cat]} ({count})
-                </Link>
-              );
-            })}
+            {(Object.keys(PUBLIC_CATEGORY_LABELS) as ApiProductCategory[])
+              .map((cat) => ({ cat, count: countMap.get(cat) ?? 0 }))
+              .filter(({ count }) => count > 0)
+              .map(({ cat, count }) => {
+                const active = cat === activeCategory;
+                return (
+                  <Link
+                    key={cat}
+                    href={`/produits?categorie=${cat}`}
+                    className={`inline-flex items-center rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                      active
+                        ? "bg-vz-teal text-white"
+                        : "bg-vz-surface border border-black/10 text-vz-ink hover:border-vz-teal/40"
+                    }`}
+                  >
+                    {PUBLIC_CATEGORY_LABELS[cat]} ({count})
+                  </Link>
+                );
+              })}
           </nav>
 
           {/* Grille produits — 2 cols mobile, 3 tablet, 4 desktop */}

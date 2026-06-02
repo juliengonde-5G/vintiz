@@ -4,29 +4,42 @@ import { notFound } from "next/navigation";
 import ProductCard from "@/components/ProductCard";
 import PublicFooter from "@/components/PublicFooter";
 import PublicHeader from "@/components/PublicHeader";
-import {
-  brandSlug,
-  findBrandBySlug,
-  listAvailableBrands,
-  productsByBrand,
-} from "@/data/vitrine-products";
+import { brandSlug } from "@/data/vitrine-products";
+import { listPublicProducts } from "@/lib/storefront-api";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://vintiz.fr";
+
+// ISR — même cache que /produits.
+export const revalidate = 300;
+export const dynamicParams = true;
 
 interface PageProps {
   params: { brand: string };
 }
 
-export function generateStaticParams() {
-  return listAvailableBrands().map((b) => ({ brand: brandSlug(b) }));
+/**
+ * Cherche le nom canonique d'une marque depuis un slug (« sandro »,
+ * « ba-sh »). On itère sur le catalogue temps réel : si plusieurs
+ * variations existent (« Sandro » vs « SANDRO »), la première
+ * rencontrée gagne.
+ */
+async function resolveBrand(slug: string): Promise<string | null> {
+  const products = await listPublicProducts();
+  const wanted = slug.toLowerCase();
+  for (const p of products) {
+    if (p.brand && brandSlug(p.brand) === wanted) return p.brand;
+  }
+  return null;
 }
 
-export function generateMetadata({ params }: PageProps): Metadata {
-  const brand = findBrandBySlug(params.brand);
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const brand = await resolveBrand(params.brand);
   if (!brand) {
     return { title: "Marque introuvable", robots: { index: false } };
   }
-  const products = productsByBrand(brand).filter((p) => p.available);
+  const products = (await listPublicProducts({ marque: brand })).filter(
+    (p) => p.available,
+  );
   return {
     title: `${brand} seconde main`,
     description: `Notre sélection ${brand} d'occasion authentifiée à Vernon — ${products.length} pièces uniques. Robes, vestes, sacs et accessoires premium curés par l'équipe Vintiz.`,
@@ -41,17 +54,15 @@ export function generateMetadata({ params }: PageProps): Metadata {
   };
 }
 
-export default function BrandPage({ params }: PageProps) {
-  const brand = findBrandBySlug(params.brand);
+export default async function BrandPage({ params }: PageProps) {
+  const brand = await resolveBrand(params.brand);
   if (!brand) notFound();
 
-  const products = productsByBrand(brand).sort((a, b) => {
+  const products = (await listPublicProducts({ marque: brand })).sort((a, b) => {
     if (a.available !== b.available) return a.available ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
 
-  // JSON-LD ItemList ciblé sur la marque — meilleur signal pour le
-  // ranking sur "{marque} occasion" / "{marque} seconde main".
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
