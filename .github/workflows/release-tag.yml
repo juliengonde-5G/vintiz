@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Récupère tout l'historique : on a besoin du commit_sha cible
           # même s'il n'est pas l'HEAD courant de la branche.
@@ -50,16 +50,36 @@ jobs:
       - name: Create annotated tag + release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ inputs.tag_name }}
-          COMMIT_SHA: ${{ inputs.commit_sha }}
+          RAW_TAG_NAME: ${{ inputs.tag_name }}
+          RAW_COMMIT_SHA: ${{ inputs.commit_sha }}
           RELEASE_TITLE: ${{ inputs.release_title }}
           RELEASE_BODY: ${{ inputs.release_body }}
         run: |
           set -euo pipefail
 
+          # Défense anti-copier/coller : on retire les espaces et un éventuel
+          # préfixe ``tag_name=`` / ``commit_sha=`` qu'un utilisateur peut
+          # avoir collé par mégarde dans le champ « Run workflow ».
+          strip_input() {
+            local v="$1"
+            # trim whitespace
+            v="$(echo -n "$v" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            # drop "<key>=" prefix if present
+            v="${v#tag_name=}"
+            v="${v#commit_sha=}"
+            printf '%s' "$v"
+          }
+          TAG_NAME="$(strip_input "$RAW_TAG_NAME")"
+          COMMIT_SHA="$(strip_input "$RAW_COMMIT_SHA")"
+          if [ -z "$TAG_NAME" ] || [ -z "$COMMIT_SHA" ]; then
+            echo "::error::tag_name et commit_sha sont obligatoires (vides après nettoyage)."
+            exit 1
+          fi
+
           # 1. Vérifie que le commit existe bien dans le repo.
-          if ! git cat-file -e "${COMMIT_SHA}^{commit}"; then
+          if ! git cat-file -e "${COMMIT_SHA}^{commit}" 2>/dev/null; then
             echo "::error::commit ${COMMIT_SHA} introuvable dans l'historique."
+            echo "Astuce : colle UNIQUEMENT le SHA (ex: 2919326...), sans préfixe ``commit_sha=`` ni guillemets."
             exit 1
           fi
           RESOLVED_SHA="$(git rev-parse "${COMMIT_SHA}^{commit}")"
