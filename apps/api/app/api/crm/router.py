@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import or_, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -1581,5 +1581,122 @@ async def public_curation_current(db: AsyncSession = Depends(get_db)):
         "items": out,
         "curator_note": section.get("curator_note", ""),
         "updated_at": section.get("updated_at", ""),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Storefront highlights — landing page "Coups de cœur" (public, no auth)
+# ---------------------------------------------------------------------------
+
+
+_LANDING_FLOOR_STATUSES: tuple = ()  # populated lazily below
+
+
+@router.get("/storefront/highlights")
+async def storefront_highlights(
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(default=4, ge=1, le=12),
+):
+    """Coups de cœur affichés sur la landing publique (vrais produits).
+
+    Toujours du réel — jamais de placeholder :
+    1. Pioche d'abord dans la curation manager (``app_config.curation_picks``),
+       résolue contre le catalogue (on saute les pièces vendues / retirées).
+    2. Si la curation ne suffit pas à atteindre ``limit``, complète avec les
+       meilleurs produits du rayon classés par ``trend_score`` (desc), en
+       déduplicant ceux déjà choisis et en filtrant le seed/test.
+    3. Renvoie ``items=[]`` si rien de vendable n'existe en boutique (la
+       landing masque alors la section). Pas de fallback démo.
+    """
+    from app.services.app_config import get_section
+    import uuid as _uuid
+
+    floor = [
+        ProductStatus.display,
+        ProductStatus.displayed,
+        ProductStatus.discounted,
+        ProductStatus.deep_discounted,
+    ]
+
+    # --- 1. Manager curation, resolved against live floor products ---------
+    curated_items: list[dict] = []
+    seen_ids: set[str] = set()
+    section = get_section("curation_picks") or {}
+    raw_items: list[dict] = section.get("items") or []
+    if raw_items:
+        ids: list = []
+        reasons: dict[str, str] = {}
+        for it in raw_items:
+            pid = it.get("product_id")
+            if not pid:
+                continue
+            try:
+                uid = _uuid.UUID(pid)
+                ids.append(uid)
+                reasons[str(uid)] = it.get("reason") or ""
+            except (ValueError, TypeError):
+                continue
+        if ids:
+            rows = (
+                await db.execute(
+                    select(Product)
+                    .where(Product.id.in_(ids))
+                    .where(Product.status.in_(floor))
+                    .where(Product.is_test.is_(False))
+                )
+            ).scalars().all()
+            by_id = {str(p.id): p for p in rows}
+            # Preserve the manager's ordering.
+            for it in raw_items:
+                pid = it.get("product_id", "")
+                p = by_id.get(pid)
+                if p is None or pid in seen_ids:
+                    continue
+                curated_items.append(_serialize_highlight(p, reason=reasons.get(pid, "")))
+                seen_ids.add(pid)
+                if len(curated_items) >= limit:
+                    break
+
+    # --- 2. Top up with the best floor products by trend score -------------
+    if len(curated_items) < limit:
+        topup_rows = (
+            await db.execute(
+                select(Product)
+                .where(Product.status.in_(floor))
+                .where(Product.is_test.is_(False))
+                .order_by(
+                    desc(func.coalesce(Product.trend_score, 0)),
+                    desc(Product.displayed_at),
+                )
+                .limit(limit * 3)  # over-fetch to dedupe against curated picks
+            )
+        ).scalars().all()
+        for p in topup_rows:
+            pid = str(p.id)
+            if pid in seen_ids:
+                continue
+            curated_items.append(_serialize_highlight(p, reason=""))
+            seen_ids.add(pid)
+            if len(curated_items) >= limit:
+                break
+
+    return {
+        "items": curated_items[:limit],
+        "curator_note": section.get("curator_note", ""),
+    }
+
+
+def _serialize_highlight(product, *, reason: str) -> dict:
+    return {
+        "id": str(product.id),
+        "slug": product.barcode,
+        "name": product.name,
+        "brand": product.brand,
+        "size": product.size,
+        "color": product.color,
+        "sale_price": float(product.sale_price or 0),
+        "price_cents": int(round(float(product.sale_price or 0) * 100)),
+        "photo_url": product.storefront_photo_url or product.photo_url,
+        "reason": reason or None,
     }
 
