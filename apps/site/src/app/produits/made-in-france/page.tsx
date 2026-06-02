@@ -3,12 +3,12 @@ import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
 import PublicFooter from "@/components/PublicFooter";
 import PublicHeader from "@/components/PublicHeader";
-import {
-  FRENCH_ICONIC_BRANDS,
-  frenchIconicProducts,
-} from "@/data/vitrine-products";
+import { FRENCH_ICONIC_BRANDS } from "@/data/vitrine-products";
+import { listPublicProducts } from "@/lib/storefront-api";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://vintiz.fr";
+
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "Made in France iconic — Vernon",
@@ -31,11 +31,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default function MadeInFrancePage() {
-  const products = frenchIconicProducts().sort((a, b) => {
-    if (a.available !== b.available) return a.available ? -1 : 1;
-    return a.brand.localeCompare(b.brand);
-  });
+export default async function MadeInFrancePage() {
+  // Catalogue boutique réel, filtré sur les marques iconiques françaises.
+  const all = await listPublicProducts();
+  const iconic = new Set(Array.from(FRENCH_ICONIC_BRANDS));
+  const products = all
+    .filter((p) => p.brand && iconic.has(p.brand))
+    .sort((a, b) => {
+      if (a.available !== b.available) return a.available ? -1 : 1;
+      return (a.brand || "").localeCompare(b.brand || "");
+    });
 
   return (
     <>

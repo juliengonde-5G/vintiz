@@ -3,8 +3,14 @@ import {
   CONDITION_LABEL,
   type ProductCondition,
   type VitrineProduct,
-  discountPercent,
+  discountPercent as demoDiscount,
 } from "@/data/vitrine-products";
+import {
+  type ApiProduct,
+  discountPercent as apiDiscount,
+  PUBLIC_CONDITION_LABELS,
+} from "@/lib/storefront-api";
+import { mediaUrl } from "@/lib/media";
 
 const CONDITION_LABEL_EN: Record<ProductCondition, string> = {
   excellent: "Excellent condition",
@@ -12,8 +18,15 @@ const CONDITION_LABEL_EN: Record<ProductCondition, string> = {
   bon: "Good condition",
 };
 
+const CONDITION_LABEL_EN_API: Record<NonNullable<ApiProduct["condition"]>, string> = {
+  excellent: "Excellent condition",
+  "tres-bon": "Very good condition",
+  bon: "Good condition",
+};
+
 interface ProductCardProps {
-  product: VitrineProduct;
+  /** Soit une fiche vitrine statique (data/vitrine-products), soit une fiche API publique. */
+  product: VitrineProduct | ApiProduct;
   /** "fr" (default) keeps FR pages untouched; "en" renders English chrome. */
   locale?: "fr" | "en";
 }
@@ -22,20 +35,33 @@ interface ProductCardProps {
  * Card produit pour la grille `/produits` et les blocs « pièces
  * similaires ». Mobile-first : grille 2 colonnes en `<sm`.
  *
- * Pas de photo réelle pour l'instant — un swatch coloré + le nom de la
- * marque en gros sert de placeholder visuel jusqu'au shoot pro
- * (cf. audit marketing M7).
+ * Accepte indifféremment :
+ *   - une fiche démo (``VitrineProduct``) → couleur swatch en placeholder
+ *   - une fiche API (``ApiProduct``) → photo storefront détourée si dispo,
+ *     sinon initiale typographique de la marque
  */
 export default function ProductCard({
   product,
   locale = "fr",
 }: ProductCardProps) {
-  const discount = discountPercent(product);
-  const sold = !product.available;
   const isEn = locale === "en";
-  const conditionLabel = isEn
-    ? CONDITION_LABEL_EN[product.condition]
-    : CONDITION_LABEL[product.condition];
+  const isApi = !("swatch" in product);
+
+  const sold = isApi ? !product.available : !(product as VitrineProduct).available;
+  const photoUrl = isApi ? (product as ApiProduct).photo_url : null;
+  const swatch = !isApi ? (product as VitrineProduct).swatch : "bg-vz-bg-alt";
+  const discount = isApi
+    ? apiDiscount(product as ApiProduct)
+    : demoDiscount(product as VitrineProduct);
+
+  const conditionKey = (product as ApiProduct).condition ?? "tres-bon";
+  const conditionLabel = isApi
+    ? isEn
+      ? CONDITION_LABEL_EN_API[conditionKey as keyof typeof CONDITION_LABEL_EN_API]
+      : PUBLIC_CONDITION_LABELS[conditionKey as keyof typeof PUBLIC_CONDITION_LABELS]
+    : isEn
+      ? CONDITION_LABEL_EN[(product as VitrineProduct).condition]
+      : CONDITION_LABEL[(product as VitrineProduct).condition];
 
   return (
     <Link
@@ -44,15 +70,25 @@ export default function ProductCard({
       aria-label={`${product.brand} — ${product.name}`}
     >
       <div
-        className={`relative aspect-[3/4] ${product.swatch} flex items-center justify-center overflow-hidden`}
+        className={`relative aspect-[3/4] ${photoUrl ? "bg-vz-bg-alt" : swatch} flex items-center justify-center overflow-hidden`}
       >
-        {/* Placeholder typographique tant que les photos pro ne sont pas shootées */}
-        <span
-          aria-hidden
-          className="font-display text-2xl sm:text-3xl text-white/95 mix-blend-difference tracking-tight text-center px-3 leading-tight"
-        >
-          {product.brand}
-        </span>
+        {photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={mediaUrl(photoUrl)}
+            alt={`${product.brand} — ${product.name}`}
+            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+            loading="lazy"
+          />
+        ) : (
+          /* Placeholder typographique tant que la photo storefront n'est pas générée */
+          <span
+            aria-hidden
+            className="font-display text-2xl sm:text-3xl text-white/95 mix-blend-difference tracking-tight text-center px-3 leading-tight"
+          >
+            {product.brand}
+          </span>
+        )}
 
         {discount !== null && !sold && (
           <span className="absolute top-3 left-3 inline-flex items-center rounded-full bg-vz-accent text-white text-[11px] font-semibold px-2.5 py-0.5 tracking-wider">

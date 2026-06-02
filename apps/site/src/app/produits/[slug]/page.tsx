@@ -5,75 +5,89 @@ import PublicFooter from "@/components/PublicFooter";
 import PublicHeader from "@/components/PublicHeader";
 import ProductCard from "@/components/ProductCard";
 import {
-  CATEGORY_LABEL,
-  CONDITION_LABEL,
-  PRODUCTS,
-  brandSlug,
+  getPublicProduct,
   discountPercent,
-  findProduct,
-  relatedProducts,
-} from "@/data/vitrine-products";
+  PUBLIC_CATEGORY_LABELS,
+  PUBLIC_CONDITION_LABELS,
+} from "@/lib/storefront-api";
+import { brandSlug } from "@/data/vitrine-products";
+import { mediaUrl } from "@/lib/media";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://vintiz.fr";
+
+// La fiche détail est dynamique : on supprime le SSG pré-build pour que
+// les nouvelles pièces ajoutées par le manager apparaissent sans
+// régénération forcée. Cache ISR 5 min comme la liste.
+export const revalidate = 300;
+// Pas de generateStaticParams : Next génère à la demande (et cache).
+export const dynamicParams = true;
 
 interface PageProps {
   params: { slug: string };
 }
 
-// Pré-rendre toutes les fiches produit au build (toutes en SSG).
-export function generateStaticParams() {
-  return PRODUCTS.map((p) => ({ slug: p.slug }));
-}
-
-export function generateMetadata({ params }: PageProps): Metadata {
-  const product = findProduct(params.slug);
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const product = await getPublicProduct(params.slug);
   if (!product) {
     return {
       title: "Pièce introuvable",
       robots: { index: false, follow: false },
     };
   }
-  const title = `${product.brand} — ${product.name} (taille ${product.size})`;
-  const description = `${product.brand} ${product.name}, taille ${product.size}, ${product.color}, ${CONDITION_LABEL[product.condition].toLowerCase()}. Authentifiée et sélectionnée par notre équipe à Vernon.`;
+  const categoryLabel = product.category
+    ? PUBLIC_CATEGORY_LABELS[product.category]
+    : "Pièce";
+  const conditionLabel = product.condition
+    ? PUBLIC_CONDITION_LABELS[product.condition].toLowerCase()
+    : "état soigné";
+  const title = `${product.brand ?? categoryLabel} — ${product.name} (taille ${product.size ?? "—"})`;
+  const description = `${product.brand ?? "Pièce sélectionnée"} ${product.name}, taille ${product.size ?? "—"}, ${product.color ?? "—"}, ${conditionLabel}. Authentifiée et sélectionnée par notre équipe à Vernon.`;
   return {
     title,
     description,
     alternates: { canonical: `${SITE_URL}/produits/${product.slug}` },
     // Si la pièce n'est plus disponible, on garde la page accessible mais
     // hors index pour ne pas pourrir le SEO avec des fiches mortes.
-    robots: product.available
-      ? undefined
-      : { index: false, follow: true },
+    robots: product.available ? undefined : { index: false, follow: true },
     openGraph: {
       title: `${title} | Vintiz`,
       description,
       url: `${SITE_URL}/produits/${product.slug}`,
       type: "website",
       locale: "fr_FR",
+      images: product.photo_url
+        ? [{ url: mediaUrl(product.photo_url) }]
+        : undefined,
     },
   };
 }
 
-export default function ProductPage({ params }: PageProps) {
-  const product = findProduct(params.slug);
+export default async function ProductPage({ params }: PageProps) {
+  const product = await getPublicProduct(params.slug);
   if (!product) {
     notFound();
   }
 
   const discount = discountPercent(product);
-  const related = relatedProducts(product);
+  const related = product.related;
+  const categoryLabel = product.category
+    ? PUBLIC_CATEGORY_LABELS[product.category]
+    : "Pièce";
 
   // JSON-LD Product (Schema.org) — Google peut afficher prix, dispo,
   // état dans les rich results « shopping ».
   const productJsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
-    name: `${product.brand} — ${product.name}`,
-    description: product.description,
-    brand: { "@type": "Brand", name: product.brand },
-    category: CATEGORY_LABEL[product.category],
-    color: product.color,
-    size: product.size,
+    name: `${product.brand ?? categoryLabel} — ${product.name}`,
+    description: product.description ?? "",
+    brand: product.brand ? { "@type": "Brand", name: product.brand } : undefined,
+    category: categoryLabel,
+    color: product.color ?? undefined,
+    size: product.size ?? undefined,
+    image: product.photos.length > 0
+      ? product.photos.map((u) => mediaUrl(u))
+      : undefined,
     itemCondition:
       product.condition === "excellent"
         ? "https://schema.org/NewCondition"
@@ -102,8 +116,7 @@ export default function ProductPage({ params }: PageProps) {
     },
   };
 
-  // Fil d'Ariane structuré (BreadcrumbList) — miroir du fil visuel ci-dessous.
-  // Aide Google + moteurs IA à situer la page dans la hiérarchie du site.
+  // Fil d'Ariane structuré (BreadcrumbList).
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -113,17 +126,21 @@ export default function ProductPage({ params }: PageProps) {
       {
         "@type": "ListItem",
         position: 3,
-        name: CATEGORY_LABEL[product.category],
-        item: `${SITE_URL}/produits?categorie=${product.category}`,
+        name: categoryLabel,
+        item: `${SITE_URL}/produits?categorie=${product.category ?? ""}`,
       },
       {
         "@type": "ListItem",
         position: 4,
-        name: `${product.brand} — ${product.name}`,
+        name: `${product.brand ?? ""} — ${product.name}`,
         item: `${SITE_URL}/produits/${product.slug}`,
       },
     ],
   };
+
+  const conditionLabel = product.condition
+    ? PUBLIC_CONDITION_LABELS[product.condition]
+    : "—";
 
   return (
     <>
@@ -148,35 +165,67 @@ export default function ProductPage({ params }: PageProps) {
             </Link>
             <span className="mx-2">/</span>
             <Link
-              href={`/produits?categorie=${product.category}`}
+              href={`/produits?categorie=${product.category ?? ""}`}
               className="hover:text-vz-teal"
             >
-              {CATEGORY_LABEL[product.category]}
+              {categoryLabel}
             </Link>
             <span className="mx-2">/</span>
             <span className="text-vz-ink">{product.brand}</span>
           </nav>
 
           <div className="grid lg:grid-cols-2 gap-10 lg:gap-16">
-            {/* Visuel placeholder */}
-            <div
-              className={`relative aspect-[3/4] ${product.swatch} rounded-2xl overflow-hidden flex items-center justify-center`}
-            >
-              <span
-                aria-hidden
-                className="font-display text-4xl sm:text-6xl text-white/95 mix-blend-difference text-center px-6 leading-tight tracking-tight"
+            {/* Visuel principal — photo storefront (détourée) en priorité */}
+            <div className="space-y-3">
+              <div
+                className={`relative aspect-[3/4] ${
+                  product.photo_url ? "bg-vz-bg-alt" : "bg-vz-ink"
+                } rounded-2xl overflow-hidden flex items-center justify-center`}
               >
-                {product.brand}
-              </span>
-              {discount !== null && product.available && (
-                <span className="absolute top-4 left-4 inline-flex items-center rounded-full bg-vz-accent text-white text-sm font-semibold px-3 py-1 tracking-wider">
-                  -{discount}%
-                </span>
-              )}
-              {!product.available && (
-                <span className="absolute inset-0 flex items-center justify-center bg-vz-ink/70 text-white font-display text-3xl tracking-wider">
-                  Vendu
-                </span>
+                {product.photo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={mediaUrl(product.photo_url)}
+                    alt={`${product.brand} — ${product.name}`}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="font-display text-4xl sm:text-6xl text-white/95 mix-blend-difference text-center px-6 leading-tight tracking-tight"
+                  >
+                    {product.brand}
+                  </span>
+                )}
+                {discount !== null && product.available && (
+                  <span className="absolute top-4 left-4 inline-flex items-center rounded-full bg-vz-accent text-white text-sm font-semibold px-3 py-1 tracking-wider">
+                    -{discount}%
+                  </span>
+                )}
+                {!product.available && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-vz-ink/70 text-white font-display text-3xl tracking-wider">
+                    Vendu
+                  </span>
+                )}
+              </div>
+              {/* Miniatures secondaires */}
+              {product.photos.length > 1 && (
+                <div className="grid grid-cols-4 gap-2">
+                  {product.photos.slice(0, 4).map((url, i) => (
+                    <div
+                      key={i}
+                      className="aspect-square rounded-lg overflow-hidden bg-vz-bg-alt"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={mediaUrl(url)}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 
@@ -207,32 +256,50 @@ export default function ProductPage({ params }: PageProps) {
               </div>
 
               <dl className="mt-8 grid grid-cols-2 gap-y-4 text-sm">
-                <dt className="text-vz-ink-mute">Marque</dt>
-                <dd className="text-vz-ink font-medium">
-                  <Link
-                    href={`/produits/marque/${brandSlug(product.brand)}`}
-                    className="underline underline-offset-2 hover:text-vz-teal"
-                  >
-                    {product.brand}
-                  </Link>
-                </dd>
-                <dt className="text-vz-ink-mute">Catégorie</dt>
-                <dd className="text-vz-ink font-medium">
-                  <Link
-                    href={`/produits?categorie=${product.category}`}
-                    className="underline underline-offset-2 hover:text-vz-teal"
-                  >
-                    {CATEGORY_LABEL[product.category]}
-                  </Link>
-                </dd>
-                <dt className="text-vz-ink-mute">Taille</dt>
-                <dd className="text-vz-ink font-medium">{product.size}</dd>
-                <dt className="text-vz-ink-mute">Couleur</dt>
-                <dd className="text-vz-ink font-medium">{product.color}</dd>
-                <dt className="text-vz-ink-mute">État</dt>
-                <dd className="text-vz-ink font-medium">
-                  {CONDITION_LABEL[product.condition]}
-                </dd>
+                {product.brand && (
+                  <>
+                    <dt className="text-vz-ink-mute">Marque</dt>
+                    <dd className="text-vz-ink font-medium">
+                      <Link
+                        href={`/produits/marque/${brandSlug(product.brand)}`}
+                        className="underline underline-offset-2 hover:text-vz-teal"
+                      >
+                        {product.brand}
+                      </Link>
+                    </dd>
+                  </>
+                )}
+                {product.category && (
+                  <>
+                    <dt className="text-vz-ink-mute">Catégorie</dt>
+                    <dd className="text-vz-ink font-medium">
+                      <Link
+                        href={`/produits?categorie=${product.category}`}
+                        className="underline underline-offset-2 hover:text-vz-teal"
+                      >
+                        {categoryLabel}
+                      </Link>
+                    </dd>
+                  </>
+                )}
+                {product.size && (
+                  <>
+                    <dt className="text-vz-ink-mute">Taille</dt>
+                    <dd className="text-vz-ink font-medium">{product.size}</dd>
+                  </>
+                )}
+                {product.color && (
+                  <>
+                    <dt className="text-vz-ink-mute">Couleur</dt>
+                    <dd className="text-vz-ink font-medium">{product.color}</dd>
+                  </>
+                )}
+                {product.condition && (
+                  <>
+                    <dt className="text-vz-ink-mute">État</dt>
+                    <dd className="text-vz-ink font-medium">{conditionLabel}</dd>
+                  </>
+                )}
                 <dt className="text-vz-ink-mute">Disponibilité</dt>
                 <dd
                   className={`font-medium ${
@@ -245,9 +312,11 @@ export default function ProductPage({ params }: PageProps) {
                 </dd>
               </dl>
 
-              <div className="mt-8 prose prose-sm max-w-none text-vz-ink-soft leading-relaxed">
-                <p>{product.description}</p>
-              </div>
+              {product.description && (
+                <div className="mt-8 prose prose-sm max-w-none text-vz-ink-soft leading-relaxed">
+                  <p>{product.description}</p>
+                </div>
+              )}
 
               {/* CTA desktop (le sticky mobile est plus bas) */}
               <div className="mt-8 hidden sm:flex flex-col sm:flex-row gap-3">
@@ -263,7 +332,7 @@ export default function ProductPage({ params }: PageProps) {
                       href={`mailto:contact@vintiz.fr?subject=Disponibilit%C3%A9%20%E2%80%94%20${encodeURIComponent(
                         product.slug,
                       )}&body=Bonjour%2C%0A%0ACette%20pi%C3%A8ce%20est-elle%20toujours%20disponible%20%3A%20${encodeURIComponent(
-                        product.brand + " — " + product.name,
+                        (product.brand ?? "") + " — " + product.name,
                       )}%0A%0AMerci%20%21`}
                       className="inline-flex items-center justify-center rounded-full border border-vz-teal/40 text-vz-teal px-7 py-3 text-sm font-medium hover:bg-vz-teal hover:text-white transition-colors"
                     >
@@ -302,18 +371,22 @@ export default function ProductPage({ params }: PageProps) {
                 ))}
               </div>
               <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-                <Link
-                  href={`/produits/marque/${brandSlug(product.brand)}`}
-                  className="font-medium text-vz-teal underline underline-offset-4 hover:text-vz-teal-deep"
-                >
-                  Voir plus de {product.brand} →
-                </Link>
-                <Link
-                  href={`/produits?categorie=${product.category}`}
-                  className="font-medium text-vz-teal underline underline-offset-4 hover:text-vz-teal-deep"
-                >
-                  Toute la catégorie {CATEGORY_LABEL[product.category]} →
-                </Link>
+                {product.brand && (
+                  <Link
+                    href={`/produits/marque/${brandSlug(product.brand)}`}
+                    className="font-medium text-vz-teal underline underline-offset-4 hover:text-vz-teal-deep"
+                  >
+                    Voir plus de {product.brand} →
+                  </Link>
+                )}
+                {product.category && (
+                  <Link
+                    href={`/produits?categorie=${product.category}`}
+                    className="font-medium text-vz-teal underline underline-offset-4 hover:text-vz-teal-deep"
+                  >
+                    Toute la catégorie {categoryLabel} →
+                  </Link>
+                )}
               </div>
             </div>
           </section>

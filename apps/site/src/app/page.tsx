@@ -4,13 +4,11 @@ import PublicHeader from "@/components/PublicHeader";
 import PublicFooter from "@/components/PublicFooter";
 import NewsletterCard from "@/components/home/NewsletterCard";
 import AddressBlock from "@/components/home/AddressBlock";
+import { listPublicProducts } from "@/lib/storefront-api";
+import { mediaUrl } from "@/lib/media";
 
-const PRODUCTS = [
-  { name: "Bonnet en crochet", price: "18,00 €", src: "/dev/product-bonnet.jpg" },
-  { name: "Foulard en dentelle", price: "14,00 €", src: "/dev/product-foulard-dentelle.jpg" },
-  { name: "Foulard en crochet", price: "18,00 €", src: "/dev/product-foulard-crochet.jpg" },
-  { name: "Pantalon « gigi »", price: "49,00 €", src: "/dev/product-pantalon-gigi.jpg" },
-];
+// ISR — la home revalide en même temps que /produits.
+export const revalidate = 300;
 
 const MOSAIC = [
   { src: "/dev/shop-pink-racks.jpg", alt: "Portants de la boutique Vintiz" },
@@ -19,7 +17,14 @@ const MOSAIC = [
   { src: "/dev/shop-showroom.jpg", alt: "Showroom intérieur Vintiz" },
 ];
 
-export default function Home() {
+export default async function Home() {
+  // Coups de cœur = les 4 dernières pièces disponibles avec une photo
+  // (ordre déjà défini par l'API : displayed_at desc, fallback created_at).
+  const apiProducts = await listPublicProducts();
+  const featured = apiProducts
+    .filter((p) => p.available && p.photo_url)
+    .slice(0, 4);
+
   return (
     <>
       <PublicHeader />
@@ -86,19 +91,37 @@ export default function Home() {
               <span aria-hidden>❤️</span> Nos coups de cœur en boutique
             </h2>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {PRODUCTS.map((p) => (
-              <article key={p.name} className="group">
-                <div className="relative aspect-square rounded-md overflow-hidden bg-stone-100">
-                  <Image src={p.src} alt={p.name} fill sizes="(max-width: 768px) 50vw, 25vw" className="object-cover" />
-                </div>
-                <div className="mt-3">
-                  <p className="text-sm text-black">{p.name}</p>
-                  <p className="text-sm text-black/60">{p.price}</p>
-                </div>
-              </article>
-            ))}
-          </div>
+          {featured.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+              {featured.map((p) => (
+                <Link key={p.slug} href={`/produits/${p.slug}`} className="group block">
+                  <div className="relative aspect-square rounded-md overflow-hidden bg-stone-100">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={mediaUrl(p.photo_url || "")}
+                      alt={`${p.brand ?? ""} — ${p.name}`}
+                      className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-black/60">{p.brand}</p>
+                    <p className="text-sm text-black line-clamp-2">{p.name}</p>
+                    <p className="text-sm text-vz-teal font-semibold">{p.price_eur} €</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-black/60 italic">
+              Nos coups de cœur s&apos;affichent ici dès qu&apos;ils sont en rayon.
+              En attendant,{" "}
+              <Link href="/produits" className="underline underline-offset-2 hover:text-vz-teal">
+                parcourez la boutique
+              </Link>
+              .
+            </p>
+          )}
           <div className="mt-8 text-center">
             <Link href="/produits" className="text-sm font-medium text-vz-teal underline underline-offset-4 hover:text-vz-teal-deep">
               Voir toute la boutique →
