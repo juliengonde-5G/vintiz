@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 import time
+import traceback
 import uuid
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from app.core.audit_context import (
     reset_current_user_id,
@@ -23,9 +24,28 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
     The ID is exposed on `request.state.request_id` so handlers can include it
     in error responses.
+
+    Error boundary (2026-06) : this is the INNERMOST custom middleware, so it
+    wraps the endpoint the most tightly. When the endpoint raises an unhandled
+    exception (e.g. a DB enum mismatch → ``DBAPIError``), re-raising it lets the
+    exception propagate THROUGH the ``BaseHTTPMiddleware`` stack. Starlette's
+    streaming machinery then corrupts the response — uvicorn logs
+    ``Exception in ASGI application`` and the socket is reset, so the browser
+    reports a misleading ``Failed to fetch`` instead of a readable 500.
+
+    We therefore CATCH the exception here and return a clean ``JSONResponse``
+    (with the ``request_id`` so server logs and the client error correlate).
+    The response then flows back out through the remaining middlewares
+    (audit → security → CORS), so CORS headers are present and the connection
+    closes cleanly. The global ``@app.exception_handler(Exception)`` stays as a
+    belt-and-suspenders fallback for anything raised outside this boundary.
     """
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        # Lazy import avoids a circular import at module load time
+        # (config imports nothing heavy, but keep the boundary minimal).
+        from app.core.config import settings
+
         incoming = request.headers.get("x-request-id")
         request_id = incoming if incoming else uuid.uuid4().hex[:16]
         request.state.request_id = request_id
@@ -33,18 +53,46 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         start = time.perf_counter()
         try:
             response: Response = await call_next(request)
-        except Exception:
+        except Exception as exc:
             duration_ms = int((time.perf_counter() - start) * 1000)
-            logger.exception(
-                "request failed",
+            # Full diagnostic to the server log — the request_id lets ops grep
+            # the exact failing request. The exception type + message + path
+            # are always logged (never hidden server-side).
+            logger.error(
+                "[%s] Unhandled %s on %s %s (%dms): %s\n%s",
+                request_id,
+                type(exc).__name__,
+                request.method,
+                request.url.path,
+                duration_ms,
+                exc,
+                traceback.format_exc(),
                 extra={
                     "request_id": request_id,
                     "method": request.method,
                     "path": request.url.path,
                     "duration_ms": duration_ms,
+                    "error_type": type(exc).__name__,
                 },
             )
-            raise
+            # Client-facing body : generic message in prod (no info
+            # disclosure), full type+message in dev. Always carries the
+            # request_id so a cashier can quote it to support and ops can
+            # find the matching server log line instantly.
+            if settings.is_production:
+                detail = "Une erreur interne est survenue."
+            else:
+                detail = f"{type(exc).__name__}: {exc}"
+            err_response: Response = JSONResponse(
+                status_code=500,
+                content={
+                    "detail": detail,
+                    "request_id": request_id,
+                    "error_type": type(exc).__name__,
+                },
+            )
+            err_response.headers["x-request-id"] = request_id
+            return err_response
 
         duration_ms = int((time.perf_counter() - start) * 1000)
         response.headers["x-request-id"] = request_id

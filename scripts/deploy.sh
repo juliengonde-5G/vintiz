@@ -146,6 +146,11 @@ fi
 # 2. BUILD DES IMAGES
 # ============================================================
 step "2/6" "Build des images Docker..."
+# Provenance du build → exposée par GET /api/health (build_sha/build_date).
+# Permet de vérifier d'un coup d'œil quelle version tourne en prod.
+export VINTIZ_BUILD_SHA="$NEW_COMMIT"
+export VINTIZ_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+log "Build SHA=$VINTIZ_BUILD_SHA date=$VINTIZ_BUILD_DATE"
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build
 log "Images construites"
 

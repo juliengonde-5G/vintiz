@@ -2,6 +2,10 @@
 
 Boutique de seconde main premium — Vernon, Normandie.
 
+> **Version 1.0.0** — mise en production officielle **03/06/2026 10h00**.
+> Socle de prod verrouillé (tag Git `v1.0.0`). Voir `docs/CHANGELOG.md` et
+> `docs/COMPLIANCE_NF525.md` (version + date fiscale).
+
 ## Architecture
 
 Monorepo avec 3 applications :
@@ -20,7 +24,9 @@ scripts/
   seed_test_products.py       15 produits de test POS + codes-barres PNG
   deploy.sh                   Déploiement prod (rebuild + migrations + smoke tests)
   diag.sh                     Diagnostic auto Docker/local (PostgreSQL, API, tables)
-  purge_databases.py          Purge one-shot des données opérationnelles (--dry-run / --confirm)
+  go_live_reset.py            Reset one-shot pré-ouverture : vide ventes/clients/
+                              fidélité/clôtures Z/FEC, CONSERVE l'inventaire
+                              (--dry-run / --confirm, garde-fou anti-perte stock)
   backup.sh                   Backup PostgreSQL
   smoke_prod.sh               Smoke-test post-deploy (read-only, OpenAPI + endpoints)
 docs/
@@ -666,6 +672,27 @@ PYTHONPATH=apps/api python scripts/seed_data.py
 # Le script est idempotent (peut être relancé sans dupliquer)
 ```
 
+## Reset pré-ouverture (go-live 1.0)
+
+Avant la mise en production officielle, on vide l'historique opérationnel
+(ventes, clients, fidélité, clôtures de caisse, FEC générés) **en conservant
+l'inventaire** (produits, photos, lots, catégories, zones, marques). Un
+garde-fou annule tout (ROLLBACK) si le nombre de produits/catégories/zones
+change pendant l'opération.
+
+```bash
+# 1. Toujours commencer par un dry-run (n'écrit rien)
+docker exec -it vintiz-api python scripts/go_live_reset.py --dry-run
+
+# 2. Exécuter réellement (irréversible — fait un backup avant !)
+docker exec -it vintiz-api python scripts/go_live_reset.py --confirm
+```
+
+`RESTART IDENTITY` remet `transaction_number` / `report_number` à 1 → la
+chaîne fiscale NF525 redémarre proprement sur le genesis `"0"`. L'ancien
+`purge_databases.py` (qui rasait AUSSI l'inventaire) a été **supprimé** pour
+éviter toute fausse manipulation.
+
 ## Git workflow
 
 Branches `main` (prod) + branches feature `claude/<sujet>-<suffix>`. Le push sur
@@ -692,6 +719,13 @@ deux pushs successifs s'enchaînent sans s'annuler.
 - **`ADMIN_BOOTSTRAP_KEY`** distinct pour `/admin/create-tables` (plus de réutilisation de `SECRET_KEY`).
 - **Rate-limit login** : 10 tentatives / 5 min / IP. Reset au login réussi. (`app/core/rate_limit.py`)
 - **Sanitization erreurs** : SMTP / Twilio / exceptions globales — détail générique côté client, full-trace côté serveur.
+- **Frontière d'erreur 500** (`RequestIdMiddleware`, `app/core/middleware.py`) :
+  toute exception non gérée d'un endpoint est **capturée** et renvoyée en
+  `JSONResponse(500)` lisible (`detail` + `request_id` + `error_type`), au lieu
+  de se propager à travers la pile `BaseHTTPMiddleware` (ce qui réinitialisait
+  la socket → « Failed to fetch » trompeur côté navigateur). Le `request_id`
+  corrèle le message client à la ligne de log serveur. Headers CORS toujours
+  présents sur les 500. Couvert par `tests/test_error_boundary.py`.
 - **Headers** : `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`.
 - **Logs JSON** + `request_id` corrélation client/serveur.
 - Voir `docs/AUDIT_2026_04.md` pour le rapport complet (S1–S12).
