@@ -1,0 +1,92 @@
+name: Release tag
+
+# Crée un tag annoté + une Release GitHub sur un commit donné. Utilisé pour
+# verrouiller les jalons (ex. v1.0.0 mise en production 03/06/2026) depuis
+# l'extérieur lorsque le client git local ne peut pas pousser de tag
+# (HTTPS sans PAT, environnement Claude Code en sandbox, etc.).
+#
+# Déclenchement :
+#   - Onglet Actions → "Release tag" → "Run workflow"
+#     (renseigner tag_name, commit_sha, optionnellement release_body)
+#   - Ou via l'API GitHub (workflow_dispatch).
+#
+# Permissions : utilise le GITHUB_TOKEN injecté par GitHub Actions, scopé en
+# écriture sur ce repo (``contents: write``). Aucune secret externe nécessaire.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Nom du tag (ex: v1.0.0)"
+        required: true
+        type: string
+      commit_sha:
+        description: "SHA du commit à tagger (long ou court, sur main)"
+        required: true
+        type: string
+      release_title:
+        description: "Titre de la Release (défaut : Vintiz <tag_name>)"
+        required: false
+        type: string
+      release_body:
+        description: "Notes de release (markdown). Vide = autogénéré."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Récupère tout l'historique : on a besoin du commit_sha cible
+          # même s'il n'est pas l'HEAD courant de la branche.
+          fetch-depth: 0
+
+      - name: Create annotated tag + release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ inputs.tag_name }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          RELEASE_TITLE: ${{ inputs.release_title }}
+          RELEASE_BODY: ${{ inputs.release_body }}
+        run: |
+          set -euo pipefail
+
+          # 1. Vérifie que le commit existe bien dans le repo.
+          if ! git cat-file -e "${COMMIT_SHA}^{commit}"; then
+            echo "::error::commit ${COMMIT_SHA} introuvable dans l'historique."
+            exit 1
+          fi
+          RESOLVED_SHA="$(git rev-parse "${COMMIT_SHA}^{commit}")"
+          echo "Tag ${TAG_NAME} → ${RESOLVED_SHA}"
+
+          # 2. Refuse de remplacer un tag existant (verrou de sécurité — un
+          #    tag de release est censé être immuable).
+          if git ls-remote --tags origin "refs/tags/${TAG_NAME}" | grep -q .; then
+            echo "::error::le tag ${TAG_NAME} existe déjà sur origin. Supprime-le manuellement avant de relancer."
+            exit 1
+          fi
+
+          # 3. Crée la Release GitHub (gh CLI crée le tag sous-jacent en
+          #    pointant explicitement sur RESOLVED_SHA via --target).
+          TITLE="${RELEASE_TITLE:-Vintiz ${TAG_NAME}}"
+          NOTES_ARGS=""
+          if [ -n "${RELEASE_BODY}" ]; then
+            printf '%s' "${RELEASE_BODY}" > /tmp/release_body.md
+            NOTES_ARGS="--notes-file /tmp/release_body.md"
+          else
+            NOTES_ARGS="--generate-notes"
+          fi
+
+          # shellcheck disable=SC2086
+          gh release create "${TAG_NAME}" \
+            --target "${RESOLVED_SHA}" \
+            --title "${TITLE}" \
+            ${NOTES_ARGS}
+
+          echo "✅ Tag + Release ${TAG_NAME} créés sur ${RESOLVED_SHA}"
