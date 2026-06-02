@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -679,13 +679,65 @@ async def open_drawer(
     }
 
 
+async def _run_accounting_close_in_bg(
+    *, z_report_id: uuid.UUID, drawer_id: uuid.UUID, user_id: uuid.UUID
+) -> None:
+    """Background task : exécute AccountingService.run_daily_close avec sa
+    propre session DB.
+
+    Ouvrir une session indépendante évite tout conflit avec celle du
+    endpoint (déjà commit + close à ce stade). Les erreurs sont loggées
+    mais ne remontent jamais à un utilisateur — c'est de l'export comptable
+    asynchrone, le Z-report fiscal est déjà signé en base."""
+    from app.core.database import async_session
+    from app.models.pos import CashDrawer, ZReport
+    from app.services.accounting_service import AccountingService
+
+    try:
+        async with async_session() as bg_db:
+            z_report = (
+                await bg_db.execute(
+                    select(ZReport).where(ZReport.id == z_report_id)
+                )
+            ).scalar_one_or_none()
+            drawer = (
+                await bg_db.execute(
+                    select(CashDrawer).where(CashDrawer.id == drawer_id)
+                )
+            ).scalar_one_or_none()
+            if z_report is None or drawer is None:
+                logger.warning(
+                    "Accounting BG close skipped: missing z_report=%s or drawer=%s",
+                    z_report_id, drawer_id,
+                )
+                return
+            await AccountingService(bg_db).run_daily_close(
+                z_report=z_report,
+                drawer=drawer,
+                triggered_by_user_id=user_id,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Accounting BG close failed: %s", exc)
+
+
 @router.post("/drawer/close")
 async def close_drawer(
     request: CloseDrawerRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Close cash drawer and generate Z report."""
+    """Close cash drawer and generate Z report.
+
+    La clôture comptable (AccountingService.run_daily_close) — qui inclut
+    un export Pennylane (HTTP synchrone, peut hanger) + un email rapport
+    SMTP — est désormais déclenchée en tâche de fond. Auparavant elle
+    bloquait la réponse plusieurs minutes en cas de TPE/SMTP injoignable,
+    provoquant côté navigateur un timeout de proxy → ``Failed to fetch``
+    avec un Z-report en réalité **déjà créé** en base. Le manager devait
+    rafraîchir pour comprendre. Maintenant, la réponse arrive dès que le
+    Z-report est signé, et la trace comptable est complétée en arrière-plan.
+    """
     pos_service = PosService(db)
     fiscal_service = FiscalService(db)
 
@@ -724,23 +776,19 @@ async def close_drawer(
             "transaction_count": z_report.transaction_count,
         },
     )
+    # Commit explicite avant la background task : la tâche ouvre sa propre
+    # session DB et ne verra rien si on attend la cleanup du dependency.
+    await db.commit()
 
-    # Clôture comptable — best-effort (n'empêche pas la réponse en cas d'échec)
+    # Clôture comptable en arrière-plan (Pennylane + email — best-effort).
+    background_tasks.add_task(
+        _run_accounting_close_in_bg,
+        z_report_id=z_report.id,
+        drawer_id=drawer.id,
+        user_id=current_user.id,
+    )
     accounting_export_id = None
-    accounting_status = None
-    try:
-        from app.services.accounting_service import AccountingService
-        acct_svc = AccountingService(db)
-        acct_exp = await acct_svc.run_daily_close(
-            z_report=z_report,
-            drawer=drawer,
-            triggered_by_user_id=current_user.id,
-        )
-        accounting_export_id = str(acct_exp.id)
-        accounting_status = acct_exp.status.value
-    except Exception as _acct_exc:
-        import logging
-        logging.getLogger("vintiz").error("Accounting close failed: %s", _acct_exc)
+    accounting_status = "pending_background"
 
     return {
         "drawer_id": str(drawer.id),

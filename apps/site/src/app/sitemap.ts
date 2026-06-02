@@ -1,6 +1,5 @@
 import type { MetadataRoute } from 'next';
 import { CAPSULES } from '@/data/capsules';
-import { JOURNAL_ARTICLES } from '@/data/journal-articles';
 import { brandSlug } from '@/data/vitrine-products';
 import { listPublicProducts } from '@/lib/storefront-api';
 
@@ -78,23 +77,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.65,
   }));
 
-  const journalEntries: MetadataRoute.Sitemap = JOURNAL_ARTICLES.map((a) => ({
-    url: `${SITE_URL}/journal/${a.slug}`,
-    lastModified: new Date(a.published_at),
-    changeFrequency: 'monthly',
-    priority: 0.65,
-  }));
-
-  // Miroir EN des articles de journal (slugs partagés avec le FR).
-  const journalEntriesEn: MetadataRoute.Sitemap = JOURNAL_ARTICLES.map(
-    (a) => ({
-      url: `${SITE_URL}/en/journal/${a.slug}`,
-      lastModified: new Date(a.published_at),
-      changeFrequency: 'monthly',
-      priority: 0.6,
-    }),
-  );
-
   return [
     {
       url: `${SITE_URL}/`,
@@ -107,12 +89,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: productsLastModified,
       changeFrequency: 'weekly',
       priority: 0.9,
-    },
-    {
-      url: `${SITE_URL}/produits/made-in-france`,
-      lastModified: productsLastModified,
-      changeFrequency: 'weekly',
-      priority: 0.85,
     },
     {
       url: `${SITE_URL}/personal-shopper`,
@@ -137,12 +113,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: newPagesLastModified,
       changeFrequency: 'monthly',
       priority: 0.7,
-    },
-    {
-      url: `${SITE_URL}/journal`,
-      lastModified: newPagesLastModified,
-      changeFrequency: 'weekly',
-      priority: 0.75,
     },
     {
       url: `${SITE_URL}/en`,
@@ -180,18 +150,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'monthly',
       priority: 0.65,
     },
-    {
-      url: `${SITE_URL}/en/journal`,
-      lastModified: newPagesLastModified,
-      changeFrequency: 'weekly',
-      priority: 0.7,
-    },
     ...brandEntries,
     ...brandEntriesEn,
     ...capsuleEntries,
     ...capsuleEntriesEn,
-    ...journalEntries,
-    ...journalEntriesEn,
     ...productEntries,
   ];
 }

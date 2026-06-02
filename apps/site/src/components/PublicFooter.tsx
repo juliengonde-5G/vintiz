@@ -37,7 +37,6 @@ export default function PublicFooter() {
         nav: [
           { href: "/en/produits", label: "Shop" },
           { href: "/en/capsules", label: "Capsules" },
-          { href: "/en/journal", label: "Journal" },
           { href: "/en/a-propos", label: "About" },
           { href: "/en/personal-shopper", label: "AI Personal Shopper" },
           { href: "/en/contact", label: "Visit us" },
@@ -71,7 +70,6 @@ export default function PublicFooter() {
         sectionHeading: "Vintiz",
         nav: [
           { href: "/produits", label: "Boutique" },
-          { href: "/journal", label: "Journal" },
           { href: "/a-propos", label: "À propos" },
           { href: "/personal-shopper", label: "Personal Shopper IA" },
           { href: "/contact", label: "Contact" },

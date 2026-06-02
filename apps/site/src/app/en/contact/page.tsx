@@ -254,7 +254,7 @@ export default function ContactEnPage() {
                 </ul>
                 <div className="mt-6 flex flex-col sm:flex-row gap-2">
                   <Link
-                    href="/produits/made-in-france"
+                    href="/en/produits"
                     className="inline-flex items-center justify-center rounded-full bg-vz-teal text-white px-6 py-2.5 text-sm font-medium hover:bg-vz-teal-deep transition-colors"
                   >
                     Browse iconic brands
@@ -286,16 +286,15 @@ export default function ContactEnPage() {
             <div className="aspect-[16/9] sm:aspect-[21/9] rounded-2xl overflow-hidden border border-black/5 bg-vz-surface shadow-sm">
               <iframe
                 title="Vintiz — 6 rue Saint-Jacques, 27200 Vernon"
-                src="https://www.openstreetmap.org/export/embed.html?bbox=1.4673%2C49.0876%2C1.4873%2C49.0976&layer=mapnik&marker=49.0926%2C1.4773"
+                src="https://maps.google.com/maps?q=6+Rue+Saint-Jacques+27200+Vernon&output=embed&hl=en"
                 className="w-full h-full"
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
               />
             </div>
             <p className="mt-3 text-xs text-vz-ink-mute">
-              Map by OpenStreetMap (no third-party cookies).{" "}
               <a
-                href="https://www.google.com/maps/place/6+Rue+St+Jacques,+27200+Vernon"
+                href="https://www.google.com/maps/place/6+Rue+Saint-Jacques,+27200+Vernon,+France"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline underline-offset-2 hover:text-vz-teal"
