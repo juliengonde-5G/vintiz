@@ -516,9 +516,26 @@ export default function POSPage() {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'erreur réseau';
-      setError(`Clôture impossible (${msg}). Vérifiez la connexion API.`);
+      // Log the full error to console — the manager can copy/paste this
+      // when calling support. ``Failed to fetch`` est le message brut
+      // navigateur quand le DNS/CORS/TLS échoue ou que le proxy a tué
+      // la connexion avant le timeout (30s côté front).
+      console.error('[POS] Drawer close request failed:', e);
+      // Probe l'API pour différencier réseau hors-service vs endpoint cassé.
+      // Si /api/health répond, c'est /drawer/close lui-même qui plante.
+      let probe = '';
+      try {
+        const r = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || ''}/api/health`,
+          { method: 'GET' },
+        );
+        probe = r.ok ? ' — API joignable, problème spécifique au /drawer/close.' : ` — API renvoie ${r.status}.`;
+      } catch {
+        probe = ' — API totalement injoignable (DNS / TLS / proxy).';
+      }
+      setError(`Clôture impossible (${msg}).${probe}`);
       setDrawerToast({ msg: `Clôture impossible (${msg})`, ok: false });
-      setTimeout(() => setDrawerToast(null), 6000);
+      setTimeout(() => setDrawerToast(null), 8000);
     }
     setDrawerSubmitting(false);
   };
@@ -3187,9 +3204,27 @@ export default function POSPage() {
                 setTimeout(() => setDrawerToast(null), 6000);
                 throw new Error(String(detail));
               } catch (e) {
-                if (!(e instanceof Error)) {
-                  setDrawerToast({ msg: 'Clôture impossible (réseau)', ok: false });
-                  setTimeout(() => setDrawerToast(null), 6000);
+                console.error('[POS-wizard] Drawer close request failed:', e);
+                if (!(e instanceof Error) || (e as Error).message === 'Failed to fetch') {
+                  // Probe l'API pour distinguer réseau hors-service vs
+                  // endpoint cassé — guide la cashier vers la bonne action.
+                  let probe = '';
+                  try {
+                    const r = await fetch(
+                      `${process.env.NEXT_PUBLIC_API_URL || ''}/api/health`,
+                      { method: 'GET' },
+                    );
+                    probe = r.ok
+                      ? ' (API joignable — réessayez dans 10s)'
+                      : ` (API renvoie ${r.status})`;
+                  } catch {
+                    probe = ' (API totalement injoignable — vérifiez le Wi-Fi)';
+                  }
+                  setDrawerToast({
+                    msg: `Clôture impossible${probe}`,
+                    ok: false,
+                  });
+                  setTimeout(() => setDrawerToast(null), 8000);
                 }
                 throw e;
               } finally {
