@@ -940,8 +940,8 @@ async def _build_full_receipt_text(
     chips, totaux, paiements, hash NF525, footer fidélité). Retourne
     ``None`` si la transaction n'existe plus côté ORM.
     """
-    from app.models.client import Client
-    from app.models.pos import LoyaltyTransaction, LoyaltyTxType, Transaction
+    from app.models.client import Client, LoyaltyTransaction, LoyaltyTxType
+    from app.models.pos import Transaction
     from app.models.receipt_template import ReceiptKind, ReceiptTemplate
     from app.services.receipt import ReceiptService
 
