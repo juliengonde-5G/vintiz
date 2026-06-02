@@ -4,13 +4,43 @@ import PublicHeader from "@/components/PublicHeader";
 import PublicFooter from "@/components/PublicFooter";
 import NewsletterCard from "@/components/home/NewsletterCard";
 import AddressBlock from "@/components/home/AddressBlock";
+import { mediaUrl } from "@/lib/media";
+import { formatPriceCents } from "@/lib/format";
 
-const PRODUCTS = [
-  { name: "Bonnet en crochet", price: "18,00 €", src: "/dev/product-bonnet.jpg" },
-  { name: "Foulard en dentelle", price: "14,00 €", src: "/dev/product-foulard-dentelle.jpg" },
-  { name: "Foulard en crochet", price: "18,00 €", src: "/dev/product-foulard-crochet.jpg" },
-  { name: "Pantalon « gigi »", price: "49,00 €", src: "/dev/product-pantalon-gigi.jpg" },
-];
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+interface Highlight {
+  id: string;
+  name: string;
+  brand: string | null;
+  size: string | null;
+  color: string | null;
+  sale_price: number;
+  price_cents: number;
+  photo_url: string | null;
+  reason: string | null;
+}
+
+interface HighlightsPayload {
+  items: Highlight[];
+  curator_note: string;
+}
+
+/** Fetch the manager-curated "coups de cœur" — padded by top trend if the
+ *  curation is incomplete. Returns ``items=[]`` when nothing real is on the
+ *  floor (the section is then hidden — no demo fallback). Revalidated every
+ *  60 s to keep the landing snappy without spamming the API. */
+async function fetchHighlights(): Promise<HighlightsPayload> {
+  try {
+    const res = await fetch(`${API_URL}/api/crm/storefront/highlights?limit=4`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return { items: [], curator_note: "" };
+    return (await res.json()) as HighlightsPayload;
+  } catch {
+    return { items: [], curator_note: "" };
+  }
+}
 
 const MOSAIC = [
   { src: "/dev/shop-pink-racks.jpg", alt: "Portants de la boutique Vintiz" },
@@ -19,7 +49,8 @@ const MOSAIC = [
   { src: "/dev/shop-showroom.jpg", alt: "Showroom intérieur Vintiz" },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const highlights = await fetchHighlights();
   return (
     <>
       <PublicHeader />
@@ -79,32 +110,68 @@ export default function Home() {
           </div>
         </section>
 
-        {/* COUPS DE COEUR */}
-        <section className="max-w-7xl mx-auto px-6 py-16 lg:py-20">
-          <div className="mb-6">
-            <h2 className="font-mockSerif text-3xl md:text-4xl text-vz-teal flex items-center gap-3">
-              <span aria-hidden>❤️</span> Nos coups de cœur en boutique
-            </h2>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {PRODUCTS.map((p) => (
-              <article key={p.name} className="group">
-                <div className="relative aspect-square rounded-md overflow-hidden bg-stone-100">
-                  <Image src={p.src} alt={p.name} fill sizes="(max-width: 768px) 50vw, 25vw" className="object-cover" />
-                </div>
-                <div className="mt-3">
-                  <p className="text-sm text-black">{p.name}</p>
-                  <p className="text-sm text-black/60">{p.price}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-          <div className="mt-8 text-center">
-            <Link href="/produits" className="text-sm font-medium text-vz-teal underline underline-offset-4 hover:text-vz-teal-deep">
-              Voir toute la boutique →
-            </Link>
-          </div>
-        </section>
+        {/* COUPS DE COEUR — sélection vivante : curation manager + meilleurs
+            produits du rayon (trend_score). Masquée si rien de vendable —
+            aucun fallback démo. */}
+        {highlights.items.length > 0 && (
+          <section className="max-w-7xl mx-auto px-6 py-16 lg:py-20">
+            <div className="mb-6">
+              <h2 className="font-mockSerif text-3xl md:text-4xl text-vz-teal flex items-center gap-3">
+                <span aria-hidden>❤️</span> Nos coups de cœur en boutique
+              </h2>
+              {highlights.curator_note && (
+                <p className="mt-2 text-sm text-black/70 italic">
+                  {highlights.curator_note}
+                </p>
+              )}
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+              {highlights.items.map((p) => {
+                const photo = mediaUrl(p.photo_url);
+                return (
+                  <article key={p.id} className="group">
+                    <div className="relative aspect-square rounded-md overflow-hidden bg-stone-100">
+                      {photo ? (
+                        <Image
+                          src={photo}
+                          alt={p.name}
+                          fill
+                          sizes="(max-width: 768px) 50vw, 25vw"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-vz-teal/60 text-sm font-mockSerif">
+                          {p.name}
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-3">
+                      <p className="text-sm text-black line-clamp-1">{p.name}</p>
+                      {(p.brand || p.size) && (
+                        <p className="text-xs text-black/50">
+                          {[p.brand, p.size].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                      <p className="text-sm text-black/70 mt-0.5">
+                        {formatPriceCents(p.price_cents)}
+                      </p>
+                      {p.reason && (
+                        <p className="mt-1 text-xs text-vz-teal italic line-clamp-2">
+                          {p.reason}
+                        </p>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="mt-8 text-center">
+              <Link href="/produits" className="text-sm font-medium text-vz-teal underline underline-offset-4 hover:text-vz-teal-deep">
+                Voir toute la boutique →
+              </Link>
+            </div>
+          </section>
+        )}
 
         {/* CITATION */}
         <section className="bg-vz-bg py-14">
