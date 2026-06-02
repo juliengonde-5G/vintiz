@@ -56,11 +56,11 @@ const ABOUT_FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Qu'est-ce que Vintiz vend exactement ?",
-    a: "Des vêtements, chaussures et accessoires de seconde main premium, authentifiés et sélectionnés à la pièce : marques françaises iconiques (Sandro, Maje, Sézane, Ba&sh, IRO, Polène, Isabel Marant) et créateurs, en excellent état.",
+    a: "Des vêtements, chaussures et accessoires de seconde main premium, sélectionnés à la pièce, en excellent état.",
   },
   {
     q: "D'où viennent les pièces ?",
-    a: "Elles sont sélectionnées auprès de notre partenaire Solidarité Textiles, acteur de l'économie sociale et solidaire. Chaque pièce est triée, vérifiée et authentifiée avant mise en rayon.",
+    a: "Elles sont sélectionnées auprès de notre partenaire Solidarité Textiles, acteur de l'économie sociale et solidaire. Chaque pièce est triée et vérifiée avant mise en rayon.",
   },
   {
     q: "Les achats se font-ils en ligne ?",
@@ -68,7 +68,7 @@ const ABOUT_FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Comment fonctionne le programme de fidélité ?",
-    a: "La carte est 100 % digitale (Apple Wallet / Google Wallet). Vous cumulez 1 point par euro dépensé ; un bon d'achat est généré automatiquement aux paliers. L'adhésion se fait en boutique.",
+    a: "Vous cumulez 1 point par euro dépensé en boutique. L'adhésion se fait en boutique.",
   },
 ];
 
@@ -132,14 +132,8 @@ export default function AboutPage() {
                 portés.
               </p>
               <p>
-                Nos marques de prédilection : Sandro, Maje, Sézane, Ba&amp;sh,
-                IRO, Polène, The Kooples, Vanessa Bruno, Isabel Marant — et
-                quelques pépites confidentielles à découvrir en boutique.
-              </p>
-              <p>
-                Tous les articles sont vendus en achat ferme : pas de dépôt,
-                pas d&apos;intermédiaire. Le prix affiché est juste, le stock
-                est réel, et la pièce vous attend rue Saint-Jacques.
+                Le prix affiché est juste, le stock est réel, et la pièce
+                vous attend rue Saint-Jacques.
               </p>
             </div>
           </div>
@@ -235,9 +229,7 @@ export default function AboutPage() {
               Carte fidélité
             </h3>
             <p className="text-vz-ink-soft leading-relaxed">
-              1 € dépensé = 1 point. Trois tiers (Bronze, Silver, Gold) avec
-              avantages progressifs. Carte virtuelle Apple Wallet et Google
-              Wallet pour ne jamais l&apos;oublier.
+              1 € dépensé = 1 point. Adhésion en boutique.
             </p>
           </div>
         </section>
@@ -273,7 +265,7 @@ export default function AboutPage() {
                 </p>
               </div>
               <a
-                href="https://solidaritetextiles.com"
+                href="https://solidarite-textiles.fr"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-8 inline-flex items-center gap-2 rounded-full border border-vz-teal/40 px-6 py-3 text-sm font-medium text-vz-teal hover:bg-vz-teal hover:text-white transition-colors"
@@ -304,13 +296,6 @@ export default function AboutPage() {
                 <li className="flex gap-3">
                   <span className="text-vz-teal text-xl leading-tight">→</span>
                   <span>
-                    <strong>Achat ferme</strong>. Nous achetons le stock, vous
-                    n&apos;avez pas à patienter pour récupérer un dépôt.
-                  </span>
-                </li>
-                <li className="flex gap-3">
-                  <span className="text-vz-teal text-xl leading-tight">→</span>
-                  <span>
                     <strong>Sourcing tracé</strong> via Solidarité Textiles —
                     insertion par le travail.
                   </span>
@@ -327,7 +312,7 @@ export default function AboutPage() {
                   <span>
                     <strong>Rapport d&apos;impact annuel</strong> : kilos
                     revalorisés, taux de réemploi, reversement Solidarité
-                    Textiles. Publié publiquement à partir de 2027.
+                    Textiles.
                   </span>
                 </li>
               </ul>

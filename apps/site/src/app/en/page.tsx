@@ -91,7 +91,7 @@ export default function HomeEnPage() {
 
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
-              href="/produits/made-in-france"
+              href="/en/produits"
               className="inline-flex items-center justify-center rounded-full bg-vz-teal text-white px-8 py-3.5 text-sm font-medium hover:bg-vz-teal-deep transition-colors"
             >
               Browse iconic French brands
@@ -157,7 +157,7 @@ export default function HomeEnPage() {
                 </h2>
               </div>
               <Link
-                href="/produits/made-in-france"
+                href="/en/produits"
                 className="hidden sm:inline-flex items-center gap-1 text-sm font-medium text-vz-teal hover:underline"
               >
                 See all

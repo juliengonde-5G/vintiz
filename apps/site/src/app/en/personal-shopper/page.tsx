@@ -87,7 +87,7 @@ export default function PersonalShopperEnPage() {
               Activate my Personal Shopper
             </Link>
             <Link
-              href="/produits/made-in-france"
+              href="/en/produits"
               className="inline-flex items-center justify-center rounded-full border border-vz-teal/40 text-vz-teal px-8 py-3.5 text-sm font-medium hover:bg-vz-teal hover:text-white transition-colors"
             >
               Browse iconic French brands

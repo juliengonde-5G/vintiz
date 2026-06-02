@@ -173,6 +173,10 @@ export default function POSPage() {
   const [showEventModal, setShowEventModal] = useState(false);
   const [eventBusy, setEventBusy] = useState(false);
   const [eventToast, setEventToast] = useState('');
+  // Compagnon caisse — modale plein écran déclenchée par le bouton dans
+  // le ticket (cf. ClientCompanion). Sort le panneau du flux ticket pour
+  // garder Encaisser visible.
+  const [showCompanionModal, setShowCompanionModal] = useState(false);
   // Sélection des bons cochés dans la modale Événementiel (validation via
   // bouton "Valider" plutôt que sur clic direct). Permet de cocher
   // plusieurs bons immédiats à la fois pour la même cliente sans
@@ -328,6 +332,7 @@ export default function POSPage() {
     if (showPayment || showClientSelect || showClientPopup || showSubscribeModal) return;
     if (showDrawerOpen || showDrawerClose || showCashierModal || showReceipt) return;
     if (showWizardReceipt || showManualEntry) return;
+    if (showCompanionModal || showEventModal) return;
     requestAnimationFrame(() => {
       searchInputRef.current?.focus();
     });
@@ -336,6 +341,7 @@ export default function POSPage() {
     showPayment, showClientSelect, showClientPopup, showSubscribeModal,
     showDrawerOpen, showDrawerClose, showCashierModal, showReceipt,
     showWizardReceipt, showManualEntry,
+    showCompanionModal, showEventModal,
   ]);
 
   // Landscape lock for the Lenovo Idea Tab Pro Gen 2 (TB39OFU) when running
@@ -1723,20 +1729,39 @@ export default function POSPage() {
             </div>
           )}
 
-          {/* PR4 — Companion caisse: cart-aware up-sells (loyalty, suggestions, coupons, alerts) */}
+          {/* PR4 — Companion caisse : bouton compact dans le ticket, ouvre une
+              modale plein écran. Avant : le panneau s'inlinait sous la
+              fiche cliente, ce qui empilait des sections et faisait
+              disparaître le bouton Encaisser en bas. Maintenant le panneau
+              est isolé dans une modale (comme la souscription fidélité) ;
+              le ticket et l'Encaisser restent toujours visibles. */}
           {selectedClient && (
             <div className="px-3 pt-2">
-              <ClientCompanion
-                clientId={selectedClient.id}
-                cartTotalCents={Math.round(cartTotal * 100)}
-                cartProductIds={cart
-                  .map((item) => item.product_id)
-                  .filter((id): id is string => Boolean(id))}
-                onAddSuggestion={addPickToCart}
-                onApplyCoupon={(code) => {
-                  setCouponCode(code);
-                }}
-              />
+              <button
+                type="button"
+                onClick={() => setShowCompanionModal(true)}
+                className="w-full flex items-center justify-between gap-2 rounded-lg border border-vz-teal/30 bg-vz-teal-soft/40 px-3 py-2 text-xs font-medium text-vz-teal-deep hover:bg-vz-teal-soft transition-colors"
+                aria-label="Ouvrir le compagnon caisse"
+              >
+                <span className="flex items-center gap-1.5">
+                  <span aria-hidden>💡</span>
+                  Compagnon caisse
+                  <span className="text-vz-ink-mute font-normal">
+                    — suggestions, coupons, alertes
+                  </span>
+                </span>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <polyline points="9 6 15 12 9 18" />
+                </svg>
+              </button>
             </div>
           )}
 
@@ -2134,6 +2159,38 @@ export default function POSPage() {
       </div>
 
       {/* ── Client Selection Fullscreen (Odoo 17 pattern) ──────── */}
+      {/* ── Compagnon caisse — modale ouverte depuis le ticket. */}
+      <Modal
+        open={showCompanionModal}
+        onClose={() => setShowCompanionModal(false)}
+        title="Compagnon caisse"
+        actions={
+          <Button onClick={() => setShowCompanionModal(false)}>Fermer</Button>
+        }
+      >
+        {selectedClient ? (
+          <ClientCompanion
+            clientId={selectedClient.id}
+            cartTotalCents={Math.round(cartTotal * 100)}
+            cartProductIds={cart
+              .map((item) => item.product_id)
+              .filter((id): id is string => Boolean(id))}
+            onAddSuggestion={(pid) => {
+              addPickToCart(pid);
+              setShowCompanionModal(false);
+            }}
+            onApplyCoupon={(code) => {
+              setCouponCode(code);
+              setShowCompanionModal(false);
+            }}
+          />
+        ) : (
+          <p className="text-sm text-vz-ink-mute">
+            Identifiez d&apos;abord une cliente.
+          </p>
+        )}
+      </Modal>
+
       {/* ── Zone Événementiel — bons cadeau d'ouverture ──────────────
            Un bouton par type de bon (catalogue). Sur clic → le bon est
            crédité sur la fiche de la cliente identifiée ; affiché ensuite à

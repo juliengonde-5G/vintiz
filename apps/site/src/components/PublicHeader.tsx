@@ -8,7 +8,6 @@ import { useState } from "react";
 const NAV_FR = [
   { href: "/produits", label: "Boutique" },
   { href: "/capsules", label: "Capsules" },
-  { href: "/journal", label: "Journal" },
   { href: "/a-propos", label: "À propos" },
   { href: "/personal-shopper", label: "Personal Shopper" },
   { href: "/contact", label: "Contact" },
@@ -17,7 +16,6 @@ const NAV_FR = [
 const NAV_EN = [
   { href: "/en/produits", label: "Shop" },
   { href: "/en/capsules", label: "Capsules" },
-  { href: "/en/journal", label: "Journal" },
   { href: "/en/a-propos", label: "About" },
   { href: "/en/personal-shopper", label: "AI Personal Shopper" },
   { href: "/en/contact", label: "Visit us" },
@@ -27,7 +25,6 @@ const EN_TO_FR: Record<string, string> = {
   "/en": "/",
   "/en/produits": "/produits",
   "/en/capsules": "/capsules",
-  "/en/journal": "/journal",
   "/en/personal-shopper": "/personal-shopper",
   "/en/a-propos": "/a-propos",
   "/en/contact": "/contact",
@@ -36,9 +33,7 @@ const EN_TO_FR: Record<string, string> = {
 const FR_TO_EN: Record<string, string> = {
   "/": "/en",
   "/produits": "/en/produits",
-  "/produits/made-in-france": "/en/produits",
   "/capsules": "/en/capsules",
-  "/journal": "/en/journal",
   "/personal-shopper": "/en/personal-shopper",
   "/a-propos": "/en/a-propos",
   "/contact": "/en/contact",
@@ -51,7 +46,6 @@ const FR_TO_EN: Record<string, string> = {
  */
 const SHARED_SLUG_PREFIXES = [
   { fr: "/capsules/", en: "/en/capsules/" },
-  { fr: "/journal/", en: "/en/journal/" },
   { fr: "/produits/marque/", en: "/en/produits/marque/" },
 ];
 
