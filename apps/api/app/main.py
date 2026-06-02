@@ -174,4 +174,17 @@ app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "version": "0.1.0"}
+    """Health probe + ID de version pour vérifier qu'un déploiement
+    a bien atterri (le SHA git court est stamped au build dans
+    ``VINTIZ_BUILD_SHA``, sinon ``unknown``).
+
+    Permet de différencier un cache navigateur d'un vrai déploiement :
+    un manager peut ouvrir ``https://api.vintiz.fr/api/health`` et
+    comparer le SHA au dernier commit `main`."""
+    import os as _os
+    return {
+        "status": "ok",
+        "version": "0.1.0",
+        "build_sha": _os.environ.get("VINTIZ_BUILD_SHA", "unknown"),
+        "build_date": _os.environ.get("VINTIZ_BUILD_DATE", "unknown"),
+    }
