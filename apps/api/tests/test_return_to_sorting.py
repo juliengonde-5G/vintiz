@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.models import Base
 from app.models.events import EventLog, EventType
 from app.models.product import Category, Product, ProductPhoto, ProductStatus
+from app.models.product_location import ProductLocationEvent
 from app.models.user import User, UserRole
 from app.services.return_to_sorting import (
     ReturnPolicy,
@@ -31,6 +32,7 @@ async def engine():
         Product.__table__,
         ProductPhoto.__table__,
         EventLog.__table__,
+        ProductLocationEvent.__table__,
     ]
     async with eng.begin() as conn:
         await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=tables))

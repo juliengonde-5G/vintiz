@@ -10,8 +10,24 @@ from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.product import Product, ProductStatus
 from app.models.user import User
 from app.services.retail_kpis import ess_report, retail_kpis
+from app.services.stock_metrics import stock_movement_metrics
 
 router = APIRouter(prefix="/reports", tags=["reporting"])
+
+
+@router.get("/stock-movement")
+async def stock_movement_report(
+    period_days: int = Query(default=30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Gestion du stock + rythmes de rotation (mouvements de stock).
+
+    Répartition réserve/rayon, vitesse de rotation (délais réserve→rayon et
+    rayon→vente, sell-through) et rythmes de rotation vertical (réserve↔rayon)
+    & horizontal (zone↔zone) depuis le ledger ``product_location_events``.
+    """
+    return await stock_movement_metrics(db, period_days=period_days)
 
 
 @router.get("/retail-kpis")
@@ -393,7 +409,7 @@ async def daily_recap(
 
     Read-only; safe to call for any past date."""
     from app.models.audit import Settings
-    from app.models.pos import Payment, PaymentMethod
+    from app.models.pos import Payment
     from app.models.weekly_task import WeeklyTask
     import json as _json
 

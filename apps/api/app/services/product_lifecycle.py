@@ -127,12 +127,19 @@ class ProductLifecycleService:
         user_id=None,
         reason: str | None = None,
         new_price: Decimal | float | None = None,
+        record_location: bool = True,
+        move_source: str = "lifecycle",
     ) -> Product:
         """Move ``product`` to ``target`` after validating the FSM edge.
 
         For markdowns (``discounted`` / ``deep_discounted``) callers can
         supply ``new_price``; the service then appends a row to
         ``markdown_history`` so the price ledger stays auditable.
+
+        Unless ``record_location=False``, the status change is also historised
+        in ``product_location_events`` (réserve↔rayon = flux vertical, sorties).
+        ``move_product`` sets it to ``False`` to write a single combined event
+        when a piece is moved between réserve and a specific zone at once.
         """
         current = product.status
         if not self.is_valid_transition(current, target):
@@ -205,6 +212,23 @@ class ProductLifecycleService:
                 product_id=product.id,
                 user_id=user_id,
                 meta=meta,
+            )
+
+        # Historise the physical relocation (vertical flow / exits). Zone is
+        # untouched by a pure status transition, so from_zone == to_zone.
+        if record_location and current != target:
+            from app.services.stock_movement import record_move
+
+            await record_move(
+                self.db,
+                product,
+                from_status=current,
+                to_status=target,
+                from_zone_id=product.zone_id,
+                to_zone_id=product.zone_id,
+                user_id=user_id,
+                reason=reason,
+                source=move_source,
             )
 
         return product
