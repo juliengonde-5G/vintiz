@@ -93,6 +93,18 @@ const navGroups: NavGroup[] = [
         ),
       },
       {
+        label: 'Mouvements',
+        href: '/inventory/movements',
+        icon: (
+          <svg {...iconProps}>
+            <polyline points="17 11 21 7 17 3" />
+            <line x1="21" y1="7" x2="9" y2="7" />
+            <polyline points="7 21 3 17 7 13" />
+            <line x1="3" y1="17" x2="15" y2="17" />
+          </svg>
+        ),
+      },
+      {
         label: 'Espaces',
         href: '/zones',
         icon: (
@@ -344,7 +356,25 @@ function SidebarInner() {
     const itemPath = item.href.split('?')[0];
     if (itemPath === '/dashboard') {
       if (pathname !== itemPath) return false;
-    } else if (pathname !== itemPath && !pathname.startsWith(`${itemPath}/`)) {
+    } else if (pathname === itemPath) {
+      // exact match always wins
+    } else if (pathname.startsWith(`${itemPath}/`)) {
+      // Prefix match — but defer to a more specific sibling nav item so a
+      // dedicated sub-module (e.g. /inventory/movements) doesn't also light
+      // up its parent (/inventory). Detail routes with no dedicated nav item
+      // (e.g. /inventory/<id>) still highlight the parent.
+      const hasMoreSpecific = navGroups.some((g) =>
+        g.items.some((other) => {
+          const otherPath = other.href.split('?')[0];
+          return (
+            otherPath !== itemPath &&
+            otherPath.startsWith(`${itemPath}/`) &&
+            (pathname === otherPath || pathname.startsWith(`${otherPath}/`))
+          );
+        }),
+      );
+      if (hasMoreSpecific) return false;
+    } else {
       return false;
     }
     // If the item discriminates on a query param, only match when the

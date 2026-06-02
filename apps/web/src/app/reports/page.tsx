@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatPercent } from '@/lib/format';
 // L6 (audit 2026-05) : reporting ESS dédié supprimé — non pertinent.
 // Le calcul backend (kg revalorisés / CA reversé) reste disponible via
 // GET /api/reports/ess pour exports ad-hoc à Solidarité Textiles.
@@ -353,6 +353,9 @@ export default function ReportsPage() {
           )}
         </Card>
 
+        {/* Gestion du stock & rotation */}
+        <StockMovementSection />
+
         {/* Météo Vernon */}
         {weather && (
           <Card title="Météo Vernon — aujourd'hui">
@@ -608,6 +611,184 @@ function DailyRecapSection() {
             )}
           </div>
         </div>
+      )}
+    </Card>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Gestion du stock & rotation — GET /api/reports/stock-movement
+// ---------------------------------------------------------------------------
+
+interface StockBucket {
+  count: number;
+  sale_value: number;
+  purchase_value: number;
+}
+
+interface StockMovement {
+  period_days: number;
+  period_start: string;
+  period_end: string;
+  repartition: {
+    reserve: StockBucket;
+    floor: StockBucket;
+    pre_floor: StockBucket;
+    active_count: number;
+    floor_ratio: number | null;
+    reserve_ratio: number | null;
+  };
+  velocity: {
+    avg_days_reserve_to_floor: number | null;
+    avg_days_on_floor_before_sale: number | null;
+    items_sold: number;
+    on_floor_count: number;
+    sell_through_rate: number;
+  };
+  rhythm: {
+    vertical: { to_floor: number; to_stock: number; total: number; per_week: number; per_day: number };
+    horizontal: {
+      zone_changes: number;
+      per_week: number;
+      per_day: number;
+      top_target_zones: { zone_id: string; moves: number }[];
+    };
+    exits: number;
+    intakes: number;
+  };
+}
+
+function formatDays(value: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—';
+  return `${value.toFixed(1).replace('.', ',')} j`;
+}
+
+function StockMovementSection() {
+  const [data, setData] = React.useState<StockMovement | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await api.get('/api/reports/stock-movement?period_days=30');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (!cancelled) {
+          setData(json);
+          setError('');
+        }
+      } catch {
+        if (!cancelled) {
+          setError('Données de rotation indisponibles.');
+          setData(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const floorPct = data?.repartition.floor_ratio != null
+    ? Math.round(data.repartition.floor_ratio * 100)
+    : null;
+
+  return (
+    <Card title="Gestion du stock & rotation" subtitle="30 derniers jours" className="mt-6">
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-vz-teal" />
+        </div>
+      ) : error ? (
+        <p className="text-gray-400 text-center py-4">{error}</p>
+      ) : data ? (
+        <div className="space-y-6">
+          {/* Réserve vs Rayon */}
+          <div>
+            <h3 className="text-xs uppercase tracking-wider text-vz-teal mb-2">Réserve vs Rayon</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+              <div className="rounded-xl border border-vz-line bg-white p-3">
+                <p className="text-xs text-gray-500">En réserve</p>
+                <p className="text-xl font-bold text-black">{data.repartition.reserve.count}</p>
+                <p className="text-xs text-gray-400">{formatCurrency(data.repartition.reserve.sale_value)}</p>
+              </div>
+              <div className="rounded-xl border border-vz-line bg-white p-3">
+                <p className="text-xs text-gray-500">En rayon</p>
+                <p className="text-xl font-bold text-vz-teal">{data.repartition.floor.count}</p>
+                <p className="text-xs text-gray-400">{formatCurrency(data.repartition.floor.sale_value)}</p>
+              </div>
+              <div className="rounded-xl border border-vz-line bg-white p-3">
+                <p className="text-xs text-gray-500">Articles actifs</p>
+                <p className="text-xl font-bold text-black">{data.repartition.active_count}</p>
+                <p className="text-xs text-gray-400">
+                  {floorPct !== null ? `${floorPct}% en rayon` : '—'}
+                </p>
+              </div>
+            </div>
+            {floorPct !== null && (
+              <div>
+                <div className="flex h-3 w-full overflow-hidden rounded-full bg-vz-bg-alt">
+                  <div className="bg-vz-teal h-full transition-all" style={{ width: `${floorPct}%` }} />
+                </div>
+                <div className="flex justify-between text-[11px] text-gray-500 mt-1">
+                  <span>Rayon {floorPct}%</span>
+                  <span>Réserve {100 - floorPct}%</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Vitesse de rotation */}
+          <div>
+            <h3 className="text-xs uppercase tracking-wider text-vz-teal mb-2">Vitesse de rotation</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-xl border border-vz-line bg-white p-3">
+                <p className="text-xs text-gray-500">Délai réserve → rayon</p>
+                <p className="text-xl font-bold text-black">{formatDays(data.velocity.avg_days_reserve_to_floor)}</p>
+              </div>
+              <div className="rounded-xl border border-vz-line bg-white p-3">
+                <p className="text-xs text-gray-500">Délai rayon → vente</p>
+                <p className="text-xl font-bold text-black">{formatDays(data.velocity.avg_days_on_floor_before_sale)}</p>
+              </div>
+              <div className="rounded-xl border border-vz-line bg-white p-3">
+                <p className="text-xs text-gray-500">Sell-through</p>
+                <p className="text-xl font-bold text-vz-teal">{formatPercent(data.velocity.sell_through_rate)}</p>
+                <p className="text-xs text-gray-400">{data.velocity.items_sold} vendu(s)</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Rythmes de mouvement */}
+          <div>
+            <h3 className="text-xs uppercase tracking-wider text-vz-teal mb-2">Rythmes de mouvement</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-vz-line bg-white p-3">
+                <p className="text-xs text-gray-500">Vertical (réserve ↔ rayon)</p>
+                <p className="text-xl font-bold text-black">
+                  {data.rhythm.vertical.per_week} <span className="text-sm font-normal text-gray-500">/ semaine</span>
+                </p>
+                <p className="text-xs text-gray-400">
+                  {data.rhythm.vertical.to_floor} mise(s) en rayon · {data.rhythm.vertical.to_stock} retour(s) réserve
+                </p>
+              </div>
+              <div className="rounded-xl border border-vz-line bg-white p-3">
+                <p className="text-xs text-gray-500">Horizontal (zone ↔ zone)</p>
+                <p className="text-xl font-bold text-black">
+                  {data.rhythm.horizontal.per_week} <span className="text-sm font-normal text-gray-500">/ semaine</span>
+                </p>
+                <p className="text-xs text-gray-400">
+                  {data.rhythm.horizontal.zone_changes} changement(s) de zone
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <p className="text-gray-400 text-center py-4">Données indisponibles</p>
       )}
     </Card>
   );
