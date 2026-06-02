@@ -170,11 +170,12 @@ export default function POSPage() {
   const [manualName, setManualName] = useState('');
   const [manualPrice, setManualPrice] = useState('');
 
-  // Reusable bag quick-add — label + default price (configurable in Settings).
-  // The bag is a manual line: unlimited quantity, no stock impact, price
-  // editable per sale at the till.
-  const [bagLabel, setBagLabel] = useState('Sac boutique Vintiz');
-  const [bagDefaultPrice, setBagDefaultPrice] = useState(0.25);
+  // Reusable bags quick-add (configurable in Settings > Caisse).
+  // Each bag is a manual line: unlimited quantity, no stock impact, price
+  // editable per sale at the till. One quick-add button per bag.
+  const [bags, setBags] = useState<{ label: string; price_eur: number }[]>([
+    { label: 'Sac boutique Vintiz', price_eur: 0.25 },
+  ]);
   const [priceEditIdx, setPriceEditIdx] = useState<number | null>(null);
 
   // Payment
@@ -398,14 +399,33 @@ export default function POSPage() {
     }).catch(() => {});
   }, []);
 
-  // POS quick-add config — reusable bag label + default price.
+  // POS quick-add config — list of reusable bags (Sac Kraft, Grand Sac Kraft…).
+  // The API resolves the legacy single-bag fields into a list, so we get a
+  // non-empty array whatever the persisted shape.
   useEffect(() => {
     api.get('/api/admin/pos-config').then(async (res) => {
       if (!res.ok) return;
       const cfg = await res.json();
-      if (cfg.bag_label) setBagLabel(cfg.bag_label);
-      if (typeof cfg.bag_default_price_eur === 'number') {
-        setBagDefaultPrice(cfg.bag_default_price_eur);
+      const list = Array.isArray(cfg.bags)
+        ? cfg.bags
+            .map((b: { label?: unknown; price_eur?: unknown }) => ({
+              label: String(b?.label ?? '').trim(),
+              price_eur:
+                typeof b?.price_eur === 'number'
+                  ? b.price_eur
+                  : parseFloat(String(b?.price_eur ?? '0')) || 0,
+            }))
+            .filter((b: { label: string }) => b.label)
+        : [];
+      if (list.length > 0) setBags(list);
+      else if (cfg.bag_label) {
+        // Fallback : config very old without ``bags`` and the resolver didn't
+        // run (defensive — shouldn't happen with the current API).
+        const price =
+          typeof cfg.bag_default_price_eur === 'number'
+            ? cfg.bag_default_price_eur
+            : 0.25;
+        setBags([{ label: String(cfg.bag_label), price_eur: price }]);
       }
     }).catch(() => {});
   }, []);
@@ -755,17 +775,17 @@ export default function POSPage() {
     })();
   }, []);
 
-  const addBag = () => {
+  const addBag = (bag: { label: string; price_eur: number }) => {
     setCart(prev => {
-      const existing = prev.find(i => i.name === bagLabel && i.isManual);
+      const existing = prev.find(i => i.name === bag.label && i.isManual);
       if (existing) {
-        return prev.map(i => i.name === bagLabel && i.isManual
+        return prev.map(i => i.name === bag.label && i.isManual
           ? { ...i, quantity: i.quantity + 1 } : i);
       }
       return [...prev, {
         product_id: null,
-        name: bagLabel,
-        price: bagDefaultPrice,
+        name: bag.label,
+        price: bag.price_eur,
         quantity: 1,
         discount: 0,
         isManual: true,
@@ -1916,13 +1936,19 @@ export default function POSPage() {
                 </button>
               )}
             </div>
-            {/* Quick action buttons */}
-            <div className="flex gap-2 mt-2">
-              <button onClick={addBag} title={`${bagLabel} — prix modifiable au panier`}
-                className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-black transition-colors">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
-                Sac {formatCurrency(bagDefaultPrice)}
-              </button>
+            {/* Quick action buttons — un bouton par sac configuré + manuel */}
+            <div className="flex flex-wrap gap-2 mt-2">
+              {bags.map((bag) => (
+                <button
+                  key={bag.label}
+                  onClick={() => addBag(bag)}
+                  title={`${bag.label} — prix modifiable au panier`}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-black transition-colors"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
+                  {bag.label} {formatCurrency(bag.price_eur)}
+                </button>
+              ))}
               <button onClick={() => setShowManualEntry(true)}
                 className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-black transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>

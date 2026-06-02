@@ -98,12 +98,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "comptable_email": "",
     },
     # POS quick-add config — editable via /settings > Caisse.
-    # The reusable shopping bag is a manual line item (no stock impact,
-    # unlimited quantity). Its price is editable per sale at the till; this
-    # is just the default the « Sac » button pre-fills.
+    # The reusable shopping bags are manual line items (no stock impact,
+    # unlimited quantity). Each is rendered as its own quick-add button at
+    # the till; the cashier can still edit the price per sale.
+    #
+    # ``bags`` is the source of truth (multi-bag : Sac Kraft, Grand Sac
+    # Kraft…). The legacy ``bag_label`` / ``bag_default_price_eur`` fields
+    # are kept as a mirror of the FIRST bag for old consumers (legacy
+    # clients pre-list still pre-fill their unique button).
     "pos": {
         "bag_label": "Sac boutique Vintiz",
         "bag_default_price_eur": 0.25,
+        "bags": [],
     },
 }
 
@@ -164,6 +170,38 @@ def get_section(section: str, path: Path = DEFAULT_PATH) -> dict[str, Any]:
 def update_section(section: str, values: dict[str, Any], path: Path = DEFAULT_PATH) -> dict[str, Any]:
     """Update a single section."""
     return save_config({section: values}, path=path)
+
+
+def resolved_pos_bags(pos_section: dict[str, Any]) -> list[dict[str, Any]]:
+    """Effective list of POS quick-add bags.
+
+    Uses ``bags`` when non-empty ; otherwise synthesises a single bag from
+    the legacy ``bag_label`` / ``bag_default_price_eur`` fields so a config
+    file written before the multi-bag feature still renders one button.
+    """
+    bags = pos_section.get("bags") or []
+    cleaned: list[dict[str, Any]] = []
+    for entry in bags:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get("label") or "").strip()
+        if not label:
+            continue
+        try:
+            price = float(entry.get("price_eur") or 0)
+        except (TypeError, ValueError):
+            price = 0.0
+        cleaned.append({"label": label, "price_eur": price})
+    if cleaned:
+        return cleaned
+    legacy_label = str(pos_section.get("bag_label") or "").strip()
+    if not legacy_label:
+        return []
+    try:
+        legacy_price = float(pos_section.get("bag_default_price_eur") or 0)
+    except (TypeError, ValueError):
+        legacy_price = 0.0
+    return [{"label": legacy_label, "price_eur": legacy_price}]
 
 
 def mask_secret(value: str | None, keep: int = 4) -> str:
