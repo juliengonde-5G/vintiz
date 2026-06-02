@@ -2014,6 +2014,31 @@ async def update_loyalty_config(
     return cfg.to_dict()
 
 
+class EventVoucherCatalogRequest(BaseModel):
+    vouchers: list[dict]
+
+
+@router.get("/event-vouchers/catalog", dependencies=[Depends(manager_only)])
+async def get_event_voucher_catalog(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Catalogue des bons cadeau d'ouverture (montants / pourcentages / validité)."""
+    from app.services.event_vouchers import get_catalog
+
+    return {"vouchers": await get_catalog(db)}
+
+
+@router.put("/event-vouchers/catalog", dependencies=[Depends(manager_only)])
+async def update_event_voucher_catalog(
+    request: EventVoucherCatalogRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Éditer le catalogue des bons cadeau (valeurs + validité + activation)."""
+    from app.services.event_vouchers import update_catalog
+
+    saved = await update_catalog(db, request.vouchers)
+    await db.commit()
+    return {"vouchers": saved}
+
+
 class LoyaltyEarningRequest(BaseModel):
     euro_per_point: int = 1
     voucher_value_cents: int = 800

@@ -31,6 +31,10 @@ class PaymentMethod(str, enum.Enum):
     cheque_cdc = "cheque_cdc"
     transfer = "transfer"
     avoir = "avoir"  # Settled from the client's store-credit balance
+    # Bon cadeau (ouverture boutique) affecté comme moyen de paiement : la
+    # ligne couvre la valeur du bon (Coupon source=event_opening), le reste est
+    # réglé en espèces / CB. Le bon est marqué consommé sur la vente.
+    voucher = "voucher"
 
 
 class TransactionType(str, enum.Enum):

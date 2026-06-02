@@ -17,6 +17,7 @@ Redemption:
 from __future__ import annotations
 
 import secrets
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -38,12 +39,16 @@ class CouponError(ValueError):
 class CouponPreview:
     coupon_id: uuid.UUID
     code: str
-    discount_type: str          # "percent" | "amount"
+    discount_type: str          # "percent" | "amount" | "free_item"
     discount_value: float
     discount_amount: float      # what to actually subtract from cart_total
     new_total: float
     source: str
     valid_until: datetime
+    free_item_label: str | None = None
+    # ``free_item`` bons need an eligible article in the cart (ex. un foulard) ;
+    # the UI uses this to prompt « ajoutez un foulard au panier ».
+    requires_item: bool = False
 
 
 def _gen_code(prefix: str, length: int = 6) -> str:
@@ -115,13 +120,77 @@ async def issue_anniversary_coupon(
 # ---------------------------------------------------------------------------
 
 
-def _compute_discount(coupon: Coupon, cart_total: float) -> float:
-    """Cap the discount at the cart total so we never go negative."""
+def _normalize(text: str | None) -> str:
+    if not text:
+        return ""
+    nfkd = unicodedata.normalize("NFKD", str(text).lower())
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+
+# Synonymes par libellé d'article offert : « 1 foulard offert » couvre aussi
+# une écharpe / un carré / un châle au rayon accessoires.
+_FREE_ITEM_SYNONYMS = {
+    "foulard": ("foulard", "echarpe", "carre", "chale"),
+}
+
+
+def _free_item_tokens(label: str | None) -> tuple[str, ...]:
+    norm = _normalize(label)
+    if not norm:
+        return ()
+    return _FREE_ITEM_SYNONYMS.get(norm, (norm,))
+
+
+def _eligible_free_item_price(
+    coupon: Coupon, cart_items: list[dict] | None
+) -> float | None:
+    """Cheapest cart item price matching the bon's free_item label, or None.
+
+    ``cart_items`` items are ``{"price": float, "text": str}`` where ``text``
+    is the searchable string (catégorie + nom produit)."""
+    tokens = _free_item_tokens(coupon.free_item_label)
+    if not tokens or not cart_items:
+        return None
+    prices: list[float] = []
+    for it in cart_items:
+        text = _normalize(it.get("text"))
+        if any(tok in text for tok in tokens):
+            try:
+                prices.append(float(it.get("price") or 0))
+            except (TypeError, ValueError):
+                continue
+    return min(prices) if prices else None
+
+
+def compute_voucher_discount(
+    coupon: Coupon, cart_total: float, cart_items: list[dict] | None = None
+) -> float:
+    """Discount a coupon/voucher is worth against the cart. Capped at the
+    cart total so we never go negative.
+
+    - ``percent`` : value % of the cart.
+    - ``amount``  : flat value.
+    - ``free_item``: cheapest eligible article price (capped at ``discount_value``
+      when >0). With no cart context → the cap (preview); with a cart but no
+      eligible article → 0 (the bon can't apply yet).
+    """
     if coupon.discount_type == CouponDiscountType.percent:
         raw = cart_total * float(coupon.discount_value) / 100.0
-    else:
+    elif coupon.discount_type == CouponDiscountType.free_item:
+        cap = float(coupon.discount_value or 0)
+        price = _eligible_free_item_price(coupon, cart_items)
+        if price is None:
+            raw = cap if cart_items is None else 0.0
+        else:
+            raw = min(price, cap) if cap > 0 else price
+    else:  # amount
         raw = float(coupon.discount_value)
     return round(min(raw, cart_total), 2)
+
+
+def _compute_discount(coupon: Coupon, cart_total: float) -> float:
+    """Back-compat shim — see :func:`compute_voucher_discount`."""
+    return compute_voucher_discount(coupon, cart_total)
 
 
 async def _load_by_code(db: AsyncSession, code: str) -> Coupon | None:
@@ -138,6 +207,7 @@ async def validate_coupon(
     cart_total: float,
     client_id: uuid.UUID | None = None,
     now: datetime | None = None,
+    cart_items: list[dict] | None = None,
 ) -> CouponPreview:
     """Read-only validation. Raises ``CouponError`` with one of:
 
@@ -176,7 +246,7 @@ async def validate_coupon(
         if coupon.client_id != client_id:
             raise CouponError("wrong_client")
 
-    discount = _compute_discount(coupon, cart_total)
+    discount = compute_voucher_discount(coupon, cart_total, cart_items)
     return CouponPreview(
         coupon_id=coupon.id,
         code=coupon.code,
@@ -186,6 +256,8 @@ async def validate_coupon(
         new_total=round(max(0.0, cart_total - discount), 2),
         source=coupon.source.value,
         valid_until=valid_until,
+        free_item_label=coupon.free_item_label,
+        requires_item=(coupon.discount_type == CouponDiscountType.free_item),
     )
 
 

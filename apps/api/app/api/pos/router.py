@@ -59,6 +59,9 @@ class PaymentInput(BaseModel):
     sumup_card_brand: str | None = None
     sumup_card_last4: str | None = None
     sumup_environment: str | None = None
+    # Bon cadeau d'ouverture affecté comme moyen de paiement (method=voucher) :
+    # code du bon (Coupon source=event_opening) à valider + consommer sur la vente.
+    voucher_code: str | None = None
 
 
 class CreateTransactionRequest(BaseModel):
@@ -331,7 +334,145 @@ async def validate_pos_coupon(
         "new_total": preview.new_total,
         "source": preview.source,
         "valid_until": preview.valid_until.isoformat(),
+        "free_item_label": preview.free_item_label,
+        "requires_item": preview.requires_item,
     }
+
+
+# ---------------------------------------------------------------------------
+# Bons cadeau d'ouverture (zone Événementiel) — crédit + débit en caisse
+# ---------------------------------------------------------------------------
+
+
+class IssueVoucherRequest(BaseModel):
+    client_id: uuid.UUID
+    type_key: str
+
+
+def _voucher_label(coupon) -> str:
+    """Human label for a voucher chip (fallback when notes are empty)."""
+    from app.models.coupon import CouponDiscountType
+
+    if coupon.notes:
+        return coupon.notes.split("—", 1)[-1].strip() or coupon.notes
+    val = float(coupon.discount_value)
+    if coupon.discount_type == CouponDiscountType.percent:
+        return f"-{val:g} %"
+    if coupon.discount_type == CouponDiscountType.free_item:
+        return f"{(coupon.free_item_label or 'article').capitalize()} offert"
+    return f"{val:g} € offert"
+
+
+@router.get("/event-vouchers/catalog")
+async def event_voucher_catalog(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Catalogue des bons cadeau d'ouverture (boutons de la zone Événementiel)."""
+    from app.services.event_vouchers import get_catalog
+
+    return {"vouchers": await get_catalog(db)}
+
+
+@router.post("/event-vouchers/issue")
+async def issue_event_voucher(
+    payload: IssueVoucherRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Créditer un bon cadeau sur la fiche client (clic bouton zone Événementiel)."""
+    from app.services.coupon import CouponError
+    from app.services.event_vouchers import issue_voucher
+
+    _ISSUE_ERRORS = {
+        "client_not_found": "Cliente introuvable.",
+        "unknown_type": "Type de bon inconnu.",
+        "inactive_type": "Ce type de bon est désactivé.",
+    }
+    try:
+        coupon = await issue_voucher(
+            db,
+            client_id=payload.client_id,
+            type_key=payload.type_key,
+            user_id=current_user.id,
+        )
+    except CouponError as exc:
+        raise HTTPException(
+            status_code=409, detail=_ISSUE_ERRORS.get(str(exc), "Émission refusée.")
+        )
+    await db.commit()
+    return {
+        "code": coupon.code,
+        "label": _voucher_label(coupon),
+        "discount_type": coupon.discount_type.value,
+        "discount_value": float(coupon.discount_value),
+        "free_item_label": coupon.free_item_label,
+        "valid_until": coupon.valid_until.isoformat() if coupon.valid_until else None,
+        "client_id": str(coupon.client_id),
+    }
+
+
+async def _resolve_cart_items(db: AsyncSession, items_csv: str) -> list[dict]:
+    """Parse a CSV of product UUIDs into [{price, text}] for voucher valuation."""
+    ids: list[uuid.UUID] = []
+    for token in (items_csv or "").split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            ids.append(uuid.UUID(token))
+        except ValueError:
+            continue
+    if not ids:
+        return []
+    from app.models.product import Product
+
+    rows = (await db.execute(select(Product).where(Product.id.in_(ids)))).scalars().all()
+    return [
+        {
+            "price": float(p.sale_price),
+            "text": f"{p.name or ''} {(p.category.name if p.category else '')}",
+        }
+        for p in rows
+    ]
+
+
+@router.get("/clients/{client_id}/vouchers")
+async def client_vouchers(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    cart_total_cents: int = 0,
+    items: str = "",
+):
+    """Bons cadeau actifs d'une cliente — affichés à l'identification en caisse.
+
+    ``value_for_cart`` = montant que le bon couvre pour le panier courant
+    (sert à dimensionner la ligne de règlement « bon »)."""
+    from app.services.coupon import compute_voucher_discount
+    from app.services.event_vouchers import list_client_vouchers
+
+    vouchers = await list_client_vouchers(db, client_id, only_active=True)
+    cart_total = max(0.0, cart_total_cents / 100.0)
+    cart_items = await _resolve_cart_items(db, items) if vouchers else []
+
+    out = []
+    for v in vouchers:
+        value = (
+            compute_voucher_discount(v, cart_total, cart_items)
+            if cart_total > 0 else 0.0
+        )
+        out.append({
+            "code": v.code,
+            "label": _voucher_label(v),
+            "discount_type": v.discount_type.value,
+            "discount_value": float(v.discount_value),
+            "free_item_label": v.free_item_label,
+            "requires_item": v.discount_type.value == "free_item",
+            "value_for_cart": value,
+            "valid_until": v.valid_until.isoformat() if v.valid_until else None,
+        })
+    return {"vouchers": out, "count": len(out)}
 
 
 @router.get("/transactions")

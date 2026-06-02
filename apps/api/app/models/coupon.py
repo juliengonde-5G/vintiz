@@ -30,6 +30,10 @@ from app.models.base import Base
 class CouponDiscountType(str, enum.Enum):
     percent = "percent"
     amount = "amount"
+    # Article offert (ex. « 1 foulard offert ») : couvre, jusqu'à un plafond
+    # ``discount_value`` (0 = pas de plafond), le prix de la pièce éligible la
+    # moins chère du panier — matchée via ``free_item_label`` (catégorie/nom).
+    free_item = "free_item"
 
 
 class CouponSource(str, enum.Enum):
@@ -41,6 +45,10 @@ class CouponSource(str, enum.Enum):
     manual = "manual"                     # admin one-off
     progressive = "progressive"           # bon généré sur cumul (Offer.progressive_voucher)
     loyalty_milestone = "loyalty_milestone"  # palier 100 pts = 8 €
+    # Bon cadeau distribué à l'ouverture de la boutique (zone Événementiel du
+    # POS). Crédité sur la fiche client, débité au prochain passage en caisse
+    # comme moyen de paiement (PaymentMethod.voucher).
+    event_opening = "event_opening"
 
 
 class Coupon(Base):
@@ -75,3 +83,7 @@ class Coupon(Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )
+    # Libellé de l'article offert pour les bons ``free_item`` (ex. "foulard").
+    # Sert à la fois à l'affichage et au matching de la pièce éligible au
+    # panier (substring normalisé sur la catégorie ou le nom du produit).
+    free_item_label: Mapped[str | None] = mapped_column(String(80), nullable=True)
