@@ -22,7 +22,16 @@ Données EFFACÉES :
   - Clients       : magic_link_tokens, consents, customer_taste_profiles,
                     communication_logs, clients
   - Newsletter    : newsletter_subscribers
-  - Analytique    : events_log (toutes les traces de test)
+  - Analytique    : events_log SAUF les événements ``product.created``
+                    (cf. carve-out ci-dessous)
+
+Carve-out events_log → ``product.created`` :
+  Les lignes ``product.created`` de la phase seed/démo sont **conservées**
+  pour garder la traçabilité « qui a saisi quel produit » (audit interne).
+  Leurs FK pointent vers ``products`` et ``users``, qui sont préservés, donc
+  aucun risque de FK pendante. Toutes les autres lignes (customer.*,
+  cashier_session_closed, etc.) sont effacées car liées à des entités
+  supprimées (clients, transactions).
 
 Données CONSERVÉES (inventaire + structure + config) :
   - Inventaire    : products, product_photos, product_embeddings,
@@ -102,9 +111,18 @@ TABLES_TO_WIPE: list[str] = [
     "clients",
     # Contacts newsletter
     "newsletter_subscribers",
-    # Analytique (traces de test ; entrelacée avec clients/transactions)
-    "events_log",
+    # ``events_log`` est traité à part (cf. ``_wipe_events_log_partial``) :
+    # on PRÉSERVE les lignes ``product.created`` (audit produit), on supprime
+    # le reste.
 ]
+
+# Types d'événements conservés dans ``events_log`` malgré le reset.
+# Garde la traçabilité « qui a créé quel produit » pendant la phase seed/démo,
+# utile pour les questions d'audit en retour ultérieur. Leurs FK pointent
+# vers ``products`` et ``users``, qui sont préservés.
+EVENT_TYPES_PRESERVED: tuple[str, ...] = (
+    "product.created",
+)
 
 # Tables INVENTAIRE / structure : un garde-fou vérifie qu'elles ne bougent pas.
 INVENTORY_GUARD_TABLES: tuple[str, ...] = (
@@ -130,6 +148,42 @@ async def _existing_tables() -> set[str]:
 async def _count(db: AsyncSession, table: str) -> int:
     result = await db.execute(text(f"SELECT COUNT(*) FROM {table}"))
     return int(result.scalar_one())
+
+
+async def _count_events_partition(
+    db: AsyncSession,
+) -> tuple[int, int]:
+    """Compte les lignes ``events_log`` (à_supprimer, à_conserver).
+
+    Le carve-out (``EVENT_TYPES_PRESERVED``) garde la trace
+    « qui a créé quel produit » pendant la phase seed/démo. Les autres
+    lignes (customer.*, cashier_*…) sont effacées car liées à des
+    entités supprimées par le reset (clients, transactions).
+    """
+    keep = ", ".join(f"'{t}'" for t in EVENT_TYPES_PRESERVED)
+    to_delete = int(
+        (
+            await db.execute(
+                text(f"SELECT COUNT(*) FROM events_log WHERE event_type NOT IN ({keep})")
+            )
+        ).scalar_one()
+    )
+    to_keep = int(
+        (
+            await db.execute(
+                text(f"SELECT COUNT(*) FROM events_log WHERE event_type IN ({keep})")
+            )
+        ).scalar_one()
+    )
+    return to_delete, to_keep
+
+
+async def _wipe_events_log_partial(db: AsyncSession) -> None:
+    """Supprime de ``events_log`` toutes les lignes non préservées."""
+    keep = ", ".join(f"'{t}'" for t in EVENT_TYPES_PRESERVED)
+    await db.execute(
+        text(f"DELETE FROM events_log WHERE event_type NOT IN ({keep})")
+    )
 
 
 async def main(confirm: bool, dry_run: bool) -> int:
@@ -172,8 +226,29 @@ async def main(confirm: bool, dry_run: bool) -> int:
             verb = "à supprimer" if dry_run else "en file    "
             print(f"  {table:28s}  {verb} {before:>10,d} lignes")
 
+        # 2 bis) events_log — carve-out : on garde ``product.created`` (audit
+        # produit), on supprime le reste. Compté à part car traité hors du
+        # TRUNCATE bulk.
+        events_to_delete = 0
+        events_to_keep = 0
+        events_table_present = "events_log" in existing
+        if events_table_present:
+            events_to_delete, events_to_keep = await _count_events_partition(db)
+            total_before += events_to_delete
+            verb = "à supprimer" if dry_run else "en file    "
+            print(
+                f"  {'events_log (filtré)':28s}  {verb} {events_to_delete:>10,d} lignes"
+            )
+            print(
+                f"    └─ conservées (product.created) : {events_to_keep:>10,d} lignes"
+            )
+
         if dry_run:
             print(f"\nDRY-RUN : {total_before:,d} lignes seraient supprimées.")
+            print(
+                f"events_log : {events_to_keep:,d} ligne(s) ``product.created`` "
+                "préservée(s) (audit produit)."
+            )
             print("Inventaire préservé :", ", ".join(inv_before) or "(aucune table)")
             return 0
 
@@ -187,6 +262,12 @@ async def main(confirm: bool, dry_run: bool) -> int:
         else:
             for table in reversed(wipe_targets):
                 await db.execute(text(f"DELETE FROM {table}"))
+
+        # 3 bis) events_log : DELETE filtré (préserve ``product.created``).
+        # Toujours fait APRÈS le TRUNCATE car aucune table ne référence
+        # events_log → pas de CASCADE entrante à gérer.
+        if events_table_present:
+            await _wipe_events_log_partial(db)
 
         # 4) GARDE-FOU : l'inventaire n'a pas bougé ? Sinon ROLLBACK + abort.
         inv_changed: list[str] = []
@@ -206,16 +287,26 @@ async def main(confirm: bool, dry_run: bool) -> int:
 
         await db.commit()
 
-        # 5) Vérifier que tout est bien à zéro.
+        # 5) Vérifier que tout est bien à zéro (sauf events_log : on attend
+        # exactement les ``product.created`` préservés).
         total_after = 0
         for t in wipe_targets:
             total_after += await _count(db, t)
+        events_remaining = (
+            await _count(db, "events_log") if events_table_present else 0
+        )
 
     print("\n" + "=" * 72)
     print(
         f"Reset terminé : {total_before:,d} lignes supprimées sur "
-        f"{len(wipe_targets)} tables ({total_after:,d} restantes — doit être 0)."
+        f"{len(wipe_targets) + (1 if events_table_present else 0)} tables "
+        f"({total_after:,d} restantes sur les tables purgées — doit être 0)."
     )
+    if events_table_present:
+        print(
+            f"events_log : {events_remaining:,d} ligne(s) ``product.created`` "
+            "préservée(s) (audit produit)."
+        )
     print("Inventaire intact ✓  — la boutique peut ouvrir en 1.0.")
     print("=" * 72)
     return 0

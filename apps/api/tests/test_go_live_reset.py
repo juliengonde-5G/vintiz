@@ -7,6 +7,7 @@ catégories et zones restent intacts. Tourne sur SQLite (chemin DELETE).
 from __future__ import annotations
 
 import importlib.util
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.models import Base
 from app.models.client import Client, LoyaltyAccount
+from app.models.events import EventLog, EventSource, EventType
 from app.models.product import Category, Product, ProductStatus
 from app.models.pos import Transaction, TransactionType
 from app.models.user import User, UserRole
@@ -74,6 +76,32 @@ async def seeded_engine():
             total_ht=40, total_tva=10, total_ttc=50, hash_chain="a" * 64,
             user_id=user.id,
         ))
+        # Events log : mix de ``product.created`` (à conserver) + de bruit
+        # opérationnel (customer.visited / cashier_session_closed) à effacer.
+        # On a 3 product.created (un par produit) + 2 traces opérationnelles.
+        from sqlalchemy import select
+        now = datetime.now(timezone.utc)
+        prod_rows = (await s.execute(select(Product))).scalars().all()
+        for p in prod_rows:
+            s.add(EventLog(
+                occurred_at=now,
+                event_type=EventType.product_created,
+                source=EventSource.admin,
+                product_id=p.id,
+                user_id=user.id,
+            ))
+        s.add(EventLog(
+            occurred_at=now,
+            event_type=EventType.customer_visited,
+            source=EventSource.site,
+            customer_id=client.id,
+        ))
+        s.add(EventLog(
+            occurred_at=now,
+            event_type=EventType.cashier_session_closed,
+            source=EventSource.pos,
+            user_id=user.id,
+        ))
         await s.commit()
     yield engine
     await engine.dispose()
@@ -84,6 +112,15 @@ async def _count(engine, table: str) -> int:
         return int((await s.execute(text(f"SELECT COUNT(*) FROM {table}"))).scalar_one())
 
 
+async def _count_where(engine, table: str, where: str) -> int:
+    async with AsyncSession(engine) as s:
+        return int(
+            (
+                await s.execute(text(f"SELECT COUNT(*) FROM {table} WHERE {where}"))
+            ).scalar_one()
+        )
+
+
 @pytest.mark.anyio
 async def test_dry_run_changes_nothing(seeded_engine):
     mod = _load_reset_module(seeded_engine)
@@ -92,6 +129,8 @@ async def test_dry_run_changes_nothing(seeded_engine):
     assert await _count(seeded_engine, "transactions") == 1
     assert await _count(seeded_engine, "clients") == 1
     assert await _count(seeded_engine, "products") == 3
+    # events_log intact en dry-run
+    assert await _count(seeded_engine, "events_log") == 5
 
 
 @pytest.mark.anyio
@@ -106,6 +145,20 @@ async def test_live_wipes_operational_keeps_inventory(seeded_engine):
     # Inventaire INTACT
     assert await _count(seeded_engine, "products") == 3
     assert await _count(seeded_engine, "categories") == 1
+    # events_log : seuls les ``product.created`` survivent (carve-out audit).
+    assert await _count(seeded_engine, "events_log") == 3
+    assert (
+        await _count_where(
+            seeded_engine, "events_log", "event_type = 'product.created'"
+        )
+        == 3
+    )
+    assert (
+        await _count_where(
+            seeded_engine, "events_log", "event_type != 'product.created'"
+        )
+        == 0
+    )
 
 
 @pytest.mark.anyio
