@@ -280,29 +280,47 @@ async def update_cash_management_config(payload: CashManagementConfigUpdate):
 # ---------------------------------------------------------------------------
 
 
+class PosBagInput(BaseModel):
+    label: str
+    price_eur: float
+
+
 class PosConfigUpdate(BaseModel):
     bag_label: str | None = None
     bag_default_price_eur: float | None = None
+    # Multi-bag : remplace le sac unique par une liste (Sac Kraft, Grand Sac
+    # Kraft…). ``None`` = ne pas toucher à la liste persistée ; ``[]`` = revenir
+    # au mode legacy (mirror unique).
+    bags: list[PosBagInput] | None = None
+
+
+_MAX_BAGS = 10
 
 
 @router.get("/pos-config")
 async def get_pos_config(current_user: Annotated[User, Depends(get_current_user)]):
-    """Read POS quick-add defaults (bag label + price).
+    """Read POS quick-add defaults (bags + legacy label/price mirror).
 
     Readable by any authenticated back-office user so the till can pre-fill
-    the « Sac » button even when the operator is not a manager.
+    its « Sac » buttons even when the operator is not a manager.
     """
-    from app.services.app_config import get_section
+    from app.services.app_config import get_section, resolved_pos_bags
 
-    return get_section("pos")
+    section = get_section("pos")
+    # Always return ``bags`` as the resolved (non-empty when possible) list so
+    # the till has a single source of truth — old configs without a list still
+    # see a synthesised single bag from the legacy fields.
+    section["bags"] = resolved_pos_bags(section)
+    return section
 
 
 @router.put("/pos-config", dependencies=[Depends(manager_only)])
 async def update_pos_config(payload: PosConfigUpdate):
     """Update POS quick-add defaults (manager only)."""
-    from app.services.app_config import get_section, update_section
+    from app.services.app_config import get_section, resolved_pos_bags, update_section
 
-    values = payload.model_dump(exclude_none=True)
+    values: dict = payload.model_dump(exclude_none=True)
+
     price = values.get("bag_default_price_eur")
     if price is not None and (price < 0 or price > 1000):
         raise HTTPException(
@@ -311,8 +329,43 @@ async def update_pos_config(payload: PosConfigUpdate):
         )
     if "bag_label" in values and not str(values["bag_label"]).strip():
         values.pop("bag_label")
+
+    if "bags" in values:
+        raw_bags = values["bags"]
+        if len(raw_bags) > _MAX_BAGS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Maximum {_MAX_BAGS} sacs supportés au POS.",
+            )
+        cleaned: list[dict] = []
+        for idx, entry in enumerate(raw_bags):
+            label = str(entry.get("label") or "").strip()
+            if not label:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Sac #{idx + 1} : libellé requis.",
+                )
+            try:
+                eur = float(entry.get("price_eur") or 0)
+            except (TypeError, ValueError):
+                eur = -1.0
+            if eur < 0 or eur > 1000:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Sac « {label} » : prix doit être entre 0 et 1000 €.",
+                )
+            cleaned.append({"label": label, "price_eur": round(eur, 2)})
+        values["bags"] = cleaned
+        # Mirror onto the legacy fields so old consumers (POS pre-list, ticket
+        # studio sample) still pre-fill with the first bag.
+        if cleaned:
+            values.setdefault("bag_label", cleaned[0]["label"])
+            values.setdefault("bag_default_price_eur", cleaned[0]["price_eur"])
+
     update_section("pos", values)
-    return get_section("pos")
+    section = get_section("pos")
+    section["bags"] = resolved_pos_bags(section)
+    return section
 
 
 # ---------------------------------------------------------------------------
@@ -2012,6 +2065,31 @@ async def update_loyalty_config(
         raise HTTPException(status_code=400, detail=str(exc))
     await db.commit()
     return cfg.to_dict()
+
+
+class EventVoucherCatalogRequest(BaseModel):
+    vouchers: list[dict]
+
+
+@router.get("/event-vouchers/catalog", dependencies=[Depends(manager_only)])
+async def get_event_voucher_catalog(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Catalogue des bons cadeau d'ouverture (montants / pourcentages / validité)."""
+    from app.services.event_vouchers import get_catalog
+
+    return {"vouchers": await get_catalog(db)}
+
+
+@router.put("/event-vouchers/catalog", dependencies=[Depends(manager_only)])
+async def update_event_voucher_catalog(
+    request: EventVoucherCatalogRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Éditer le catalogue des bons cadeau (valeurs + validité + activation)."""
+    from app.services.event_vouchers import update_catalog
+
+    saved = await update_catalog(db, request.vouchers)
+    await db.commit()
+    return {"vouchers": saved}
 
 
 class LoyaltyEarningRequest(BaseModel):

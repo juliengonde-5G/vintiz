@@ -7,7 +7,7 @@ them manually from ``/api/checklist/regenerate``.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -109,9 +109,10 @@ async def run_thursday_six_weeks_exit(db: AsyncSession) -> dict:
         )
         try:
             await lifecycle.transition(
-                product=product,
-                to_status=ProductStatus.returned_to_sorting,
+                product,
+                ProductStatus.returned_to_sorting,
                 reason="6 weeks on shelf — automatic Thursday exit",
+                move_source="cron",
             )
             transitioned += 1
         except Exception:

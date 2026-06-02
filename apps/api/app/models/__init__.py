@@ -35,6 +35,7 @@ from app.models.visibility import (
     SocialPostCategory,
 )
 from app.models.events import EventLog, EventSource, EventType
+from app.models.product_location import LocationMoveType, ProductLocationEvent
 from app.models.embeddings import (
     EMBEDDING_DIM,
     CustomerTasteProfile,
@@ -87,6 +88,7 @@ __all__ = [
     "DailyReport", "CommercialAction", "ActionResult",
     "AuditLog", "Settings",
     "EventLog", "EventSource", "EventType",
+    "LocationMoveType", "ProductLocationEvent",
     "IntakeBatch", "IntakeSource",
     "BrandTier", "BrandTierLevel",
     "WindowDisplayProposal",

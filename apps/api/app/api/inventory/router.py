@@ -552,6 +552,11 @@ async def update_product(
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
 
+    # Capture location before the inline edit so a status (réserve↔rayon) or
+    # zone (horizontal) change made from the inventory table is historised.
+    _before_status = product.status
+    _before_zone = product.zone_id
+
     update_data = product_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         # Coerce the incoming status string to the enum so the FLOOR_STATUSES
@@ -586,6 +591,23 @@ async def update_product(
             status_code=500,
             detail=f"Erreur base de données : {type(exc).__name__}",
         )
+
+    # Historise réserve↔rayon / zone changes done from the inline editor.
+    if product.status != _before_status or product.zone_id != _before_zone:
+        from app.services.stock_movement import record_move
+
+        await record_move(
+            db,
+            product,
+            from_status=_before_status,
+            to_status=product.status,
+            from_zone_id=_before_zone,
+            to_zone_id=product.zone_id,
+            user_id=current_user.id,
+            reason="Édition fiche produit",
+            source="admin_edit",
+        )
+
     return ProductResponse.model_validate(product)
 
 
@@ -1503,3 +1525,117 @@ async def locate_product(
     from app.services.merchandising import MerchandisingService
 
     return await MerchandisingService(db).locate_product(q)
+
+
+# ---------------------------------------------------------------------------
+# Mouvements de stock — flux vertical (réserve↔rayon) & horizontal (zone↔zone)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/products/{product_id}/location-history")
+async def product_location_history(
+    product_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    """Timeline des emplacements d'un article (réserve↔rayon, zone↔zone).
+
+    Source : ``product_location_events`` — historisation typée des mouvements
+    physiques, affichée dans la fiche produit."""
+    from app.services.stock_movement import location_history
+
+    return await location_history(db, product_id, limit=limit)
+
+
+@router.get("/movements/weekly-plan")
+async def movements_weekly_plan(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Aménagement HORIZONTAL de la semaine (Vintiz IA), zone par zone :
+    « de la zone A, déplacez X, Y, Z vers la zone B/C »."""
+    from app.services.stock_movement import weekly_layout_plan
+
+    return await weekly_layout_plan(db)
+
+
+@router.get("/movements/restock-plan")
+async def movements_restock_plan(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    period_days: int = Query(default=14, ge=1, le=90),
+):
+    """Achalandage VERTICAL au fil de l'eau : pour chaque zone qui se vide
+    (ventes), les pièces de la réserve à remonter en rayon."""
+    from app.services.stock_movement import restock_plan
+
+    return await restock_plan(db, period_days=period_days)
+
+
+class MoveExecuteRequest(BaseModel):
+    barcode: str
+    to_status: str | None = None
+    to_zone_id: uuid.UUID | None = None
+    reason: str | None = None
+
+
+@router.post("/movements/execute")
+async def execute_movement(
+    request: MoveExecuteRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Exécuter un mouvement à la lecture du code-barres.
+
+    Le moteur propose, l'opérateur scanne le code-barres de la pièce et
+    confirme : on applique la transition de statut (réserve↔rayon) et/ou le
+    changement de zone, et on historise le mouvement."""
+    from app.services.stock_movement import MovementError, move_by_barcode
+
+    to_status: ProductStatus | None = None
+    if request.to_status:
+        try:
+            to_status = ProductStatus(request.to_status)
+        except ValueError:
+            valid = ", ".join(s.value for s in ProductStatus)
+            raise HTTPException(
+                status_code=400, detail=f"Statut inconnu. Valeurs valides : {valid}"
+            )
+    if to_status is None and request.to_zone_id is None:
+        raise HTTPException(
+            status_code=400, detail="Préciser au moins to_status ou to_zone_id."
+        )
+
+    try:
+        product, event = await move_by_barcode(
+            db,
+            request.barcode,
+            to_status=to_status,
+            to_zone_id=request.to_zone_id,
+            user_id=current_user.id,
+            reason=request.reason,
+            source="scan",
+        )
+    except MovementError as exc:
+        _MOVE_ERRORS = {
+            "empty_barcode": "Code-barres vide.",
+            "product_not_found": "Aucun article pour ce code-barres.",
+            "zone_not_found": "Zone cible introuvable.",
+        }
+        code = str(exc)
+        msg = _MOVE_ERRORS.get(code)
+        if msg is None and code.startswith("invalid_transition:"):
+            msg = f"Transition de statut invalide ({code.split(':', 1)[1]})."
+        raise HTTPException(status_code=400, detail=msg or "Mouvement refusé.")
+
+    await db.commit()
+    return {
+        "product_id": str(product.id),
+        "barcode": product.barcode,
+        "name": product.name,
+        "status": product.status.value,
+        "zone_id": str(product.zone_id) if product.zone_id else None,
+        "move_type": event.move_type.value if event else None,
+        "recorded": event is not None,
+    }

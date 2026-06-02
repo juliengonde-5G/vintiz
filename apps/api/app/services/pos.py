@@ -215,8 +215,11 @@ class PosService:
             "especes": "cash", "carte": "card", "cheque": "cheque",
             "cash": "cash", "card": "card", "avoir": "avoir",
             "cheque_cdc": "cheque_cdc",
+            "voucher": "voucher", "bon": "voucher",
         }
         avoir_total = Decimal("0")
+        # Bons cadeau affectés comme moyen de paiement : (montant, code).
+        voucher_tenders: list[tuple[Decimal, str | None]] = []
         for pay in payments:
             method_str = method_map.get(pay.method, pay.method)
             method_enum = PaymentMethod(method_str)
@@ -241,6 +244,60 @@ class PosService:
             self.db.add(payment)
             if method_enum == PaymentMethod.avoir:
                 avoir_total += Decimal(str(pay.amount))
+            elif method_enum == PaymentMethod.voucher:
+                voucher_tenders.append(
+                    (Decimal(str(pay.amount)), getattr(pay, "voucher_code", None))
+                )
+
+        # Bon cadeau (ouverture) débité comme moyen de paiement : on valide le
+        # bon contre le panier, on vérifie que le montant affecté ne dépasse pas
+        # sa valeur, puis on le marque consommé (lié à la vente). Le bon compte
+        # dans ``total_paid`` → il réduit le reste à régler en espèces / CB.
+        if voucher_tenders:
+            if client_id is None:
+                raise InvalidOperation(
+                    "Un bon cadeau nécessite une cliente sélectionnée"
+                )
+            from app.services.coupon import (
+                CouponError,
+                redeem_coupon,
+                validate_coupon,
+            )
+
+            # Per-unit (post-remise) price + libellé, pour les bons « article
+            # offert » (free_item) qui couvrent la pièce éligible la moins chère.
+            cart_items = [
+                {
+                    "price": float(
+                        (up * (Decimal("100") - Decimal(str(disc))) / Decimal("100"))
+                        .quantize(Decimal("0.01"))
+                    ),
+                    "text": (
+                        f"{(prod.name if prod else nm) or ''} "
+                        f"{(prod.category.name if prod and prod.category else '')}"
+                    ),
+                }
+                for prod, _qty, up, disc, nm in line_rows
+            ]
+            for amount, code in voucher_tenders:
+                if not code:
+                    raise InvalidOperation("Bon cadeau : code manquant")
+                try:
+                    preview = await validate_coupon(
+                        self.db,
+                        code=code,
+                        cart_total=float(total_ttc),
+                        client_id=client_id,
+                        cart_items=cart_items,
+                    )
+                except CouponError as exc:
+                    raise InvalidOperation(f"Bon cadeau refusé ({exc})")
+                if float(amount) > preview.discount_amount + 0.01:
+                    raise InvalidOperation(
+                        f"Bon {code} : montant affecté ({amount} €) supérieur à "
+                        f"sa valeur ({preview.discount_amount} €)"
+                    )
+                await redeem_coupon(self.db, preview.coupon_id, transaction.id)
 
         # Avoir checkout: validate balance, debit client and write ledger.
         if avoir_total > 0:

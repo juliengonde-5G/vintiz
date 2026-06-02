@@ -10,6 +10,7 @@ import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
 import PhotoGallery from '@/components/inventory/PhotoGallery';
 import ProductHistory from '@/components/inventory/ProductHistory';
+import LocationHistory from '@/components/inventory/LocationHistory';
 import RepriceModal from '@/components/inventory/RepriceModal';
 import { api } from '@/lib/api';
 
@@ -510,6 +511,13 @@ export default function ProductDetailPage() {
                 productId={product.id}
                 refreshKey={historyRefresh}
                 zoneNames={zoneNames}
+              />
+            </Card>
+
+            <Card title="Historique des emplacements">
+              <LocationHistory
+                productId={product.id}
+                refreshKey={historyRefresh}
               />
             </Card>
 

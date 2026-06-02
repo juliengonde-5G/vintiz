@@ -62,8 +62,33 @@ interface CartItem {
 }
 
 interface PaymentLine {
-  method: 'especes' | 'carte' | 'cheque' | 'cheque_cdc' | 'avoir';
+  method: 'especes' | 'carte' | 'cheque' | 'cheque_cdc' | 'avoir' | 'voucher';
   amount: number;
+  // Bon cadeau d'ouverture affecté comme règlement : code + libellé du bon.
+  voucher_code?: string;
+  label?: string;
+}
+
+// Bons cadeau d'ouverture (zone Événementiel)
+interface VoucherType {
+  key: string;
+  label: string;
+  discount_type: string;
+  discount_value: number;
+  free_item_label: string | null;
+  valid_until?: string;
+  active?: boolean;
+}
+
+interface ClientVoucher {
+  code: string;
+  label: string;
+  discount_type: string;
+  discount_value: number;
+  free_item_label: string | null;
+  requires_item: boolean;
+  value_for_cart: number;
+  valid_until: string | null;
 }
 
 interface ClientResult {
@@ -133,16 +158,24 @@ export default function POSPage() {
   const [showClientSelect, setShowClientSelect] = useState(false);
   const [customerBrief, setCustomerBrief] = useState<CustomerBrief | null>(null);
 
+  // Bons cadeau d'ouverture (zone Événementiel) : catalogue + bons de la cliente.
+  const [voucherCatalog, setVoucherCatalog] = useState<VoucherType[]>([]);
+  const [clientVouchers, setClientVouchers] = useState<ClientVoucher[]>([]);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [eventBusy, setEventBusy] = useState(false);
+  const [eventToast, setEventToast] = useState('');
+
   // Manual article
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualName, setManualName] = useState('');
   const [manualPrice, setManualPrice] = useState('');
 
-  // Reusable bag quick-add — label + default price (configurable in Settings).
-  // The bag is a manual line: unlimited quantity, no stock impact, price
-  // editable per sale at the till.
-  const [bagLabel, setBagLabel] = useState('Sac boutique Vintiz');
-  const [bagDefaultPrice, setBagDefaultPrice] = useState(0.25);
+  // Reusable bags quick-add (configurable in Settings > Caisse).
+  // Each bag is a manual line: unlimited quantity, no stock impact, price
+  // editable per sale at the till. One quick-add button per bag.
+  const [bags, setBags] = useState<{ label: string; price_eur: number }[]>([
+    { label: 'Sac boutique Vintiz', price_eur: 0.25 },
+  ]);
   const [priceEditIdx, setPriceEditIdx] = useState<number | null>(null);
 
   // Payment
@@ -366,14 +399,33 @@ export default function POSPage() {
     }).catch(() => {});
   }, []);
 
-  // POS quick-add config — reusable bag label + default price.
+  // POS quick-add config — list of reusable bags (Sac Kraft, Grand Sac Kraft…).
+  // The API resolves the legacy single-bag fields into a list, so we get a
+  // non-empty array whatever the persisted shape.
   useEffect(() => {
     api.get('/api/admin/pos-config').then(async (res) => {
       if (!res.ok) return;
       const cfg = await res.json();
-      if (cfg.bag_label) setBagLabel(cfg.bag_label);
-      if (typeof cfg.bag_default_price_eur === 'number') {
-        setBagDefaultPrice(cfg.bag_default_price_eur);
+      const list = Array.isArray(cfg.bags)
+        ? cfg.bags
+            .map((b: { label?: unknown; price_eur?: unknown }) => ({
+              label: String(b?.label ?? '').trim(),
+              price_eur:
+                typeof b?.price_eur === 'number'
+                  ? b.price_eur
+                  : parseFloat(String(b?.price_eur ?? '0')) || 0,
+            }))
+            .filter((b: { label: string }) => b.label)
+        : [];
+      if (list.length > 0) setBags(list);
+      else if (cfg.bag_label) {
+        // Fallback : config very old without ``bags`` and the resolver didn't
+        // run (defensive — shouldn't happen with the current API).
+        const price =
+          typeof cfg.bag_default_price_eur === 'number'
+            ? cfg.bag_default_price_eur
+            : 0.25;
+        setBags([{ label: String(cfg.bag_label), price_eur: price }]);
       }
     }).catch(() => {});
   }, []);
@@ -502,6 +554,85 @@ export default function POSPage() {
         color: product.color,
       } as any);
     } catch { /* silent */ }
+  };
+
+  // ── Bons cadeau d'ouverture (zone Événementiel) ─────────────────
+  // Catalogue chargé une fois (boutons de la zone Événementiel).
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await api.get('/api/pos/event-vouchers/catalog');
+        if (res.ok && active) setVoucherCatalog((await res.json()).vouchers || []);
+      } catch { /* silent */ }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  // Bons actifs de la cliente — rafraîchis à l'identification et quand le panier
+  // change (la valeur affectable d'un % / d'un foulard dépend du panier).
+  useEffect(() => {
+    if (!selectedClient) { setClientVouchers([]); return; }
+    const clientId = selectedClient.id;
+    const t = setTimeout(async () => {
+      try {
+        const ids = cart.filter((i) => i.product_id).map((i) => i.product_id).join(',');
+        const cents = Math.round(cartTotal * 100);
+        const res = await api.get(
+          `/api/pos/clients/${clientId}/vouchers?cart_total_cents=${cents}&items=${encodeURIComponent(ids)}`,
+        );
+        if (res.ok) setClientVouchers((await res.json()).vouchers || []);
+      } catch { /* silent */ }
+    }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClient, cart, cartTotal]);
+
+  // Émettre un bon cadeau sur la fiche cliente (clic bouton zone Événementiel).
+  const issueVoucher = async (typeKey: string) => {
+    if (!selectedClient || eventBusy) return;
+    setEventBusy(true);
+    try {
+      const res = await api.post('/api/pos/event-vouchers/issue', {
+        client_id: selectedClient.id,
+        type_key: typeKey,
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        setEventToast(`Bon « ${data.label} » enregistré sur le compte de ${selectedClient.first_name}.`);
+        const ids = cart.filter((i) => i.product_id).map((i) => i.product_id).join(',');
+        const cents = Math.round(cartTotal * 100);
+        const vres = await api.get(
+          `/api/pos/clients/${selectedClient.id}/vouchers?cart_total_cents=${cents}&items=${encodeURIComponent(ids)}`,
+        );
+        if (vres.ok) setClientVouchers((await vres.json()).vouchers || []);
+      } else {
+        setEventToast(data?.detail || 'Émission refusée.');
+      }
+    } catch {
+      setEventToast('Erreur réseau.');
+    }
+    setEventBusy(false);
+    setTimeout(() => setEventToast(''), 4500);
+  };
+
+  // Affecter un bon de la cliente comme moyen de paiement (ligne de règlement).
+  const addVoucherPayment = (v: ClientVoucher) => {
+    if (payments.some((p) => p.voucher_code === v.code)) return;
+    const remainingNow = Math.max(0, parseFloat((cartTotalAfterLoyalty - totalPaid).toFixed(2)));
+    const amount = Math.min(v.value_for_cart || 0, remainingNow);
+    if (amount <= 0) {
+      setError(
+        v.requires_item
+          ? `Ajoutez un ${v.free_item_label || 'article éligible'} au panier pour utiliser ce bon.`
+          : 'Le panier est déjà couvert — rien à affecter pour ce bon.',
+      );
+      return;
+    }
+    setPayments((prev) => [
+      ...prev,
+      { method: 'voucher', amount: parseFloat(amount.toFixed(2)), voucher_code: v.code, label: v.label },
+    ]);
   };
 
   const submitSubscription = async () => {
@@ -644,17 +775,17 @@ export default function POSPage() {
     })();
   }, []);
 
-  const addBag = () => {
+  const addBag = (bag: { label: string; price_eur: number }) => {
     setCart(prev => {
-      const existing = prev.find(i => i.name === bagLabel && i.isManual);
+      const existing = prev.find(i => i.name === bag.label && i.isManual);
       if (existing) {
-        return prev.map(i => i.name === bagLabel && i.isManual
+        return prev.map(i => i.name === bag.label && i.isManual
           ? { ...i, quantity: i.quantity + 1 } : i);
       }
       return [...prev, {
         product_id: null,
-        name: bagLabel,
-        price: bagDefaultPrice,
+        name: bag.label,
+        price: bag.price_eur,
         quantity: 1,
         discount: 0,
         isManual: true,
@@ -961,6 +1092,7 @@ export default function POSPage() {
           method: p.method,
           amount: p.amount,
           ...(p.method === 'carte' && cbDetails ? cbDetails : {}),
+          ...(p.method === 'voucher' && p.voucher_code ? { voucher_code: p.voucher_code } : {}),
         })),
         redeem_loyalty_discount: redeemPoints ? loyaltyDiscount : 0,
         client_uuid: posPayment.clientUuid,
@@ -1045,6 +1177,7 @@ export default function POSPage() {
           method: p.method,
           amount: p.amount,
           ...(p.method === 'carte' && cbDetails ? cbDetails : {}),
+          ...(p.method === 'voucher' && p.voucher_code ? { voucher_code: p.voucher_code } : {}),
         })),
         redeem_loyalty_discount: redeemPoints ? loyaltyDiscount : 0,
         client_uuid: clientUuid,
@@ -1185,6 +1318,7 @@ export default function POSPage() {
     cheque: 'Cheque',
     cheque_cdc: 'Cheque CDC',
     avoir: 'Avoir client',
+    voucher: 'Bon cadeau',
   };
 
   return (
@@ -1460,6 +1594,15 @@ export default function POSPage() {
                 Ajouter cliente
               </button>
             )}
+            {/* Zone Événementiel — distribution des bons cadeau d'ouverture */}
+            <button
+              onClick={() => setShowEventModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-vz-accent/40 bg-vz-accent-soft text-vz-ink hover:bg-vz-accent-soft/70 transition-colors text-sm min-h-[44px]"
+              title="Bons cadeau d'ouverture"
+            >
+              <span aria-hidden>🎟</span>
+              <span className="hidden sm:inline">Événementiel</span>
+            </button>
           </div>
 
           {error && !showPayment && (
@@ -1477,6 +1620,18 @@ export default function POSPage() {
                 onTapPick={addPickToCart}
                 onClose={() => setCustomerBrief(null)}
               />
+            </div>
+          )}
+
+          {/* Bons cadeau sur le compte — affichés dès l'identification cliente */}
+          {selectedClient && clientVouchers.length > 0 && (
+            <div className="px-3 pt-2">
+              <div className="rounded-xl border border-vz-accent/40 bg-vz-accent-soft px-3 py-2 text-xs text-vz-ink flex items-center gap-2">
+                <span aria-hidden>🎟</span>
+                <span>
+                  <strong>{clientVouchers.length} bon{clientVouchers.length > 1 ? 's' : ''} d&apos;achat</strong> sur ce compte — à affecter au paiement.
+                </span>
+              </div>
             </div>
           )}
 
@@ -1781,13 +1936,19 @@ export default function POSPage() {
                 </button>
               )}
             </div>
-            {/* Quick action buttons */}
-            <div className="flex gap-2 mt-2">
-              <button onClick={addBag} title={`${bagLabel} — prix modifiable au panier`}
-                className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-black transition-colors">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
-                Sac {formatCurrency(bagDefaultPrice)}
-              </button>
+            {/* Quick action buttons — un bouton par sac configuré + manuel */}
+            <div className="flex flex-wrap gap-2 mt-2">
+              {bags.map((bag) => (
+                <button
+                  key={bag.label}
+                  onClick={() => addBag(bag)}
+                  title={`${bag.label} — prix modifiable au panier`}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-black transition-colors"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
+                  {bag.label} {formatCurrency(bag.price_eur)}
+                </button>
+              ))}
               <button onClick={() => setShowManualEntry(true)}
                 className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs text-black transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -1879,6 +2040,48 @@ export default function POSPage() {
       </div>
 
       {/* ── Client Selection Fullscreen (Odoo 17 pattern) ──────── */}
+      {/* ── Zone Événementiel — bons cadeau d'ouverture ──────────────
+           Un bouton par type de bon (catalogue). Sur clic → le bon est
+           crédité sur la fiche de la cliente identifiée ; affiché ensuite à
+           l'identification + affectable comme moyen de paiement. */}
+      <Modal
+        open={showEventModal}
+        onClose={() => setShowEventModal(false)}
+        title="Bons cadeau d'ouverture"
+      >
+        {selectedClient ? (
+          <p className="text-xs text-vz-ink-mute mb-4">
+            Sur le compte de{' '}
+            <strong>{selectedClient.first_name} {selectedClient.last_name}</strong>
+            {clientVouchers.length > 0 ? ` · ${clientVouchers.length} bon(s) déjà crédité(s)` : ''}.
+          </p>
+        ) : (
+          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-4">
+            Sélectionnez d&apos;abord une cliente (ou créez sa fiche) pour lui attribuer un bon.
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          {voucherCatalog
+            .filter((v) => v.active !== false)
+            .map((v) => (
+              <button
+                key={v.key}
+                onClick={() => issueVoucher(v.key)}
+                disabled={!selectedClient || eventBusy}
+                className="flex flex-col items-center justify-center gap-1 p-4 rounded-xl border border-vz-line bg-vz-bg-alt hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[84px] text-vz-ink disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span className="font-display text-xl text-vz-teal">{v.label}</span>
+                <span className="text-[10px] text-vz-ink-mute">sur le prochain achat</span>
+              </button>
+            ))}
+        </div>
+        {eventToast && (
+          <p className="mt-4 text-sm text-vz-teal-deep bg-vz-teal-soft rounded-lg px-3 py-2">
+            {eventToast}
+          </p>
+        )}
+      </Modal>
+
       <ClientSelectionScreen
         open={showClientSelect}
         onClose={() => setShowClientSelect(false)}
@@ -2216,6 +2419,45 @@ export default function POSPage() {
                 </div>
               </section>
 
+              {/* Bons cadeau de la cliente — affecter comme moyen de paiement */}
+              {selectedClient && clientVouchers.length > 0 && (
+                <section>
+                  <h2 className="font-display text-base text-vz-ink mb-2">Bons cadeau</h2>
+                  <div className="space-y-2">
+                    {clientVouchers.map((v) => {
+                      const used = payments.some((p) => p.voucher_code === v.code);
+                      return (
+                        <div
+                          key={v.code}
+                          className="flex items-center justify-between gap-2 p-3 rounded-xl border border-vz-accent/40 bg-vz-accent-soft"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-vz-ink truncate">🎟 {v.label}</p>
+                            <p className="text-[11px] text-vz-ink-mute font-mono truncate">
+                              {v.code}
+                              {v.valid_until ? ` · exp. ${new Date(v.valid_until).toLocaleDateString('fr-FR')}` : ''}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => addVoucherPayment(v)}
+                            disabled={used}
+                            className="px-3 py-2 rounded-lg bg-vz-teal text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-vz-teal-deep transition-colors whitespace-nowrap"
+                          >
+                            {used
+                              ? 'Affecté ✓'
+                              : v.value_for_cart > 0
+                                ? `Affecter ${formatCurrency(v.value_for_cart)}`
+                                : v.requires_item
+                                  ? `+ ${v.free_item_label || 'article'}`
+                                  : 'Affecter'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
               {/* CB Status display */}
               {cbStatus !== 'idle' && (
                 <section className={`p-4 rounded-xl border-2 ${
@@ -2416,8 +2658,8 @@ export default function POSPage() {
               cheque_cdc: 'cheque_cdc',
               avoir: 'avoir',
             };
-            const mapped = tenders.map((t) => ({
-              method: methodMap[t.method] || t.method,
+            const mapped: PaymentLine[] = tenders.map((t) => ({
+              method: (methodMap[t.method] || t.method) as PaymentLine['method'],
               amount: t.amount,
             }));
             // Force CB to "paid" so handleValidate doesn't bail on the legacy

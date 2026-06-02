@@ -283,6 +283,11 @@ GET    /api/inventory/batches/{id}           Détail lot + produits assignés
 POST   /api/inventory/batches/{id}/assign-product  Rattacher produit au lot
 GET    /api/inventory/products/{id}/suggest-zone   Reco placement zone (P2-006)
 GET    /api/inventory/locate?q=              Localiser un produit en boutique (P2-008)
+# Mouvements de stock — flux vertical (réserve↔rayon) & horizontal (zone↔zone)
+GET    /api/inventory/products/{id}/location-history  Timeline emplacements (historisée dans la fiche)
+GET    /api/inventory/movements/weekly-plan   Aménagement hebdo IA (horizontal, travail zone par zone)
+GET    /api/inventory/movements/restock-plan  Achalandage réserve→rayon selon le besoin des zones (vertical)
+POST   /api/inventory/movements/execute       Mouvement à la lecture du code-barres (body: barcode, to_status?, to_zone_id?)
 
 # POS — vente + caisse + ticket
 POST   /api/pos/transactions                 Créer une vente (idempotent via client_uuid optionnel — replay offline safe)
@@ -402,6 +407,7 @@ POST   /api/crm/account/deletion-cancel            Public — annuler suppressio
 # Phase 4 — Analytics & reporting (P4-001 / P4-002 / P4-007)
 GET    /api/reports/retail-kpis?period_days=30     KPIs retail (sell-through, GMROI, AIT, CA/m²/mois…)
 GET    /api/reports/ess?period_days=90             Rapport ESS (réemploi, tonnage, CA reversé)
+GET    /api/reports/stock-movement?period_days=30  Gestion stock (réserve/rayon) + vitesse + rythmes rotation V/H
 GET    /api/admin/kpis-config                      Config surface boutique + poids pièce + %CA reversé
 PUT    /api/admin/kpis-config                      Modifier la config retail/ESS
 POST   /api/admin/rfm/run                          Trigger manuel segmentation RFM
@@ -419,6 +425,14 @@ GET    /api/admin/coupons?only_active=true         Liste coupons (manager only)
 GET    /api/inventory/products/{id}/insights       Badges contextuels pour la caisse
 POST   /api/pos/coupons/validate                   Preview coupon (body: code, cart_total, client_id?)
 POST   /api/pos/transactions                       Crée vente (accepte coupon_code? optionnel)
+
+# Événementiel ouverture — bons cadeau (crédit fiche client + débit en caisse)
+GET    /api/pos/event-vouchers/catalog             Catalogue des bons (boutons zone Événementiel)
+POST   /api/pos/event-vouchers/issue               Créditer un bon sur la fiche client (body: client_id, type_key)
+GET    /api/pos/clients/{id}/vouchers              Bons actifs d'une cliente (affichés à l'identification)
+POST   /api/pos/transactions                       Débit d'un bon : ligne paiement method=voucher + voucher_code
+GET    /api/admin/event-vouchers/catalog           Lit le catalogue des bons cadeau (manager)
+PUT    /api/admin/event-vouchers/catalog           Édite montants / % / validité / activation (manager)
 
 # Refonte Relation Client — PR1: Magic-link + souscription + ticket fidélité
 POST   /api/auth/magic-link/request                Issue OTP 6 chiffres + lien cliquable email (public, 204 toujours, anti-énumération)

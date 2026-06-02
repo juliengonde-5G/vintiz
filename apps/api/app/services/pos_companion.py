@@ -259,6 +259,7 @@ async def _eligible_coupons(
     db: AsyncSession, *, client_id: uuid.UUID, cart_total_cents: int
 ) -> list[dict[str, Any]]:
     from app.services.coupon import CouponError, validate_coupon
+    from app.models.coupon import CouponSource
 
     rows = await db.execute(
         select(Coupon)
@@ -266,6 +267,10 @@ async def _eligible_coupons(
             Coupon.client_id == client_id,
             Coupon.is_active.is_(True),
             Coupon.redeemed_at.is_(None),
+            # Les bons cadeau d'ouverture (event_opening) sont affectés comme
+            # moyen de paiement (PaymentMethod.voucher) via leur propre rail —
+            # ils sont surfacés séparément, pas dans la section remise-coupon.
+            Coupon.source != CouponSource.event_opening,
         )
         .order_by(Coupon.valid_until.asc())
     )
