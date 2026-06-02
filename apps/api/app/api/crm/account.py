@@ -213,6 +213,16 @@ async def public_account_register(
     # effectively a login), so the response never leaks which path ran.
     client_ip = http_request.client.host if http_request.client else None
     await issue(db, cleaned, ip=client_ip)
+    # Welcome email — uniquement à la première création (n'envoie rien si
+    # le compte existait déjà, pour ne pas re-spammer un login). Template
+    # ``welcome_account`` éditable côté admin.
+    if created:
+        try:
+            await _send_welcome_account_email(db, client)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "account self-register: welcome email failed for %s", cleaned
+            )
     await db.commit()
 
     logger.info("account self-register: email processed (created=%s)", created)
@@ -223,6 +233,66 @@ async def public_account_register(
             "connexion (ou saisissez le code) pour accéder à votre espace."
         ),
     }
+
+
+async def _send_welcome_account_email(db: AsyncSession, client: Client) -> None:
+    """Mail de bienvenue à la création d'un espace client (template éditable).
+
+    Best-effort : silencieux si le client n'a pas d'email."""
+    from app.services.communications import log_communication, render_template
+    from app.services.email_gateway import (
+        EmailDeliveryError,
+        EmailMessage,
+        send_email,
+    )
+
+    if not client.email:
+        return
+
+    context = {
+        "prenom": (client.first_name or "").strip() or "Bonjour",
+    }
+    rendered = await render_template(
+        db,
+        "welcome_account",
+        context,
+        fallback_subject="🌿 Bienvenue chez Vintiz, {prenom} !",
+        fallback_html=(
+            "<p>Bonjour {prenom},</p>"
+            "<p>Votre espace client Vintiz Vernon est prêt. Un email avec votre "
+            "lien magique de connexion vient d'être envoyé séparément.</p>"
+        ),
+        fallback_text=(
+            "Bonjour {prenom}, votre espace client Vintiz Vernon est prêt. Un "
+            "email avec votre lien magique de connexion vient d'être envoyé."
+        ),
+    )
+    try:
+        outcome = send_email(EmailMessage(
+            to=client.email,
+            to_name=client.first_name or None,
+            subject=rendered.subject or "Bienvenue chez Vintiz",
+            html=rendered.html or "",
+            text=rendered.text or "",
+            tags=["welcome-account"],
+        ))
+        status = outcome.status
+        backend = outcome.backend
+    except EmailDeliveryError as exc:
+        status = "failed"
+        backend = "error"
+        logger.warning("welcome_account email failed for %s: %s", client.email, exc)
+    await log_communication(
+        db,
+        client_id=client.id,
+        channel="email",
+        kind="welcome_account",
+        status=status,
+        to_address=client.email,
+        subject=rendered.subject,
+        backend=backend,
+        template_key=rendered.template_key,
+    )
 
 @router.get("/account/data-export")
 async def public_account_data_export(

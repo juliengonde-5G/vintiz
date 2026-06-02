@@ -197,6 +197,89 @@ DEFAULT_TEMPLATES: list[dict] = [
             "retirer ce consentement à tout moment depuis votre espace client."
         ),
     },
+    {
+        "key": "voucher_issued",
+        "channel": "email",
+        "label": "Bon cadeau crédité (zone Événementiel)",
+        "description": (
+            "Variables : {prenom}, {label_bon}, {code_bon}, {valable_a_partir_de}, "
+            "{valide_jusqu_au}"
+        ),
+        "subject": "🎟 Vintiz — votre bon « {label_bon} »",
+        "body_html": (
+            "<p>Bonjour {prenom},</p>"
+            "<p>Nous avons le plaisir de créditer sur votre fiche un bon "
+            "<strong>« {label_bon} »</strong>.</p>"
+            "<ul>"
+            "<li>Code : <strong>{code_bon}</strong></li>"
+            "<li>Utilisable à partir du {valable_a_partir_de} (pas le jour de "
+            "l'émission)</li>"
+            "<li>Valable jusqu'au {valide_jusqu_au}</li>"
+            "<li>1 bon par personne — non cumulable</li>"
+            "</ul>"
+            "<p>À très vite chez Vintiz Vernon.</p>"
+        ),
+        "body_text": (
+            "Bonjour {prenom},\n\n"
+            "Un bon « {label_bon} » a été crédité sur votre fiche.\n"
+            "Code : {code_bon}\n"
+            "Utilisable à partir du {valable_a_partir_de}.\n"
+            "Valable jusqu'au {valide_jusqu_au}.\n"
+            "1 bon par personne — non cumulable.\n\n"
+            "À très vite chez Vintiz Vernon."
+        ),
+    },
+    {
+        "key": "welcome_subscription",
+        "channel": "email",
+        "label": "Bienvenue — adhésion fidélité",
+        "description": "Variables : {prenom}, {numero_carte}, {mode_adhesion}",
+        "subject": "🌿 Bienvenue chez Vintiz, {prenom} !",
+        "body_html": (
+            "<p>Bonjour {prenom},</p>"
+            "<p>Bienvenue dans le programme de fidélité <strong>Vintiz Vernon</strong>. "
+            "Votre carte est créée :</p>"
+            "<ul>"
+            "<li>Numéro : <strong>{numero_carte}</strong></li>"
+            "<li>Adhésion : {mode_adhesion}</li>"
+            "<li>1 € dépensé = 1 point — 1 point = 0,10 € de remise</li>"
+            "</ul>"
+            "<p>Retrouvez votre solde, vos avantages et vos préférences depuis "
+            "votre espace client.</p>"
+            "<p>À très vite en boutique !</p>"
+        ),
+        "body_text": (
+            "Bonjour {prenom},\n\n"
+            "Bienvenue dans le programme de fidélité Vintiz Vernon.\n"
+            "Numéro de carte : {numero_carte}\n"
+            "Adhésion : {mode_adhesion}\n"
+            "1 € dépensé = 1 point — 1 point = 0,10 € de remise.\n\n"
+            "À très vite en boutique !"
+        ),
+    },
+    {
+        "key": "welcome_account",
+        "channel": "email",
+        "label": "Bienvenue — création de compte (espace client)",
+        "description": "Variables : {prenom}",
+        "subject": "🌿 Bienvenue chez Vintiz, {prenom} !",
+        "body_html": (
+            "<p>Bonjour {prenom},</p>"
+            "<p>Votre espace client Vintiz Vernon est prêt. Vous y retrouverez "
+            "vos achats, vos avantages fidélité, vos préférences et la gestion "
+            "de vos données (RGPD).</p>"
+            "<p>Vous recevez en parallèle un email avec votre lien magique de "
+            "connexion (sans mot de passe).</p>"
+            "<p>À très vite en boutique !</p>"
+        ),
+        "body_text": (
+            "Bonjour {prenom},\n\n"
+            "Votre espace client Vintiz Vernon est prêt.\n"
+            "Un email avec votre lien magique de connexion vient d'être envoyé "
+            "séparément.\n\n"
+            "À très vite en boutique !"
+        ),
+    },
 ]
 
 

@@ -78,6 +78,10 @@ interface VoucherType {
   free_item_label: string | null;
   valid_until?: string;
   active?: boolean;
+  // true = immediate voucher (utilisable sur l'achat en cours) — pas de
+  // règle « 1 par personne » ni « pas le jour même ». false = bon
+  // « prochain achat » (cadré par les 2 règles).
+  immediate?: boolean;
 }
 
 interface ClientVoucher {
@@ -89,6 +93,11 @@ interface ClientVoucher {
   requires_item: boolean;
   value_for_cart: number;
   valid_until: string | null;
+  // false pour un bon d'ouverture émis le jour même : utilisable dès le
+  // lendemain seulement. Le bouton « Affecter » est désactivé et un badge
+  // « disponible demain » est affiché à la place du montant.
+  available_today?: boolean;
+  available_from?: string | null;
 }
 
 interface ClientResult {
@@ -164,6 +173,11 @@ export default function POSPage() {
   const [showEventModal, setShowEventModal] = useState(false);
   const [eventBusy, setEventBusy] = useState(false);
   const [eventToast, setEventToast] = useState('');
+  // Sélection des bons cochés dans la modale Événementiel (validation via
+  // bouton "Valider" plutôt que sur clic direct). Permet de cocher
+  // plusieurs bons immédiats à la fois pour la même cliente sans
+  // confirmation à chaque clic.
+  const [eventSelected, setEventSelected] = useState<string[]>([]);
 
   // Manual article
   const [showManualEntry, setShowManualEntry] = useState(false);
@@ -471,6 +485,7 @@ export default function POSPage() {
 
   const handleCloseDrawer = async () => {
     setDrawerSubmitting(true);
+    setError('');
     try {
       const res = await api.post('/api/pos/drawer/close', {
         closing_amount: drawerAmount,
@@ -481,8 +496,24 @@ export default function POSPage() {
         setZReport(data);
         setDrawer({ open: false });
         setDrawerAmount(0);
+        setShowDrawerClose(false);
+      } else {
+        // Avant le fix : on swallow-ait silencieusement → bouton "Générer
+        // le rapport Z" qui ne faisait rien à l'écran. On surface la
+        // raison HTTP (caisse déjà fermée, montant invalide, drawer
+        // introuvable…) pour que le manager puisse réagir.
+        const err = await res.json().catch(() => null);
+        const detail = err?.detail || err?.message || `Erreur HTTP ${res.status}`;
+        setError(`Clôture refusée : ${detail}`);
+        setDrawerToast({ msg: `Clôture refusée : ${detail}`, ok: false });
+        setTimeout(() => setDrawerToast(null), 6000);
       }
-    } catch { /* silent */ }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'erreur réseau';
+      setError(`Clôture impossible (${msg}). Vérifiez la connexion API.`);
+      setDrawerToast({ msg: `Clôture impossible (${msg})`, ok: false });
+      setTimeout(() => setDrawerToast(null), 6000);
+    }
     setDrawerSubmitting(false);
   };
 
@@ -588,32 +619,70 @@ export default function POSPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClient, cart, cartTotal]);
 
-  // Émettre un bon cadeau sur la fiche cliente (clic bouton zone Événementiel).
-  const issueVoucher = async (typeKey: string) => {
-    if (!selectedClient || eventBusy) return;
+  // Émettre les bons cochés via le bouton « Valider » de la modale
+  // Événementiel. Les émissions tournent en séquence (l'API est
+  // best-effort par bon : un échec n'interrompt pas les autres) puis on
+  // recharge la liste des bons actifs de la cliente.
+  const issueSelectedVouchers = async () => {
+    if (!selectedClient || eventBusy || eventSelected.length === 0) return;
     setEventBusy(true);
-    try {
-      const res = await api.post('/api/pos/event-vouchers/issue', {
-        client_id: selectedClient.id,
-        type_key: typeKey,
-      });
-      const data = await res.json().catch(() => null);
-      if (res.ok) {
-        setEventToast(`Bon « ${data.label} » enregistré sur le compte de ${selectedClient.first_name}.`);
-        const ids = cart.filter((i) => i.product_id).map((i) => i.product_id).join(',');
-        const cents = Math.round(cartTotal * 100);
-        const vres = await api.get(
-          `/api/pos/clients/${selectedClient.id}/vouchers?cart_total_cents=${cents}&items=${encodeURIComponent(ids)}`,
-        );
-        if (vres.ok) setClientVouchers((await vres.json()).vouchers || []);
-      } else {
-        setEventToast(data?.detail || 'Émission refusée.');
+    const results: { key: string; label: string; ok: boolean; detail?: string }[] = [];
+    for (const typeKey of eventSelected) {
+      const label = voucherCatalog.find((v) => v.key === typeKey)?.label || typeKey;
+      try {
+        const res = await api.post('/api/pos/event-vouchers/issue', {
+          client_id: selectedClient.id,
+          type_key: typeKey,
+        });
+        const data = await res.json().catch(() => null);
+        if (res.ok) {
+          results.push({ key: typeKey, label, ok: true });
+        } else {
+          results.push({ key: typeKey, label, ok: false, detail: data?.detail });
+        }
+      } catch {
+        results.push({ key: typeKey, label, ok: false, detail: 'Erreur réseau' });
       }
-    } catch {
-      setEventToast('Erreur réseau.');
     }
+    // Recharger la liste des bons actifs de la cliente.
+    try {
+      const ids = cart.filter((i) => i.product_id).map((i) => i.product_id).join(',');
+      const cents = Math.round(cartTotal * 100);
+      const vres = await api.get(
+        `/api/pos/clients/${selectedClient.id}/vouchers?cart_total_cents=${cents}&items=${encodeURIComponent(ids)}`,
+      );
+      if (vres.ok) setClientVouchers((await vres.json()).vouchers || []);
+    } catch { /* silent */ }
     setEventBusy(false);
+    const okKeys = new Set(results.filter((r) => r.ok).map((r) => r.key));
+    const okCount = okKeys.size;
+    const koResults = results.filter((r) => !r.ok);
+    if (koResults.length === 0) {
+      setEventToast(
+        `${okCount} bon${okCount > 1 ? 's' : ''} crédité${okCount > 1 ? 's' : ''} sur le compte de ${selectedClient.first_name}.`,
+      );
+      setEventSelected([]);
+      setShowEventModal(false);
+    } else {
+      const detail = koResults
+        .map((r) => `${r.label} : ${r.detail || 'refusé'}`)
+        .join(' · ');
+      setEventToast(
+        okCount > 0
+          ? `${okCount} OK, ${koResults.length} refusé${koResults.length > 1 ? 's' : ''} (${detail})`
+          : `Émission refusée : ${detail}`,
+      );
+      // Garder la modale ouverte mais retirer les bons déjà crédités
+      // de la sélection (évite un double crédit si on re-valide).
+      setEventSelected((prev) => prev.filter((k) => !okKeys.has(k)));
+    }
     setTimeout(() => setEventToast(''), 4500);
+  };
+
+  const toggleEventSelected = (typeKey: string) => {
+    setEventSelected((prev) =>
+      prev.includes(typeKey) ? prev.filter((k) => k !== typeKey) : [...prev, typeKey],
+    );
   };
 
   // Affecter un bon de la cliente comme moyen de paiement (ligne de règlement).
@@ -647,10 +716,15 @@ export default function POSPage() {
           membership_number: data.membership_number,
           client_id: data.client_id,
         });
-        // Refresh client detail if a client was selected.
-        if (selectedClient && selectedClient.id === data.client_id) {
+        // Toujours sélectionner la cliente qui vient d'être créée — la
+        // caissière vient de la saisir, elle s'attend à la voir épinglée
+        // sur le ticket en cours (et à profiter immédiatement du
+        // ClientCompanion + des bons cadeau).
+        try {
           const detailRes = await api.get(`/api/crm/clients/${data.client_id}`);
           if (detailRes.ok) setSelectedClient(await detailRes.json());
+        } catch {
+          /* best-effort — on garde la cliente non-épinglée si l'appel échoue */
         }
       } else if (res.status === 409) {
         const err = await res.json();
@@ -767,11 +841,20 @@ export default function POSPage() {
     // previous "best-effort silent" wrapper hid genuine failures and
     // looked broken from the cashier's POV when nothing happened on
     // click (device unplugged, permission revoked, etc.).
+    //
+    // Errors are also pushed to the console so the cashier can copy/paste
+    // them when calling support — the toast is intentionally short, the
+    // console keeps the full diagnostic.
     void (async () => {
       const { kickDrawer: kick } = await import('@/lib/print-ticket');
       const result = await kick();
+      if (!result.ok) {
+        console.warn('[POS] Drawer kick failed:', result);
+      }
       setDrawerToast({ msg: result.message, ok: result.ok });
-      setTimeout(() => setDrawerToast(null), 3500);
+      // Failures stay longer (6 s) so the cashier has time to read the
+      // remediation tip ("vérifie l'IP MUNBYN", "rebranche la douchette"…).
+      setTimeout(() => setDrawerToast(null), result.ok ? 3500 : 6000);
     })();
   }, []);
 
@@ -791,6 +874,9 @@ export default function POSPage() {
         isManual: true,
       }];
     });
+    // Le scanner USB-HID doit pouvoir saisir l'article suivant sans
+    // qu'on doive retaper sur le champ de recherche.
+    refocusSearch();
   };
 
   const addManualArticle = () => {
@@ -813,6 +899,7 @@ export default function POSPage() {
     setCart(prev => prev.map((item, i) =>
       i === index ? { ...item, quantity: item.quantity + delta } : item
     ).filter(item => item.quantity > 0));
+    refocusSearch();
   };
 
   const updateDiscount = (index: number, discount: number) => {
@@ -831,6 +918,7 @@ export default function POSPage() {
 
   const removeFromCart = (index: number) => {
     setCart(prev => prev.filter((_, i) => i !== index));
+    refocusSearch();
   };
 
   // ── CB / SumUp ───────────────────────────────────────────────────
@@ -1790,8 +1878,12 @@ export default function POSPage() {
             )}
           </div>
 
-          {/* Footer: Total + Pay button */}
-          <div className="flex-shrink-0 border-t border-gray-200 bg-white px-4 py-3 space-y-3">
+          {/* Footer: Total + Pay button — la zone récap (loyalty, coupon,
+              invoice form) peut grossir; on lui donne un ``max-h`` avec
+              overflow interne pour que le bouton Encaisser reste *toujours*
+              visible en bas du panneau (demande prio cashier). */}
+          <div className="flex-shrink-0 border-t border-gray-200 bg-white px-4 pt-3 pb-3 flex flex-col max-h-[60%]">
+            <div className="overflow-y-auto space-y-3 mb-3">
             {/* Loyalty redemption */}
             {selectedClient?.loyalty && loyaltyPoints > 0 && (
               <div className="flex items-center justify-between p-2 bg-purple-50 rounded-lg">
@@ -1885,7 +1977,9 @@ export default function POSPage() {
                 />
               </div>
             )}
+            </div>
 
+            {/* Encaisser — pinned button, hors-flux scrollable, toujours visible */}
             <button
               disabled={
                 cart.length === 0 ||
@@ -1901,7 +1995,7 @@ export default function POSPage() {
                 stopCbPolling();
                 setShowPayment(true);
               }}
-              className={`w-full py-4 rounded-xl font-bold text-lg tracking-wide transition-colors flex items-center justify-center gap-3 ${
+              className={`flex-shrink-0 w-full py-4 rounded-xl font-bold text-lg tracking-wide transition-colors flex items-center justify-center gap-3 ${
                 cart.length === 0 ||
                 (wizardEnabled && !isInvoiceFormValid(invoiceFields))
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
@@ -2046,14 +2140,42 @@ export default function POSPage() {
            l'identification + affectable comme moyen de paiement. */}
       <Modal
         open={showEventModal}
-        onClose={() => setShowEventModal(false)}
+        onClose={() => {
+          setShowEventModal(false);
+          setEventSelected([]);
+        }}
         title="Bons cadeau d'ouverture"
+        actions={
+          <div className="flex items-center gap-2 w-full justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowEventModal(false);
+                setEventSelected([]);
+              }}
+              disabled={eventBusy}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={issueSelectedVouchers}
+              disabled={
+                !selectedClient || eventBusy || eventSelected.length === 0
+              }
+            >
+              {eventBusy
+                ? '...'
+                : `Valider${eventSelected.length > 0 ? ` (${eventSelected.length})` : ''}`}
+            </Button>
+          </div>
+        }
       >
         {selectedClient ? (
           <p className="text-xs text-vz-ink-mute mb-4">
             Sur le compte de{' '}
             <strong>{selectedClient.first_name} {selectedClient.last_name}</strong>
             {clientVouchers.length > 0 ? ` · ${clientVouchers.length} bon(s) déjà crédité(s)` : ''}.
+            Cochez les bons à créditer puis cliquez sur Valider.
           </p>
         ) : (
           <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-4">
@@ -2063,17 +2185,32 @@ export default function POSPage() {
         <div className="grid grid-cols-2 gap-2">
           {voucherCatalog
             .filter((v) => v.active !== false)
-            .map((v) => (
-              <button
-                key={v.key}
-                onClick={() => issueVoucher(v.key)}
-                disabled={!selectedClient || eventBusy}
-                className="flex flex-col items-center justify-center gap-1 p-4 rounded-xl border border-vz-line bg-vz-bg-alt hover:border-vz-teal hover:bg-white hover:shadow-md active:scale-95 transition-all min-h-[84px] text-vz-ink disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <span className="font-display text-xl text-vz-teal">{v.label}</span>
-                <span className="text-[10px] text-vz-ink-mute">sur le prochain achat</span>
-              </button>
-            ))}
+            .map((v) => {
+              const checked = eventSelected.includes(v.key);
+              return (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => toggleEventSelected(v.key)}
+                  disabled={!selectedClient || eventBusy}
+                  className={`flex flex-col items-center justify-center gap-1 p-4 rounded-xl border-2 transition-all min-h-[84px] text-vz-ink disabled:opacity-40 disabled:cursor-not-allowed ${
+                    checked
+                      ? 'border-vz-teal bg-vz-teal-soft shadow-md'
+                      : 'border-vz-line bg-vz-bg-alt hover:border-vz-teal hover:bg-white hover:shadow-md'
+                  }`}
+                >
+                  <span className="font-display text-xl text-vz-teal">{v.label}</span>
+                  <span className="text-[10px] text-vz-ink-mute">
+                    {v.immediate
+                      ? 'applicable immédiatement'
+                      : 'utilisable au prochain achat'}
+                  </span>
+                  {checked && (
+                    <span className="text-[10px] text-vz-teal-deep font-semibold">✓ sélectionné</span>
+                  )}
+                </button>
+              );
+            })}
         </div>
         {eventToast && (
           <p className="mt-4 text-sm text-vz-teal-deep bg-vz-teal-soft rounded-lg px-3 py-2">
@@ -2426,10 +2563,18 @@ export default function POSPage() {
                   <div className="space-y-2">
                     {clientVouchers.map((v) => {
                       const used = payments.some((p) => p.voucher_code === v.code);
+                      // Bon d'ouverture émis aujourd'hui : utilisable
+                      // seulement à partir de demain.
+                      const blockedSameDay = v.available_today === false;
+                      const disabled = used || blockedSameDay;
                       return (
                         <div
                           key={v.code}
-                          className="flex items-center justify-between gap-2 p-3 rounded-xl border border-vz-accent/40 bg-vz-accent-soft"
+                          className={`flex items-center justify-between gap-2 p-3 rounded-xl border ${
+                            blockedSameDay
+                              ? 'border-amber-300 bg-amber-50'
+                              : 'border-vz-accent/40 bg-vz-accent-soft'
+                          }`}
                         >
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-vz-ink truncate">🎟 {v.label}</p>
@@ -2437,19 +2582,31 @@ export default function POSPage() {
                               {v.code}
                               {v.valid_until ? ` · exp. ${new Date(v.valid_until).toLocaleDateString('fr-FR')}` : ''}
                             </p>
+                            {blockedSameDay && (
+                              <p className="text-[11px] text-amber-700 font-medium mt-0.5">
+                                ⏳ Utilisable dès demain (jour d&apos;émission)
+                              </p>
+                            )}
                           </div>
                           <button
                             onClick={() => addVoucherPayment(v)}
-                            disabled={used}
+                            disabled={disabled}
+                            title={
+                              blockedSameDay
+                                ? "Ce bon ne peut pas être utilisé le jour de son émission."
+                                : undefined
+                            }
                             className="px-3 py-2 rounded-lg bg-vz-teal text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-vz-teal-deep transition-colors whitespace-nowrap"
                           >
                             {used
                               ? 'Affecté ✓'
-                              : v.value_for_cart > 0
-                                ? `Affecter ${formatCurrency(v.value_for_cart)}`
-                                : v.requires_item
-                                  ? `+ ${v.free_item_label || 'article'}`
-                                  : 'Affecter'}
+                              : blockedSameDay
+                                ? 'Indisponible'
+                                : v.value_for_cart > 0
+                                  ? `Affecter ${formatCurrency(v.value_for_cart)}`
+                                  : v.requires_item
+                                    ? `+ ${v.free_item_label || 'article'}`
+                                    : 'Affecter'}
                           </button>
                         </div>
                       );
@@ -2963,10 +3120,24 @@ export default function POSPage() {
                   setShowDrawerClose(false);
                   return { z_report_number: data.z_report_number };
                 }
+                // Avant : on retournait undefined sans rien dire au
+                // manager → bouton « Clôturer » qui semble bloqué. On
+                // remonte maintenant l'erreur via le toast global + on
+                // throw pour que le wizard ré-affiche la phase Décompte.
+                const err = await res.json().catch(() => null);
+                const detail = err?.detail || err?.message || `HTTP ${res.status}`;
+                setDrawerToast({ msg: `Clôture refusée : ${detail}`, ok: false });
+                setTimeout(() => setDrawerToast(null), 6000);
+                throw new Error(String(detail));
+              } catch (e) {
+                if (!(e instanceof Error)) {
+                  setDrawerToast({ msg: 'Clôture impossible (réseau)', ok: false });
+                  setTimeout(() => setDrawerToast(null), 6000);
+                }
+                throw e;
               } finally {
                 setDrawerSubmitting(false);
               }
-              return undefined;
             }}
           />
         </>
@@ -3033,11 +3204,34 @@ export default function POSPage() {
             <Button onClick={closeSubscribeModal} className="w-full">Compris</Button>
           </div>
         ) : (
-          <div className="space-y-3">
+          /* Wrapped in a <form> so:
+             - Tab navigation respects HTML tabIndex order (prénom → nom →
+               email → code postal → CGU → newsletter → profilage → Valider)
+             - The Enter key submits the form (saisie clavier rapide)
+             - Le bouton Annuler porte ``type="button"`` pour ne pas valider
+               par erreur. */
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (
+                !subscribeBusy &&
+                subscribeForm.first_name &&
+                subscribeForm.last_name &&
+                subscribeForm.email &&
+                subscribeForm.accept_terms
+              ) {
+                void submitSubscription();
+              }
+            }}
+          >
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Prenom</label>
                 <Input
+                  autoFocus
+                  tabIndex={1}
+                  autoComplete="given-name"
                   value={subscribeForm.first_name}
                   onChange={(e) => setSubscribeForm({ ...subscribeForm, first_name: e.target.value })}
                   placeholder="Alice"
@@ -3046,6 +3240,8 @@ export default function POSPage() {
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Nom</label>
                 <Input
+                  tabIndex={2}
+                  autoComplete="family-name"
                   value={subscribeForm.last_name}
                   onChange={(e) => setSubscribeForm({ ...subscribeForm, last_name: e.target.value })}
                   placeholder="Martin"
@@ -3055,7 +3251,9 @@ export default function POSPage() {
             <div>
               <label className="block text-xs text-gray-500 mb-1">Email</label>
               <Input
+                tabIndex={3}
                 type="email"
+                autoComplete="email"
                 value={subscribeForm.email}
                 onChange={(e) => setSubscribeForm({ ...subscribeForm, email: e.target.value })}
                 placeholder="alice@email.fr"
@@ -3064,6 +3262,8 @@ export default function POSPage() {
             <div>
               <label className="block text-xs text-gray-500 mb-1">Code postal</label>
               <Input
+                tabIndex={4}
+                autoComplete="postal-code"
                 value={subscribeForm.postal_code}
                 onChange={(e) => setSubscribeForm({ ...subscribeForm, postal_code: e.target.value })}
                 placeholder="27200"
@@ -3072,6 +3272,7 @@ export default function POSPage() {
             <label className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"
+                tabIndex={5}
                 className="mt-1"
                 checked={subscribeForm.accept_terms}
                 onChange={(e) => setSubscribeForm({ ...subscribeForm, accept_terms: e.target.checked })}
@@ -3081,6 +3282,7 @@ export default function POSPage() {
             <label className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"
+                tabIndex={6}
                 className="mt-1"
                 checked={subscribeForm.optin_newsletter}
                 onChange={(e) => setSubscribeForm({ ...subscribeForm, optin_newsletter: e.target.checked })}
@@ -3090,6 +3292,7 @@ export default function POSPage() {
             <label className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"
+                tabIndex={7}
                 className="mt-1"
                 checked={subscribeForm.optin_profiling}
                 onChange={(e) => setSubscribeForm({ ...subscribeForm, optin_profiling: e.target.checked })}
@@ -3100,11 +3303,18 @@ export default function POSPage() {
               <p className="text-sm text-red-600">{subscribeError}</p>
             )}
             <div className="flex gap-2 pt-2">
-              <Button variant="outline" onClick={closeSubscribeModal} className="flex-1">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={closeSubscribeModal}
+                className="flex-1"
+                tabIndex={9}
+              >
                 Annuler
               </Button>
               <Button
-                onClick={submitSubscription}
+                type="submit"
+                tabIndex={8}
                 disabled={
                   subscribeBusy ||
                   !subscribeForm.first_name ||
@@ -3117,18 +3327,23 @@ export default function POSPage() {
                 {subscribeBusy ? '...' : 'Creer la carte'}
               </Button>
             </div>
-          </div>
+          </form>
         )}
       </Modal>
 
       {drawerToast && (
         <div
           role="status"
-          className={`fixed top-20 right-4 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium max-w-md ${
-            drawerToast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+          aria-live="assertive"
+          className={`fixed top-6 left-1/2 -translate-x-1/2 z-[9999] px-5 py-3.5 rounded-2xl shadow-2xl text-base font-semibold max-w-xl min-w-[280px] text-center flex items-center justify-center gap-2 border-2 ${
+            drawerToast.ok
+              ? 'bg-green-600 text-white border-green-400'
+              : 'bg-red-600 text-white border-red-400'
           }`}
+          onClick={() => setDrawerToast(null)}
         >
-          {drawerToast.msg}
+          <span aria-hidden>{drawerToast.ok ? '✓' : '⚠'}</span>
+          <span>{drawerToast.msg}</span>
         </div>
       )}
 

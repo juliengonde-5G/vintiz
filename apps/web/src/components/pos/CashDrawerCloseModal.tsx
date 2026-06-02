@@ -87,9 +87,12 @@ export default function CashDrawerCloseModal({
     }
   };
 
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   const handleSubmit = async (): Promise<void> => {
     if (noteRequired && !closingNote.trim()) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const result = await onSubmit({
         closing_amount: counted,
@@ -101,6 +104,12 @@ export default function CashDrawerCloseModal({
         setZReportNumber(result.z_report_number);
       }
       setPhase('done');
+    } catch (err) {
+      // L'appelant a remonté une erreur HTTP (caisse déjà fermée, montant
+      // invalide…). On reste sur la phase Comparaison et on affiche un
+      // bandeau rouge — la fenêtre ne se ferme pas, le manager peut
+      // corriger et relancer.
+      setSubmitError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
       setSubmitting(false);
     }
@@ -327,6 +336,22 @@ export default function CashDrawerCloseModal({
                   </div>
                   <p className="text-xs text-vz-ink-soft">
                     Une note est obligatoire pour valider la clôture (NF525).
+                  </p>
+                </section>
+              )}
+
+              {submitError && (
+                <section
+                  role="alert"
+                  className="rounded-xl bg-red-50 border border-red-200 p-4"
+                >
+                  <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-red-700">
+                    <span aria-hidden>⚠</span>
+                    Échec de la clôture
+                  </div>
+                  <p className="text-xs text-red-700">{submitError}</p>
+                  <p className="mt-1 text-xs text-red-600/80">
+                    Vérifiez le décompte / la connexion à l&apos;API puis relancez.
                   </p>
                 </section>
               )}

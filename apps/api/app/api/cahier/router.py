@@ -184,6 +184,78 @@ async def set_monthly_target(
     return {"status": "ok", "key": key}
 
 
+@router.get("/monthly-targets/year/{year}")
+async def get_monthly_targets_year(
+    year: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Tableau des 12 objectifs mensuels d'une année.
+
+    Permet à la page Settings > Cahier de présenter une grille
+    annuelle remplissable d'un coup, plutôt que le picker mois par mois.
+    Retourne 12 entrées (1..12) même quand l'objectif n'est pas saisi
+    (``target_eur`` à ``None`` dans ce cas).
+    """
+    months: list[dict] = []
+    for month in range(1, 13):
+        key = f"cahier.monthly_target.{year:04d}-{month:02d}"
+        row = await svc.read_setting_json(db, key)
+        months.append({
+            "year": year,
+            "month": month,
+            "target_eur": (row or {}).get("target_eur"),
+            "notes": (row or {}).get("notes"),
+            "updated_at": (row or {}).get("updated_at"),
+        })
+    return {"year": year, "months": months}
+
+
+class BulkMonthlyTargetEntry(BaseModel):
+    month: int
+    target_eur: float | None = None
+    notes: str | None = None
+
+
+class BulkMonthlyTargetsIn(BaseModel):
+    year: int
+    months: list[BulkMonthlyTargetEntry]
+
+
+@router.put("/monthly-targets/bulk")
+async def set_monthly_targets_bulk(
+    payload: BulkMonthlyTargetsIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(manager_only)],
+):
+    """Enregistrement groupé du tableau annuel des objectifs.
+
+    Utilisé après une simulation d'augmentation (€ ou %) côté UI :
+    la grille propage la valeur et envoie les 12 lignes en un appel.
+    """
+    saved = 0
+    now = datetime.utcnow().isoformat()
+    for entry in payload.months:
+        if entry.month < 1 or entry.month > 12:
+            continue
+        if entry.target_eur is None:
+            continue
+        key = f"cahier.monthly_target.{payload.year:04d}-{entry.month:02d}"
+        await svc.write_setting_json(
+            db,
+            key,
+            {
+                "target_eur": float(entry.target_eur),
+                "notes": entry.notes,
+                "year": payload.year,
+                "month": entry.month,
+                "updated_at": now,
+            },
+        )
+        saved += 1
+    return {"status": "ok", "saved": saved, "year": payload.year}
+
+
 # ---------------------------------------------------------------------------
 # Daily texts (message + opération)
 # ---------------------------------------------------------------------------

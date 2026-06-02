@@ -7,6 +7,7 @@ au sein de PosService.create_transaction.
 """
 
 import uuid
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -111,22 +112,29 @@ def _cart_item(product, qty=1):
 
 
 @pytest.mark.anyio
-async def test_catalog_has_six_defaults(session):
+async def test_catalog_has_required_defaults(session):
     catalog = await ev.get_catalog(session)
     keys = {v["key"] for v in catalog}
-    assert {"bon_1e", "bon_2e", "remise_5", "remise_10", "remise_15", "foulard"} <= keys
+    # Catalogue par défaut : « prochains achats » + « immédiats »
+    assert {
+        "bon_1e", "remise_5", "remise_10", "remise_15", "foulard",
+        "imm_1e", "imm_2e", "imm_remise_10", "imm_foulard",
+    } <= keys
     foulard = next(v for v in catalog if v["key"] == "foulard")
     assert foulard["discount_type"] == "free_item"
     assert foulard["free_item_label"] == "foulard"
+    # Les entrées immédiates portent la flag
+    assert next(v for v in catalog if v["key"] == "imm_1e")["immediate"] is True
+    assert next(v for v in catalog if v["key"] == "bon_1e")["immediate"] is False
 
 
 @pytest.mark.anyio
 async def test_issue_voucher_credits_client(session):
     client = await _client(session)
-    coupon = await ev.issue_voucher(session, client_id=client.id, type_key="bon_2e")
+    coupon = await ev.issue_voucher(session, client_id=client.id, type_key="bon_1e")
     assert coupon.source == CouponSource.event_opening
     assert coupon.discount_type == CouponDiscountType.amount
-    assert float(coupon.discount_value) == 2.0
+    assert float(coupon.discount_value) == 1.0
     assert coupon.client_id == client.id
     assert coupon.code.startswith("BON-")
 
@@ -141,6 +149,33 @@ async def test_issue_unknown_type_raises(session):
     client = await _client(session)
     with pytest.raises(CouponError):
         await ev.issue_voucher(session, client_id=client.id, type_key="nope")
+
+
+@pytest.mark.anyio
+async def test_issue_voucher_rejects_duplicate_for_same_client(session):
+    """1 bon d'ouverture par personne — interdiction d'en émettre un 2e."""
+    from app.services.coupon import CouponError
+
+    client = await _client(session)
+    await ev.issue_voucher(session, client_id=client.id, type_key="bon_1e")
+    with pytest.raises(CouponError) as exc:
+        await ev.issue_voucher(session, client_id=client.id, type_key="bon_1e")
+    assert str(exc.value) == "already_issued"
+
+
+@pytest.mark.anyio
+async def test_voucher_redeem_rejected_on_issuance_day(session):
+    """Bon d'ouverture utilisé le jour même = refusé (utilisable dès demain)."""
+    from app.services.coupon import CouponError, validate_coupon
+
+    client = await _client(session)
+    coupon = await ev.issue_voucher(session, client_id=client.id, type_key="bon_1e")
+    # Ne pas back-dater : created_at = aujourd'hui.
+    with pytest.raises(CouponError) as exc:
+        await validate_coupon(
+            session, code=coupon.code, cart_total=10.0, client_id=client.id,
+        )
+    assert str(exc.value) == "same_day"
 
 
 # ---------------------------------------------------------------------------
@@ -174,19 +209,30 @@ def test_compute_discount_amount_percent_free_item():
 # ---------------------------------------------------------------------------
 
 
+async def _backdate_voucher(session, coupon, *, days: int = 1) -> None:
+    """Bons d'ouverture : interdiction d'utilisation le jour de l'émission.
+
+    Les tests de redeem ont besoin d'un bon ancien d'au moins 1 jour pour
+    franchir la règle ``same_day``. On rejoue ``created_at`` à J-N pour
+    isoler le test du calendrier réel."""
+    coupon.created_at = datetime.now(timezone.utc) - timedelta(days=days)
+    await session.flush()
+
+
 @pytest.mark.anyio
 async def test_voucher_tender_covers_part_of_cart(session):
     user = await _user(session)
     client = await _client(session)
     product = await _product(session, price=10.0)
-    coupon = await ev.issue_voucher(session, client_id=client.id, type_key="bon_2e")
+    coupon = await ev.issue_voucher(session, client_id=client.id, type_key="bon_1e")
+    await _backdate_voucher(session, coupon)
 
     transaction = await PosService(session).create_transaction(
         user_id=user.id,
         items=[_cart_item(product)],
         payments=[
-            SimpleNamespace(method="cash", amount=8.0),
-            SimpleNamespace(method="voucher", amount=2.0, voucher_code=coupon.code),
+            SimpleNamespace(method="cash", amount=9.0),
+            SimpleNamespace(method="voucher", amount=1.0, voucher_code=coupon.code),
         ],
         client_id=client.id,
     )
@@ -204,7 +250,7 @@ async def test_voucher_tender_covers_part_of_cart(session):
     methods = {p.method for p in pays}
     assert PaymentMethod.voucher in methods
     voucher_pay = next(p for p in pays if p.method == PaymentMethod.voucher)
-    assert float(voucher_pay.amount) == 2.0
+    assert float(voucher_pay.amount) == 1.0
 
 
 @pytest.mark.anyio
@@ -212,7 +258,8 @@ async def test_voucher_tender_over_value_rejected(session):
     user = await _user(session)
     client = await _client(session)
     product = await _product(session, price=10.0)
-    coupon = await ev.issue_voucher(session, client_id=client.id, type_key="bon_2e")
+    coupon = await ev.issue_voucher(session, client_id=client.id, type_key="bon_1e")
+    await _backdate_voucher(session, coupon)
 
     with pytest.raises(InvalidOperation):
         await PosService(session).create_transaction(
@@ -227,11 +274,31 @@ async def test_voucher_tender_over_value_rejected(session):
 
 
 @pytest.mark.anyio
+async def test_immediate_voucher_skips_same_day_and_per_person_rules(session):
+    """Bons immédiats : utilisables le jour même, plusieurs possibles."""
+    from app.services.coupon import validate_coupon
+
+    client = await _client(session)
+    c1 = await ev.issue_voucher(session, client_id=client.id, type_key="imm_2e")
+    # 2e immediate doit pouvoir s'émettre sans déclencher already_issued
+    c2 = await ev.issue_voucher(session, client_id=client.id, type_key="imm_1e")
+    assert ev.is_immediate_voucher(c1)
+    assert ev.is_immediate_voucher(c2)
+
+    # Et ils sont validables le jour même (pas de same_day error)
+    preview = await validate_coupon(
+        session, code=c1.code, cart_total=10.0, client_id=client.id,
+    )
+    assert preview.discount_amount == 2.0
+
+
+@pytest.mark.anyio
 async def test_free_item_voucher_tender_on_scarf(session):
     user = await _user(session)
     client = await _client(session)
     scarf = await _product(session, name="Foulard en soie", price=8.0, category_name="Accessoires")
     coupon = await ev.issue_voucher(session, client_id=client.id, type_key="foulard")
+    await _backdate_voucher(session, coupon)
 
     transaction = await PosService(session).create_transaction(
         user_id=user.id,

@@ -34,21 +34,49 @@ DEFAULT_CAMPAIGN_END = "2026-08-30"
 # Plafond par défaut du bon « 1 foulard offert » (€) — éditable.
 DEFAULT_SCARF_CAP = 15.0
 
-# Les 6 types du visuel d'ouverture. ``discount_value`` : montant € (amount),
-# pourcentage (percent) ou plafond € de l'article offert (free_item).
+# Catalogue par défaut.
+#
+# Deux familles :
+#   - **next** (par défaut) — le bon est crédité sur la fiche cliente et
+#     utilisable au **prochain** passage en caisse. Soumis à la règle
+#     « 1 par personne » + « pas le jour même » (cf. CLAUDE.md).
+#   - **immédiat** (``immediate: True``) — le bon est applicable dès la
+#     vente en cours. La règle « 1 par personne » et la règle « pas le
+#     jour même » ne s'appliquent pas (le bon est conçu pour être
+#     consommé tout de suite).
+#
+# ``discount_value`` : montant € (amount), pourcentage (percent) ou
+# plafond € de l'article offert (free_item).
 DEFAULT_VOUCHER_CATALOG: list[dict] = [
-    {"key": "bon_2e", "label": "2 € offert", "discount_type": "amount",
-     "discount_value": 2.0, "free_item_label": None},
-    {"key": "bon_1e", "label": "1 € offert", "discount_type": "amount",
-     "discount_value": 1.0, "free_item_label": None},
-    {"key": "remise_5", "label": "-5 %", "discount_type": "percent",
-     "discount_value": 5.0, "free_item_label": None},
-    {"key": "remise_10", "label": "-10 %", "discount_type": "percent",
-     "discount_value": 10.0, "free_item_label": None},
-    {"key": "remise_15", "label": "-15 %", "discount_type": "percent",
-     "discount_value": 15.0, "free_item_label": None},
-    {"key": "foulard", "label": "1 foulard offert", "discount_type": "free_item",
-     "discount_value": DEFAULT_SCARF_CAP, "free_item_label": "foulard"},
+    # Prochains achats (1 par personne, pas le jour même)
+    {"key": "bon_1e", "label": "1 € offert (prochain achat)",
+     "discount_type": "amount", "discount_value": 1.0,
+     "free_item_label": None, "immediate": False},
+    {"key": "remise_5", "label": "-5 % (prochain achat)",
+     "discount_type": "percent", "discount_value": 5.0,
+     "free_item_label": None, "immediate": False},
+    {"key": "remise_10", "label": "-10 % (prochain achat)",
+     "discount_type": "percent", "discount_value": 10.0,
+     "free_item_label": None, "immediate": False},
+    {"key": "remise_15", "label": "-15 % (prochain achat)",
+     "discount_type": "percent", "discount_value": 15.0,
+     "free_item_label": None, "immediate": False},
+    {"key": "foulard", "label": "1 foulard offert (prochain achat)",
+     "discount_type": "free_item", "discount_value": DEFAULT_SCARF_CAP,
+     "free_item_label": "foulard", "immediate": False},
+    # Immédiats (applicables sur l'achat en cours)
+    {"key": "imm_1e", "label": "1 € offert immédiat",
+     "discount_type": "amount", "discount_value": 1.0,
+     "free_item_label": None, "immediate": True},
+    {"key": "imm_2e", "label": "2 € offert immédiat",
+     "discount_type": "amount", "discount_value": 2.0,
+     "free_item_label": None, "immediate": True},
+    {"key": "imm_remise_10", "label": "-10 % immédiat",
+     "discount_type": "percent", "discount_value": 10.0,
+     "free_item_label": None, "immediate": True},
+    {"key": "imm_foulard", "label": "1 foulard offert immédiat",
+     "discount_type": "free_item", "discount_value": DEFAULT_SCARF_CAP,
+     "free_item_label": "foulard", "immediate": True},
 ]
 
 
@@ -61,6 +89,7 @@ def _with_defaults(entry: dict) -> dict:
         "free_item_label": entry.get("free_item_label"),
         "valid_until": entry.get("valid_until", DEFAULT_CAMPAIGN_END),
         "active": bool(entry.get("active", True)),
+        "immediate": bool(entry.get("immediate", False)),
     }
 
 
@@ -121,6 +150,18 @@ def _parse_valid_until(value: str | None, *, now: datetime) -> datetime:
     return now + timedelta(days=88)
 
 
+IMMEDIATE_MARKER = "(immédiat)"
+
+
+def is_immediate_voucher(coupon: Coupon) -> bool:
+    """Détecte si un bon ``event_opening`` est de type immédiat.
+
+    Encodé dans ``coupon.notes`` (marker ``(immédiat)``) plutôt que dans
+    une colonne dédiée — évite une migration et reste rétro-compatible
+    avec les bons existants (qui sont implicitement « prochain achat »)."""
+    return bool(coupon.notes and IMMEDIATE_MARKER in coupon.notes)
+
+
 async def issue_voucher(
     db: AsyncSession,
     *,
@@ -132,7 +173,14 @@ async def issue_voucher(
     """Credit one gift voucher of ``type_key`` onto a client's account.
 
     Raises ``CouponError`` (``client_not_found`` / ``unknown_type`` /
-    ``inactive_type``) on bad input."""
+    ``inactive_type`` / ``already_issued``) on bad input.
+
+    Enforce 1 bon d'ouverture **prochain achat** par personne : si la
+    cliente possède déjà un bon non-immédiat, refuse l'émission d'un
+    second bon non-immédiat. Les bons immédiats (``immediate: True``)
+    sont libres : on peut en émettre plusieurs (ils sont consommés
+    aussitôt sur la vente en cours).
+    """
     now = now or datetime.now(timezone.utc)
 
     client = (await db.execute(
@@ -148,7 +196,27 @@ async def issue_voucher(
     if not vtype.get("active", True):
         raise CouponError("inactive_type")
 
+    immediate = bool(vtype.get("immediate", False))
+
+    if not immediate:
+        # Anti-duplicat — strictement pour les bons « prochain achat ».
+        # On regarde les bons non-immédiats existants (marker absent).
+        rows = (await db.execute(
+            select(Coupon).where(
+                Coupon.client_id == client_id,
+                Coupon.source == CouponSource.event_opening,
+            )
+        )).scalars().all()
+        if any(not is_immediate_voucher(c) for c in rows):
+            raise CouponError("already_issued")
+
     code = await _draw_unique_code(db, "BON")
+    label_text = vtype["label"]
+    notes = (
+        f"Bon cadeau ouverture {IMMEDIATE_MARKER} — {label_text}"
+        if immediate
+        else f"Bon cadeau ouverture — {label_text}"
+    )
     coupon = Coupon(
         code=code,
         client_id=client_id,
@@ -159,7 +227,7 @@ async def issue_voucher(
         valid_until=_parse_valid_until(vtype.get("valid_until"), now=now),
         is_active=True,
         free_item_label=vtype.get("free_item_label"),
-        notes=f"Bon cadeau ouverture — {vtype['label']}",
+        notes=notes,
     )
     db.add(coupon)
     await db.flush()

@@ -1,6 +1,7 @@
 import logging
 import os
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -301,6 +302,10 @@ _COUPON_ERROR_MESSAGES = {
     "redeemed": "Ce code a déjà été utilisé.",
     "expired": "Ce code est expiré.",
     "not_yet_valid": "Ce code n'est pas encore valable.",
+    "same_day": (
+        "Ce bon vient d'être émis : il sera utilisable dès demain (pas "
+        "le jour de l'émission)."
+    ),
     "no_client": "Ce code est nominatif — sélectionne d'abord la cliente.",
     "wrong_client": "Ce code appartient à une autre cliente.",
 }
@@ -380,7 +385,15 @@ async def issue_event_voucher(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Créditer un bon cadeau sur la fiche client (clic bouton zone Événementiel)."""
+    """Créditer un bon cadeau sur la fiche client (clic bouton zone Événementiel).
+
+    Règles métier :
+      - 1 bon par personne (refus 409 si la cliente en a déjà un)
+      - utilisable à partir du lendemain (jamais le jour même)
+    Côté communication : un email récapitulatif est envoyé à la cliente si
+    elle a un email + l'opt-in marketing (best-effort, ne bloque jamais
+    l'émission). Le template ``voucher_issued`` est éditable côté admin.
+    """
     from app.services.coupon import CouponError
     from app.services.event_vouchers import issue_voucher
 
@@ -388,6 +401,9 @@ async def issue_event_voucher(
         "client_not_found": "Cliente introuvable.",
         "unknown_type": "Type de bon inconnu.",
         "inactive_type": "Ce type de bon est désactivé.",
+        "already_issued": (
+            "Cette cliente a déjà reçu un bon d'ouverture (1 par personne)."
+        ),
     }
     try:
         coupon = await issue_voucher(
@@ -400,6 +416,13 @@ async def issue_event_voucher(
         raise HTTPException(
             status_code=409, detail=_ISSUE_ERRORS.get(str(exc), "Émission refusée.")
         )
+    # Rappel par email du bon crédité — template ``voucher_issued`` (éditable).
+    try:
+        await _send_voucher_issued_email(db, coupon)
+    except Exception:  # noqa: BLE001 — never block the issuance on a mail failure
+        logger.exception(
+            "Voucher issuance: welcome email failed for coupon %s", coupon.code
+        )
     await db.commit()
     return {
         "code": coupon.code,
@@ -410,6 +433,94 @@ async def issue_event_voucher(
         "valid_until": coupon.valid_until.isoformat() if coupon.valid_until else None,
         "client_id": str(coupon.client_id),
     }
+
+
+async def _send_voucher_issued_email(db: AsyncSession, coupon) -> None:
+    """Envoie le mail de rappel d'un bon cadeau crédité.
+
+    Best-effort : silencieux si le client n'a pas d'email, si l'opt-in
+    marketing n'est pas posé ou si le gateway est en simulation. La
+    fonction utilise le template ``voucher_issued`` (DEFAULT_TEMPLATES)
+    avec un fallback intégré pour garder la communication active si le
+    template a été désactivé.
+    """
+    from datetime import timedelta as _td
+
+    from app.models.client import Client
+    from app.services.communications import log_communication, render_template
+    from app.services.email_gateway import (
+        EmailDeliveryError,
+        EmailMessage,
+        send_email,
+    )
+
+    client = (
+        await db.execute(select(Client).where(Client.id == coupon.client_id))
+    ).scalar_one_or_none()
+    # Transactional notification : un bon vient d'être crédité sur la fiche.
+    # RGPD : c'est une information contractuelle (mouvement de compte),
+    # donc on l'envoie même sans opt-in marketing — seul l'absence d'email
+    # nous arrête. Le client peut bien sûr demander sa suppression RGPD.
+    if client is None or not client.email:
+        return
+
+    now = datetime.now(timezone.utc)
+    usable_from = (now + _td(days=1)).date().strftime("%d/%m/%Y")
+    valid_until = (
+        coupon.valid_until.date().strftime("%d/%m/%Y")
+        if coupon.valid_until else "—"
+    )
+    context = {
+        "prenom": (client.first_name or "").strip() or "Bonjour",
+        "label_bon": _voucher_label(coupon),
+        "code_bon": coupon.code,
+        "valable_a_partir_de": usable_from,
+        "valide_jusqu_au": valid_until,
+    }
+    rendered = await render_template(
+        db,
+        "voucher_issued",
+        context,
+        fallback_subject="🎟 Vintiz — votre bon « {label_bon} »",
+        fallback_html=(
+            "<p>Bonjour {prenom},</p>"
+            "<p>Un bon <strong>« {label_bon} »</strong> (code "
+            "<strong>{code_bon}</strong>) a été crédité sur votre fiche. "
+            "Utilisable à partir du {valable_a_partir_de}, valable jusqu'au "
+            "{valide_jusqu_au}.</p>"
+        ),
+        fallback_text=(
+            "Bonjour {prenom}, un bon « {label_bon} » (code {code_bon}) a été "
+            "crédité sur votre fiche. Utilisable à partir du "
+            "{valable_a_partir_de}, valable jusqu'au {valide_jusqu_au}."
+        ),
+    )
+    try:
+        outcome = send_email(EmailMessage(
+            to=client.email,
+            to_name=client.first_name or None,
+            subject=rendered.subject or "Vintiz — votre bon cadeau",
+            html=rendered.html or "",
+            text=rendered.text or "",
+            tags=["voucher-issued"],
+        ))
+        status = outcome.status
+        backend = outcome.backend
+    except EmailDeliveryError as exc:
+        status = "failed"
+        backend = "error"
+        logger.warning("voucher_issued email failed for %s: %s", client.email, exc)
+    await log_communication(
+        db,
+        client_id=client.id,
+        channel="email",
+        kind="voucher_issued",
+        status=status,
+        to_address=client.email,
+        subject=rendered.subject,
+        backend=backend,
+        template_key=rendered.template_key,
+    )
 
 
 async def _resolve_cart_items(db: AsyncSession, items_csv: str) -> list[dict]:
@@ -448,19 +559,41 @@ async def client_vouchers(
     """Bons cadeau actifs d'une cliente — affichés à l'identification en caisse.
 
     ``value_for_cart`` = montant que le bon couvre pour le panier courant
-    (sert à dimensionner la ligne de règlement « bon »)."""
+    (sert à dimensionner la ligne de règlement « bon »).
+    ``available_today`` est ``false`` pour les bons d'ouverture émis le
+    jour même (utilisables dès le lendemain) — le front affiche dans ce
+    cas un badge « disponible demain » et désactive le bouton Affecter.
+    """
     from app.services.coupon import compute_voucher_discount
-    from app.services.event_vouchers import list_client_vouchers
+    from app.models.coupon import CouponSource
+    from app.services.event_vouchers import is_immediate_voucher, list_client_vouchers
 
     vouchers = await list_client_vouchers(db, client_id, only_active=True)
     cart_total = max(0.0, cart_total_cents / 100.0)
     cart_items = await _resolve_cart_items(db, items) if vouchers else []
 
+    today = datetime.now(timezone.utc).date()
     out = []
     for v in vouchers:
         value = (
             compute_voucher_discount(v, cart_total, cart_items)
             if cart_total > 0 else 0.0
+        )
+        immediate = (
+            v.source == CouponSource.event_opening and is_immediate_voucher(v)
+        )
+        # Bons d'ouverture « prochain achat » : interdiction d'utilisation
+        # le jour même. Les bons immédiats sont exemptés.
+        created_date = (
+            v.created_at.date()
+            if v.created_at and v.source == CouponSource.event_opening
+            else None
+        )
+        same_day = (
+            v.source == CouponSource.event_opening
+            and not immediate
+            and created_date is not None
+            and created_date == today
         )
         out.append({
             "code": v.code,
@@ -471,6 +604,12 @@ async def client_vouchers(
             "requires_item": v.discount_type.value == "free_item",
             "value_for_cart": value,
             "valid_until": v.valid_until.isoformat() if v.valid_until else None,
+            "available_today": not same_day,
+            "available_from": (
+                (created_date.isoformat() + " (le lendemain)")
+                if same_day else None
+            ),
+            "immediate": immediate,
         })
     return {"vouchers": out, "count": len(out)}
 
@@ -790,6 +929,77 @@ async def ping_sumup_reader(current_user: User = Depends(get_current_user)):
     return await SumUpService().ping_reader()
 
 
+async def _build_full_receipt_text(
+    db: AsyncSession, transaction_id: uuid.UUID
+) -> str | None:
+    """Construit le texte du ticket de caisse comme à l'impression.
+
+    Réutilise ``ReceiptService.generate_receipt_text`` + le template
+    par défaut + le contexte fidélité pour que l'email reçu par la
+    cliente soit le calque exact de l'impression MUNBYN (header, items,
+    chips, totaux, paiements, hash NF525, footer fidélité). Retourne
+    ``None`` si la transaction n'existe plus côté ORM.
+    """
+    from app.models.client import Client
+    from app.models.pos import LoyaltyTransaction, LoyaltyTxType, Transaction
+    from app.models.receipt_template import ReceiptKind, ReceiptTemplate
+    from app.services.receipt import ReceiptService
+
+    row = await db.execute(
+        select(Transaction).where(Transaction.id == transaction_id)
+    )
+    tx = row.scalar_one_or_none()
+    if tx is None:
+        return None
+
+    target_kind = ReceiptKind.invoice if tx.is_invoice else ReceiptKind.ticket
+    template = None
+    if tx.template_id is not None:
+        template = (
+            await db.execute(
+                select(ReceiptTemplate).where(ReceiptTemplate.id == tx.template_id)
+            )
+        ).scalar_one_or_none()
+    if template is None:
+        template = (
+            await db.execute(
+                select(ReceiptTemplate)
+                .where(
+                    ReceiptTemplate.kind == target_kind,
+                    ReceiptTemplate.is_default.is_(True),
+                    ReceiptTemplate.is_active.is_(True),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    client = None
+    loyalty_account = None
+    points_earned = None
+    if tx.client_id is not None:
+        c_row = await db.execute(select(Client).where(Client.id == tx.client_id))
+        client = c_row.scalar_one_or_none()
+        if client and client.loyalty_account is not None:
+            loyalty_account = client.loyalty_account
+            earn_row = await db.execute(
+                select(LoyaltyTransaction.points)
+                .where(
+                    LoyaltyTransaction.account_id == loyalty_account.id,
+                    LoyaltyTransaction.tx_type == LoyaltyTxType.earn,
+                    LoyaltyTransaction.description == f"Sale #{tx.transaction_number}",
+                )
+            )
+            points_earned = earn_row.scalar_one_or_none() or 0
+
+    return ReceiptService().generate_receipt_text(
+        tx,
+        client=client,
+        loyalty_account=loyalty_account,
+        points_earned_on_sale=points_earned,
+        template=template,
+    )
+
+
 @router.post("/transactions/{transaction_id}/resend")
 async def resend_transaction(
     transaction_id: uuid.UUID,
@@ -870,22 +1080,32 @@ async def resend_transaction(
             send_email as _gateway_send,
         )
 
+        # Reproduit le ticket de caisse identique à l'impression : on
+        # passe par ``ReceiptService.generate_receipt_text`` (même rendu
+        # que le ``GET /receipt`` et que l'ESC/POS) plutôt que par un
+        # résumé tronqué. Le bandeau d'intro reste configurable côté
+        # studio via le template ``ticket``.
         salutation = f"Bonjour {greeting_name}" if greeting_name else "Bonjour"
-        # Configurable wording from the ticket template (studio). The items
-        # list is appended to the personalised intro so the receipt is complete.
         if notif_template and notif_template.email_body:
             intro = _apply_placeholders(notif_template.email_body, notif_ctx)
         else:
             intro = (
                 f"{salutation},\n\n"
-                f"Voici le recu de votre achat chez {notif_ctx['shop_name']}."
+                f"Voici le reçu de votre achat chez {notif_ctx['shop_name']}."
             )
-        body_text = (
-            f"{intro}\n\n"
-            f"Ticket #{ticket_num}\n"
-            f"Articles :\n{items_text}\n\n"
-            f"Total TTC : {total:.2f} EUR"
-        )
+        full_receipt = await _build_full_receipt_text(db, transaction_id)
+        if full_receipt:
+            body_text = f"{intro}\n\n{full_receipt}"
+        else:
+            # Fallback ligne-à-ligne si la transaction ORM ne charge pas
+            # (cas extrême — la transaction vient d'être supprimée entre
+            # le get + le resend) : on garde l'ancien résumé.
+            body_text = (
+                f"{intro}\n\n"
+                f"Ticket #{ticket_num}\n"
+                f"Articles :\n{items_text}\n\n"
+                f"Total TTC : {total:.2f} EUR"
+            )
         subject = (
             _apply_placeholders(notif_template.email_subject, notif_ctx)
             if notif_template and notif_template.email_subject
@@ -1878,6 +2098,13 @@ async def subscribe_loyalty(
                 "client_id": str(exc.client_id),
             },
         )
+    # Mail de bienvenue (template ``welcome_subscription`` éditable).
+    try:
+        await _send_welcome_subscription_email(db, client, account, mode)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Loyalty subscribe: welcome email failed for %s", client.email
+        )
     await db.commit()
     return {
         "client_id": str(client.id),
@@ -1887,6 +2114,78 @@ async def subscribe_loyalty(
         if client.loyalty_expires_at
         else None,
     }
+
+
+_MODE_LABELS = {
+    "free": "gratuite",
+    "paid": "payante",
+    "first_purchase": "offerte au 1er achat",
+}
+
+
+async def _send_welcome_subscription_email(
+    db: AsyncSession, client, account, mode: str
+) -> None:
+    """Mail de bienvenue à l'adhésion fidélité.
+
+    Best-effort : ne bloque pas l'adhésion si le mail échoue."""
+    from app.services.communications import log_communication, render_template
+    from app.services.email_gateway import (
+        EmailDeliveryError,
+        EmailMessage,
+        send_email,
+    )
+
+    if not client.email:
+        return
+
+    context = {
+        "prenom": (client.first_name or "").strip() or "Bonjour",
+        "numero_carte": account.membership_number,
+        "mode_adhesion": _MODE_LABELS.get(mode, mode),
+    }
+    rendered = await render_template(
+        db,
+        "welcome_subscription",
+        context,
+        fallback_subject="🌿 Bienvenue chez Vintiz, {prenom} !",
+        fallback_html=(
+            "<p>Bonjour {prenom},</p>"
+            "<p>Bienvenue dans le programme de fidélité Vintiz Vernon. "
+            "Numéro de carte : <strong>{numero_carte}</strong>. "
+            "Adhésion : {mode_adhesion}. 1 € = 1 pt — 1 pt = 0,10 €.</p>"
+        ),
+        fallback_text=(
+            "Bonjour {prenom}, bienvenue chez Vintiz Vernon. Carte : "
+            "{numero_carte}. Adhésion : {mode_adhesion}. 1 € = 1 pt."
+        ),
+    )
+    try:
+        outcome = send_email(EmailMessage(
+            to=client.email,
+            to_name=client.first_name or None,
+            subject=rendered.subject or "Bienvenue chez Vintiz",
+            html=rendered.html or "",
+            text=rendered.text or "",
+            tags=["welcome-loyalty"],
+        ))
+        status = outcome.status
+        backend = outcome.backend
+    except EmailDeliveryError as exc:
+        status = "failed"
+        backend = "error"
+        logger.warning("welcome_subscription email failed for %s: %s", client.email, exc)
+    await log_communication(
+        db,
+        client_id=client.id,
+        channel="email",
+        kind="welcome_subscription",
+        status=status,
+        to_address=client.email,
+        subject=rendered.subject,
+        backend=backend,
+        template_key=rendered.template_key,
+    )
 
 
 @router.get("/companion/non-member")

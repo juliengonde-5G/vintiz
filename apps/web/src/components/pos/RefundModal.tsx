@@ -125,22 +125,29 @@ export default function RefundModal({
   };
 
   /**
-   * Direct ESC/POS path — MUNBYN 047P-WiFi on port 9100. The only path
-   * that works on Android (Lenovo Idea Tab Pro Gen 2) since Chrome's
-   * window.print() falls back to "Print to PDF" without a system driver
-   * for raw thermal printers.
+   * Direct ESC/POS path — MUNBYN 047P-WiFi on port 9100 OU WebUSB sur la
+   * tablette Android. Avant : on appelait directement
+   * ``POST /api/pos/transactions/{id}/print`` ce qui forçait le chemin
+   * réseau et ne fonctionnait jamais en mode USB (côté admin, on
+   * imprimait depuis la même tablette POS configurée en USB). On passe
+   * désormais par le helper ``printTransactionTicket`` partagé avec le
+   * POS qui détecte le mode (network/USB) et envoie les bytes
+   * ESC/POS via WebUSB le cas échéant.
    */
   const printRefundEscpos = useCallback(async () => {
     if (!refundTxId) return;
     setPrinting(true);
+    setError('');
     try {
-      const res = await api.post(`/api/pos/transactions/${refundTxId}/print`, {});
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        setError(err?.detail || 'Imprimante ESC/POS indisponible — vérifie l\'IP MUNBYN dans Réglages › Matériel');
+      const { printTransactionTicket } = await import('@/lib/print-ticket');
+      const result = await printTransactionTicket(refundTxId, { kickDrawer: false });
+      if (!result.ok) {
+        setError(result.message);
       }
-    } catch {
-      setError('Erreur de connexion à l\'imprimante');
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : 'Erreur de connexion à l\'imprimante',
+      );
     }
     setPrinting(false);
   }, [refundTxId]);

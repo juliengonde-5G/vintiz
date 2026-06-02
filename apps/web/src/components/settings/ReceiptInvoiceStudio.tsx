@@ -385,14 +385,23 @@ function BrandingLogoCard() {
               Supprimer
             </button>
           )}
-          <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-vz-ink-soft">
+          <label className="mt-2 flex cursor-pointer items-start gap-2 text-sm text-vz-ink-soft">
             <input
               type="checkbox"
               checked={printOnTicket}
               onChange={(e) => void toggleTicket(e.target.checked)}
-              className="h-4 w-4 accent-vz-teal"
+              className="mt-0.5 h-4 w-4 accent-vz-teal"
             />
-            Imprimer le logo en tête du ticket de caisse
+            <span>
+              <span className="block">Imprimer le logo en tête du ticket de caisse</span>
+              <span className="block text-xs text-amber-700">
+                ⚠ Certaines firmwares MUNBYN 047P ne reconnaissent pas la
+                commande raster ESC/POS et impriment le logo en bytes
+                garbled. Si le ticket sort avec un bandeau de caractères
+                aléatoires, décochez : le wordmark «&nbsp;VINTIZ&nbsp;» en
+                gros caractères reste imprimé sans bug.
+              </span>
+            </span>
           </label>
         </div>
       </div>
