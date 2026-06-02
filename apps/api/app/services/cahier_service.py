@@ -126,20 +126,31 @@ async def get_weekday_weights(
 def compute_daily_target(
     monthly_target: float, weights: list[float], report_date: date
 ) -> float:
-    """Distribute a monthly target across days using weekday weights.
+    """Daily target = monthly target / nombre de jours d'ouverture du mois.
 
-    Guarantees Σ(daily_targets) == monthly_target for the month.
+    Le manager le voulait *simple* : à chaque jour, on lui affiche
+    ``Obj_mensuel / nb_jours_ouverture`` (formule plate, identique pour
+    tous les jours d'ouverture du mois). Les ``weights`` jouent ici juste
+    le rôle d'un calendrier d'ouverture : tout jour de la semaine avec
+    ``weight == 0`` est considéré comme fermé et n'entre pas dans le
+    diviseur. Un jour fermé renvoie 0.
+
+    Σ(daily_targets) = monthly_target (chaque jour ouvert porte la même
+    part).
     """
     year, month = report_date.year, report_date.month
     days_in_month = calendar.monthrange(year, month)[1]
-    # Count occurrences of each weekday inside the target month
-    occurrences = [0] * 7
+    opening_days = 0
     for day_n in range(1, days_in_month + 1):
-        occurrences[date(year, month, day_n).weekday()] += 1
-    total_weight = sum(weights[wd] * occurrences[wd] for wd in range(7))
-    if total_weight == 0:
+        wd = date(year, month, day_n).weekday()
+        if weights[wd] > 0:
+            opening_days += 1
+    if opening_days == 0:
         return 0.0
-    return monthly_target * weights[report_date.weekday()] / total_weight
+    # If today is a closed weekday (weight == 0), no target for the day.
+    if weights[report_date.weekday()] <= 0:
+        return 0.0
+    return monthly_target / opening_days
 
 
 # ---------------------------------------------------------------------------

@@ -92,6 +92,16 @@ export default function SettingsPage() {
     computed_at: string;
   } | null>(null);
   const [cahierLoading, setCahierLoading] = useState(false);
+  // Annual grid: 12 mois remplissables + simulation d'augmentation
+  // (en €/mois ou en %). Le tableau remplace le picker mois-par-mois :
+  // on voit l'année d'un coup et on propage une variation sur tous les
+  // mois en 1 clic.
+  const [yearGridTargets, setYearGridTargets] = useState<string[]>(
+    Array(12).fill(''),
+  );
+  const [yearGridSaving, setYearGridSaving] = useState(false);
+  const [increaseValue, setIncreaseValue] = useState('');
+  const [increaseUnit, setIncreaseUnit] = useState<'eur' | 'pct'>('pct');
   const [categories, setCategories] = useState<Category[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(false);
@@ -719,9 +729,10 @@ export default function SettingsPage() {
   const loadCahierData = async () => {
     setCahierLoading(true);
     try {
-      const [targetRes, weightsRes] = await Promise.all([
+      const [targetRes, weightsRes, yearRes] = await Promise.all([
         api.get(`/api/cahier/monthly-target/${cahierYear}/${cahierMonth}`),
         api.get('/api/cahier/weekday-weights'),
+        api.get(`/api/cahier/monthly-targets/year/${cahierYear}`),
       ]);
       if (targetRes.ok) {
         const t = await targetRes.json();
@@ -731,9 +742,55 @@ export default function SettingsPage() {
       if (weightsRes.ok) {
         setCahierWeights(await weightsRes.json());
       }
+      if (yearRes.ok) {
+        const y = await yearRes.json();
+        setYearGridTargets(
+          (y.months as { target_eur: number | null }[]).map((m) =>
+            m.target_eur != null ? String(m.target_eur) : '',
+          ),
+        );
+      }
     } finally {
       setCahierLoading(false);
     }
+  };
+
+  const applyIncreaseToGrid = () => {
+    const v = parseFloat(increaseValue);
+    if (!Number.isFinite(v)) return;
+    setYearGridTargets((prev) =>
+      prev.map((cur) => {
+        const base = parseFloat(cur);
+        if (!Number.isFinite(base) || base <= 0) return cur;
+        const next = increaseUnit === 'pct' ? base * (1 + v / 100) : base + v;
+        return String(Math.max(0, Math.round(next)));
+      }),
+    );
+  };
+
+  const saveYearGrid = async () => {
+    setYearGridSaving(true);
+    try {
+      const res = await api.put('/api/cahier/monthly-targets/bulk', {
+        year: cahierYear,
+        months: yearGridTargets.map((s, i) => ({
+          month: i + 1,
+          target_eur: s.trim() === '' ? null : parseFloat(s),
+        })),
+      });
+      if (res.ok) {
+        const body = await res.json().catch(() => null);
+        const saved = body?.saved ?? 0;
+        setMessage(`Tableau annuel enregistré (${saved} mois).`);
+        setTimeout(() => setMessage(''), 3000);
+        await loadCahierData();
+      } else {
+        setError('Erreur lors de l\'enregistrement du tableau.');
+      }
+    } catch {
+      setError('Erreur réseau lors de l\'enregistrement.');
+    }
+    setYearGridSaving(false);
   };
 
   const saveCahierTarget = async () => {
@@ -1821,15 +1878,150 @@ export default function SettingsPage() {
         {/* CAHIER TAB */}
         {tab === 'cahier' && (
           <div className="space-y-6">
-            <Card title="Objectif mensuel de CA">
+            <Card title="Objectifs mensuels — tableau annuel">
               <p className="text-sm text-gray-500 mb-4">
-                Saisissez l&apos;objectif de chiffre d&apos;affaires du mois. Il est
-                automatiquement reparti sur chaque journee selon le poids
-                historique des jours de la semaine.
+                Saisissez les 12 objectifs de l&apos;année d&apos;un coup. Chaque
+                objectif est ensuite réparti sur les jours d&apos;ouverture du
+                mois (Obj du jour = Obj mensuel ÷ jours d&apos;ouverture).
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm text-gray-500 mb-1">Année</label>
+                  <Input
+                    type="number"
+                    value={cahierYear}
+                    onChange={(e) => setCahierYear(parseInt(e.target.value) || now.getFullYear())}
+                  />
+                </div>
+                <div className="sm:col-span-2 flex items-end gap-2">
+                  <Button variant="outline" onClick={loadCahierData} disabled={cahierLoading}>
+                    {cahierLoading ? 'Chargement…' : 'Recharger l’année'}
+                  </Button>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider">
+                      <th className="text-left py-2 px-2 font-medium">Mois</th>
+                      <th className="text-left py-2 px-2 font-medium">Objectif CA (€)</th>
+                      <th className="text-left py-2 px-2 font-medium hidden sm:table-cell">
+                        Aperçu — Obj du jour (moy.)
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+                      const v = parseFloat(yearGridTargets[m - 1]);
+                      const daysInMonth = new Date(cahierYear, m, 0).getDate();
+                      // Approx opening days = days with weight > 0 (default 6 if weights absent)
+                      let openingDays = 0;
+                      if (cahierWeights) {
+                        for (let d = 1; d <= daysInMonth; d++) {
+                          const jsWd = new Date(cahierYear, m - 1, d).getDay();
+                          const wd = (jsWd + 6) % 7;
+                          if ((cahierWeights.weights[wd] || 0) > 0) openingDays++;
+                        }
+                      } else {
+                        openingDays = Math.round((daysInMonth * 6) / 7);
+                      }
+                      const objJour =
+                        Number.isFinite(v) && v > 0 && openingDays > 0
+                          ? v / openingDays
+                          : 0;
+                      return (
+                        <tr key={m} className="border-b border-gray-100">
+                          <td className="py-2 px-2 capitalize text-black font-medium">
+                            {new Date(2000, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long' })}
+                          </td>
+                          <td className="py-2 px-2">
+                            <Input
+                              type="number"
+                              value={yearGridTargets[m - 1]}
+                              onChange={(e) => {
+                                const next = [...yearGridTargets];
+                                next[m - 1] = e.target.value;
+                                setYearGridTargets(next);
+                              }}
+                              placeholder="—"
+                            />
+                          </td>
+                          <td className="py-2 px-2 hidden sm:table-cell text-vz-teal font-mono">
+                            {objJour > 0 ? `${objJour.toFixed(0)} €/jour ouvert` : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-5 p-3 bg-vz-bg-alt rounded-lg">
+                <p className="text-sm font-medium text-black mb-2">
+                  Augmentation rapide
+                </p>
+                <p className="text-xs text-gray-500 mb-3">
+                  Applique la variation à tous les mois remplis (cellules
+                  vides ignorées). Pratique pour planifier une croissance N+1.
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="block text-xs text-gray-500 mb-1">Valeur</label>
+                    <Input
+                      type="number"
+                      value={increaseValue}
+                      onChange={(e) => setIncreaseValue(e.target.value)}
+                      placeholder={increaseUnit === 'pct' ? '+5' : '+500'}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Unité</label>
+                    <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setIncreaseUnit('pct')}
+                        className={`px-3 py-2 text-sm ${
+                          increaseUnit === 'pct'
+                            ? 'bg-vz-teal text-white'
+                            : 'bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        %
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIncreaseUnit('eur')}
+                        className={`px-3 py-2 text-sm ${
+                          increaseUnit === 'eur'
+                            ? 'bg-vz-teal text-white'
+                            : 'bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        €
+                      </button>
+                    </div>
+                  </div>
+                  <Button variant="outline" onClick={applyIncreaseToGrid}>
+                    Appliquer
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-4 flex gap-2 justify-end">
+                <Button onClick={saveYearGrid} disabled={yearGridSaving}>
+                  {yearGridSaving ? 'Enregistrement…' : 'Enregistrer le tableau'}
+                </Button>
+              </div>
+            </Card>
+
+            <Card title="Objectif mensuel — saisie ponctuelle">
+              <p className="text-sm text-gray-500 mb-4">
+                Ancienne saisie mois-par-mois (gardée pour les ajustements
+                ciblés avec notes).
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-500 mb-1">Annee</label>
+                  <label className="block text-sm text-gray-500 mb-1">Année</label>
                   <Input
                     type="number"
                     value={cahierYear}
@@ -1923,38 +2115,52 @@ export default function SettingsPage() {
               )}
             </Card>
 
-            <Card title="Apercu des objectifs du mois">
+            <Card title="Aperçu des objectifs du mois">
               <p className="text-sm text-gray-500 mb-3">
-                Somme des objectifs journaliers = objectif mensuel. Samedi
-                concentre le plus gros de l&apos;objectif, lundi le moins.
+                Objectif quotidien = Objectif mensuel ÷ nombre de jours
+                d&apos;ouverture du mois. Les jours fermés (poids 0) sont
+                exclus.
               </p>
               {cahierWeights && cahierTarget && (() => {
                 const monthlyTarget = parseFloat(cahierTarget) || 0;
                 const daysInMonth = new Date(cahierYear, cahierMonth, 0).getDate();
-                const occurrences = [0, 0, 0, 0, 0, 0, 0];
+                let openingDays = 0;
                 for (let d = 1; d <= daysInMonth; d++) {
                   const jsWd = new Date(cahierYear, cahierMonth - 1, d).getDay();
-                  const wd = (jsWd + 6) % 7; // convert JS Sunday=0 to Monday=0
-                  occurrences[wd]++;
+                  const wd = (jsWd + 6) % 7;
+                  if ((cahierWeights.weights[wd] || 0) > 0) openingDays++;
                 }
-                const totalWeight = cahierWeights.weights.reduce(
-                  (acc, w, i) => acc + w * occurrences[i],
-                  0,
-                ) || 1;
+                const dailyTarget = openingDays > 0 ? monthlyTarget / openingDays : 0;
                 return (
                   <div className="grid grid-cols-7 gap-2 text-xs">
                     {cahierWeights.weekdays.map((label, i) => {
-                      const dailyTarget = monthlyTarget * cahierWeights.weights[i] / totalWeight;
+                      const isOpen = (cahierWeights.weights[i] || 0) > 0;
                       return (
                         <div key={i} className="text-center">
                           <div className="text-gray-500 capitalize">{label.slice(0, 3)}</div>
-                          <div className="text-vz-teal font-bold font-mono">{dailyTarget.toFixed(0)} €</div>
+                          <div className={`font-bold font-mono ${isOpen ? 'text-vz-teal' : 'text-gray-300'}`}>
+                            {isOpen ? `${dailyTarget.toFixed(0)} €` : 'fermé'}
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                 );
               })()}
+              <p className="mt-3 text-xs text-gray-400">
+                Jours d&apos;ouverture du mois sélectionné :{' '}
+                {(() => {
+                  if (!cahierWeights) return '—';
+                  const daysInMonth = new Date(cahierYear, cahierMonth, 0).getDate();
+                  let openingDays = 0;
+                  for (let d = 1; d <= daysInMonth; d++) {
+                    const jsWd = new Date(cahierYear, cahierMonth - 1, d).getDay();
+                    const wd = (jsWd + 6) % 7;
+                    if ((cahierWeights.weights[wd] || 0) > 0) openingDays++;
+                  }
+                  return `${openingDays} jours`;
+                })()}
+              </p>
             </Card>
           </div>
         )}

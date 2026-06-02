@@ -27,6 +27,11 @@ export type CustomerBrief = {
 
 type Props = {
   brief: CustomerBrief;
+  // ``onTapPick`` was used by the legacy 3-thumbnail grid that this card
+  // showed when a member was identified. The grid was moved to the
+  // ClientCompanion's « ✨ Pépites du jour » button so the card stays
+  // compact at the top of the ticket. Prop kept (optional, ignored) so
+  // existing callers don't break — safe to drop in a future cleanup.
   onTapPick?: (productId: string) => void;
   onClose?: () => void;
 };
@@ -41,32 +46,52 @@ const formatVisit = (days?: number | null) => {
   return `Il y a ${Math.floor(days / 365)} an(s)`;
 };
 
-export default function LoyaltyCustomerCard({ brief, onTapPick, onClose }: Props) {
+export default function LoyaltyCustomerCard({ brief, onClose }: Props) {
   const sizeStr = [
-    brief.size_profile.haut && `Taille ${brief.size_profile.haut}`,
+    brief.size_profile.haut && `T.${brief.size_profile.haut}`,
     brief.size_profile.bas && `T.${brief.size_profile.bas}`,
   ].filter(Boolean).join(' · ');
 
+  // Compact card : à l'identification cliente, on voulait alléger ce
+  // bandeau (l'utilisateur disait « trop gros »). On ne montre plus la
+  // grille Personal Shopper ici — elle est désormais exposée via le
+  // bouton « ✨ Pépites du jour » du ClientCompanion juste en dessous,
+  // qui charge à la demande et garde l'affectation principale du POS
+  // (panier + recherche) intacte.
   return (
-    <div className="bg-vz-bg rounded-xl border border-vz-accent-soft/30 p-3 mb-3 shadow-sm">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xl shrink-0">🌟</span>
-          <div className="min-w-0">
-            <div className="font-medium text-black truncate">
-              {brief.first_name} {brief.last_name}
+    <div className="bg-vz-bg rounded-lg border border-vz-line/60 px-2.5 py-1.5 mb-1.5 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="text-base shrink-0" aria-hidden>🌟</span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0">
+              <span className="text-xs font-semibold text-black truncate">
+                {brief.first_name} {brief.last_name}
+              </span>
+              <span className="text-[10px] text-vz-teal-deep font-medium">
+                {brief.membership_number ?? 'Non membre'} · {brief.loyalty_points} pts
+              </span>
+              {brief.avoir_credit > 0 && (
+                <span className="text-[10px] text-vz-accent font-medium">
+                  avoir {brief.avoir_credit.toFixed(2)}€
+                </span>
+              )}
             </div>
-            <div className="inline-block text-[11px] px-2 py-0.5 rounded-full border bg-vz-teal-soft text-vz-teal-deep border-vz-teal-soft">
-              {brief.membership_number ?? 'Non membre'} · {brief.loyalty_points} pts
-              {brief.avoir_credit > 0 && ` · avoir ${brief.avoir_credit.toFixed(2)}€`}
+            <div className="flex flex-wrap gap-x-2 gap-y-0 text-[10px] text-gray-500 leading-tight">
+              <span>🕒 {formatVisit(brief.days_since_last_visit)}</span>
+              <span>· CA {brief.lifetime_value.toFixed(0)} €</span>
+              {brief.rfm_segment && <span className="text-vz-teal">· {brief.rfm_segment}</span>}
+              {brief.favorite_categories[0] && (
+                <span>· {brief.favorite_categories[0].name} ({Math.round(brief.favorite_categories[0].share * 100)}%)</span>
+              )}
+              {sizeStr && <span>· {sizeStr}</span>}
             </div>
           </div>
         </div>
         {onClose && (
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-black min-h-0 min-w-0 h-6 w-6"
+            className="text-gray-300 hover:text-black h-5 w-5 leading-none text-sm shrink-0"
             aria-label="Fermer la carte"
           >
             ×
@@ -74,87 +99,12 @@ export default function LoyaltyCustomerCard({ brief, onTapPick, onClose }: Props
         )}
       </div>
 
-      {/* Key meta */}
-      <div className="text-xs text-gray-600 mb-2 flex flex-wrap gap-x-3 gap-y-0.5">
-        <span>🕒 {formatVisit(brief.days_since_last_visit)}</span>
-        <span>💰 CA total {brief.lifetime_value.toFixed(0)} €</span>
-        {brief.rfm_segment && <span className="text-vz-teal">· {brief.rfm_segment}</span>}
-      </div>
-
-      {/* Profile chips */}
-      <div className="text-xs text-black space-y-0.5 mb-3">
-        {brief.favorite_categories.length > 0 && (
-          <div>
-            <span className="text-gray-500">Achète souvent :</span>{' '}
-            {brief.favorite_categories.map((c, i) => (
-              <span key={c.name}>
-                <strong>{c.name}</strong> ({Math.round(c.share * 100)}%)
-                {i < brief.favorite_categories.length - 1 && ' · '}
-              </span>
-            ))}
-          </div>
-        )}
-        {brief.favorite_brands.length > 0 && (
-          <div>
-            <span className="text-gray-500">Marques :</span> {brief.favorite_brands.join(', ')}
-          </div>
-        )}
-        <div className="flex flex-wrap gap-x-3">
-          {brief.favorite_colors.length > 0 && (
-            <span>
-              <span className="text-gray-500">Couleurs :</span> {brief.favorite_colors.join(', ')}
-            </span>
-          )}
-          {sizeStr && (
-            <span>
-              <span className="text-gray-500">Taille :</span> {sizeStr}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Anniversary coupon */}
       {brief.anniversary_coupon && (
-        <div className="text-xs bg-vz-accent-soft/30 rounded-lg p-2 mb-2">
-          🎁 Coupon {brief.anniversary_coupon.code} · -{brief.anniversary_coupon.discount_value}€
+        <div className="mt-1 text-[10px] text-vz-accent leading-snug">
+          🎁 {brief.anniversary_coupon.code} · -{brief.anniversary_coupon.discount_value}€
           {brief.anniversary_coupon.valid_until && (
             <> · jusqu'au {brief.anniversary_coupon.valid_until.slice(0, 10)}</>
           )}
-        </div>
-      )}
-
-      {/* Personal Shopper picks */}
-      {brief.personal_shopper_picks_today.length > 0 && (
-        <div>
-          <div className="text-xs font-medium text-black mb-1.5">
-            💡 Suggestions du jour pour {brief.first_name}
-          </div>
-          <div className="grid grid-cols-3 gap-1.5">
-            {brief.personal_shopper_picks_today.slice(0, 3).map((pick) => (
-              <button
-                key={pick.id}
-                onClick={() => onTapPick?.(pick.id)}
-                disabled={!onTapPick}
-                className="bg-white rounded-lg overflow-hidden border border-gray-200 text-left min-h-0 min-w-0 p-0 hover:border-vz-teal hover:shadow-sm transition-all"
-              >
-                <div className="aspect-square bg-gray-100 overflow-hidden">
-                  {pick.thumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={pick.thumb} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-2xl text-gray-300">👗</div>
-                  )}
-                </div>
-                <div className="p-1.5">
-                  <div className="text-[10px] text-black truncate">{pick.name}</div>
-                  {typeof pick.score === 'number' && (
-                    <div className="text-[10px] text-vz-teal">{pick.score.toFixed(0)}/100</div>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-          <p className="text-[10px] text-gray-400 mt-1">Tap pour ajouter au panier</p>
         </div>
       )}
     </div>

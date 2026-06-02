@@ -216,6 +216,7 @@ async def validate_coupon(
     - ``redeemed``          — already used
     - ``expired``           — past ``valid_until``
     - ``not_yet_valid``     — before ``valid_from``
+    - ``same_day``          — bon d'ouverture émis le même jour
     - ``wrong_client``      — coupon is nominative for another client
     - ``no_client``         — nominative coupon but no client at the till
     """
@@ -239,6 +240,24 @@ async def validate_coupon(
         raise CouponError("not_yet_valid")
     if now > valid_until:
         raise CouponError("expired")
+
+    # Bons d'ouverture (zone Événementiel) « prochain achat » :
+    # interdiction d'utilisation le jour de l'émission. Le bon est
+    # utilisable dès le lendemain pour éviter qu'une cliente l'utilise
+    # dans la foulée d'un achat couvert par un autre moyen de paiement.
+    # Les bons immédiats (`(immédiat)` dans les notes) sont exemptés —
+    # ils sont précisément conçus pour être consommés sur la vente en
+    # cours.
+    if coupon.source == CouponSource.event_opening:
+        from app.services.event_vouchers import is_immediate_voucher
+
+        if not is_immediate_voucher(coupon):
+            created_at = coupon.created_at
+            if created_at is not None:
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                if created_at.date() == now.date():
+                    raise CouponError("same_day")
 
     if coupon.client_id is not None:
         if client_id is None:

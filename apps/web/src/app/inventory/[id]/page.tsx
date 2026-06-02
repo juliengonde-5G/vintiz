@@ -445,6 +445,23 @@ export default function ProductDetailPage() {
                     <div><p className="text-xs text-gray-500 mb-0.5">Couleur</p><p className="text-sm text-gray-700">{product.color || '—'}</p></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Genre</p><p className="text-sm text-gray-700">{genderLabel(product.gender)}</p></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Statut</p><Badge variant={statusVariants[product.status] || 'stock'}>{statusOptions.find(o => o.value === product.status)?.label || product.status}</Badge></div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-0.5">Localisation</p>
+                      <p className="text-sm font-medium text-vz-teal-deep flex items-center gap-1">
+                        <span aria-hidden>📍</span>
+                        {/* Affichée explicitement (zone du rayon ou réserve)
+                            pour qu'on sache où trouver la pièce en boutique. */}
+                        {product.status === 'sold'
+                          ? 'Vendu'
+                          : product.status === 'returned'
+                            ? 'Retourné — hors rayon'
+                            : product.status === 'stock'
+                              ? `Réserve${product.zone_id ? ` · ${zoneNames[product.zone_id] || 'zone affectée'}` : ''}`
+                              : product.zone_id
+                                ? zoneNames[product.zone_id] || 'Zone non identifiée'
+                                : 'En rayon — zone non assignée'}
+                      </p>
+                    </div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Prix d&apos;achat</p><p className="text-sm text-gray-700">{product.purchase_price?.toFixed(2)} €</p></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Prix de vente</p><p className="text-sm font-bold text-vz-teal">{product.sale_price?.toFixed(2)} €</p></div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Code-barres</p><p className="text-xs font-mono text-gray-500">{product.barcode}</p></div>
