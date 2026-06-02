@@ -693,6 +693,12 @@ chaîne fiscale NF525 redémarre proprement sur le genesis `"0"`. L'ancien
 `purge_databases.py` (qui rasait AUSSI l'inventaire) a été **supprimé** pour
 éviter toute fausse manipulation.
 
+**Carve-out `events_log`** : les événements `product.created` sont
+**préservés** lors du reset (audit interne « qui a saisi quel produit »).
+Toutes les autres lignes du journal (customer.*, cashier.*) sont effacées
+car liées à des entités supprimées (clients, transactions). Voir
+`EVENT_TYPES_PRESERVED` dans le script.
+
 ## Git workflow
 
 Branches `main` (prod) + branches feature `claude/<sujet>-<suffix>`. Le push sur
