@@ -57,6 +57,11 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
+      args:
+        # Renseignés par scripts/deploy.sh (export avant le build). Exposés
+        # par GET /api/health pour tracer la version réellement déployée.
+        VINTIZ_BUILD_SHA: ${VINTIZ_BUILD_SHA:-unknown}
+        VINTIZ_BUILD_DATE: ${VINTIZ_BUILD_DATE:-unknown}
     container_name: vintiz-api
     restart: unless-stopped
     env_file:

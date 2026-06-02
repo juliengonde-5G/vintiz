@@ -2,7 +2,14 @@
 
 > **Statut** : implémentation technique conforme. L'attestation éditeur (§4)
 > doit être signée par Vintiz avant ouverture publique.
-> **Mise à jour** : 26 avril 2026.
+> **Version logiciel** : **1.0.0** (release de production).
+> **Mise en production / ouverture publique** : **3 juin 2026, 10h00**
+> (boutique Vintiz Vernon, 6 rue Saint-Jacques, 27200 Vernon).
+> **Mise à jour du document** : 3 juin 2026.
+
+> ⚠️ **À faire avant la première vente du 03/06 10h00** : signer l'attestation
+> éditeur (§4) en y reportant la version `1.0.0` et la date de
+> commercialisation `03/06/2026`, puis l'archiver dans le dossier fiscal.
 
 ---
 
@@ -114,7 +121,7 @@ sise [adresse],
 SIREN [numéro],
 
 ATTESTE que le logiciel "Vintiz POS",
-version [vX.Y.Z], commercialisé à compter du [date],
+version v1.0.0, commercialisé à compter du 03/06/2026,
 
 satisfait aux conditions d'inaltérabilité, de sécurisation, de conservation et
 d'archivage des données prévues par les articles 88 de la loi 2015-1785 du 29
@@ -146,7 +153,24 @@ Lors de toute évolution touchant le moteur fiscal (modèle `Transaction`, `ZRep
 
 ---
 
-## 6. Limites connues
+## 6. Version & mise en production
+
+| Élément | Valeur |
+|---|---|
+| Version logiciel certifiée | **v1.0.0** |
+| Date de commercialisation / mise en production | **03/06/2026, 10h00** |
+| Tag Git de référence | `v1.0.0` (commit figé sur `main`) |
+| Périmètre fiscal | Caisse POS (`/api/pos/*`), Z reports, export DGFiP |
+| Première chaîne de transactions | démarre à l'ouverture après `go_live_reset.py` (base opérationnelle vidée, inventaire conservé) |
+
+> Le `go_live_reset.py` exécuté avant l'ouverture remet les compteurs à zéro
+> (`transaction_number`, `report_number`) et démarre une chaîne fiscale propre
+> ancrée sur le genesis `"0"`. Aucune transaction de test/démo ne subsiste dans
+> la chaîne de production — point vérifiable lors d'un contrôle.
+
+---
+
+## 7. Limites connues
 
 - L'attestation §4 doit être signée **avant ouverture publique** de la boutique Vernon. Cette tâche est humaine, hors périmètre Claude Code.
 - Le scellement annuel cryptographique externe (timestamping RFC 3161 sur le dernier hash de l'exercice) n'est pas implémenté. Il sera nécessaire si la chaîne dépasse plusieurs années sans audit ; pour la phase de lancement, le backup DB quotidien + l'export annuel suffisent.

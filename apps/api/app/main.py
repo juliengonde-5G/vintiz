@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Vintiz API",
     description="Boutique Management API for Vintiz",
-    version="0.1.0",
+    version="1.0.0",
     lifespan=lifespan,
 )
 
@@ -184,7 +184,7 @@ async def health_check():
     import os as _os
     return {
         "status": "ok",
-        "version": "0.1.0",
+        "version": "1.0.0",
         "build_sha": _os.environ.get("VINTIZ_BUILD_SHA", "unknown"),
         "build_date": _os.environ.get("VINTIZ_BUILD_DATE", "unknown"),
     }

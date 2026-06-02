@@ -38,6 +38,15 @@ COPY scripts/ /app/scripts/
 # data/app_config.json + data/hardware.json) would be lost. See the
 # `uploads_data` / `vintiz_data` volumes in docker-compose.prod.yml.
 RUN mkdir -p /app/uploads /app/data && chown -R app:app /app
+
+# Build provenance — exposé par GET /api/health (build_sha / build_date) pour
+# vérifier d'un coup d'œil quelle version tourne réellement en prod. Passés en
+# --build-arg par scripts/deploy.sh ; valent "unknown" en build local.
+ARG VINTIZ_BUILD_SHA=unknown
+ARG VINTIZ_BUILD_DATE=unknown
+ENV VINTIZ_BUILD_SHA=$VINTIZ_BUILD_SHA \
+    VINTIZ_BUILD_DATE=$VINTIZ_BUILD_DATE
+
 USER app
 
 EXPOSE 8000

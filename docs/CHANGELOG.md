@@ -1,5 +1,50 @@
 # Changelog Vintiz
 
+## [1.0.0] - 2026-06-03 — Mise en production officielle 🎉
+
+**Ouverture de la boutique Vintiz Vernon — 03/06/2026, 10h00.** Version
+verrouillée comme socle de production. Aucune nouvelle fonctionnalité majeure
+par rapport à la 0.8.x : cette release consolide la base, corrige les bugs de
+mise en route et fige la conformité fiscale (voir `docs/COMPLIANCE_NF525.md`).
+
+### Fixed (mise en route boutique)
+- **Clôture de caisse** : type enum PostgreSQL `cash_movement_direction`
+  désaligné (`inflow`/`outflow` au lieu de `in`/`out`) → 500 qui cassait la
+  connexion → « Failed to fetch » côté caisse. Migration `0057` réaligne les
+  labels de manière idempotente.
+- **Erreurs 500** : nouvelle frontière d'erreur dans `RequestIdMiddleware` —
+  toute exception non gérée renvoie désormais un `JSONResponse(500)` lisible
+  avec `request_id` (corrélation logs serveur ↔ message client) au lieu de
+  réinitialiser la socket. Headers CORS toujours présents sur les 500.
+- **Ticket par email** : le reçu reprend le contenu intégral du ticket de
+  caisse (header, lignes, totaux, hash NF525, footer fidélité).
+- **Remboursement admin** : impression via le pipeline unifié réseau/USB.
+- **Cahier du jour** : objectif quotidien = objectif mensuel ÷ nb jours
+  d'ouverture du mois.
+
+### Changed
+- **Bons cadeau d'ouverture** : 1 bon « prochain achat » par personne,
+  non utilisable le jour de l'émission ; nouveaux bons « immédiats »
+  (1€/2€/-10%/foulard) applicables sur l'achat en cours ; bouton *Valider*.
+- **Emails transactionnels** : mail de bienvenue (adhésion + création de
+  compte), mail récapitulatif au crédit d'un bon cadeau — templates éditables.
+- **POS** : carte cliente compactée, compagnon caisse en modale (bouton
+  *Encaisser* toujours visible), focus auto sur la recherche, tabulation +
+  Entrée sur la création de fiche client.
+- **Site vitrine** : pages `/produits`, fiches et home branchées sur
+  l'inventaire réel (`/api/storefront/*`, ISR 5 min) ; suppression du Journal
+  et de `/produits/made-in-france`.
+- **Fiche produit** : affichage de la localisation (zone / réserve).
+- **Objectifs annuels** : tableau 12 mois + simulateur d'augmentation (€ / %).
+
+### Ops
+- Version applicative bumpée à `1.0.0` (API + `/api/health`).
+- Script **`scripts/go_live_reset.py`** (one-shot) : vide l'historique
+  opérationnel (ventes, clients, fidélité, clôtures Z, FEC) en **conservant
+  l'inventaire**, avec garde-fou qui annule (ROLLBACK) si le catalogue bouge.
+- **Suppression de `scripts/purge_databases.py`** (rasait aussi l'inventaire)
+  pour éviter toute fausse manipulation.
+
 ## [0.8.0] - 2026-04-28 — Refonte Relation Client (4 PRs)
 
 Refonte complète de la relation client autour de 3 piliers : programme
