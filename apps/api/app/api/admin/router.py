@@ -1012,14 +1012,23 @@ async def send_email_test(
 
 @router.get("/sms-config", dependencies=[Depends(manager_only)])
 async def get_sms_config():
-    """Retourne le provider SMS actif + sender ID.
+    """Retourne le provider SMS actif + sender ID + sonde compte Brevo.
 
     Brevo (recommandé) partage la clé API avec l'email gateway ; aucun
     secret SMS dédié à poser. Twilio reste un fallback legacy.
-    """
-    from app.services.sms_gateway import describe_active_provider
 
-    return {"live": describe_active_provider()}
+    ``account`` = sonde GET /v3/account avec la clé configurée : révèle le
+    compte réellement ciblé par la clé + son solde de crédits SMS. Permet de
+    diagnostiquer le « 402 not_enough_credits alors que j'ai des crédits »
+    (= la clé pointe vers un autre compte Brevo que celui visible à l'écran).
+    """
+    from app.services.sms_gateway import brevo_account_probe, describe_active_provider
+
+    live = describe_active_provider()
+    out = {"live": live}
+    if live.get("provider") == "brevo":
+        out["account"] = brevo_account_probe()
+    return out
 
 
 class SmsTestRequest(BaseModel):

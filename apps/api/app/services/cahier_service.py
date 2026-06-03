@@ -481,7 +481,13 @@ async def compute_progression_horaire(
     running = 0.0
     for h in range(SHOP_OPEN_HOUR, SHOP_CLOSE_HOUR + 1):
         running += per_hour[h]
-        out.append({"hour": h, "ca_cumul": round(running, 2)})
+        out.append({
+            "hour": h,
+            "ca_cumul": round(running, 2),
+            # CA du SEUL créneau h→h+1 (non cumulé) pour l'histogramme à
+            # bâtons « CA par tranche horaire ». ca_cumul reste la courbe.
+            "ca_hour": round(per_hour[h], 2),
+        })
     return out
 
 

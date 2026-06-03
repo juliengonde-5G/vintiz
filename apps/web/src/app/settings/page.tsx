@@ -172,6 +172,10 @@ export default function SettingsPage() {
   // diagnostiquer un Brevo qui rejette (sender non enregistré, crédit
   // épuisé, compte sous validation…).
   const [smsLive, setSmsLive] = useState<{ provider: string; configured: boolean; from?: string } | null>(null);
+  const [smsAccount, setSmsAccount] = useState<{
+    ok: boolean; error?: string; account_email?: string; company?: string;
+    sms_credits?: number | null; plan_types?: string[];
+  } | null>(null);
   const [smsTestTo, setSmsTestTo] = useState('');
   const [smsTestResult, setSmsTestResult] = useState<{
     ok: boolean; status: string; backend: string; detail?: string; simulated?: boolean;
@@ -225,6 +229,7 @@ export default function SettingsPage() {
       if (res.ok) {
         const data = await res.json();
         setSmsLive(data.live);
+        setSmsAccount(data.account ?? null);
       }
     } catch { /* silent — état affiché en « inconnu » */ }
   };
@@ -1341,6 +1346,40 @@ export default function SettingsPage() {
                   <p className="text-xs text-amber-700 mt-1">
                     Aucun provider configuré — les SMS sont simulés (logs uniquement).
                     Renseigne la clé BREVO_API_KEY dans le bloc Email ci-dessus pour activer.
+                  </p>
+                )}
+                {/* Sonde compte Brevo : ce que la CLÉ voit réellement. Si le
+                    solde ici est 0 / le compte différent de celui du
+                    navigateur → la clé pointe vers un autre compte Brevo. */}
+                {smsAccount && smsAccount.ok && (
+                  <div className="mt-2 pt-2 border-t border-vz-line/60 text-xs space-y-0.5">
+                    <p>
+                      Compte vu par la clé :{' '}
+                      <span className="font-mono">{smsAccount.company || smsAccount.account_email || '—'}</span>
+                      {smsAccount.account_email && smsAccount.company && (
+                        <span className="text-vz-ink-mute"> ({smsAccount.account_email})</span>
+                      )}
+                    </p>
+                    <p>
+                      Crédits SMS vus par la clé :{' '}
+                      <span className={`font-semibold ${(smsAccount.sms_credits ?? 0) > 0 ? 'text-vz-teal' : 'text-red-600'}`}>
+                        {smsAccount.sms_credits ?? 'aucun bucket SMS'}
+                      </span>
+                    </p>
+                    {(smsAccount.sms_credits ?? 0) === 0 && (
+                      <p className="text-red-600">
+                        ⚠ La clé voit 0 crédit SMS. Si Brevo affiche des crédits dans le
+                        navigateur, c&apos;est que cette clé API appartient à un <strong>autre
+                        compte/portefeuille</strong> : régénère une clé dans le compte
+                        « {smsAccount.company || 'celui qui a les crédits'} » et colle-la dans
+                        le bloc Email ci-dessus.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {smsAccount && !smsAccount.ok && (
+                  <p className="mt-2 text-xs text-red-600">
+                    Sonde compte Brevo en échec : {smsAccount.error}
                   </p>
                 )}
               </div>

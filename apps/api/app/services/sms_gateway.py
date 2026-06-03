@@ -139,6 +139,54 @@ def describe_active_provider() -> dict:
     return {"provider": "simulation", "configured": False}
 
 
+def brevo_account_probe() -> dict:
+    """Interroge GET /v3/account avec la clé configurée pour lever
+    l'ambiguïté « j'ai des crédits mais 402 not_enough_credits ».
+
+    Retourne l'identité du compte AUQUEL LA CLÉ DONNE ACCÈS + le solde de
+    crédits SMS que Brevo associe à cette clé. Si ce solde est 0 (ou le
+    compte différent de celui affiché dans le navigateur), c'est que la clé
+    pointe vers un AUTRE compte/portefeuille Brevo que celui qui a les
+    crédits — la cause n°1 du 402 malgré un solde visible ailleurs.
+
+    Best-effort : jamais d'exception remontée (renvoie un dict d'erreur).
+    """
+    api_key = _brevo_api_key()
+    if not api_key:
+        return {"ok": False, "error": "BREVO_API_KEY non configurée"}
+    req = Request(
+        "https://api.brevo.com/v3/account",
+        headers={"api-key": api_key, "Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urlopen(req, timeout=12) as resp:  # noqa: S310 — domaine épinglé
+            data = json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:200] if hasattr(exc, "read") else str(exc)
+        return {"ok": False, "error": f"Brevo {exc.code}: {detail}"}
+    except (URLError, TimeoutError) as exc:
+        return {"ok": False, "error": f"réseau: {exc}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+    # Le solde SMS vit dans le tableau ``plan`` (entrée type=="sms").
+    sms_credits = None
+    plan = data.get("plan") or []
+    if isinstance(plan, list):
+        for p in plan:
+            if isinstance(p, dict) and str(p.get("type", "")).lower() == "sms":
+                sms_credits = p.get("credits")
+                break
+    return {
+        "ok": True,
+        "account_email": data.get("email"),
+        "company": (data.get("companyName") or (data.get("company") or {}).get("name")),
+        "sms_credits": sms_credits,
+        "plan_types": [p.get("type") for p in plan if isinstance(p, dict)],
+    }
+
+
 def _send_via_brevo(message: SMSMessage) -> SMSResult:
     api_key = _brevo_api_key()
     if not api_key:

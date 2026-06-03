@@ -52,7 +52,7 @@ interface CahierPayload {
     reprints: number;
     tickets_fidelo: number;
   };
-  progression_horaire: { hour: number; ca_cumul: number }[];
+  progression_horaire: { hour: number; ca_cumul: number; ca_hour?: number }[];
   progression_cible_horaire: { hour: number; ca_target: number }[];
 }
 
@@ -435,6 +435,13 @@ export default function CahierDuJourPage() {
                 real={data.progression_horaire}
                 target={data.progression_cible_horaire}
               />
+              <h3 className="text-xs font-display font-semibold text-vz-ink-mute uppercase tracking-wider mt-5 mb-2">
+                CA par tranche horaire
+              </h3>
+              <HourlyBarChart
+                data={data.progression_horaire}
+                currentHour={data.date === todayISO() ? new Date().getHours() : null}
+              />
             </section>
 
             {/* Zoning */}
@@ -537,6 +544,69 @@ function Td({ children, align = 'right', accent }: { children: React.ReactNode; 
     <td className={`px-2 py-2 ${alignCls} ${accent ? 'font-bold text-vz-teal' : 'text-black'}`}>
       {children}
     </td>
+  );
+}
+
+// Histogramme à bâtons : CA encaissé par tranche horaire (10-11h, 11-12h…).
+// Complète la courbe cumulée en montrant le rythme réel des ventes dans la
+// journée. ``currentHour`` (null hors jour courant) surligne le créneau en cours.
+function HourlyBarChart({
+  data,
+  currentHour,
+}: {
+  data: { hour: number; ca_cumul: number; ca_hour?: number }[];
+  currentHour: number | null;
+}) {
+  // On retire le dernier créneau (après fermeture) s'il est vide, pour ne pas
+  // afficher une colonne « 20-21h » systématiquement à zéro.
+  const slots = data.filter((d, i) => i < data.length - 1 || (d.ca_hour ?? 0) > 0);
+  const max = Math.max(1, ...slots.map((d) => d.ca_hour ?? 0));
+  const total = slots.reduce((s, d) => s + (d.ca_hour ?? 0), 0);
+
+  if (total === 0) {
+    return <p className="text-sm text-gray-400">Aucune vente sur la journée pour l&apos;instant.</p>;
+  }
+
+  return (
+    <div className="w-full">
+      {/* Valeurs */}
+      <div className="flex gap-1.5 mb-1">
+        {slots.map((d) => (
+          <div key={d.hour} className="flex-1 text-center text-[10px] text-vz-ink-soft tabular-nums">
+            {(d.ca_hour ?? 0) > 0 ? CURRENCY(d.ca_hour) : ''}
+          </div>
+        ))}
+      </div>
+      {/* Bâtons */}
+      <div className="flex items-end gap-1.5" style={{ height: 140 }}>
+        {slots.map((d) => {
+          const v = d.ca_hour ?? 0;
+          const pct = (v / max) * 100;
+          const isNow = currentHour !== null && d.hour === currentHour;
+          return (
+            <div key={d.hour} className="flex-1 flex items-end h-full">
+              <div
+                className={`w-full rounded-t ${isNow ? 'bg-vz-accent' : 'bg-vz-teal'}`}
+                style={{
+                  height: `${v > 0 ? Math.max(3, pct) : 0}%`,
+                  WebkitPrintColorAdjust: 'exact',
+                  printColorAdjust: 'exact',
+                }}
+                title={`${d.hour}-${d.hour + 1}h : ${CURRENCY(v)}`}
+              />
+            </div>
+          );
+        })}
+      </div>
+      {/* Tranches horaires */}
+      <div className="flex gap-1.5 mt-1">
+        {slots.map((d) => (
+          <div key={d.hour} className="flex-1 text-center text-[9px] text-vz-ink-mute whitespace-nowrap">
+            {d.hour}-{d.hour + 1}h
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
