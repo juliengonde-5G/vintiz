@@ -8,6 +8,7 @@ import { formatCurrency } from '@/lib/format';
 
 interface CategoryAgg {
   category_id: string;
+  category_name?: string;
   revenue: number;
   qty_sold: number;
 }
@@ -174,7 +175,7 @@ export default function RetailKpisCard() {
                     className="flex justify-between text-sm"
                   >
                     <span className="text-gray-700 truncate max-w-[200px]">
-                      {c.category_id.slice(0, 8)}…
+                      {c.category_name || `${c.category_id.slice(0, 8)}…`}
                     </span>
                     <span className="text-vz-teal font-medium">
                       {formatCurrency(c.revenue)} · {c.qty_sold} pièces
