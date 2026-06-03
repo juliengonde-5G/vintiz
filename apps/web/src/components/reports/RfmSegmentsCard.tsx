@@ -13,6 +13,9 @@ interface SegmentRow {
 interface SegmentsResponse {
   total_segmented: number;
   segments: SegmentRow[];
+  history_days?: number;
+  min_history_days?: number;
+  enough_history?: boolean;
 }
 
 const SEGMENT_LABELS: Record<string, string> = {
@@ -91,6 +94,19 @@ export default function RfmSegmentsCard() {
         </div>
       )}
 
+      {/* Garde-fou historique : la RFM (récence × fréquence) n'a de sens
+          qu'avec plusieurs semaines de recul. À l'ouverture, tout le monde a
+          acheté le même jour (fréquence 1) → les segments sont du bruit. */}
+      {data && data.enough_history === false && total > 0 && (
+        <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+          <strong>Segmentation peu fiable pour l&apos;instant.</strong> Seulement{' '}
+          {data.history_days ?? 0} jour(s) d&apos;historique de ventes — la RFM
+          (récence × fréquence × montant) devient pertinente à partir d&apos;environ{' '}
+          {data.min_history_days ?? 21} jours. Les segments ci-dessous sont
+          indicatifs et se stabiliseront avec l&apos;accumulation d&apos;achats répétés.
+        </div>
+      )}
+
       {loading || !data ? (
         <p className="text-sm text-gray-400 text-center py-6">Chargement…</p>
       ) : total === 0 ? (
@@ -102,7 +118,7 @@ export default function RfmSegmentsCard() {
           .
         </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className={`space-y-2 ${data.enough_history === false ? 'opacity-60' : ''}`}>
           {data.segments.map((seg) => {
             const pct = total > 0 ? (seg.count / total) * 100 : 0;
             return (

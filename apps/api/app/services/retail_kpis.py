@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.audit import Settings
 from app.models.batch import IntakeBatch
 from app.models.pos import Transaction, TransactionItem, TransactionType
-from app.models.product import Product, ProductStatus
+from app.models.product import Category, Product, ProductStatus
 
 
 _SETTINGS_KEY = "retail_kpis_config"
@@ -235,18 +235,20 @@ async def retail_kpis(
     cat_rows = (await db.execute(
         select(
             Product.category_id,
+            Category.name,
             func.sum(TransactionItem.line_total).label("revenue"),
             func.sum(TransactionItem.quantity).label("qty"),
         )
         .join(TransactionItem, TransactionItem.product_id == Product.id)
         .join(Transaction, Transaction.id == TransactionItem.transaction_id)
+        .join(Category, Category.id == Product.category_id)
         .where(
             Transaction.transaction_type == TransactionType.sale,
             Transaction.created_at >= start,
             Transaction.created_at < end,
             Product.category_id.is_not(None),
         )
-        .group_by(Product.category_id)
+        .group_by(Product.category_id, Category.name)
         .order_by(func.sum(TransactionItem.line_total).desc())
     )).all()
 
@@ -283,16 +285,18 @@ async def retail_kpis(
         "top_categories": [
             {
                 "category_id": str(row[0]),
-                "revenue": round(float(row[1]), 2),
-                "qty_sold": int(row[2]),
+                "category_name": row[1] or "Sans catégorie",
+                "revenue": round(float(row[2]), 2),
+                "qty_sold": int(row[3]),
             }
             for row in cat_rows[:10]
         ],
         "bottom_categories": [
             {
                 "category_id": str(row[0]),
-                "revenue": round(float(row[1]), 2),
-                "qty_sold": int(row[2]),
+                "category_name": row[1] or "Sans catégorie",
+                "revenue": round(float(row[2]), 2),
+                "qty_sold": int(row[3]),
             }
             for row in list(cat_rows)[-3:][::-1]
         ],

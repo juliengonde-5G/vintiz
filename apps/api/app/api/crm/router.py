@@ -1344,13 +1344,41 @@ async def list_rfm_segments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Aggregate counts of clients per RFM segment, plus a sample list."""
+    """Aggregate counts of clients per RFM segment, plus a sample list.
+
+    ``enough_history`` / ``history_days`` : la segmentation RFM repose sur la
+    récence ET la fréquence d'achat. Sur une boutique qui vient d'ouvrir (tout
+    le monde a acheté le même jour, fréquence = 1), les quintiles forcent un
+    classement « Régulières / En sommeil / À risque » qui n'a aucun sens. On
+    expose donc la profondeur d'historique pour que le front prévienne tant
+    qu'elle est insuffisante (< 3 semaines).
+    """
+    from sqlalchemy import func
+
+    from app.models.pos import Transaction, TransactionType
     from app.services.rfm import segment_summary
 
     counts = await segment_summary(db)
     total = sum(counts.values())
+
+    span = await db.execute(
+        select(
+            func.min(Transaction.created_at),
+            func.max(Transaction.created_at),
+        ).where(Transaction.transaction_type == TransactionType.sale)
+    )
+    first_sale, last_sale = span.one()
+    history_days = 0
+    if first_sale and last_sale:
+        history_days = max(0, (last_sale - first_sale).days)
+    MIN_HISTORY_DAYS = 21
+    enough_history = history_days >= MIN_HISTORY_DAYS and total >= 15
+
     return {
         "total_segmented": total,
+        "history_days": history_days,
+        "min_history_days": MIN_HISTORY_DAYS,
+        "enough_history": enough_history,
         "segments": [
             {"segment": seg, "count": cnt}
             for seg, cnt in sorted(counts.items(), key=lambda kv: -kv[1])

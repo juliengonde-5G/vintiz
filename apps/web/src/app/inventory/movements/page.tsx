@@ -146,9 +146,41 @@ export default function StockMovementsPage() {
   const [freeLoading, setFreeLoading] = useState(false);
   const freeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Placement (achalandage) : produit sélectionné → confirmation de zone.
+  // Le moteur IA propose une zone, l'opérateur confirme ou modifie.
+  const [zones, setZones] = useState<{ id: string; name: string }[]>([]);
+  const [placement, setPlacement] = useState<{
+    product: FreeProduct;
+    suggestion: {
+      primary_zone_id: string | null;
+      primary_zone_name: string | null;
+      alternative_zone_id: string | null;
+      alternative_zone_name: string | null;
+      rationale: string | null;
+    } | null;
+    chosenZoneId: string;
+    loadingSuggestion: boolean;
+  } | null>(null);
+
   const focusInput = useCallback(() => {
     // Defer so it survives re-renders / DOM updates after a scan.
     requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
+  // Charge la liste des zones une fois (pour le sélecteur de placement).
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await api.get('/api/admin/zones');
+        if (res.ok && active) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : (data.zones || []);
+          setZones(list.map((z: { id: string; name: string }) => ({ id: z.id, name: z.name })));
+        }
+      } catch { /* silent */ }
+    })();
+    return () => { active = false; };
   }, []);
 
   const loadWeekly = useCallback(async () => {
@@ -215,18 +247,55 @@ export default function StockMovementsPage() {
     return () => { if (freeDebounceRef.current) clearTimeout(freeDebounceRef.current); };
   }, [freeQuery]);
 
-  // Déplacer une pièce réserve→rayon (achalandage manuel, hors proposition).
-  // Statut → displayed ; la zone d'origine est conservée (l'IA / l'opérateur
-  // affinent ensuite). Marche pour TOUT le stock, pas seulement la proposition.
-  const moveToFloor = useCallback(async (p: FreeProduct) => {
-    if (executing) return;
+  // Sélectionner une pièce pour la placer en rayon. On ouvre le panneau de
+  // placement et on demande à l'IA une zone suggérée (que l'opérateur pourra
+  // confirmer ou modifier). C'est le flux unifié : peu importe que la pièce
+  // vienne de la recherche, du flash code-barres ou d'une proposition IA.
+  const selectForPlacement = useCallback(async (p: FreeProduct, preferredZoneId?: string) => {
+    setError('');
+    setPlacement({
+      product: p,
+      suggestion: null,
+      chosenZoneId: preferredZoneId || '',
+      loadingSuggestion: true,
+    });
+    try {
+      const res = await api.get(`/api/inventory/products/${p.id}/suggest-zone`);
+      const sug = res.ok ? await res.json() : null;
+      setPlacement((prev) =>
+        prev && prev.product.id === p.id
+          ? {
+              ...prev,
+              suggestion: sug,
+              // Zone pré-cochée : la zone proposée par l'achalandage (déficit)
+              // si fournie, sinon la suggestion merchandising. L'opérateur reste
+              // libre de la changer.
+              chosenZoneId: preferredZoneId || (sug && sug.primary_zone_id) || '',
+              loadingSuggestion: false,
+            }
+          : prev,
+      );
+    } catch {
+      setPlacement((prev) =>
+        prev && prev.product.id === p.id ? { ...prev, loadingSuggestion: false } : prev,
+      );
+    }
+  }, []);
+
+  // Confirmer le placement : exécute le mouvement réserve→rayon avec la zone
+  // choisie (suggérée ou modifiée par l'opérateur).
+  const confirmPlacement = useCallback(async () => {
+    if (!placement || executing) return;
+    const { product, chosenZoneId } = placement;
     setExecuting(true);
     try {
-      const res = await api.post('/api/inventory/movements/execute', {
-        barcode: p.barcode,
+      const body: Record<string, unknown> = {
+        barcode: product.barcode,
         to_status: 'displayed',
-        reason: 'Achalandage manuel (recherche libre)',
-      });
+        reason: 'Achalandage réserve→rayon (placement confirmé)',
+      };
+      if (chosenZoneId) body.to_zone_id = chosenZoneId;
+      const res = await api.post('/api/inventory/movements/execute', body);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setToast({ kind: 'error', text: (data && data.detail) || 'Mouvement refusé.' });
@@ -234,15 +303,18 @@ export default function StockMovementsPage() {
       }
       const result = data as ExecuteResult;
       setDone((prev) => ({ ...prev, [result.product_id]: result }));
-      setToast({ kind: 'success', text: `${result.name} → rayon ✓` });
-      // Retire la pièce déplacée des résultats pour éviter un double envoi.
-      setFreeResults((prev) => prev.filter((x) => x.id !== p.id));
+      const zoneName = zones.find((z) => z.id === chosenZoneId)?.name;
+      setToast({ kind: 'success', text: `${result.name} → ${zoneName || 'rayon'} ✓` });
+      setFreeResults((prev) => prev.filter((x) => x.id !== product.id));
+      setPlacement(null);
+      setScanValue('');
+      focusInput();
     } catch {
       setToast({ kind: 'error', text: 'Erreur réseau pendant le mouvement.' });
     } finally {
       setExecuting(false);
     }
-  }, [executing]);
+  }, [placement, executing, zones, focusInput]);
 
   // Resolve the scanned barcode against the CURRENT tab's proposals.
   const resolveWeekly = (
@@ -252,17 +324,6 @@ export default function StockMovementsPage() {
     for (const zone of weekly.zones) {
       const item = zone.items.find((it) => it.barcode === barcode);
       if (item) return { item };
-    }
-    return null;
-  };
-
-  const resolveRestock = (
-    barcode: string,
-  ): { item: PlanItem; zone: RestockZone } | null => {
-    if (!restock) return null;
-    for (const zone of restock.zones) {
-      const item = zone.candidates.find((it) => it.barcode === barcode);
-      if (item) return { item, zone };
     }
     return null;
   };
@@ -280,42 +341,42 @@ export default function StockMovementsPage() {
       return;
     }
 
-    let body: Record<string, unknown> | null = null;
-    let productId: string | null = null;
-
-    if (tab === 'amenagement') {
-      const match = resolveWeekly(barcode);
-      if (!match) {
-        setToast({ kind: 'warn', text: `Code ${barcode} hors proposition.` });
-        return;
+    // ── Achalandage : le scan SÉLECTIONNE la pièce (n'importe laquelle) puis
+    // ouvre le panneau de placement (zone suggérée à confirmer/modifier).
+    if (tab === 'achalandage') {
+      try {
+        const res = await api.get(
+          `/api/inventory/products/by-barcode/${encodeURIComponent(barcode)}`,
+        );
+        if (!res.ok) {
+          setToast({ kind: 'warn', text: `Aucun article pour le code ${barcode}.` });
+          return;
+        }
+        const p = await res.json();
+        await selectForPlacement({
+          id: p.id, barcode: p.barcode, name: p.name,
+          sale_price: p.sale_price, status: p.status,
+          category: p.category ?? null, photo_url: p.photo_url ?? null,
+        });
+      } catch {
+        setToast({ kind: 'error', text: 'Erreur réseau pendant la lecture du code.' });
       }
-      productId = match.item.product_id;
-      body = {
-        barcode,
-        to_zone_id: match.item.to_zone_id,
-        reason: 'Aménagement hebdo',
-      };
-    } else {
-      const match = resolveRestock(barcode);
-      if (!match) {
-        // Hors proposition : on ne bloque plus. En achalandage, toute pièce
-        // scannée part en rayon (réserve→rayon), proposition ou pas — c'est
-        // ce que veut l'opérateur qui vide la réserve.
-        body = {
-          barcode,
-          to_status: 'displayed',
-          reason: 'Achalandage réserve→rayon (hors proposition)',
-        };
-      } else {
-        productId = match.item.product_id;
-        body = {
-          barcode,
-          to_status: 'displayed',
-          to_zone_id: match.zone.zone_id,
-          reason: 'Achalandage réserve→rayon',
-        };
-      }
+      return;
     }
+
+    // ── Aménagement (zone↔zone) : exécution directe contre la proposition,
+    // car la zone cible vient du plan hebdo (pas de choix d'implantation).
+    const match = resolveWeekly(barcode);
+    if (!match) {
+      setToast({ kind: 'warn', text: `Code ${barcode} hors proposition.` });
+      return;
+    }
+    const productId = match.item.product_id;
+    const body = {
+      barcode,
+      to_zone_id: match.item.to_zone_id,
+      reason: 'Aménagement hebdo',
+    };
 
     setExecuting(true);
     try {
@@ -329,7 +390,7 @@ export default function StockMovementsPage() {
         return;
       }
       const result = data as ExecuteResult;
-      setDone((prev) => ({ ...prev, [productId as string]: result }));
+      setDone((prev) => ({ ...prev, [productId]: result }));
       setToast({ kind: 'success', text: `${result.name} déplacé ✓` });
     } catch {
       setToast({ kind: 'error', text: 'Erreur réseau pendant le mouvement.' });
@@ -343,6 +404,36 @@ export default function StockMovementsPage() {
     if (e.key === 'Enter') {
       e.preventDefault();
       handleScan();
+    }
+  };
+
+  // Achalandage : Entrée dans le moteur unifié = flash code-barres. On résout
+  // la référence (exact match), sinon on prend l'unique résultat de recherche.
+  const onAchalandageEnter = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const q = freeQuery.trim();
+    if (!q || executing) return;
+    if (looksLikeScannerMojibake(q)) {
+      setToast({ kind: 'error', text: SCANNER_MOJIBAKE_MESSAGE });
+      return;
+    }
+    try {
+      const res = await api.get(`/api/inventory/products/by-barcode/${encodeURIComponent(q)}`);
+      if (res.ok) {
+        const p = await res.json();
+        setFreeQuery('');
+        setFreeResults([]);
+        await selectForPlacement({
+          id: p.id, barcode: p.barcode, name: p.name, sale_price: p.sale_price,
+          status: p.status, category: p.category ?? null, photo_url: p.photo_url ?? null,
+        });
+        return;
+      }
+    } catch { /* fall through to search results */ }
+    // Pas un code-barres exact : si la recherche a 1 seul résultat, on le prend.
+    if (freeResults.length === 1) {
+      await selectForPlacement(freeResults[0]);
     }
   };
 
@@ -388,7 +479,12 @@ export default function StockMovementsPage() {
           ] as { key: Tab; label: string }[]).map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => {
+                setTab(t.key);
+                setPlacement(null);
+                setFreeQuery('');
+                setFreeResults([]);
+              }}
               className={`px-4 py-2 rounded-lg text-sm font-medium min-h-[48px] transition-colors ${
                 tab === t.key ? 'bg-white text-vz-teal shadow-sm' : 'text-gray-500 hover:text-black'
               }`}
@@ -398,101 +494,172 @@ export default function StockMovementsPage() {
           ))}
         </div>
 
-        {/* Scan bar */}
-        <Card className="mb-4">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-black mb-1.5">
-                Scanner le code-barres
-              </label>
-              <input
-                ref={inputRef}
-                autoFocus
-                value={scanValue}
-                onChange={(e) => setScanValue(e.target.value)}
-                onKeyDown={onKeyDown}
-                onBlur={focusInput}
-                placeholder="Douchette ou saisie manuelle puis Entrée…"
-                className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
-              />
+        {/* AMÉNAGEMENT — douchette : scan contre la proposition hebdo (zone↔zone) */}
+        {tab === 'amenagement' && (
+          <Card className="mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-black mb-1.5">
+                  Scanner le code-barres
+                </label>
+                <input
+                  ref={inputRef}
+                  autoFocus
+                  value={scanValue}
+                  onChange={(e) => setScanValue(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  onBlur={focusInput}
+                  placeholder="Douchette ou saisie manuelle puis Entrée…"
+                  className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black font-mono focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                />
+              </div>
+              <Button variant="outline" onClick={reload} disabled={loading}>
+                {loading ? 'Chargement…' : 'Régénérer la proposition'}
+              </Button>
             </div>
-            <Button variant="outline" onClick={reload} disabled={loading}>
-              {loading ? 'Chargement…' : 'Régénérer la proposition'}
-            </Button>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500">
-            <span>
-              {totalProposed} pièce(s) proposée(s)
-            </span>
-            <span className="text-vz-teal font-medium">{doneCount} fait(s) ✓</span>
-            {executing && <span className="text-gray-400">Exécution…</span>}
-          </div>
-          {toast && (
-            <div className={`mt-3 px-3 py-2 rounded-lg border text-sm ${toastCls}`}>
-              {toast.text}
+            <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500">
+              <span>{totalProposed} pièce(s) proposée(s)</span>
+              <span className="text-vz-teal font-medium">{doneCount} fait(s) ✓</span>
+              {executing && <span className="text-gray-400">Exécution…</span>}
             </div>
-          )}
-          <p className="mt-2 text-xs text-gray-400">
-            Astuce : une pièce scannée hors proposition part quand même en
-            rayon (réserve→rayon). Pour chercher par nom, utilisez la recherche
-            ci-dessous.
-          </p>
-        </Card>
+          </Card>
+        )}
 
-        {/* Recherche libre — déplacer TOUT le stock réserve→rayon, même hors
-            proposition. Même moteur de recherche que le POS. */}
-        <Card className="mb-4">
-          <label className="block text-sm font-medium text-black mb-1.5">
-            Recherche libre (tout le stock) — envoyer en rayon
-          </label>
-          <div className="relative">
-            <input
-              value={freeQuery}
-              onChange={(e) => setFreeQuery(e.target.value)}
-              placeholder="Nom, marque ou code-barres…"
-              className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
-            />
-            {freeQuery && (
-              <button
-                type="button"
-                onClick={() => { setFreeQuery(''); setFreeResults([]); }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                aria-label="Effacer"
-              >
-                ✕
-              </button>
+        {/* ACHALANDAGE — moteur UNIQUE : recherche (toutes références) OU flash
+            code-barres. L'IA propose une zone, l'opérateur confirme ou modifie. */}
+        {tab === 'achalandage' && (
+          <Card className="mb-4">
+            <label className="block text-sm font-medium text-black mb-1.5">
+              Rechercher ou flasher une référence
+            </label>
+            <div className="flex gap-3">
+              <div className="relative flex-1">
+                <input
+                  ref={inputRef}
+                  autoFocus
+                  value={freeQuery}
+                  onChange={(e) => setFreeQuery(e.target.value)}
+                  onKeyDown={onAchalandageEnter}
+                  placeholder="Nom, marque ou code-barres — ou flashez puis Entrée"
+                  className="w-full min-h-[48px] px-4 py-2.5 pr-9 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                />
+                {freeQuery && (
+                  <button
+                    type="button"
+                    onClick={() => { setFreeQuery(''); setFreeResults([]); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    aria-label="Effacer"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <Button variant="outline" onClick={reload} disabled={loading}>
+                {loading ? '…' : 'Régénérer'}
+              </Button>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-gray-500">
+              <span>{totalProposed} proposée(s) par l&apos;IA</span>
+              <span className="text-vz-teal font-medium">{doneCount} placée(s) ✓</span>
+            </div>
+
+            {/* Résultats de recherche (masqués quand un placement est en cours) */}
+            {!placement && freeLoading && <p className="mt-2 text-xs text-gray-400">Recherche…</p>}
+            {!placement && freeResults.length > 0 && (
+              <ul className="mt-3 divide-y divide-gray-100 max-h-64 overflow-y-auto">
+                {freeResults.map((p) => {
+                  const onFloor = ['display', 'displayed', 'discounted', 'deep_discounted'].includes(p.status);
+                  return (
+                    <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm text-black truncate">{p.name}</p>
+                        <p className="text-xs text-gray-400 font-mono truncate">
+                          {p.barcode}{p.category ? ` · ${p.category}` : ''} · {p.status}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => selectForPlacement(p)}
+                        disabled={onFloor}
+                        title={onFloor ? 'Déjà en rayon' : 'Choisir et placer en rayon'}
+                      >
+                        {onFloor ? 'En rayon' : 'Placer'}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
-          </div>
-          {freeLoading && <p className="mt-2 text-xs text-gray-400">Recherche…</p>}
-          {freeResults.length > 0 && (
-            <ul className="mt-3 divide-y divide-gray-100 max-h-72 overflow-y-auto">
-              {freeResults.map((p) => {
-                const onFloor = ['display', 'displayed', 'discounted', 'deep_discounted'].includes(p.status);
-                return (
-                  <li key={p.id} className="flex items-center justify-between gap-3 py-2">
-                    <div className="min-w-0">
-                      <p className="text-sm text-black truncate">{p.name}</p>
-                      <p className="text-xs text-gray-400 font-mono truncate">
-                        {p.barcode}{p.category ? ` · ${p.category}` : ''} · {p.status}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      onClick={() => moveToFloor(p)}
-                      disabled={executing || onFloor}
-                      title={onFloor ? 'Déjà en rayon' : 'Envoyer en rayon'}
+            {!placement && freeQuery && !freeLoading && freeResults.length === 0 && (
+              <p className="mt-2 text-xs text-gray-400">Aucun article trouvé.</p>
+            )}
+
+            {/* Panneau de placement : zone suggérée par l'IA, modifiable */}
+            {placement && (
+              <div className="mt-4 p-4 rounded-lg border-2 border-vz-teal bg-vz-teal-soft/30">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-black truncate">{placement.product.name}</p>
+                    <p className="text-xs text-gray-500 font-mono truncate">
+                      {placement.product.barcode}
+                      {placement.product.category ? ` · ${placement.product.category}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setPlacement(null); focusInput(); }}
+                    className="text-gray-400 hover:text-gray-600 text-sm flex-shrink-0"
+                  >
+                    Annuler
+                  </button>
+                </div>
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Zone d&apos;implantation
+                    {placement.loadingSuggestion && <span className="text-gray-400 font-normal"> (suggestion IA…)</span>}
+                  </label>
+                  <select
+                    value={placement.chosenZoneId}
+                    onChange={(e) => setPlacement((prev) => (prev ? { ...prev, chosenZoneId: e.target.value } : prev))}
+                    className="w-full min-h-[48px] px-3 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                  >
+                    <option value="">— Rayon (sans zone précise) —</option>
+                    {zones.map((z) => (
+                      <option key={z.id} value={z.id}>{z.name}</option>
+                    ))}
+                  </select>
+                  {placement.suggestion?.primary_zone_name && (
+                    <p className="mt-1.5 text-xs text-vz-teal-deep">
+                      💡 Suggéré : <strong>{placement.suggestion.primary_zone_name}</strong>
+                      {placement.suggestion.rationale ? ` — ${placement.suggestion.rationale}` : ''}
+                    </p>
+                  )}
+                  {placement.suggestion?.alternative_zone_id && placement.suggestion.alternative_zone_id !== placement.chosenZoneId && (
+                    <button
+                      type="button"
+                      onClick={() => setPlacement((prev) => (prev && prev.suggestion?.alternative_zone_id ? { ...prev, chosenZoneId: prev.suggestion.alternative_zone_id } : prev))}
+                      className="mt-1 text-xs text-gray-500 underline"
                     >
-                      {onFloor ? 'En rayon' : '→ Rayon'}
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {freeQuery && !freeLoading && freeResults.length === 0 && (
-            <p className="mt-2 text-xs text-gray-400">Aucun article trouvé.</p>
-          )}
-        </Card>
+                      Alternative : {placement.suggestion.alternative_zone_name}
+                    </button>
+                  )}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <Button onClick={confirmPlacement} disabled={executing}>
+                    {executing ? 'Placement…' : 'Confirmer le placement →'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* Toast partagé (les deux onglets) */}
+        {toast && (
+          <div className={`mb-4 px-3 py-2 rounded-lg border text-sm ${toastCls}`}>
+            {toast.text}
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-lg">{error}</div>
@@ -505,7 +672,17 @@ export default function StockMovementsPage() {
         ) : tab === 'amenagement' ? (
           <WeeklyView plan={weekly} done={done} />
         ) : (
-          <RestockView plan={restock} done={done} />
+          <RestockView
+            plan={restock}
+            done={done}
+            onPick={(item, zoneId) => selectForPlacement(
+              {
+                id: item.product_id, barcode: item.barcode, name: item.name,
+                sale_price: 0, status: 'stock', category: null, photo_url: null,
+              },
+              zoneId,
+            )}
+          />
         )}
 
         {!loading && plan && totalProposed === 0 && (
@@ -589,9 +766,11 @@ function WeeklyView({
 function RestockView({
   plan,
   done,
+  onPick,
 }: {
   plan: RestockPlan | null;
   done: Record<string, ExecuteResult>;
+  onPick: (item: PlanItem, zoneId: string, zoneName: string) => void;
 }) {
   if (!plan || plan.zones.length === 0) return null;
   return (
@@ -644,6 +823,15 @@ function RestockView({
                       <p className="text-xs text-gray-500">{describe(item)}</p>
                       <p className="text-[11px] font-mono text-gray-400 mt-0.5">{item.barcode}</p>
                     </div>
+                    {!isDone && (
+                      <Button
+                        variant="outline"
+                        onClick={() => onPick(item, zone.zone_id, zone.zone_name)}
+                        title={`Placer en ${zone.zone_name}`}
+                      >
+                        Placer
+                      </Button>
+                    )}
                   </li>
                 );
               })}
