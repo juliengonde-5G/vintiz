@@ -22,6 +22,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
+import { looksLikeScannerMojibake, SCANNER_MOJIBAKE_MESSAGE } from '@/lib/barcode';
 
 type Tab = 'amenagement' | 'achalandage';
 
@@ -208,6 +209,13 @@ export default function StockMovementsPage() {
     setScanValue('');
     focusInput();
     if (!barcode || executing) return;
+
+    // Garde-fou mojibake : « &é"'(-è_çà » = douchette en QWERTY sur tablette
+    // AZERTY. On n'envoie rien à l'API (aucun produit ne matchera).
+    if (looksLikeScannerMojibake(barcode)) {
+      setToast({ kind: 'error', text: SCANNER_MOJIBAKE_MESSAGE });
+      return;
+    }
 
     let body: Record<string, unknown> | null = null;
     let productId: string | null = null;

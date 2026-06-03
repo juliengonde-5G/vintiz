@@ -22,6 +22,7 @@ import MultiStepPaymentWizard from '@/components/pos/MultiStepPaymentWizard';
 import ReceiptPreviewCard from '@/components/pos/ReceiptPreviewCard';
 import { usePosPayment, type SumUpPaymentDetails } from '@/hooks/usePosPayment';
 import { api } from '@/lib/api';
+import { looksLikeScannerMojibake, SCANNER_MOJIBAKE_MESSAGE } from '@/lib/barcode';
 import { useConnectivity } from '@/lib/connectivity';
 import { isPosWizardEnabled } from '@/lib/feature-flags';
 import { formatCurrency, mediaUrl } from '@/lib/format';
@@ -814,6 +815,15 @@ export default function POSPage() {
   const handleBarcodeScan = useCallback(async (rawCode: string) => {
     const code = rawCode.trim();
     if (!code) return;
+    // Garde-fou mojibake : si la chaîne reçue contient surtout des caractères
+    // spéciaux, on suppose la douchette en QWERTY sur tablette AZERTY. On
+    // arrête là (inutile d'interroger l'API : aucun produit ne matchera)
+    // et on remonte la cause à la caissière.
+    if (looksLikeScannerMojibake(code)) {
+      setError(SCANNER_MOJIBAKE_MESSAGE);
+      setSearchQuery('');
+      return;
+    }
     try {
       const exactRes = await api.get(
         `/api/inventory/products/by-barcode/${encodeURIComponent(code)}`,

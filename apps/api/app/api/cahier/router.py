@@ -5,6 +5,7 @@ Mounted at /api/cahier. Most reads are authenticated; mutations require manager 
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import date, datetime, timedelta
 from typing import Annotated
 
@@ -19,6 +20,8 @@ from app.services import cahier_service as svc
 from app.services.weather_service import get_current_weather
 
 router = APIRouter(prefix="/cahier", tags=["cahier"])
+
+logger = logging.getLogger(__name__)
 
 manager_only = RoleChecker(["manager"])
 
@@ -56,7 +59,7 @@ async def get_cahier(
     in advance). Live KPIs are zero on those days; the daily target
     is computed from monthly_target × weekday_weights.
     """
-    today = date.today()
+    today = svc.today_paris()
 
     # Monthly target setting
     target_key = f"cahier.monthly_target.{report_date.year:04d}-{report_date.month:02d}"
@@ -107,6 +110,26 @@ async def get_cahier(
     obj = ca_objectif_jour or 0.0
     prog_vs_obj_pct = round(perf["ca"] / obj * 100, 1) if obj > 0 else None
     delta_vs_n1_pct = round((perf["ca"] - ca_n1) / ca_n1 * 100, 1) if ca_n1 > 0 else None
+
+    # Trace structurée : permet de diagnostiquer un « cahier vide » sans
+    # ouvrir la base. Visible dans les logs API (LOG_JSON=true côté prod).
+    # On dump les nombres-clés (CA / tk / cumul mois) et la source du N-1
+    # — si la caissière voit 0 € alors qu'elle vient d'encaisser, l'écart
+    # apparaît tout de suite ici.
+    logger.info(
+        "cahier.read date=%s today_paris=%s ca=%.2f tk=%d "
+        "monthly_target=%s prog_mois=%.2f ca_n1=%.2f ca_n1_source=%s "
+        "weights_source=%s",
+        report_date.isoformat(),
+        today.isoformat(),
+        perf["ca"],
+        perf["tk"],
+        f"{monthly_target:.2f}" if monthly_target is not None else "unset",
+        prog_mois,
+        ca_n1,
+        ca_n1_source,
+        weights_data.get("source", "?"),
+    )
 
     return {
         "date": report_date.isoformat(),
@@ -268,7 +291,7 @@ async def set_daily_text(
 ):
     """Update daily message + operation. Past dates are read-only;
     today and future dates can be edited (pre-fill in advance)."""
-    today = date.today()
+    today = svc.today_paris()
     if payload.date < today:
         raise HTTPException(
             status_code=403,
@@ -396,7 +419,7 @@ async def upsert_cahier_archive(
         row.actual_revenue = payload.actual_revenue
 
     # Auto-lock à J+7
-    days_since = (date.today() - payload.report_date).days
+    days_since = (svc.today_paris() - payload.report_date).days
     if days_since >= 7:
         row.locked_at = datetime.now()
 

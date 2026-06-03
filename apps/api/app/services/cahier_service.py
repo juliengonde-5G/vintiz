@@ -9,6 +9,7 @@ import calendar
 import json
 from datetime import date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +24,45 @@ from app.models.store import StoreZone, ZoneProduct
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
+# Vintiz tourne sur un serveur en UTC mais la boutique vit en heure de Paris.
+# Avant le fix : ``datetime.combine(report_date, time.min)`` produisait un
+# datetime NAÏF interprété en UTC par Postgres lors de la comparaison à
+# ``Transaction.created_at`` (TIMESTAMPTZ). Conséquence : la « journée » du
+# cahier s'ouvrait à 2 h Paris (CEST) / 1 h (CET) au lieu de minuit boutique,
+# et les ventes d'avant 2 h tombaient dans le cahier de la veille. Plus
+# subtilement, le graphe de progression horaire affichait les ventes
+# avec leur heure UTC (un encaissement à 12 h Paris apparaissait à 10 h sur
+# la courbe → la caissière croyait « rien vendu ce matin »).
+#
+# Désormais on fenêtre explicitement en Europe/Paris : asyncpg convertit
+# l'aware vers UTC pour la requête, et la heure affichée correspond à
+# l'horaire réel de l'encaissement.
+EUROPE_PARIS = ZoneInfo("Europe/Paris")
+
+
+def _day_window(report_date: date) -> tuple[datetime, datetime]:
+    """Return [start, end) du jour ``report_date`` en heure de Paris.
+
+    Renvoie deux datetimes timezone-aware. SQLAlchemy/asyncpg les convertit
+    automatiquement en UTC pour la comparaison à ``Transaction.created_at``
+    (TIMESTAMPTZ). À utiliser systématiquement à la place de
+    ``datetime.combine(d, time.min)`` dans les requêtes du cahier.
+    """
+    start = datetime.combine(report_date, time.min, tzinfo=EUROPE_PARIS)
+    end = datetime.combine(report_date + timedelta(days=1), time.min, tzinfo=EUROPE_PARIS)
+    return start, end
+
+
+def today_paris() -> date:
+    """Date du jour boutique (Europe/Paris).
+
+    ``date.today()`` retourne la date du serveur (UTC en prod). Quand on est
+    en début/fin de journée Paris-time, ça décale la « date du jour » du
+    cahier d'un cran. ``today_paris()`` corrige ça.
+    """
+    return datetime.now(EUROPE_PARIS).date()
+
 
 WEEKDAY_LABELS_FR = [
     "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"
@@ -75,30 +115,33 @@ async def get_weekday_weights(
     when the boutique lacks history.
     """
     cache_key = "cahier.weekday_weights.cache"
-    today_str = date.today().isoformat()
+    today_str = today_paris().isoformat()
 
     if not force_recompute:
         cached = await read_setting_json(db, cache_key)
         if cached and cached.get("computed_at") == today_str:
             return cached
 
-    # Compute from the last 84 days (12 weeks).
-    end = date.today()
+    # Compute from the last 84 days (12 weeks), fenêtre Paris.
+    end = today_paris()
     start = end - timedelta(days=84)
-    day_start = datetime.combine(start, time.min)
-    day_end = datetime.combine(end, time.min)
+    day_start, day_end = _day_window(start)
+    _, end_exclusive = _day_window(end - timedelta(days=1))
 
     rows = await db.execute(
         select(Transaction.created_at, Transaction.total_ttc).where(
             Transaction.transaction_type == TransactionType.sale,
             Transaction.created_at >= day_start,
-            Transaction.created_at < day_end,
+            Transaction.created_at < end_exclusive,
         )
     )
     buckets = [0.0] * 7
     total = 0.0
     for created_at, amount in rows.all():
-        wd = created_at.weekday()
+        # Bucket par jour de la semaine côté Paris (sinon une vente du
+        # samedi soir 23 h Paris tomberait dimanche UTC).
+        local = created_at.astimezone(EUROPE_PARIS) if created_at.tzinfo else created_at
+        wd = local.weekday()
         val = float(amount or 0)
         buckets[wd] += val
         total += val
@@ -158,8 +201,7 @@ def compute_daily_target(
 # ---------------------------------------------------------------------------
 
 async def _sum_sales_on(db: AsyncSession, target_date: date) -> float:
-    day_start = datetime.combine(target_date, time.min)
-    day_end = datetime.combine(target_date + timedelta(days=1), time.min)
+    day_start, day_end = _day_window(target_date)
     result = await db.execute(
         select(func.coalesce(func.sum(Transaction.total_ttc), 0)).where(
             Transaction.transaction_type == TransactionType.sale,
@@ -207,9 +249,9 @@ async def compute_ca_n1(db: AsyncSession, report_date: date) -> tuple[float, str
 async def sum_sales_in_range(
     db: AsyncSession, start: date, end_exclusive: date
 ) -> float:
-    """Total TTC revenue across a half-open date range."""
-    day_start = datetime.combine(start, time.min)
-    day_end = datetime.combine(end_exclusive, time.min)
+    """Total TTC revenue across a half-open date range (heure Paris)."""
+    day_start, _ = _day_window(start)
+    _, day_end = _day_window(end_exclusive - timedelta(days=1))
     result = await db.execute(
         select(func.coalesce(func.sum(Transaction.total_ttc), 0)).where(
             Transaction.transaction_type == TransactionType.sale,
@@ -226,8 +268,7 @@ async def sum_sales_in_range(
 
 async def compute_performance(db: AsyncSession, report_date: date) -> dict:
     """CA, tk, IV, PM, PROD, tx_crm_pct, loyalty_pct for report_date."""
-    day_start = datetime.combine(report_date, time.min)
-    day_end = datetime.combine(report_date + timedelta(days=1), time.min)
+    day_start, day_end = _day_window(report_date)
 
     # Aggregate CA + tk
     agg = await db.execute(
@@ -301,8 +342,7 @@ async def compute_performance(db: AsyncSession, report_date: date) -> dict:
 # ---------------------------------------------------------------------------
 
 async def compute_crm_loyalty(db: AsyncSession, report_date: date) -> dict:
-    day_start = datetime.combine(report_date, time.min)
-    day_end = datetime.combine(report_date + timedelta(days=1), time.min)
+    day_start, day_end = _day_window(report_date)
 
     fiches = await db.execute(
         select(func.count(Client.id)).where(
@@ -344,8 +384,7 @@ async def _zones_ca_for_date(
     db: AsyncSession, report_date: date
 ) -> dict[str, tuple[float, int]]:
     """Return {zone_id_str: (ca, units)} for sales landed on report_date."""
-    day_start = datetime.combine(report_date, time.min)
-    day_end = datetime.combine(report_date + timedelta(days=1), time.min)
+    day_start, day_end = _day_window(report_date)
 
     rows = await db.execute(
         select(
@@ -411,9 +450,8 @@ async def compute_zones_today(db: AsyncSession, report_date: date) -> list[dict]
 async def compute_progression_horaire(
     db: AsyncSession, report_date: date
 ) -> list[dict]:
-    """Cumulative CA per hour across shop opening hours."""
-    day_start = datetime.combine(report_date, time.min)
-    day_end = datetime.combine(report_date + timedelta(days=1), time.min)
+    """Cumulative CA per hour across shop opening hours (heure Paris)."""
+    day_start, day_end = _day_window(report_date)
 
     rows = await db.execute(
         select(Transaction.created_at, Transaction.total_ttc).where(
@@ -424,7 +462,12 @@ async def compute_progression_horaire(
     )
     per_hour = [0.0] * 24
     for created_at, amount in rows.all():
-        per_hour[created_at.hour] += float(amount or 0)
+        # ``created_at`` est TIMESTAMPTZ (UTC en base) ; on bucket par heure
+        # Paris pour que la courbe colle au planning boutique. Avant le fix,
+        # un encaissement de 12 h Paris (= 10 h UTC l'été) atterrissait à
+        # 10 h sur le graphe → impression de matinée vide.
+        local = created_at.astimezone(EUROPE_PARIS) if created_at.tzinfo else created_at
+        per_hour[local.hour] += float(amount or 0)
 
     out: list[dict] = []
     running = 0.0
@@ -480,7 +523,7 @@ async def get_or_freeze_daily_target(
     after midnight so that editing the monthly target later doesn't rewrite
     history. Today's target stays live.
     """
-    if report_date >= date.today():
+    if report_date >= today_paris():
         return round(live_target, 2)
 
     snap_key = f"cahier.daily_target_snapshot.{report_date.isoformat()}"
