@@ -69,7 +69,7 @@ class AccountingConfig(Base):
     pennylane_api_url: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
-        default="https://app.pennylane.com/api/external/v1",
+        default="https://app.pennylane.com/api/external/v2",
     )
 
     # ── Alertes ──────────────────────────────────────────────────────────────

@@ -85,9 +85,29 @@ export default function ExportDetailPage() {
     }
   };
 
-  const downloadFec = () => {
+  const downloadFec = async () => {
     if (!exp?.fec_filename) return;
-    window.open(`/api/accounting/exports/${id}/fec`, '_blank');
+    // Voir page liste : download authentifié via blob (token + base API),
+    // sinon window.open tape le front et renvoie une page 404.
+    try {
+      const res = await api.get(`/api/accounting/exports/${id}/fec`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(body.detail || `Téléchargement FEC impossible (HTTP ${res.status})`);
+        return;
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = exp.fec_filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      alert('Erreur réseau pendant le téléchargement du FEC');
+    }
   };
 
   if (!exp) {
