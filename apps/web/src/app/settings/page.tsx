@@ -174,7 +174,8 @@ export default function SettingsPage() {
   const [smsLive, setSmsLive] = useState<{ provider: string; configured: boolean; from?: string } | null>(null);
   const [smsAccount, setSmsAccount] = useState<{
     ok: boolean; error?: string; account_email?: string; company?: string;
-    sms_credits?: number | null; plan_types?: string[];
+    sms_credits?: number | null; email_plan_type?: string | null;
+    can_send_transactional_sms?: boolean; plan_types?: string[];
   } | null>(null);
   const [smsTestTo, setSmsTestTo] = useState('');
   const [smsTestResult, setSmsTestResult] = useState<{
@@ -1359,6 +1360,11 @@ export default function SettingsPage() {
                       {smsAccount.account_email && smsAccount.company && (
                         <span className="text-vz-ink-mute"> ({smsAccount.account_email})</span>
                       )}
+                      {smsAccount.email_plan_type && (
+                        <span className="ml-2 text-vz-ink-mute">
+                          · Plan Brevo : <strong className="uppercase">{smsAccount.email_plan_type}</strong>
+                        </span>
+                      )}
                     </p>
                     <p>
                       Crédits SMS vus par la clé :{' '}
@@ -1366,6 +1372,8 @@ export default function SettingsPage() {
                         {smsAccount.sms_credits ?? 'aucun bucket SMS'}
                       </span>
                     </p>
+                    {/* 3 cas distincts : crédits=0 → autre compte ; crédits>0 +
+                        plan Free → limitation plan ; crédits>0 + plan payant → tout OK. */}
                     {(smsAccount.sms_credits ?? 0) === 0 && (
                       <p className="text-red-600">
                         ⚠ La clé voit 0 crédit SMS. Si Brevo affiche des crédits dans le
@@ -1373,6 +1381,26 @@ export default function SettingsPage() {
                         compte/portefeuille</strong> : régénère une clé dans le compte
                         « {smsAccount.company || 'celui qui a les crédits'} » et colle-la dans
                         le bloc Email ci-dessus.
+                      </p>
+                    )}
+                    {(smsAccount.sms_credits ?? 0) > 0 && smsAccount.email_plan_type === 'free' && (
+                      <p className="text-red-600">
+                        ⚠ Crédits SMS visibles ({smsAccount.sms_credits}) mais le plan Brevo
+                        est <strong>FREE</strong> : l&apos;API SMS transactionnelle est
+                        <strong> désactivée sur l&apos;offre Free</strong> (Brevo l&apos;autorise
+                        uniquement via l&apos;UI campagne marketing). Solutions :{' '}
+                        <strong>(a)</strong> passer en plan Starter+ chez Brevo,{' '}
+                        <strong>(b)</strong> basculer la passerelle SMS sur Twilio (legacy fallback).
+                      </p>
+                    )}
+                    {(smsAccount.sms_credits ?? 0) > 0 &&
+                      smsAccount.email_plan_type &&
+                      smsAccount.email_plan_type !== 'free' &&
+                      smsAccount.can_send_transactional_sms === false && (
+                      <p className="text-amber-700">
+                        Crédits visibles et plan payant — mais l&apos;API SMS transactionnel
+                        semble bloquée. Demande au support Brevo l&apos;activation
+                        transactionnelle du compte.
                       </p>
                     )}
                   </div>
