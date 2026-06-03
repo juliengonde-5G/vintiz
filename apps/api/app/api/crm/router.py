@@ -288,13 +288,11 @@ async def get_client_full(
 ):
     """Aggregated client detail for the admin /clients/[id] page (PR4).
 
-    Returns 6 sections in a single round-trip:
-    - ``client``         — identity, contact, opt-ins, RFM, avoir.
-    - ``loyalty``        — membership_number, points, mode, expiry.
-    - ``transactions``   — last 50 sales/refunds with item names.
-    - ``taste_profile``  — top categories/brands/colors/sizes (90d window).
-    - ``consents``       — latest decision per RGPD purpose with metadata.
-    - ``audit``          — last 50 audit_log rows scoped to this client.
+    Résilience : chaque section est isolée dans un try/except. Une section
+    qui plante (data malformée, enum legacy, migration partielle…) atterrit
+    dans ``errors`` au lieu de transformer la fiche en 500 aveugle. La
+    trace complète part dans les logs API (ERROR), la fiche se charge en
+    partial-data et le front affiche un bandeau « X sections en erreur ».
     """
     from sqlalchemy.orm import selectinload
 
@@ -311,179 +309,232 @@ async def get_client_full(
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    # Reuse the existing brief — it already aggregates favorite
-    # categories / brands / colors / sizes + last visit.
-    brief = await get_customer_brief(db, client_id)
-    taste = {
-        "favorite_categories": (brief or {}).get("favorite_categories", []),
-        "favorite_brands": (brief or {}).get("favorite_brands", []),
-        "favorite_colors": (brief or {}).get("favorite_colors", []),
-        "size_profile": (brief or {}).get("size_profile", {}),
-        "lifetime_value": (brief or {}).get("lifetime_value", 0),
-        "last_visit": (brief or {}).get("last_visit"),
-        "days_since_last_visit": (brief or {}).get("days_since_last_visit"),
-    }
+    errors: list[dict] = []
 
-    # Last 50 transactions with item names + payment summary.
-    from app.models.pos import TransactionItem
-
-    tx_rows = await db.execute(
-        select(Transaction)
-        .options(
-            selectinload(Transaction.items).selectinload(TransactionItem.product),
-            selectinload(Transaction.payments),
+    def _record_error(section: str, exc: Exception) -> None:
+        logger.exception(
+            "get_client_full section=%s client_id=%s failed", section, client_id,
         )
-        .where(Transaction.client_id == client_id)
-        .order_by(Transaction.created_at.desc())
-        .limit(50)
-    )
-    transactions = []
-    for t in tx_rows.scalars().all():
-        transactions.append({
-            "id": str(t.id),
-            "transaction_number": t.transaction_number,
-            "transaction_type": t.transaction_type.value,
-            "total_ttc": float(t.total_ttc or 0),
-            "created_at": t.created_at.isoformat() if t.created_at else None,
-            "item_count": len(t.items or []),
-            "payment_methods": sorted({p.method.value for p in (t.payments or [])}),
-            # V2 — flag gifts so the fiche can list "achats hors-profil".
-            "is_gift": bool(getattr(t, "is_gift", False)),
+        errors.append({
+            "section": section,
+            "error_type": type(exc).__name__,
+            "message": str(exc)[:300],
         })
 
-    # Loyalty ledger — last 30 entries.
+    # ── taste_profile ────────────────────────────────────────────────────
+    taste = {
+        "favorite_categories": [], "favorite_brands": [], "favorite_colors": [],
+        "size_profile": {}, "lifetime_value": 0,
+        "last_visit": None, "days_since_last_visit": None,
+    }
+    try:
+        brief = await get_customer_brief(db, client_id)
+        if brief:
+            taste = {
+                "favorite_categories": brief.get("favorite_categories", []),
+                "favorite_brands": brief.get("favorite_brands", []),
+                "favorite_colors": brief.get("favorite_colors", []),
+                "size_profile": brief.get("size_profile", {}),
+                "lifetime_value": brief.get("lifetime_value", 0),
+                "last_visit": brief.get("last_visit"),
+                "days_since_last_visit": brief.get("days_since_last_visit"),
+            }
+    except Exception as exc:  # noqa: BLE001
+        _record_error("taste_profile", exc)
+
+    # ── transactions ────────────────────────────────────────────────────
+    from app.models.pos import TransactionItem
+
+    transactions: list[dict] = []
+    try:
+        tx_rows = await db.execute(
+            select(Transaction)
+            .options(
+                selectinload(Transaction.items).selectinload(TransactionItem.product),
+                selectinload(Transaction.payments),
+            )
+            .where(Transaction.client_id == client_id)
+            .order_by(Transaction.created_at.desc())
+            .limit(50)
+        )
+        for t in tx_rows.scalars().all():
+            try:
+                transactions.append({
+                    "id": str(t.id),
+                    "transaction_number": t.transaction_number,
+                    "transaction_type": t.transaction_type.value if t.transaction_type else None,
+                    "total_ttc": float(t.total_ttc or 0),
+                    "created_at": t.created_at.isoformat() if t.created_at else None,
+                    "item_count": len(t.items or []),
+                    "payment_methods": sorted({
+                        p.method.value for p in (t.payments or []) if p.method
+                    }),
+                    "is_gift": bool(getattr(t, "is_gift", False)),
+                })
+            except Exception as exc:  # noqa: BLE001
+                _record_error(f"transactions.row[{t.id}]", exc)
+    except Exception as exc:  # noqa: BLE001
+        _record_error("transactions", exc)
+
+    # ── loyalty ledger ──────────────────────────────────────────────────
     loyalty_block = None
     if client.loyalty_account:
-        ledger_rows = await db.execute(
-            select(LoyaltyTransaction)
-            .where(LoyaltyTransaction.account_id == client.loyalty_account.id)
-            .order_by(LoyaltyTransaction.created_at.desc())
-            .limit(30)
+        try:
+            ledger_rows = await db.execute(
+                select(LoyaltyTransaction)
+                .where(LoyaltyTransaction.account_id == client.loyalty_account.id)
+                .order_by(LoyaltyTransaction.created_at.desc())
+                .limit(30)
+            )
+            loyalty_block = {
+                "membership_number": client.loyalty_account.membership_number,
+                "points": int(client.loyalty_account.points or 0),
+                "mode": client.loyalty_subscription_mode,
+                "subscribed_at": client.loyalty_subscribed_at.isoformat()
+                if client.loyalty_subscribed_at else None,
+                "expires_at": client.loyalty_expires_at.isoformat()
+                if client.loyalty_expires_at else None,
+                "ledger": [
+                    {
+                        "id": str(lt.id),
+                        "type": lt.tx_type.value if lt.tx_type else None,
+                        "points": int(lt.points or 0),
+                        "description": lt.description,
+                        "created_at": lt.created_at.isoformat() if lt.created_at else None,
+                    }
+                    for lt in ledger_rows.scalars().all()
+                ],
+            }
+        except Exception as exc:  # noqa: BLE001
+            _record_error("loyalty", exc)
+
+    # ── consents (latest per purpose) ───────────────────────────────────
+    consents: list[dict] = []
+    profiling_granted = False
+    try:
+        consent_rows = await db.execute(
+            select(Consent)
+            .where(Consent.client_id == client_id)
+            .order_by(Consent.created_at.desc())
         )
-        loyalty_block = {
-            "membership_number": client.loyalty_account.membership_number,
-            "points": int(client.loyalty_account.points or 0),
-            "mode": client.loyalty_subscription_mode,
-            "subscribed_at": client.loyalty_subscribed_at.isoformat()
-            if client.loyalty_subscribed_at else None,
-            "expires_at": client.loyalty_expires_at.isoformat()
-            if client.loyalty_expires_at else None,
-            "ledger": [
-                {
-                    "id": str(lt.id),
-                    "type": lt.tx_type.value,
-                    "points": int(lt.points or 0),
-                    "description": lt.description,
-                    "created_at": lt.created_at.isoformat() if lt.created_at else None,
-                }
-                for lt in ledger_rows.scalars().all()
-            ],
-        }
-
-    # Consents — same shape as /account/consents (latest per purpose).
-    consent_rows = await db.execute(
-        select(Consent)
-        .where(Consent.client_id == client_id)
-        .order_by(Consent.created_at.desc())
-    )
-    latest_per_purpose: dict[ConsentPurpose, Consent] = {}
-    for c in consent_rows.scalars().all():
-        latest_per_purpose.setdefault(c.purpose, c)
-    consents = [
-        {
-            "purpose": purpose.value,
-            "granted": bool(latest_per_purpose[purpose].granted)
-            if purpose in latest_per_purpose else False,
-            "source": latest_per_purpose[purpose].source if purpose in latest_per_purpose else None,
-            "policy_version": latest_per_purpose[purpose].policy_version
-            if purpose in latest_per_purpose else None,
-            "recorded_at": latest_per_purpose[purpose].created_at.isoformat()
-            if purpose in latest_per_purpose and latest_per_purpose[purpose].created_at else None,
-        }
-        # data_sharing (B2B) is permanently disabled — never surfaced (#8).
-        for purpose in ConsentPurpose
-        if purpose != ConsentPurpose.data_sharing
-    ]
-    profiling_granted = any(
-        c["purpose"] == "profiling" and c["granted"] for c in consents
-    )
-
-    # Qualification (PS 360 V2). Declarative L1 (genre/âge) is shown to the
-    # manager regardless; the *computed* signals (season/price/trend) are only
-    # surfaced when the member granted profiling consent (audit §9.6).
-    qualification = {
-        "profiling_consent": profiling_granted,
-        "gender_profile": client.gender_profile,
-        "age_band": client.age_band,
-        "season_bias": client.season_bias if profiling_granted else None,
-        "price_ceiling_cents": client.price_ceiling_cents if profiling_granted else None,
-        "price_sensitivity": client.price_sensitivity if profiling_granted else None,
-        "trend_affinity": client.trend_affinity if profiling_granted else None,
-    }
-
-    # Audit log — entity_id == client.id is the simplest scoping; the
-    # audit service writes one row per Client mutation already.
-    audit_rows = await db.execute(
-        select(AuditLog)
-        .where(AuditLog.entity_id == client_id)
-        .order_by(AuditLog.created_at.desc())
-        .limit(50)
-    )
-    audit = [
-        {
-            "id": str(a.id),
-            "action": a.action,
-            "entity": a.entity,
-            "data": a.data,
-            "user_id": str(a.user_id) if a.user_id else None,
-            "created_at": a.created_at.isoformat() if a.created_at else None,
-        }
-        for a in audit_rows.scalars().all()
-    ]
-
-    # Communications sent to this client (last 50) — emails + SMS automatiques.
-    from app.models.communications import CommunicationLog
-
-    comm_rows = await db.execute(
-        select(CommunicationLog)
-        .where(CommunicationLog.client_id == client_id)
-        .order_by(CommunicationLog.created_at.desc())
-        .limit(50)
-    )
-    communications = [
-        {
-            "id": str(c.id),
-            "channel": c.channel,
-            "kind": c.kind,
-            "subject": c.subject,
-            "status": c.status,
-            "backend": c.backend,
-            "to_address": c.to_address,
-            "created_at": c.created_at.isoformat() if c.created_at else None,
-        }
-        for c in comm_rows.scalars().all()
-    ]
-
-    # Active coupons attached.
-    coupon_rows = await db.execute(
-        select(Coupon)
-        .where(
-            Coupon.client_id == client_id,
-            Coupon.is_active.is_(True),
-            Coupon.redeemed_at.is_(None),
+        latest_per_purpose: dict[ConsentPurpose, Consent] = {}
+        for c in consent_rows.scalars().all():
+            if c.purpose is not None:
+                latest_per_purpose.setdefault(c.purpose, c)
+        consents = [
+            {
+                "purpose": purpose.value,
+                "granted": bool(latest_per_purpose[purpose].granted)
+                if purpose in latest_per_purpose else False,
+                "source": latest_per_purpose[purpose].source if purpose in latest_per_purpose else None,
+                "policy_version": latest_per_purpose[purpose].policy_version
+                if purpose in latest_per_purpose else None,
+                "recorded_at": latest_per_purpose[purpose].created_at.isoformat()
+                if purpose in latest_per_purpose and latest_per_purpose[purpose].created_at else None,
+            }
+            for purpose in ConsentPurpose
+            if purpose != ConsentPurpose.data_sharing
+        ]
+        profiling_granted = any(
+            c["purpose"] == "profiling" and c["granted"] for c in consents
         )
-        .order_by(Coupon.valid_until.asc())
-    )
-    coupons = [
-        {
-            "code": c.code,
-            "discount_type": c.discount_type.value,
-            "discount_value": float(c.discount_value or 0),
-            "source": c.source.value if c.source else None,
-            "valid_until": c.valid_until.isoformat() if c.valid_until else None,
+    except Exception as exc:  # noqa: BLE001
+        _record_error("consents", exc)
+
+    # ── qualification (PS 360 V2) ───────────────────────────────────────
+    # getattr() tolère les instances Client antérieures à la migration 0052
+    # (qualification) sur un déploiement rolling où la colonne manquerait.
+    qualification: dict = {}
+    try:
+        qualification = {
+            "profiling_consent": profiling_granted,
+            "gender_profile": getattr(client, "gender_profile", None),
+            "age_band": getattr(client, "age_band", None),
+            "season_bias": getattr(client, "season_bias", None) if profiling_granted else None,
+            "price_ceiling_cents": getattr(client, "price_ceiling_cents", None) if profiling_granted else None,
+            "price_sensitivity": getattr(client, "price_sensitivity", None) if profiling_granted else None,
+            "trend_affinity": getattr(client, "trend_affinity", None) if profiling_granted else None,
         }
-        for c in coupon_rows.scalars().all()
-    ]
+    except Exception as exc:  # noqa: BLE001
+        _record_error("qualification", exc)
+
+    # ── audit log ───────────────────────────────────────────────────────
+    audit: list[dict] = []
+    try:
+        audit_rows = await db.execute(
+            select(AuditLog)
+            .where(AuditLog.entity_id == client_id)
+            .order_by(AuditLog.created_at.desc())
+            .limit(50)
+        )
+        for a in audit_rows.scalars().all():
+            try:
+                audit.append({
+                    "id": str(a.id),
+                    "action": a.action,
+                    "entity": a.entity,
+                    "data": a.data,
+                    "user_id": str(a.user_id) if a.user_id else None,
+                    "created_at": a.created_at.isoformat() if a.created_at else None,
+                })
+            except Exception as exc:  # noqa: BLE001
+                _record_error(f"audit.row[{a.id}]", exc)
+    except Exception as exc:  # noqa: BLE001
+        _record_error("audit", exc)
+
+    # ── communications ──────────────────────────────────────────────────
+    communications: list[dict] = []
+    try:
+        from app.models.communications import CommunicationLog
+
+        comm_rows = await db.execute(
+            select(CommunicationLog)
+            .where(CommunicationLog.client_id == client_id)
+            .order_by(CommunicationLog.created_at.desc())
+            .limit(50)
+        )
+        for c in comm_rows.scalars().all():
+            try:
+                communications.append({
+                    "id": str(c.id),
+                    "channel": c.channel,
+                    "kind": c.kind,
+                    "subject": c.subject,
+                    "status": c.status,
+                    "backend": c.backend,
+                    "to_address": c.to_address,
+                    "created_at": c.created_at.isoformat() if c.created_at else None,
+                })
+            except Exception as exc:  # noqa: BLE001
+                _record_error(f"communications.row[{c.id}]", exc)
+    except Exception as exc:  # noqa: BLE001
+        _record_error("communications", exc)
+
+    # ── active coupons ──────────────────────────────────────────────────
+    coupons: list[dict] = []
+    try:
+        coupon_rows = await db.execute(
+            select(Coupon)
+            .where(
+                Coupon.client_id == client_id,
+                Coupon.is_active.is_(True),
+                Coupon.redeemed_at.is_(None),
+            )
+            .order_by(Coupon.valid_until.asc())
+        )
+        for c in coupon_rows.scalars().all():
+            try:
+                coupons.append({
+                    "code": c.code,
+                    "discount_type": c.discount_type.value if c.discount_type else None,
+                    "discount_value": float(c.discount_value or 0),
+                    "source": c.source.value if c.source else None,
+                    "valid_until": c.valid_until.isoformat() if c.valid_until else None,
+                })
+            except Exception as exc:  # noqa: BLE001
+                _record_error(f"coupons.row[{c.code}]", exc)
+    except Exception as exc:  # noqa: BLE001
+        _record_error("coupons", exc)
 
     return {
         "client": {
@@ -508,6 +559,9 @@ async def get_client_full(
         "coupons": coupons,
         "communications": communications,
         "audit": audit,
+        # Sections qui ont planté (vide quand tout va bien) — le front
+        # affiche un bandeau « partial-fail » au lieu d'un 500 aveugle.
+        "errors": errors,
     }
 
 @router.get("/clients/{client_id}")
