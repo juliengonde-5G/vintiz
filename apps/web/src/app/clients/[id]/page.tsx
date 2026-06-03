@@ -95,6 +95,9 @@ interface ClientFull {
     user_id: string | null;
     created_at: string | null;
   }[];
+  // Sections du payload qui ont planté côté serveur. Tableau vide quand
+  // la fiche s'est chargée intégralement.
+  errors?: { section: string; error_type: string; message: string }[];
 }
 
 const CONSENT_LABELS: Record<string, string> = {
@@ -228,6 +231,22 @@ export default function ClientDetailPage() {
             {c.deletion_pending && <Badge variant="default">Suppression en cours</Badge>}
           </div>
         </header>
+
+        {/* Bandeau partial-fail : si une section du payload a planté côté
+            serveur, l'API renvoie la fiche quand même avec un tableau
+            ``errors`` ; on l'affiche pour que le manager sache ce qui
+            manque sans rester sur un 500 aveugle. */}
+        {data.errors && data.errors.length > 0 && (
+          <div className="mb-6 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+            <strong>Fiche chargée partiellement.</strong>{' '}
+            {data.errors.length} section{data.errors.length > 1 ? 's' : ''} en
+            erreur : {data.errors.map((e) => e.section).join(', ')}. Détail
+            (à transmettre au support) :
+            <pre className="mt-1 font-mono text-[11px] whitespace-pre-wrap">
+              {data.errors.map((e) => `${e.section}: ${e.error_type} — ${e.message}`).join('\n')}
+            </pre>
+          </div>
+        )}
 
         <nav className="border-b border-gray-200 mb-6 flex flex-wrap gap-1">
           {([
