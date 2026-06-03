@@ -18,7 +18,7 @@ from app.models.audit import Settings
 from app.models.client import Client, LoyaltyAccount, LoyaltyTransaction, LoyaltyTxType
 from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.product import Product
-from app.models.store import StoreZone, ZoneProduct
+from app.models.store import StoreZone
 
 
 # ---------------------------------------------------------------------------
@@ -383,26 +383,34 @@ async def compute_crm_loyalty(db: AsyncSession, report_date: date) -> dict:
 async def _zones_ca_for_date(
     db: AsyncSession, report_date: date
 ) -> dict[str, tuple[float, int]]:
-    """Return {zone_id_str: (ca, units)} for sales landed on report_date."""
+    """Return {zone_id_str: (ca, units)} for sales landed on report_date.
+
+    La zone d'un produit est portée par ``Product.zone_id`` (colonne directe,
+    écrite par les mouvements de stock / l'IA mapping / l'édition fiche). La
+    table d'association ``zone_products`` n'est jamais peuplée par
+    l'application — l'ancien join passait par elle et renvoyait donc
+    systématiquement {} (zonage à 0 partout dans le cahier). On groupe
+    désormais sur ``Product.zone_id``. Un produit vendu conserve son
+    ``zone_id`` (la vente ne touche que ``status``/``sold_at``).
+    """
     day_start, day_end = _day_window(report_date)
 
     rows = await db.execute(
         select(
-            StoreZone.id,
+            Product.zone_id,
             func.coalesce(func.sum(TransactionItem.line_total), 0),
             func.coalesce(func.sum(TransactionItem.quantity), 0),
         )
-        .select_from(StoreZone)
-        .join(ZoneProduct, ZoneProduct.zone_id == StoreZone.id)
-        .join(Product, Product.id == ZoneProduct.product_id)
-        .join(TransactionItem, TransactionItem.product_id == Product.id)
+        .select_from(TransactionItem)
         .join(Transaction, Transaction.id == TransactionItem.transaction_id)
+        .join(Product, Product.id == TransactionItem.product_id)
         .where(
             Transaction.transaction_type == TransactionType.sale,
             Transaction.created_at >= day_start,
             Transaction.created_at < day_end,
+            Product.zone_id.is_not(None),
         )
-        .group_by(StoreZone.id)
+        .group_by(Product.zone_id)
     )
     return {str(zid): (float(ca or 0), int(units or 0)) for zid, ca, units in rows.all()}
 

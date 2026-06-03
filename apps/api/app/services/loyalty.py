@@ -168,36 +168,56 @@ async def subscribe(
     *,
     first_name: str,
     last_name: str,
-    email: str,
+    email: str | None = None,
+    phone: str | None = None,
     postal_code: str | None,
     mode: str,
     optin_newsletter: bool = False,
     optin_profiling: bool = False,
+    optin_sms: bool = False,
     source: str = "pos_subscription",
     user_id: uuid.UUID | None = None,
 ) -> tuple[Client, LoyaltyAccount]:
     """Enrol a client in the loyalty programme.
 
-    Anti-duplicate: if a client with that email already has a loyalty
-    account, raise ``LoyaltyDuplicateError`` with the existing
-    membership number — the POS UI surfaces a "fusionner ?" modal.
+    Contact : email **ou** téléphone (au moins l'un des deux). Beaucoup de
+    clientes en boutique n'ont pas d'adresse mail sous la main mais donnent
+    leur numéro — exiger l'email bloquait l'adhésion. Le téléphone permet en
+    plus le magic-link / les tickets par SMS.
+
+    Anti-duplicate: si un client avec le même email OU le même téléphone a
+    déjà une carte, on lève ``LoyaltyDuplicateError`` avec le numéro existant
+    — l'UI POS propose alors de fusionner.
 
     Side-effects:
     - create or attach the LoyaltyAccount (with new V###### number),
-    - set ``loyalty_subscribed_at`` / ``loyalty_expires_at`` (24mo
-      rolling),
-    - record RGPD Consent rows for newsletter + profiling per the
-      checked boxes (text version stamped),
-    - optionally update the client's name/postal_code (notes) if absent.
+    - set ``loyalty_subscribed_at`` / ``loyalty_expires_at`` (24mo rolling),
+    - record RGPD Consent rows (newsletter / profiling / SMS),
+    - optionally update the client's name/phone/postal_code if absent.
     """
-    norm_email = (email or "").strip().lower()
-    if not norm_email or "@" not in norm_email:
-        raise InvalidOperation("Email obligatoire pour la souscription")
+    from app.services.sms_gateway import normalise_phone_e164
+
+    norm_email = (email or "").strip().lower() or None
+    if norm_email and "@" not in norm_email:
+        raise InvalidOperation("Adresse email invalide")
+    norm_phone = normalise_phone_e164(phone or "") or None
+    if norm_phone and len(norm_phone) < 8:
+        norm_phone = None
+    if not norm_email and not norm_phone:
+        raise InvalidOperation("Email ou téléphone obligatoire pour la souscription")
     if mode not in ("free", "paid", "first_purchase"):
         raise InvalidOperation(f"Mode souscription invalide: {mode}")
 
-    existing_row = await db.execute(select(Client).where(Client.email == norm_email))
-    existing: Client | None = existing_row.scalar_one_or_none()
+    # Recherche d'un client existant par email puis par téléphone.
+    existing: Client | None = None
+    if norm_email:
+        existing = (
+            await db.execute(select(Client).where(Client.email == norm_email))
+        ).scalar_one_or_none()
+    if existing is None and norm_phone:
+        existing = (
+            await db.execute(select(Client).where(Client.phone == norm_phone))
+        ).scalar_one_or_none()
     if existing is not None and existing.loyalty_account is not None:
         raise LoyaltyDuplicateError(
             client_id=existing.id,
@@ -209,7 +229,9 @@ async def subscribe(
             first_name=first_name.strip() or "Client",
             last_name=last_name.strip() or "",
             email=norm_email,
+            phone=norm_phone,
             email_optin=optin_newsletter,
+            sms_optin=optin_sms,
         )
         if postal_code:
             client.notes = f"CP: {postal_code.strip()}"
@@ -217,13 +239,19 @@ async def subscribe(
         await db.flush()
     else:
         client = existing
-        # Update name fields if blank, but never overwrite existing data.
+        # Update name / contact fields if blank, but never overwrite data.
         if not client.first_name and first_name:
             client.first_name = first_name.strip()
         if not client.last_name and last_name:
             client.last_name = last_name.strip()
+        if norm_email and not client.email:
+            client.email = norm_email
+        if norm_phone and not client.phone:
+            client.phone = norm_phone
         if optin_newsletter:
             client.email_optin = True
+        if optin_sms:
+            client.sms_optin = True
         if postal_code and (not client.notes or "CP:" not in client.notes):
             client.notes = ((client.notes or "") + f"\nCP: {postal_code.strip()}").strip()
 
@@ -239,6 +267,7 @@ async def subscribe(
     # RGPD consent ledger — append-only.
     consents: Iterable[tuple[ConsentPurpose, bool]] = (
         (ConsentPurpose.email_marketing, optin_newsletter),
+        (ConsentPurpose.sms_marketing, optin_sms),
         (ConsentPurpose.profiling, optin_profiling),
     )
     for purpose, granted in consents:

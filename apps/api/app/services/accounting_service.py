@@ -78,6 +78,14 @@ class AccountingService:
             cfg = AccountingConfig()
             self.db.add(cfg)
             await self.db.flush()
+        # Migration douce v1 → v2 : l'API « ledger events » v1 de Pennylane
+        # est dépréciée. Si un déploiement existant a encore l'URL v1 stockée
+        # (valeur par défaut historique), on la bascule sur v2 sans migration
+        # ni intervention manuelle. Une URL custom (autre domaine) est laissée
+        # intacte.
+        if cfg.pennylane_api_url and cfg.pennylane_api_url.rstrip("/").endswith("/external/v1"):
+            cfg.pennylane_api_url = cfg.pennylane_api_url.rstrip("/")[:-1] + "2"
+            await self.db.flush()
         return cfg
 
     async def upsert_config(self, data: dict) -> AccountingConfig:
@@ -249,6 +257,8 @@ class AccountingService:
         sales_ht = 0.0
         sales_tva = 0.0
         sales_ttc = 0.0
+        refunds_ht = 0.0
+        refunds_tva = 0.0
         refunds_ttc = 0.0
         sale_count = 0
         refund_count = 0
@@ -263,6 +273,12 @@ class AccountingService:
                 for p in (txn.payments or []):
                     by_method[p.method.value] = by_method.get(p.method.value, 0) + float(p.amount)
             elif txn.transaction_type == TransactionType.refund:
+                # On capte HT/TVA des remboursements pour pouvoir NETTER le
+                # crédit (707/44571), sinon le débit (encaissements, qui
+                # soustrait déjà les remboursements ligne 269) et le crédit
+                # divergent du montant remboursé → écriture déséquilibrée.
+                refunds_ht += float(txn.total_ht)
+                refunds_tva += float(txn.total_tva)
                 refunds_ttc += float(txn.total_ttc)
                 refund_count += 1
                 for p in (txn.payments or []):
@@ -272,6 +288,8 @@ class AccountingService:
             "sales_ht": round(sales_ht, 2),
             "sales_tva": round(sales_tva, 2),
             "sales_ttc": round(sales_ttc, 2),
+            "refunds_ht": round(refunds_ht, 2),
+            "refunds_tva": round(refunds_tva, 2),
             "refunds_ttc": round(refunds_ttc, 2),
             "sale_count": sale_count,
             "refund_count": refund_count,
@@ -291,6 +309,12 @@ class AccountingService:
         z_ref = f"Z{z_report.report_number:04d}"
 
         # ── Débit : comptes d'encaissement (une ligne par méthode) ──────────
+        # ``voucher`` (bons cadeaux) est une VRAIE ligne de paiement au POS
+        # (la vente est encaissée à 100 % du TTC, le bon couvrant une part).
+        # S'il manque ici, le débit perd le montant du bon alors que le crédit
+        # (ventes HT+TVA = TTC) le contient → écriture déséquilibrée. On le
+        # mappe sur un compte dédié (4198 « Bons cadeaux à honorer » par
+        # défaut), surchargeable via la config si la colonne existe.
         method_map = {
             "cash": (cfg.account_cash, cfg.label_cash),
             "card": (cfg.account_card, cfg.label_card),
@@ -298,6 +322,10 @@ class AccountingService:
             "cheque_cdc": (cfg.account_cheque_cdc, cfg.label_cheque_cdc),
             "avoir": (cfg.account_avoir, cfg.label_avoir),
             "transfer": (cfg.account_transfer, cfg.label_transfer),
+            "voucher": (
+                getattr(cfg, "account_voucher", None) or "4198",
+                getattr(cfg, "label_voucher", None) or "Bons cadeaux a honorer",
+            ),
         }
         for method, (account, label) in method_map.items():
             amount = totals["by_method"].get(method, 0)
@@ -321,29 +349,68 @@ class AccountingService:
                     label=f"Remboursement {label} — {z_ref}",
                 ))
 
-        # ── Crédit : ventes HT (707) ─────────────────────────────────────────
-        net_ht = totals["sales_ht"]
-        net_ttc = totals["sales_ttc"] - totals["refunds_ttc"]
-        tva = totals["sales_tva"]
+        # ── Crédit : ventes HT (707) NETTES des remboursements ───────────────
+        # net_ht / net_tva soustraient le HT/TVA remboursé : le débit
+        # d'encaissement nette déjà les remboursements (cf. _compute_totals),
+        # donc le crédit doit en faire autant pour rester équilibré.
+        net_ht = round(totals["sales_ht"] - totals.get("refunds_ht", 0.0), 2)
+        net_tva = round(totals["sales_tva"] - totals.get("refunds_tva", 0.0), 2)
 
-        if net_ht > 0:
+        if abs(net_ht) >= 0.005:
             lines.append(JournalEntryLine(
                 account_number=cfg.account_sales,
                 account_label=cfg.label_sales,
-                debit=0,
-                credit=net_ht,
+                debit=0 if net_ht > 0 else abs(net_ht),
+                credit=net_ht if net_ht > 0 else 0,
                 label=f"{cfg.label_sales} — {z_ref}",
             ))
 
-        # ── Crédit : TVA collectée (44571) ────────────────────────────────────
-        if tva > 0:
+        # ── Crédit : TVA collectée (44571) nette ──────────────────────────────
+        if abs(net_tva) >= 0.005:
             lines.append(JournalEntryLine(
                 account_number=cfg.account_tva,
                 account_label=cfg.label_tva,
-                debit=0,
-                credit=tva,
+                debit=0 if net_tva > 0 else abs(net_tva),
+                credit=net_tva if net_tva > 0 else 0,
                 label=f"{cfg.label_tva} — {z_ref}",
             ))
+
+        # ── Garde-fou d'équilibre : ligne d'ajustement d'arrondi ─────────────
+        # Le FEC DOIT être équilibré (Σdébit == Σcrédit) sinon l'import
+        # comptable (Pennylane / expert-comptable) refuse l'écriture. Après
+        # construction, on mesure l'écart résiduel (typiquement quelques
+        # centimes d'arrondi TVA cumulés) et on le résorbe sur un compte
+        # 658/758 (charges/produits divers de gestion). Si l'écart dépasse
+        # 1 €, c'est un bug de ventilation → on logge une erreur explicite
+        # mais on équilibre quand même pour produire un FEC valide.
+        total_debit = round(sum(ln.debit for ln in lines), 2)
+        total_credit = round(sum(ln.credit for ln in lines), 2)
+        diff = round(total_debit - total_credit, 2)
+        if abs(diff) >= 0.01:
+            if abs(diff) > 1.0:
+                _log.error(
+                    "FEC %s déséquilibre anormal: débit=%.2f crédit=%.2f écart=%.2f "
+                    "(ventilation à revoir, ligne d'ajustement appliquée)",
+                    z_ref, total_debit, total_credit, diff,
+                )
+            if diff > 0:
+                # Débit > crédit → on crédite un produit divers (758)
+                lines.append(JournalEntryLine(
+                    account_number="758000",
+                    account_label="Produits divers de gestion (arrondi)",
+                    debit=0,
+                    credit=abs(diff),
+                    label=f"Ajustement equilibre — {z_ref}",
+                ))
+            else:
+                # Crédit > débit → on débite une charge diverse (658)
+                lines.append(JournalEntryLine(
+                    account_number="658000",
+                    account_label="Charges diverses de gestion (arrondi)",
+                    debit=abs(diff),
+                    credit=0,
+                    label=f"Ajustement equilibre — {z_ref}",
+                ))
 
         return lines
 

@@ -225,9 +225,11 @@ export default function POSPage() {
     first_name: '',
     last_name: '',
     email: '',
+    phone: '',
     postal_code: '',
     accept_terms: false,
     optin_newsletter: false,
+    optin_sms: false,
     optin_profiling: false,
   });
   const [subscribeBusy, setSubscribeBusy] = useState(false);
@@ -773,9 +775,11 @@ export default function POSPage() {
       first_name: '',
       last_name: '',
       email: '',
+      phone: '',
       postal_code: '',
       accept_terms: false,
       optin_newsletter: false,
+      optin_sms: false,
       optin_profiling: false,
     });
     setSubscribeError('');
@@ -3297,7 +3301,7 @@ export default function POSPage() {
           <div className="space-y-4">
             <div className="p-4 bg-orange-50 rounded-lg">
               <p className="text-sm text-orange-700 font-medium">
-                Cet email a deja une carte de fidelite : {subscribeDuplicate.membership_number}
+                Ce contact a deja une carte de fidelite : {subscribeDuplicate.membership_number}
               </p>
               <p className="text-xs text-gray-500 mt-1">
                 Identifiez la cliente existante au lieu d&apos;en creer une nouvelle.
@@ -3320,7 +3324,7 @@ export default function POSPage() {
                 !subscribeBusy &&
                 subscribeForm.first_name &&
                 subscribeForm.last_name &&
-                subscribeForm.email &&
+                (subscribeForm.email.trim() || subscribeForm.phone.trim()) &&
                 subscribeForm.accept_terms
               ) {
                 void submitSubscription();
@@ -3350,21 +3354,37 @@ export default function POSPage() {
                 />
               </div>
             </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Email</label>
-              <Input
-                tabIndex={3}
-                type="email"
-                autoComplete="email"
-                value={subscribeForm.email}
-                onChange={(e) => setSubscribeForm({ ...subscribeForm, email: e.target.value })}
-                placeholder="alice@email.fr"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Email</label>
+                <Input
+                  tabIndex={3}
+                  type="email"
+                  autoComplete="email"
+                  value={subscribeForm.email}
+                  onChange={(e) => setSubscribeForm({ ...subscribeForm, email: e.target.value })}
+                  placeholder="alice@email.fr"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Téléphone</label>
+                <Input
+                  tabIndex={4}
+                  type="tel"
+                  autoComplete="tel"
+                  value={subscribeForm.phone}
+                  onChange={(e) => setSubscribeForm({ ...subscribeForm, phone: e.target.value })}
+                  placeholder="06 12 34 56 78"
+                />
+              </div>
             </div>
+            <p className="text-[11px] text-gray-400 -mt-1">
+              Email <strong>ou</strong> téléphone suffit (au moins l&apos;un des deux).
+            </p>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Code postal</label>
               <Input
-                tabIndex={4}
+                tabIndex={5}
                 autoComplete="postal-code"
                 value={subscribeForm.postal_code}
                 onChange={(e) => setSubscribeForm({ ...subscribeForm, postal_code: e.target.value })}
@@ -3374,7 +3394,7 @@ export default function POSPage() {
             <label className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"
-                tabIndex={5}
+                tabIndex={6}
                 className="mt-1"
                 checked={subscribeForm.accept_terms}
                 onChange={(e) => setSubscribeForm({ ...subscribeForm, accept_terms: e.target.checked })}
@@ -3384,7 +3404,7 @@ export default function POSPage() {
             <label className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"
-                tabIndex={6}
+                tabIndex={7}
                 className="mt-1"
                 checked={subscribeForm.optin_newsletter}
                 onChange={(e) => setSubscribeForm({ ...subscribeForm, optin_newsletter: e.target.checked })}
@@ -3394,7 +3414,17 @@ export default function POSPage() {
             <label className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"
-                tabIndex={7}
+                tabIndex={8}
+                className="mt-1"
+                checked={subscribeForm.optin_sms}
+                onChange={(e) => setSubscribeForm({ ...subscribeForm, optin_sms: e.target.checked })}
+              />
+              <span>J&apos;accepte de recevoir des SMS Vintiz (offres, carte de fidélité).</span>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                tabIndex={9}
                 className="mt-1"
                 checked={subscribeForm.optin_profiling}
                 onChange={(e) => setSubscribeForm({ ...subscribeForm, optin_profiling: e.target.checked })}
@@ -3410,18 +3440,18 @@ export default function POSPage() {
                 type="button"
                 onClick={closeSubscribeModal}
                 className="flex-1"
-                tabIndex={9}
+                tabIndex={11}
               >
                 Annuler
               </Button>
               <Button
                 type="submit"
-                tabIndex={8}
+                tabIndex={10}
                 disabled={
                   subscribeBusy ||
                   !subscribeForm.first_name ||
                   !subscribeForm.last_name ||
-                  !subscribeForm.email ||
+                  !(subscribeForm.email.trim() || subscribeForm.phone.trim()) ||
                   !subscribeForm.accept_terms
                 }
                 className="flex-1"

@@ -89,6 +89,17 @@ type Toast =
   | { kind: 'warn'; text: string }
   | { kind: 'error'; text: string };
 
+// Résultat du moteur de recherche POS (même endpoint /products/search).
+interface FreeProduct {
+  id: string;
+  barcode: string;
+  name: string;
+  sale_price: number;
+  status: string;
+  category: string | null;
+  photo_url: string | null;
+}
+
 const BUCKET_STYLE: Record<string, { label: string; cls: string }> = {
   hot: { label: 'Tendance forte', cls: 'bg-vz-accent-soft text-vz-accent' },
   warm: { label: 'Tendance', cls: 'bg-vz-teal-soft text-vz-teal-deep' },
@@ -126,6 +137,14 @@ export default function StockMovementsPage() {
 
   const [scanValue, setScanValue] = useState('');
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Recherche libre (tout le stock) — même moteur que le POS. Permet de
+  // déplacer N'IMPORTE quelle pièce réserve→rayon sans qu'elle soit dans la
+  // proposition IA. Indépendant de la douchette/proposition.
+  const [freeQuery, setFreeQuery] = useState('');
+  const [freeResults, setFreeResults] = useState<FreeProduct[]>([]);
+  const [freeLoading, setFreeLoading] = useState(false);
+  const freeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const focusInput = useCallback(() => {
     // Defer so it survives re-renders / DOM updates after a scan.
@@ -181,6 +200,50 @@ export default function StockMovementsPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Recherche libre debounced — même endpoint que le POS.
+  useEffect(() => {
+    if (freeDebounceRef.current) clearTimeout(freeDebounceRef.current);
+    const q = freeQuery.trim();
+    if (!q) { setFreeResults([]); return; }
+    setFreeLoading(true);
+    freeDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await api.get(`/api/inventory/products/search?q=${encodeURIComponent(q)}`);
+        if (res.ok) setFreeResults(await res.json());
+      } catch { /* silent */ } finally { setFreeLoading(false); }
+    }, 300);
+    return () => { if (freeDebounceRef.current) clearTimeout(freeDebounceRef.current); };
+  }, [freeQuery]);
+
+  // Déplacer une pièce réserve→rayon (achalandage manuel, hors proposition).
+  // Statut → displayed ; la zone d'origine est conservée (l'IA / l'opérateur
+  // affinent ensuite). Marche pour TOUT le stock, pas seulement la proposition.
+  const moveToFloor = useCallback(async (p: FreeProduct) => {
+    if (executing) return;
+    setExecuting(true);
+    try {
+      const res = await api.post('/api/inventory/movements/execute', {
+        barcode: p.barcode,
+        to_status: 'displayed',
+        reason: 'Achalandage manuel (recherche libre)',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({ kind: 'error', text: (data && data.detail) || 'Mouvement refusé.' });
+        return;
+      }
+      const result = data as ExecuteResult;
+      setDone((prev) => ({ ...prev, [result.product_id]: result }));
+      setToast({ kind: 'success', text: `${result.name} → rayon ✓` });
+      // Retire la pièce déplacée des résultats pour éviter un double envoi.
+      setFreeResults((prev) => prev.filter((x) => x.id !== p.id));
+    } catch {
+      setToast({ kind: 'error', text: 'Erreur réseau pendant le mouvement.' });
+    } finally {
+      setExecuting(false);
+    }
+  }, [executing]);
+
   // Resolve the scanned barcode against the CURRENT tab's proposals.
   const resolveWeekly = (
     barcode: string,
@@ -235,16 +298,23 @@ export default function StockMovementsPage() {
     } else {
       const match = resolveRestock(barcode);
       if (!match) {
-        setToast({ kind: 'warn', text: `Code ${barcode} hors proposition.` });
-        return;
+        // Hors proposition : on ne bloque plus. En achalandage, toute pièce
+        // scannée part en rayon (réserve→rayon), proposition ou pas — c'est
+        // ce que veut l'opérateur qui vide la réserve.
+        body = {
+          barcode,
+          to_status: 'displayed',
+          reason: 'Achalandage réserve→rayon (hors proposition)',
+        };
+      } else {
+        productId = match.item.product_id;
+        body = {
+          barcode,
+          to_status: 'displayed',
+          to_zone_id: match.zone.zone_id,
+          reason: 'Achalandage réserve→rayon',
+        };
       }
-      productId = match.item.product_id;
-      body = {
-        barcode,
-        to_status: 'displayed',
-        to_zone_id: match.zone.zone_id,
-        reason: 'Achalandage réserve→rayon',
-      };
     }
 
     setExecuting(true);
@@ -361,6 +431,66 @@ export default function StockMovementsPage() {
             <div className={`mt-3 px-3 py-2 rounded-lg border text-sm ${toastCls}`}>
               {toast.text}
             </div>
+          )}
+          <p className="mt-2 text-xs text-gray-400">
+            Astuce : une pièce scannée hors proposition part quand même en
+            rayon (réserve→rayon). Pour chercher par nom, utilisez la recherche
+            ci-dessous.
+          </p>
+        </Card>
+
+        {/* Recherche libre — déplacer TOUT le stock réserve→rayon, même hors
+            proposition. Même moteur de recherche que le POS. */}
+        <Card className="mb-4">
+          <label className="block text-sm font-medium text-black mb-1.5">
+            Recherche libre (tout le stock) — envoyer en rayon
+          </label>
+          <div className="relative">
+            <input
+              value={freeQuery}
+              onChange={(e) => setFreeQuery(e.target.value)}
+              placeholder="Nom, marque ou code-barres…"
+              className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+            />
+            {freeQuery && (
+              <button
+                type="button"
+                onClick={() => { setFreeQuery(''); setFreeResults([]); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                aria-label="Effacer"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {freeLoading && <p className="mt-2 text-xs text-gray-400">Recherche…</p>}
+          {freeResults.length > 0 && (
+            <ul className="mt-3 divide-y divide-gray-100 max-h-72 overflow-y-auto">
+              {freeResults.map((p) => {
+                const onFloor = ['display', 'displayed', 'discounted', 'deep_discounted'].includes(p.status);
+                return (
+                  <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-sm text-black truncate">{p.name}</p>
+                      <p className="text-xs text-gray-400 font-mono truncate">
+                        {p.barcode}{p.category ? ` · ${p.category}` : ''} · {p.status}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => moveToFloor(p)}
+                      disabled={executing || onFloor}
+                      title={onFloor ? 'Déjà en rayon' : 'Envoyer en rayon'}
+                    >
+                      {onFloor ? 'En rayon' : '→ Rayon'}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {freeQuery && !freeLoading && freeResults.length === 0 && (
+            <p className="mt-2 text-xs text-gray-400">Aucun article trouvé.</p>
           )}
         </Card>
 

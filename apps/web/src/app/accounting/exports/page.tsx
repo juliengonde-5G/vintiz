@@ -59,15 +59,31 @@ export default function ExportsPage() {
     }
   };
 
-  const downloadFec = (id: string, filename: string) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    const link = document.createElement('a');
-    link.href = `/api/accounting/exports/${id}/fec`;
-    link.download = filename;
-    if (token) link.setAttribute('data-token', token);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const downloadFec = async (id: string, filename: string) => {
+    // Le FEC est protégé (JWT manager) et l'API peut être sur une autre
+    // origine (NEXT_PUBLIC_API_URL). Un <a href="/api/..."> ne porte ni le
+    // token ni la base → en prod il tape le front Next.js et renvoie une
+    // page 404 (le "FEC" téléchargé était en réalité du HTML). On passe par
+    // api.get (token + base) puis blob, comme les autres exports.
+    try {
+      const res = await api.get(`/api/accounting/exports/${id}/fec`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(body.detail || `Téléchargement FEC impossible (HTTP ${res.status})`);
+        return;
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename || `FEC_${id}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      alert('Erreur réseau pendant le téléchargement du FEC');
+    }
   };
 
   return (

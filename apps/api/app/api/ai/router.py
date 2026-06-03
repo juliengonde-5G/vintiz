@@ -406,6 +406,77 @@ Génère 2-3 recommandations concrètes et actionnables tenant compte de la mét
 # Fashion Trends
 # ---------------------------------------------------------------------------
 
+@router.get("/daily-recommendations")
+async def get_daily_recommendations(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    limit: int = Query(6, ge=1, le=24),
+):
+    """« Recos du jour » : pièces présentes en rayon à actionner aujourd'hui.
+
+    Classées par note persistée (``trend_score``, 0..100) croissante — les
+    pièces les moins performantes en premier, car ce sont elles qui demandent
+    une action (mise en avant, déplacement, retrait). Renvoie directement la
+    forme attendue par les cartes du front (``items``), ce qui corrige le
+    « Aucune recommandation aujourd'hui » : l'onglet tapait /trends qui ne
+    renvoie pas de produits individuels.
+    """
+    now = datetime.now(timezone.utc)
+    rows = await db.execute(
+        select(Product)
+        .where(Product.status == ProductStatus.display)
+        .where(Product.trend_score.is_not(None))
+        .order_by(Product.trend_score.asc(), Product.shelf_date.asc().nulls_last())
+        .limit(limit)
+    )
+    products = rows.scalars().all()
+
+    def _action_color(score: float) -> str:
+        if score < 30:
+            return "red"
+        if score < 50:
+            return "orange"
+        if score < 70:
+            return "yellow"
+        return "green"
+
+    def _days_on_shelf(p: Product) -> int | None:
+        ref = p.shelf_date or p.displayed_at
+        if not ref:
+            return None
+        if ref.tzinfo is None:
+            ref = ref.replace(tzinfo=timezone.utc)
+        return max(0, (now - ref).days)
+
+    items = []
+    for p in products:
+        score = float(p.trend_score or 0)
+        dos = _days_on_shelf(p)
+        reasons = []
+        if score < 50:
+            reasons.append("Note faible — repositionner ou mettre en avant")
+        elif score < 70:
+            reasons.append("Potentiel modéré — gagnerait à plus de visibilité")
+        if dos is not None and dos >= 28:
+            reasons.append(f"{dos} j en rayon — rotation à activer")
+        items.append({
+            "product_id": str(p.id),
+            "id": str(p.id),
+            "product_name": p.name,
+            "name": p.name,
+            "photo_url": p.storefront_photo_url or p.photo_url,
+            "score": round(score, 1),
+            "total_score": round(score, 1),
+            "days_on_shelf": dos,
+            "action_color": _action_color(score),
+            "brand": p.brand,
+            "sale_price": float(p.sale_price),
+            "reasons": reasons,
+        })
+
+    return {"items": items, "count": len(items), "generated_at": now.isoformat()}
+
+
 @router.get("/trends")
 async def get_fashion_trends(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -1167,19 +1238,33 @@ async def get_daily_briefing(
     )
     t_count, t_revenue = t_res.one()
 
-    # Active products in stock/display
+    # Active products = réserve + rayon. On compte le MÊME jeu de statuts
+    # actifs que la page Inventaire et l'audit boutique (réserve : stock /
+    # received / sorted / tagged ; rayon : display / displayed / discounted /
+    # deep_discounted). Avant, le hub ne comptait que [stock, display] → le
+    # compteur « STOCK » du hub divergeait du total Inventaire dès qu'une
+    # pièce était dans un statut de cycle de vie intermédiaire.
+    _ACTIVE_STATUSES = [
+        ProductStatus.stock, ProductStatus.received,
+        ProductStatus.sorted, ProductStatus.tagged,
+        ProductStatus.display, ProductStatus.displayed,
+        ProductStatus.discounted, ProductStatus.deep_discounted,
+    ]
+    _FLOOR_STATUSES = [
+        ProductStatus.display, ProductStatus.displayed,
+        ProductStatus.discounted, ProductStatus.deep_discounted,
+    ]
     active_res = await db.execute(
-        select(func.count(Product.id)).where(
-            Product.status.in_([ProductStatus.stock, ProductStatus.display])
-        )
+        select(func.count(Product.id)).where(Product.status.in_(_ACTIVE_STATUSES))
     )
     active_products = active_res.scalar_one() or 0
 
-    # Stale: on display for > 45 days
+    # Stale: en rayon depuis > 45 jours (tous statuts rayon, pas seulement
+    # ``display``, sinon les pièces déjà démarquées échappaient au compteur).
     stale_cutoff = now - timedelta(days=45)
     stale_res = await db.execute(
         select(func.count(Product.id)).where(
-            Product.status == ProductStatus.display,
+            Product.status.in_(_FLOOR_STATUSES),
             Product.shelf_date < stale_cutoff,
         )
     )

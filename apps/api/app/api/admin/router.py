@@ -1,4 +1,6 @@
 import asyncio
+import csv
+import io
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -156,6 +158,174 @@ async def list_admin_transactions(
             }
         )
     return {"transactions": out, "count": len(out)}
+
+
+def _apply_tx_filters(
+    stmt,
+    *,
+    period_from: str | None,
+    period_to: str | None,
+    transaction_type: str | None,
+    method: str | None,
+    cashier_id: uuid.UUID | None,
+    min_amount: float | None,
+    max_amount: float | None,
+    is_invoice: bool | None,
+):
+    """Applique les mêmes filtres que /admin/transactions à un SELECT
+    Transaction. Factorisé pour que les exports CSV restent strictement
+    alignés sur l'historique affiché à l'écran.
+    """
+    from sqlalchemy import distinct
+
+    from app.models.pos import Payment, PaymentMethod, Transaction, TransactionType
+
+    if period_from:
+        stmt = stmt.where(Transaction.created_at >= _parse_iso_date(period_from, "from"))
+    if period_to:
+        stmt = stmt.where(Transaction.created_at <= _parse_iso_date(period_to, "to"))
+    if transaction_type:
+        try:
+            stmt = stmt.where(Transaction.transaction_type == TransactionType(transaction_type))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="type must be one of sale | refund | void")
+    if cashier_id is not None:
+        stmt = stmt.where(Transaction.cashier_id == cashier_id)
+    if min_amount is not None:
+        stmt = stmt.where(Transaction.total_ttc >= min_amount)
+    if max_amount is not None:
+        stmt = stmt.where(Transaction.total_ttc <= max_amount)
+    if is_invoice is not None:
+        stmt = stmt.where(Transaction.is_invoice.is_(is_invoice))
+    if method:
+        try:
+            method_enum = PaymentMethod(method)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="method must be one of cash | card | cheque | transfer | avoir | voucher",
+            )
+        sub = select(distinct(Payment.transaction_id)).where(Payment.method == method_enum)
+        stmt = stmt.where(Transaction.id.in_(sub))
+    return stmt
+
+
+def _csv_response(rows: list[list], header: list[str], filename: str) -> Response:
+    """Sérialise des lignes en CSV (séparateur ';', BOM UTF-8 pour Excel FR)."""
+    buf = io.StringIO()
+    buf.write("﻿")  # BOM → Excel affiche correctement les accents
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow(header)
+    for r in rows:
+        writer.writerow(["" if v is None else v for v in r])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _ticket_ref(t) -> str:
+    if t.is_invoice and t.invoice_number is not None:
+        return f"FACT-{t.invoice_number:06d}"
+    return f"#{t.transaction_number}"
+
+
+@router.get("/transactions/export.csv", dependencies=[Depends(manager_only)])
+async def export_transactions_csv(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    period_from: str | None = Query(None, alias="from"),
+    period_to: str | None = Query(None, alias="to"),
+    method: str | None = None,
+    transaction_type: str | None = Query(None, alias="type"),
+    cashier_id: uuid.UUID | None = None,
+    min_amount: float | None = Query(None, ge=0),
+    max_amount: float | None = Query(None, ge=0),
+    is_invoice: bool | None = None,
+):
+    """Export CSV — une ligne par transaction (résumé). Mêmes filtres que
+    l'historique. Pas de pagination : exporte TOUT le périmètre filtré.
+    """
+    from app.models.pos import Transaction
+
+    stmt = _apply_tx_filters(
+        select(Transaction).order_by(Transaction.created_at.asc()),
+        period_from=period_from, period_to=period_to, transaction_type=transaction_type,
+        method=method, cashier_id=cashier_id, min_amount=min_amount,
+        max_amount=max_amount, is_invoice=is_invoice,
+    )
+    txns = (await db.execute(stmt)).scalars().all()
+    rows = []
+    for t in txns:
+        rows.append([
+            t.created_at.strftime("%Y-%m-%d %H:%M:%S") if t.created_at else "",
+            _ticket_ref(t),
+            t.transaction_type.value,
+            "facture" if t.is_invoice else "ticket",
+            t.client_company_name or "",
+            "|".join(p.method.value for p in (t.payments or [])),
+            f"{float(t.total_ht):.2f}",
+            f"{float(t.total_tva):.2f}",
+            f"{float(t.total_ttc):.2f}",
+        ])
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    return _csv_response(
+        rows,
+        ["Date", "Ticket", "Type", "Document", "Client", "Paiements", "Total HT", "TVA", "Total TTC"],
+        f"vintiz_transactions_{stamp}.csv",
+    )
+
+
+@router.get("/transactions/export-detailed.csv", dependencies=[Depends(manager_only)])
+async def export_transactions_detailed_csv(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    period_from: str | None = Query(None, alias="from"),
+    period_to: str | None = Query(None, alias="to"),
+    method: str | None = None,
+    transaction_type: str | None = Query(None, alias="type"),
+    cashier_id: uuid.UUID | None = None,
+    min_amount: float | None = Query(None, ge=0),
+    max_amount: float | None = Query(None, ge=0),
+    is_invoice: bool | None = None,
+):
+    """Export CSV détaillé — une ligne par article vendu (avec le ticket
+    parent répété). Pour l'analyse fine (catégories, marques, remises) côté
+    expert-comptable / tableur.
+    """
+    from sqlalchemy.orm import selectinload
+
+    from app.models.pos import Transaction
+
+    stmt = _apply_tx_filters(
+        select(Transaction).order_by(Transaction.created_at.asc()),
+        period_from=period_from, period_to=period_to, transaction_type=transaction_type,
+        method=method, cashier_id=cashier_id, min_amount=min_amount,
+        max_amount=max_amount, is_invoice=is_invoice,
+    ).options(selectinload(Transaction.items))
+    txns = (await db.execute(stmt)).scalars().all()
+    rows = []
+    for t in txns:
+        date_str = t.created_at.strftime("%Y-%m-%d %H:%M:%S") if t.created_at else ""
+        ref = _ticket_ref(t)
+        ttype = t.transaction_type.value
+        methods = "|".join(p.method.value for p in (t.payments or []))
+        for it in (t.items or []):
+            rows.append([
+                date_str, ref, ttype,
+                it.product_name or "",
+                it.quantity,
+                f"{float(it.unit_price):.2f}",
+                f"{float(it.discount_percent or 0):.0f}",
+                f"{float(it.line_total):.2f}",
+                f"{float(it.tva_rate or 0):.1f}",
+                methods,
+            ])
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    return _csv_response(
+        rows,
+        ["Date", "Ticket", "Type", "Article", "Qté", "PU", "Remise %", "Total ligne", "TVA %", "Paiements"],
+        f"vintiz_transactions_detail_{stamp}.csv",
+    )
 
 
 @router.get("/payment-attempts", dependencies=[Depends(manager_only)])
@@ -2247,5 +2417,24 @@ async def predictive_audience_debug(
 
     result = await dominant_tastes_loyal_active(db, period_days=max(7, min(period_days, 365)))
     return serialize_dominant(result)
+
+
+@router.get("/appro-brief", dependencies=[Depends(manager_only)])
+async def get_appro_brief(
+    period_days: int = 90,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+):
+    """Brief d'appro hebdo (PS 360 V5) : demande vs stock → recommandations
+    niveau carton (catégorie × genre × qualité).
+
+    Le service ``build_appro_brief`` dégrade proprement au cold-start (renvoie
+    les catégories les moins stockées quand il n'y a pas encore de signal de
+    demande), donc l'endpoint répond toujours un brief exploitable. Il n'était
+    simplement jamais monté au router → le front affichait « Brief
+    indisponible ».
+    """
+    from app.services.appro_brief import build_appro_brief
+
+    return await build_appro_brief(db, period_days=max(7, min(period_days, 365)))
 
 

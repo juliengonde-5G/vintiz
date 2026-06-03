@@ -2116,10 +2116,13 @@ async def refund_transaction(
 class LoyaltySubscribeRequest(BaseModel):
     first_name: str
     last_name: str
-    email: str
+    # Contact : email OU téléphone (au moins un, validé côté service).
+    email: str | None = None
+    phone: str | None = None
     postal_code: str | None = None
     accept_terms: bool
     optin_newsletter: bool = False
+    optin_sms: bool = False
     optin_profiling: bool = False
     mode_override: str | None = None  # null = use admin config
 
@@ -2142,6 +2145,7 @@ async def subscribe_loyalty(
     if not request.accept_terms:
         raise HTTPException(status_code=400, detail="Conditions a accepter")
 
+    from app.core.exceptions import InvalidOperation
     from app.services.loyalty import LoyaltyDuplicateError, subscribe
     from app.services.loyalty_config import get_subscription_config
 
@@ -2154,18 +2158,23 @@ async def subscribe_loyalty(
             first_name=request.first_name,
             last_name=request.last_name,
             email=request.email,
+            phone=request.phone,
             postal_code=request.postal_code,
             mode=mode,
             optin_newsletter=request.optin_newsletter,
+            optin_sms=request.optin_sms,
             optin_profiling=request.optin_profiling,
             user_id=current_user.id,
         )
+    except InvalidOperation as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     except LoyaltyDuplicateError as exc:
         await db.rollback()
         raise HTTPException(
             status_code=409,
             detail={
-                "code": "duplicate_email",
+                "code": "duplicate_contact",
                 "existing_membership_number": exc.membership_number,
                 "client_id": str(exc.client_id),
             },
