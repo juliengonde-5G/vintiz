@@ -220,7 +220,8 @@ export async function printTransactionTicket(
 
   // Network path
   try {
-    const res = await api.post(`/api/pos/transactions/${transactionId}/print`, {});
+    const qs = kickDrawer ? '' : '?kick_drawer=false';
+    const res = await api.post(`/api/pos/transactions/${transactionId}/print${qs}`, {});
     if (res.ok) {
       return {
         ok: true,

@@ -167,9 +167,23 @@ export default function SettingsPage() {
   const [emailTestResult, setEmailTestResult] = useState<{ ok: boolean; status: string; backend: string; detail?: string } | null>(null);
   const [emailTesting, setEmailTesting] = useState(false);
 
+  // SMS gateway — partage la même BREVO_API_KEY que l'email, donc pas de
+  // formulaire dédié. Juste un statut « live » + un envoi de test pour
+  // diagnostiquer un Brevo qui rejette (sender non enregistré, crédit
+  // épuisé, compte sous validation…).
+  const [smsLive, setSmsLive] = useState<{ provider: string; configured: boolean; from?: string } | null>(null);
+  const [smsTestTo, setSmsTestTo] = useState('');
+  const [smsTestResult, setSmsTestResult] = useState<{
+    ok: boolean; status: string; backend: string; detail?: string; simulated?: boolean;
+  } | null>(null);
+  const [smsTesting, setSmsTesting] = useState(false);
+
   useEffect(() => {
     if (tab === 'store') loadShopInfo();
-    if (tab === 'communication') loadEmailConfig();
+    if (tab === 'communication') {
+      loadEmailConfig();
+      loadSmsConfig();
+    }
     if (tab === 'categories') loadCategories();
     if (tab === 'zones') { loadZones(); loadCategories(); }
     if (tab === 'hardware') loadHardware();
@@ -202,6 +216,38 @@ export default function SettingsPage() {
       }
     } catch { setError('Erreur de connexion'); }
     setShopSaving(false);
+  };
+
+  // ── SMS gateway config (Brevo, partage BREVO_API_KEY avec l'email) ──────
+  const loadSmsConfig = async () => {
+    try {
+      const res = await api.get('/api/admin/sms-config');
+      if (res.ok) {
+        const data = await res.json();
+        setSmsLive(data.live);
+      }
+    } catch { /* silent — état affiché en « inconnu » */ }
+  };
+
+  const sendSmsTest = async () => {
+    setSmsTesting(true);
+    setSmsTestResult(null);
+    try {
+      const res = await api.post('/api/admin/sms-config/test', {
+        to: smsTestTo.trim(),
+      });
+      const data = await res.json();
+      setSmsTestResult({
+        ok: !!data.ok,
+        status: data.status || 'unknown',
+        backend: data.backend || 'unknown',
+        detail: data.detail,
+        simulated: !!data.simulated,
+      });
+    } catch (e: any) {
+      setSmsTestResult({ ok: false, status: 'failed', backend: 'error', detail: e?.message || 'Erreur réseau' });
+    }
+    setSmsTesting(false);
   };
 
   // ── Email gateway config ─────────────────────────────────────────────────
@@ -1269,6 +1315,74 @@ export default function SettingsPage() {
                   </p>
                   {emailTestResult.detail && (
                     <p className="text-xs mt-1 font-mono">{emailTestResult.detail}</p>
+                  )}
+                </div>
+              )}
+            </Card>
+
+            <Card title="Passerelle SMS (Brevo)">
+              <p className="text-sm text-gray-500 mb-4">
+                Le SMS partage la même clé API Brevo que l&apos;email — pas de
+                secret dédié à poser. Sender ID affiché sur le téléphone du
+                client (alphanumérique, max 11 caractères) :{' '}
+                <code className="font-mono bg-gray-100 px-1 rounded">
+                  {smsLive?.from || 'Vintiz'}
+                </code>
+                .
+              </p>
+              <div className="mb-4 p-3 rounded-lg border border-vz-line bg-vz-bg/40 text-sm">
+                <p className="font-medium">
+                  Provider actif :{' '}
+                  <span className={smsLive?.configured ? 'text-vz-teal' : 'text-amber-700'}>
+                    {smsLive ? smsLive.provider.toUpperCase() : 'inconnu'}
+                  </span>
+                </p>
+                {smsLive && !smsLive.configured && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    Aucun provider configuré — les SMS sont simulés (logs uniquement).
+                    Renseigne la clé BREVO_API_KEY dans le bloc Email ci-dessus pour activer.
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <Input
+                    type="tel"
+                    value={smsTestTo}
+                    onChange={(e) => setSmsTestTo(e.target.value)}
+                    placeholder="06 12 34 56 78 ou +33612345678"
+                  />
+                </div>
+                <Button onClick={sendSmsTest} disabled={smsTesting || !smsTestTo.trim()}>
+                  {smsTesting ? 'Envoi…' : 'Envoyer un SMS de test'}
+                </Button>
+              </div>
+              {smsTestResult && (
+                <div className={`mt-4 p-3 rounded-lg text-sm border ${
+                  smsTestResult.ok && smsTestResult.status === 'sent'
+                    ? 'bg-green-50 text-green-800 border-green-200'
+                    : smsTestResult.simulated || smsTestResult.status === 'simulated'
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : 'bg-red-50 text-red-700 border-red-200'
+                }`}>
+                  <p className="font-medium">
+                    {smsTestResult.status === 'sent' && '✓ SMS envoyé via ' + smsTestResult.backend.toUpperCase()}
+                    {(smsTestResult.simulated || smsTestResult.status === 'simulated') && '⚠ SMS SIMULÉ — backend non configuré, aucun envoi réel'}
+                    {smsTestResult.status === 'failed' && '✕ Échec d\'envoi'}
+                  </p>
+                  {smsTestResult.detail && (
+                    <p className="text-xs mt-1 font-mono break-all">{smsTestResult.detail}</p>
+                  )}
+                  {smsTestResult.detail && smsTestResult.detail.includes('Brevo') && (
+                    <div className="mt-2 text-xs space-y-1">
+                      <p className="font-medium">Pistes Brevo :</p>
+                      <ul className="list-disc list-inside pl-1">
+                        <li><strong>Sender invalid / not registered</strong> → enregistre le sender « {smsLive?.from || 'Vintiz'} » dans Brevo &gt; SMS &gt; Sender</li>
+                        <li><strong>402 / insufficient credit</strong> → recharge le crédit SMS dans Brevo</li>
+                        <li><strong>403 / permission_denied</strong> → demande à Brevo l&apos;activation transactionnelle SMS pour le compte</li>
+                        <li><strong>400 / invalid recipient</strong> → vérifie le format E.164 (+33612345678)</li>
+                      </ul>
+                    </div>
                   )}
                 </div>
               )}
