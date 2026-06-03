@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
@@ -84,6 +84,54 @@ export default function ExportDetailPage() {
       setRetrying(false);
     }
   };
+
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
+
+  // Régénère le FEC à partir des transactions liées (Tx.accounting_export_id).
+  // À utiliser quand le FEC actuel a été produit avec une version buguée du
+  // moteur (ex. bons cadeaux non comptabilisés → débit < crédit). La chaîne
+  // fiscale NF525 n'est PAS touchée — seules les lignes d'écriture et le
+  // fichier FEC sont recalculés.
+  const regenerate = async () => {
+    if (!exp) return;
+    const ok = window.confirm(
+      'Régénérer le FEC ?\n\n' +
+      'Recalcule la ventilation comptable et le fichier FEC à partir des ' +
+      'transactions liées. La chaîne fiscale (hash NF525) n\'est pas modifiée. ' +
+      'À utiliser pour corriger un FEC déséquilibré produit par une version ' +
+      'antérieure du moteur.'
+    );
+    if (!ok) return;
+    setRegenerating(true);
+    setRegenError(null);
+    try {
+      const res = await api.post(`/api/accounting/exports/${id}/regenerate`, {});
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setRegenError(body.detail || `Régénération impossible (HTTP ${res.status})`);
+        return;
+      }
+      await load();
+    } catch {
+      setRegenError('Erreur réseau pendant la régénération.');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  // Détecte un FEC déséquilibré pour mettre en avant le bouton « Régénérer ».
+  const balance = useMemo(() => {
+    if (!exp) return { debit: 0, credit: 0, diff: 0, balanced: true };
+    const debit = (exp.lines || []).reduce((s, l) => s + (l.debit || 0), 0);
+    const credit = (exp.lines || []).reduce((s, l) => s + (l.credit || 0), 0);
+    return {
+      debit: Math.round(debit * 100) / 100,
+      credit: Math.round(credit * 100) / 100,
+      diff: Math.round((debit - credit) * 100) / 100,
+      balanced: Math.abs(debit - credit) < 0.01,
+    };
+  }, [exp]);
 
   const downloadFec = async () => {
     if (!exp?.fec_filename) return;
@@ -232,12 +280,39 @@ export default function ExportDetailPage() {
                 <p className="text-vz-ink-soft">Email envoyé à {exp.email_sent_to} le {fmtDate(exp.email_sent_at)}</p>
               )}
             </div>
-            {exp.status === 'failed' && (
-              <div className="mt-4 pt-4 border-t border-vz-line">
+            {/* Détection FEC déséquilibré : un FEC dont la somme débit ≠
+                crédit est ILLÉGAL (NF525 + DGFiP). On surface clairement et
+                on propose la régénération depuis les transactions liées. */}
+            {!balance.balanced && (
+              <div className="mt-4 p-3 rounded-lg bg-red-50 border-2 border-red-300 text-red-900 text-sm">
+                <p className="font-semibold">
+                  ⚠ FEC déséquilibré : débit {balance.debit.toFixed(2)} € ≠ crédit {balance.credit.toFixed(2)} €
+                  &nbsp;(écart {balance.diff > 0 ? '+' : ''}{balance.diff.toFixed(2)} €)
+                </p>
+                <p className="text-xs mt-1 text-red-700">
+                  Causé par une version buguée du moteur (ex. bons cadeaux
+                  non comptabilisés). Régénérer recalcule la ventilation à
+                  partir des transactions liées sans toucher à la chaîne fiscale.
+                </p>
+              </div>
+            )}
+            <div className="mt-4 pt-4 border-t border-vz-line flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant={balance.balanced ? 'outline' : 'primary'}
+                onClick={regenerate}
+                disabled={regenerating}
+              >
+                {regenerating ? 'Régénération…' : 'Régénérer le FEC'}
+              </Button>
+              {exp.status === 'failed' && (
                 <Button size="sm" onClick={retry} disabled={retrying}>
                   {retrying ? 'Retry en cours…' : 'Re-exporter vers Pennylane'}
                 </Button>
-              </div>
+              )}
+            </div>
+            {regenError && (
+              <p className="mt-2 text-xs text-red-600 font-mono">{regenError}</p>
             )}
           </Card>
 

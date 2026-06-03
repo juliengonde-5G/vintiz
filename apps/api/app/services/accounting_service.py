@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.accounting import (
@@ -34,6 +34,14 @@ from app.models.pos import (
 from app.services.pennylane_client import JournalEntry, JournalEntryLine, PennylaneClient, PennylaneError
 
 _log = logging.getLogger("vintiz.accounting")
+
+
+class FECImbalanceError(RuntimeError):
+    """Levée quand l'écriture comptable ne s'équilibre pas (Σdébit ≠ Σcrédit)
+    après l'application de la ligne d'ajustement. NF525 + obligations DGFiP :
+    un FEC déséquilibré ne doit JAMAIS être produit. Plutôt que d'écrire un
+    fichier illégal sur disque, on lève cette exception. Le caller (cron de
+    clôture ou endpoint de régénération) la propage avec le contexte."""
 
 
 def _fmt(value) -> str:
@@ -237,6 +245,132 @@ class AccountingService:
         await self.db.commit()
         return export
 
+    # ── Régénération du FEC (rejouer la ventilation comptable) ───────────────
+
+    async def regenerate_export(
+        self, export: AccountingExport, *, triggered_by_user_id=None
+    ) -> AccountingExport:
+        """Recalcule l'export à partir des transactions liées.
+
+        Use case : un FEC a été généré avec une version buguée du moteur
+        (ex. méthode de paiement voucher non mappée → débit < crédit). La
+        chaîne fiscale NF525 (hash_chain des Tx) reste intacte : on ne
+        rejoue PAS la clôture, on ne change PAS les transactions ; on
+        recalcule juste la ventilation comptable (totaux par méthode +
+        lignes d'écriture + fichier FEC) à partir des Tx déjà liées à cet
+        export via ``Transaction.accounting_export_id``.
+
+        Le ``hash_chain`` des Tx, les paiements, les items, le Z-report
+        et la cash_drawer ne sont pas touchés. Seuls changent :
+        - les colonnes de totaux sur ``AccountingExport``,
+        - les lignes ``AccountingExportLine`` (anciennes supprimées),
+        - ``fec_content`` / ``fec_generated_at``,
+        - un audit log dédié.
+
+        Refuse si les Tx liées ont disparu (intégrité). Refuse aussi si
+        le résultat est déséquilibré (cf. _build_journal_lines → assert).
+        """
+        cfg = await self.get_config()
+
+        # Récupérer les transactions liées à cet export.
+        tx_result = await self.db.execute(
+            select(Transaction)
+            .where(Transaction.accounting_export_id == export.id)
+            .order_by(Transaction.created_at.asc())
+        )
+        transactions = list(tx_result.scalars().all())
+        if not transactions:
+            raise ValueError(
+                f"Impossible de régénérer l'export {export.id} : aucune "
+                "transaction liée trouvée. Vérifier accounting_export_id."
+            )
+
+        # Charger le Z-report associé (pour le numéro + référence pièce).
+        z_result = await self.db.execute(
+            select(ZReport).where(ZReport.id == export.z_report_id)
+        )
+        z_report = z_result.scalar_one_or_none()
+        if z_report is None:
+            raise ValueError(
+                f"Z-report {export.z_report_id} introuvable pour l'export {export.id}."
+            )
+
+        # Recalcul des totaux + lignes (utilise le moteur courant, donc avec
+        # le mapping voucher et la balance refunds HT/TVA).
+        totals = self._compute_totals(transactions)
+        # _build_journal_lines lève FECImbalanceError si l'écriture reste
+        # déséquilibrée après ajustement → on ne rentre PAS dans la base.
+        new_lines = self._build_journal_lines(totals, cfg, z_report, export.export_date)
+
+        # Mise à jour des totaux sur l'export (en place — pas de nouvelle ligne
+        # AccountingExport pour préserver l'unicité par z_report_id).
+        export.total_sales_ht = totals["sales_ht"]
+        export.total_tva = totals["sales_tva"]
+        export.total_sales_ttc = totals["sales_ttc"]
+        export.total_refunds_ttc = totals["refunds_ttc"]
+        export.net_ttc = totals["sales_ttc"] - totals["refunds_ttc"]
+        export.transaction_count = totals["sale_count"]
+        export.refund_count = totals["refund_count"]
+        export.cash_total = totals["by_method"].get("cash", 0)
+        export.card_total = totals["by_method"].get("card", 0)
+        export.cheque_total = totals["by_method"].get("cheque", 0)
+        export.cheque_cdc_total = totals["by_method"].get("cheque_cdc", 0)
+        export.avoir_total = totals["by_method"].get("avoir", 0)
+        export.transfer_total = totals["by_method"].get("transfer", 0)
+        # Note : voucher_total n'a pas de colonne dédiée sur AccountingExport
+        # — la ventilation est visible dans la ligne 4198 du FEC et dans le
+        # détail AccountingExportLine. Pas de migration pour ce sprint.
+
+        # Reset des lignes d'écriture : on supprime les anciennes (qui
+        # correspondent à la ventilation buguée) et on ré-insère les neuves.
+        await self.db.execute(
+            delete(AccountingExportLine).where(AccountingExportLine.export_id == export.id)
+        )
+        for i, ln in enumerate(new_lines, start=1):
+            self.db.add(
+                AccountingExportLine(
+                    export_id=export.id,
+                    line_number=i,
+                    account_number=ln.account_number,
+                    account_label=ln.account_label,
+                    debit=ln.debit,
+                    credit=ln.credit,
+                    label=ln.label,
+                    piece_reference=f"Z{z_report.report_number:04d}",
+                    piece_date=export.export_date,
+                )
+            )
+
+        # Nouveau fichier FEC.
+        fec = self._generate_fec(new_lines, z_report, export.export_date, cfg)
+        export.fec_content = fec
+        export.fec_filename = (
+            f"FEC_Vintiz_{export.export_date.strftime('%Y%m%d')}_Z{z_report.report_number:04d}.txt"
+        )
+        export.fec_generated_at = datetime.now(timezone.utc)
+
+        # Audit log de la régénération.
+        from app.models.audit import AuditLog
+        self.db.add(
+            AuditLog(
+                user_id=triggered_by_user_id,
+                action="accounting.export.regenerate",
+                entity="accounting_export",
+                entity_id=export.id,
+                data={
+                    "z_report_id": str(export.z_report_id),
+                    "tx_count": len(transactions),
+                    "new_total_ttc": float(export.total_sales_ttc),
+                    "new_cash_total": float(export.cash_total),
+                    "new_card_total": float(export.card_total),
+                    "lines": len(new_lines),
+                },
+            )
+        )
+
+        await self.db.commit()
+        return export
+
     # ── Chargement transactions ──────────────────────────────────────────────
 
     async def _load_transactions(self, drawer: CashDrawer) -> list[Transaction]:
@@ -411,6 +545,24 @@ class AccountingService:
                     credit=0,
                     label=f"Ajustement equilibre — {z_ref}",
                 ))
+
+        # Assert final : un FEC déséquilibré est REFUSÉ. La ligne d'ajustement
+        # ci-dessus DOIT avoir résorbé l'écart ; si malgré tout on tombe sur
+        # > 0,01 € résiduel (bug de calcul, ligne en NaN…), on lève une
+        # exception explicite plutôt que de produire un fichier illégal.
+        # NF525 + obligations DGFiP : pas de débit/crédit divergent toléré.
+        post_debit = round(sum(ln.debit for ln in lines), 2)
+        post_credit = round(sum(ln.credit for ln in lines), 2)
+        if abs(post_debit - post_credit) >= 0.01:
+            raise FECImbalanceError(
+                f"FEC {z_ref} déséquilibré après ajustement : "
+                f"débit={post_debit:.2f} crédit={post_credit:.2f} "
+                f"écart={post_debit - post_credit:.2f}. Lignes : "
+                + " | ".join(
+                    f"{ln.account_number} D={ln.debit:.2f} C={ln.credit:.2f}"
+                    for ln in lines
+                )
+            )
 
         return lines
 
