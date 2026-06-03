@@ -30,6 +30,18 @@ import { downscaleImage } from '@/lib/image-resize';
 interface Category {
   id: string;
   name: string;
+  gender?: string;
+}
+
+// Affichage "Catégorie · F/H/E/U" — convention identique aux étiquettes
+// papier et au filtre /inventory pour qu'une caissière retrouve la même
+// formulation partout.
+const GENDER_SHORT: Record<string, string> = {
+  femme: 'F', homme: 'H', enfant: 'E', mixte: 'U',
+};
+function categoryLabel(c: { name: string; gender?: string }): string {
+  const g = c.gender ? GENDER_SHORT[c.gender] : '';
+  return g ? `${c.name} · ${g}` : c.name;
 }
 
 interface VisionResult {
@@ -656,7 +668,7 @@ export default function NewProductWizard() {
                     required
                   >
                     <option value="">Choisir une catégorie</option>
-                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {categories.map((c) => <option key={c.id} value={c.id}>{categoryLabel(c)}</option>)}
                   </select>
                 </div>
                 <div className="flex gap-3 pt-2">

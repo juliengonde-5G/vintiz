@@ -1,3 +1,5 @@
+import csv
+import io
 import logging
 import os
 import uuid
@@ -7,6 +9,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -166,6 +169,135 @@ async def list_products(
         page=page,
         page_size=page_size,
         pages=pages,
+    )
+
+
+# Statuts inventaire « actifs » (réserve + rayon). Sert au CSV par défaut :
+# sans filtre, on n'exporte PAS les pièces vendues / retournées / données,
+# pour rester cohérent avec ce qu'affiche la page inventaire en haut.
+_INVENTORY_ACTIVE_STATUSES = [
+    ProductStatus.stock, ProductStatus.received,
+    ProductStatus.sorted, ProductStatus.tagged,
+    ProductStatus.display, ProductStatus.displayed,
+    ProductStatus.discounted, ProductStatus.deep_discounted,
+]
+
+
+@router.get("/products/export.csv")
+async def export_products_csv(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    category_id: uuid.UUID | None = None,
+    status: str | None = None,
+    location: str | None = Query(
+        None,
+        description="Filtre localisation : 'stock' (réserve) ou 'magasin' (en rayon)",
+    ),
+    search: str | None = None,
+    include_sold: bool = Query(
+        False,
+        description="Inclure les pièces vendues/retournées/données (sinon : statuts actifs uniquement)",
+    ),
+):
+    """Export CSV de l'inventaire — mêmes filtres que la liste affichée.
+
+    Pas de pagination : exporte TOUT le périmètre filtré. Séparateur ``;`` +
+    BOM UTF-8 pour qu'Excel FR affiche correctement les accents. Inclut
+    catégorie (nom), genre, marque, taille, couleur, état, prix, statut,
+    zone, date d'entrée et de mise en rayon. Verrouillé sur les statuts
+    actifs par défaut (cf. liste haute de la page inventaire) ; passer
+    ``include_sold=true`` pour exporter aussi les terminaux.
+    """
+    query = (
+        select(Product, Category.name, Category.gender, StoreZone.name)
+        .outerjoin(Category, Product.category_id == Category.id)
+        .outerjoin(StoreZone, Product.zone_id == StoreZone.id)
+    )
+
+    if category_id:
+        query = query.where(Product.category_id == category_id)
+    if status:
+        query = query.where(Product.status == status)
+    if location == "stock":
+        query = query.where(
+            Product.status.in_([
+                ProductStatus.stock, ProductStatus.received,
+                ProductStatus.sorted, ProductStatus.tagged,
+            ])
+        )
+    elif location == "magasin":
+        query = query.where(Product.status.in_(FLOOR_STATUSES))
+    elif not status and not include_sold:
+        # Par défaut, on borne aux statuts actifs (cohérent avec l'écran).
+        query = query.where(Product.status.in_(_INVENTORY_ACTIVE_STATUSES))
+    if search:
+        pattern = f"%{search}%"
+        query = query.where(
+            or_(
+                Product.name.ilike(pattern),
+                Product.barcode.ilike(pattern),
+                Product.brand.ilike(pattern),
+            )
+        )
+    query = query.order_by(Product.created_at.desc())
+
+    rows = (await db.execute(query)).all()
+
+    def _fmt_date(d) -> str:
+        if not d:
+            return ""
+        return d.strftime("%Y-%m-%d %H:%M") if hasattr(d, "strftime") else str(d)
+
+    def _category_label(name: str | None, gender) -> str:
+        if not name:
+            return ""
+        g = gender.value if hasattr(gender, "value") else (gender or "")
+        # Genre court : F / H / E / U (mixte). Cohérent avec l'étiquette.
+        short = {"femme": "F", "homme": "H", "enfant": "E", "mixte": "U"}.get(g, "")
+        return f"{name} · {short}" if short else name
+
+    buf = io.StringIO()
+    buf.write("﻿")  # BOM → Excel FR
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow([
+        "Code-barres", "Nom", "Catégorie", "Genre produit",
+        "Marque", "Taille", "Couleur", "Etat",
+        "Prix achat", "Prix vente", "TVA %",
+        "Statut", "Zone",
+        "Reçu le", "En rayon depuis", "Vendu le",
+        "Score tendance", "Score marché",
+    ])
+    for product, cat_name, cat_gender, zone_name in rows:
+        prod_gender = product.gender.value if product.gender else (
+            cat_gender.value if hasattr(cat_gender, "value") and cat_gender else ""
+        )
+        writer.writerow([
+            product.barcode or "",
+            product.name or "",
+            _category_label(cat_name, cat_gender),
+            prod_gender,
+            product.brand or "",
+            product.size or "",
+            product.color or "",
+            product.condition or "",
+            f"{float(product.purchase_price or 0):.2f}",
+            f"{float(product.sale_price or 0):.2f}",
+            f"{float(product.tva_rate or 0):.1f}",
+            product.status.value if product.status else "",
+            zone_name or "",
+            _fmt_date(product.received_at),
+            _fmt_date(product.shelf_date or product.displayed_at),
+            _fmt_date(product.sold_at),
+            f"{float(product.trend_score):.0f}" if product.trend_score is not None else "",
+            f"{float(product.market_price_estimate):.2f}" if product.market_price_estimate is not None else "",
+        ])
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="vintiz_inventaire_{stamp}.csv"',
+        },
     )
 
 

@@ -40,6 +40,18 @@ function locationOf(status: string): { label: string; tone: string } | null {
 interface Category {
   id: string;
   name: string;
+  gender?: string;
+}
+
+// Affichage harmonisé "Catégorie · F/H/E/U" partout où l'on liste les
+// catégories (filtres, formulaire de création, étiquettes). Suit la
+// convention de l'étiquette papier (F/H/E/U pour Femme/Homme/Enfant/Mixte).
+const GENDER_SHORT: Record<string, string> = {
+  femme: 'F', homme: 'H', enfant: 'E', mixte: 'U',
+};
+function categoryLabel(c: { name: string; gender?: string }): string {
+  const g = c.gender ? GENDER_SHORT[c.gender] : '';
+  return g ? `${c.name} · ${g}` : c.name;
 }
 
 interface Product {
@@ -89,6 +101,39 @@ export default function InventoryPage() {
   const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [stockValue, setStockValue] = useState<{ display: { count: number; sale_value: number }; stock: { count: number; sale_value: number } } | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  // Export CSV de l'inventaire — réutilise EXACTEMENT les filtres affichés
+  // (catégorie, statut, localisation, recherche). Sans filtre, l'endpoint
+  // borne aux statuts actifs (cohérent avec ce qu'affiche l'écran).
+  const exportCsv = useCallback(async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      if (categoryFilter) params.set('category_id', categoryFilter);
+      if (statusFilter) params.set('status', statusFilter);
+      if (locationFilter) params.set('location', locationFilter);
+      const res = await api.get(`/api/inventory/products/export.csv?${params.toString()}`);
+      if (!res.ok) {
+        setError('Export CSV impossible.');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'vintiz_inventaire.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      setError('Erreur réseau pendant l\'export.');
+    } finally {
+      setExporting(false);
+    }
+  }, [search, categoryFilter, statusFilter, locationFilter]);
 
   useEffect(() => {
     api.get('/api/reports/stock-value').then(async (res) => {
@@ -230,7 +275,21 @@ export default function InventoryPage() {
               </div>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={exportCsv}
+              disabled={exporting}
+              title="Exporter l'inventaire filtré (CSV)"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              {exporting ? 'Export…' : 'Export CSV'}
+            </Button>
             {/* Camera scanner — caméra arrière Android via getUserMedia.
                 Fonctionne aussi sur desktop avec une webcam (moins ergonomique). */}
             <Link href="/inventory/scan">
@@ -305,7 +364,7 @@ export default function InventoryPage() {
           >
             <option value="">Toutes les categories</option>
             {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>{categoryLabel(c)}</option>
             ))}
           </select>
           <select
