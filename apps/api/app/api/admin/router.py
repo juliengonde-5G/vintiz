@@ -276,6 +276,50 @@ async def export_transactions_csv(
     )
 
 
+# Libellés FR + ordre stable des colonnes par méthode dans l'export détaillé.
+# Voucher = bon cadeau ; cheque_cdc = chèque Caisse des Dépôts (collecte
+# associative). Si une nouvelle méthode est ajoutée à PaymentMethod, elle
+# tombe en colonne « Autre » (cf. _payment_breakdown).
+_METHOD_LABELS_FR: list[tuple[str, str]] = [
+    ("cash", "Espèces"),
+    ("card", "CB"),
+    ("cheque", "Chèque"),
+    ("cheque_cdc", "Chèque CDC"),
+    ("avoir", "Avoir"),
+    ("voucher", "Bon cadeau"),
+    ("transfer", "Virement"),
+]
+
+
+def _payment_breakdown(payments) -> tuple[str, dict[str, float], float]:
+    """Renvoie (mix lisible, montant par méthode, autres).
+
+    - ``mix`` : « Espèces 90,00 € | Bon cadeau 10,00 € » — directement
+      lisible dans une cellule. Devises en format FR (virgule), euro.
+    - ``per_method`` : {method_key: montant_eur} pour les 7 colonnes
+      détaillées (manquantes → vide côté CSV).
+    - ``other`` : somme des paiements non-référencés dans
+      _METHOD_LABELS_FR (forward-compat si on ajoute un mode).
+    """
+    label_by_key = dict(_METHOD_LABELS_FR)
+    per_method: dict[str, float] = {}
+    other = 0.0
+    parts: list[tuple[str, float]] = []
+    for p in (payments or []):
+        key = p.method.value if hasattr(p.method, "value") else str(p.method)
+        amt = float(p.amount or 0)
+        if key in label_by_key:
+            per_method[key] = round(per_method.get(key, 0.0) + amt, 2)
+        else:
+            other = round(other + amt, 2)
+        parts.append((label_by_key.get(key, key), amt))
+    mix = " | ".join(
+        f"{lbl} {amt:.2f} €".replace(".", ",")
+        for lbl, amt in parts
+    )
+    return mix, per_method, other
+
+
 @router.get("/transactions/export-detailed.csv", dependencies=[Depends(manager_only)])
 async def export_transactions_detailed_csv(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -289,8 +333,13 @@ async def export_transactions_detailed_csv(
     is_invoice: bool | None = None,
 ):
     """Export CSV détaillé — une ligne par article vendu (avec le ticket
-    parent répété). Pour l'analyse fine (catégories, marques, remises) côté
-    expert-comptable / tableur.
+    parent répété). Pour l'analyse fine (catégories, marques, remises,
+    ventilation des paiements) côté expert-comptable / tableur.
+
+    La colonne « Paiements » ventile en clair (« Espèces 90,00 € | Bon
+    cadeau 10,00 € ») et 7 colonnes par méthode (Espèces / CB / Chèque /
+    Chèque CDC / Avoir / Bon cadeau / Virement) donnent le montant en €
+    de la transaction par tender. Permet un tableau croisé immédiat.
     """
     from sqlalchemy.orm import selectinload
 
@@ -308,7 +357,11 @@ async def export_transactions_detailed_csv(
         date_str = t.created_at.strftime("%Y-%m-%d %H:%M:%S") if t.created_at else ""
         ref = _ticket_ref(t)
         ttype = t.transaction_type.value
-        methods = "|".join(p.method.value for p in (t.payments or []))
+        mix, per_method, other = _payment_breakdown(t.payments)
+        per_method_cols = [
+            f"{per_method.get(k, 0.0):.2f}" if k in per_method else ""
+            for k, _ in _METHOD_LABELS_FR
+        ]
         for it in (t.items or []):
             rows.append([
                 date_str, ref, ttype,
@@ -318,12 +371,20 @@ async def export_transactions_detailed_csv(
                 f"{float(it.discount_percent or 0):.0f}",
                 f"{float(it.line_total):.2f}",
                 f"{float(it.tva_rate or 0):.1f}",
-                methods,
+                mix,
+                *per_method_cols,
+                f"{other:.2f}" if other else "",
             ])
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    header = [
+        "Date", "Ticket", "Type", "Article", "Qté", "PU", "Remise %", "Total ligne", "TVA %",
+        "Paiements (mix)",
+        *(f"Paiement {lbl} (€)" for _, lbl in _METHOD_LABELS_FR),
+        "Paiement Autre (€)",
+    ]
     return _csv_response(
         rows,
-        ["Date", "Ticket", "Type", "Article", "Qté", "PU", "Remise %", "Total ligne", "TVA %", "Paiements"],
+        header,
         f"vintiz_transactions_detail_{stamp}.csv",
     )
 
