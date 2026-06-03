@@ -170,19 +170,43 @@ def brevo_account_probe() -> dict:
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)}
 
-    # Le solde SMS vit dans le tableau ``plan`` (entrée type=="sms").
+    # Le solde SMS vit dans le tableau ``plan`` (entrée type=="sms"). On
+    # capture aussi le **type de plan email** ("free" / "starter" / "business" /
+    # "enterprise") : Brevo Free n'autorise PAS l'API SMS transactionnelle
+    # même avec des crédits achetés — c'est une limite plan, pas crédit. Sans
+    # cette info on perd 30 min à chercher pourquoi 402 alors qu'on voit des
+    # crédits dans le dashboard.
     sms_credits = None
+    email_plan_type: str | None = None
     plan = data.get("plan") or []
     if isinstance(plan, list):
         for p in plan:
-            if isinstance(p, dict) and str(p.get("type", "")).lower() == "sms":
+            if not isinstance(p, dict):
+                continue
+            t = str(p.get("type", "")).lower()
+            if t == "sms":
                 sms_credits = p.get("credits")
-                break
+            # Le plan email apparaît sous différents type selon l'offre :
+            # ``free`` (Free), ``payAsYouGo`` (PAYG), ``sms`` (irrelevant ici),
+            # ``subscription`` (Starter/Business) avec un sous-champ
+            # ``planType``. On normalise.
+            if t in ("free", "subscription", "payasyougo"):
+                email_plan_type = t
+                # Sur les plans subscription, ``planType`` précise (« starter »…)
+                sub = p.get("planType") or p.get("plan_type")
+                if sub:
+                    email_plan_type = str(sub).lower()
+    # ``can_send_transactional_sms`` : heuristique simple basée sur le plan.
+    # Brevo Free refuse l'API SMS transactionnelle (KB officielle « SMS API not
+    # available on Free plan »), même si l'UI laisse acheter des crédits.
+    can_send_transactional_sms = email_plan_type not in ("free", None)
     return {
         "ok": True,
         "account_email": data.get("email"),
         "company": (data.get("companyName") or (data.get("company") or {}).get("name")),
         "sms_credits": sms_credits,
+        "email_plan_type": email_plan_type,
+        "can_send_transactional_sms": can_send_transactional_sms,
         "plan_types": [p.get("type") for p in plan if isinstance(p, dict)],
     }
 
@@ -221,7 +245,47 @@ def _send_via_brevo(message: SMSMessage) -> SMSResult:
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else str(exc)
         logger.warning("Brevo SMS API rejected message: %s %s", exc.code, detail)
-        raise SMSDeliveryError(f"Brevo {exc.code}: {detail[:200]}") from exc
+        # Cas 402 « not_enough_credits » : ambigu côté utilisateur (« j'ai
+        # des crédits, je vois 905 dans l'UI »). On lance la sonde GET
+        # /v3/account avec la MÊME clé et on enrichit le message d'erreur
+        # avec le verdict :
+        # - 0 crédits vus par la clé → la clé est sur un autre compte
+        # - >0 crédits + plan Free → limitation plan (Brevo Free interdit
+        #   l'API SMS transactionnel, même avec crédits achetés — c'est
+        #   documenté chez eux)
+        # - >0 crédits + plan payant → activation transactionnelle à demander
+        suffix = ""
+        if exc.code == 402 and "not_enough_credits" in detail:
+            try:
+                probe = brevo_account_probe()
+            except Exception:  # noqa: BLE001
+                probe = {"ok": False}
+            if probe.get("ok"):
+                creds = probe.get("sms_credits")
+                plan = probe.get("email_plan_type") or "?"
+                account = probe.get("account_email") or probe.get("company") or "?"
+                if creds in (None, 0):
+                    suffix = (
+                        f" — Sonde compte : la clé voit 0 crédit SMS sur "
+                        f"« {account} » (plan {plan}). La clé est probablement "
+                        f"sur un AUTRE compte que celui qui affiche 905 crédits "
+                        f"dans ton navigateur. Régénère une clé dans le bon compte."
+                    )
+                elif plan == "free":
+                    suffix = (
+                        f" — Sonde compte : la clé voit {creds} crédits SMS sur "
+                        f"« {account} » mais le plan EST FREE. Brevo Free interdit "
+                        f"l'API SMS transactionnel même avec crédits. Solutions : "
+                        f"(a) passer en Starter+, (b) basculer sur Twilio."
+                    )
+                else:
+                    suffix = (
+                        f" — Sonde compte : la clé voit {creds} crédits SMS sur "
+                        f"« {account} » (plan {plan}). Cause probable : SMS "
+                        f"transactionnel non activé pour ce compte — demander "
+                        f"l'activation via le support Brevo."
+                    )
+        raise SMSDeliveryError(f"Brevo {exc.code}: {detail[:200]}{suffix}") from exc
     except (URLError, TimeoutError) as exc:
         logger.warning("Brevo SMS network error: %s", exc)
         raise SMSDeliveryError(f"Brevo network: {exc}") from exc
