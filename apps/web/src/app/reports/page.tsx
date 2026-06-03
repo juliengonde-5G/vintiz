@@ -290,37 +290,10 @@ export default function ReportsPage() {
               </Card>
             </div>
 
-            {/* Top Products */}
-            <Card title="Top 10 produits" className="mb-8">
-              {report.top_products && report.top_products.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="pb-2 text-sm font-semibold text-gray-600">#</th>
-                        <th className="pb-2 text-sm font-semibold text-gray-600">Produit</th>
-                        <th className="pb-2 text-sm font-semibold text-gray-600 text-right">Quantite</th>
-                        <th className="pb-2 text-sm font-semibold text-gray-600 text-right">CA</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.top_products.slice(0, 10).map((p, i) => (
-                        <tr key={i} className="border-b border-gray-50">
-                          <td className="py-2 text-sm text-gray-400">{i + 1}</td>
-                          <td className="py-2 text-sm text-black">{p.name}</td>
-                          <td className="py-2 text-sm text-gray-600 text-right">{p.quantity}</td>
-                          <td className="py-2 text-sm font-medium text-vz-teal text-right">
-                            {formatCurrency(p.revenue)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-gray-400 text-center py-4">Aucun produit vendu</p>
-              )}
-            </Card>
+            {/* Top produits retiré : en seconde main chaque pièce est unique
+                (quantité toujours = 1), donc un classement par produit n'a
+                pas de sens. Les analyses utiles (catégories, marques, RFM)
+                vivent dans les cartes KPIs/segments ci-dessous. */}
           </>
         ) : null}
 

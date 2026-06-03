@@ -154,6 +154,45 @@ export default function AdminTransactionsPage() {
     setLoading(false);
   }, [filters]);
 
+  // Export CSV — réutilise exactement les filtres de l'historique affiché.
+  // Download authentifié via blob (token + base API), comme les autres
+  // exports : un <a href> relatif raterait l'auth et la base.
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = useCallback(async (detailed: boolean) => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters.from) params.set('from', filters.from);
+      if (filters.to) params.set('to', filters.to);
+      if (filters.method) params.set('method', filters.method);
+      if (filters.type) params.set('type', filters.type);
+      if (filters.is_invoice !== 'all') {
+        params.set('is_invoice', filters.is_invoice === 'invoice' ? 'true' : 'false');
+      }
+      if (filters.min_amount) params.set('min_amount', filters.min_amount);
+      if (filters.max_amount) params.set('max_amount', filters.max_amount);
+      const path = detailed ? 'export-detailed.csv' : 'export.csv';
+      const res = await api.get(`/api/admin/transactions/${path}?${params.toString()}`);
+      if (!res.ok) {
+        setError('Export CSV impossible.');
+        return;
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = detailed ? 'vintiz_transactions_detail.csv' : 'vintiz_transactions.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      setError('Erreur réseau pendant l\'export.');
+    } finally {
+      setExporting(false);
+    }
+  }, [filters]);
+
   // Failed CB attempts — the "CB échouées" view folds the former
   // /admin/payment-attempts debug surface into this page.
   const loadAttempts = useCallback(async () => {
@@ -264,14 +303,35 @@ export default function AdminTransactionsPage() {
             </p>
           </div>
           {view === 'transactions' && (
-            <div className="flex gap-3">
-              <KpiTile label="Ventes" value={formatCurrency(totalSales)} tone="teal" />
-              <KpiTile
-                label="Remboursements"
-                value={formatCurrency(totalRefunds)}
-                tone="accent"
-              />
-              <KpiTile label="Lignes" value={String(rows.length)} tone="neutral" />
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex gap-3">
+                <KpiTile label="Ventes" value={formatCurrency(totalSales)} tone="teal" />
+                <KpiTile
+                  label="Remboursements"
+                  value={formatCurrency(totalRefunds)}
+                  tone="accent"
+                />
+                <KpiTile label="Lignes" value={String(rows.length)} tone="neutral" />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={exporting}
+                  onClick={() => void exportCsv(false)}
+                >
+                  {exporting ? 'Export…' : 'Export CSV'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={exporting}
+                  onClick={() => void exportCsv(true)}
+                  title="Une ligne par article vendu"
+                >
+                  CSV détaillé
+                </Button>
+              </div>
             </div>
           )}
         </header>
