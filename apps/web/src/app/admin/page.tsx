@@ -2,10 +2,13 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
+import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import Modal from '@/components/ui/Modal';
 import RefundModal from '@/components/pos/RefundModal';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
+import { printTransactionTicket } from '@/lib/print-ticket';
 
 interface Transaction {
   id: string;
@@ -60,10 +63,12 @@ function TransactionTable({
   transactions,
   loading,
   onRefund,
+  onReissue,
 }: {
   transactions: Transaction[];
   loading: boolean;
   onRefund: (txId: string) => void;
+  onReissue: (tx: Transaction) => void;
 }) {
   if (loading) {
     return (
@@ -110,17 +115,25 @@ function TransactionTable({
                 </td>
                 <td className="py-3 px-4 text-right text-gray-600">{tx.item_count}</td>
                 <td className="py-3 px-4 text-right">
-                  {isSale ? (
+                  <div className="inline-flex gap-1.5">
                     <button
                       type="button"
-                      onClick={() => onRefund(tx.id)}
-                      className="px-3 py-1 text-xs rounded bg-orange-50 text-orange-700 hover:bg-orange-100"
+                      onClick={() => onReissue(tx)}
+                      className="px-3 py-1 text-xs rounded bg-vz-teal-soft text-vz-teal hover:bg-vz-teal hover:text-white transition-colors"
+                      title="Réimprimer / renvoyer le ticket (sans rejouer la vente)"
                     >
-                      Rembourser
+                      Rééditer
                     </button>
-                  ) : (
-                    <span className="text-xs text-gray-300">—</span>
-                  )}
+                    {isSale && (
+                      <button
+                        type="button"
+                        onClick={() => onRefund(tx.id)}
+                        className="px-3 py-1 text-xs rounded bg-orange-50 text-orange-700 hover:bg-orange-100"
+                      >
+                        Rembourser
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             );
@@ -195,6 +208,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [refundTxId, setRefundTxId] = useState<string | null>(null);
+  const [reissueTx, setReissueTx] = useState<Transaction | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   const loadTransactions = useCallback(async (method?: string): Promise<Transaction[]> => {
@@ -277,7 +291,7 @@ export default function AdminPage() {
         {/* Content */}
         {tab === 'all' && (
           <Card title={`Backlog — ${transactions.length} transaction(s)`}>
-            <TransactionTable transactions={transactions} loading={loading} onRefund={setRefundTxId} />
+            <TransactionTable transactions={transactions} loading={loading} onRefund={setRefundTxId} onReissue={setReissueTx} />
           </Card>
         )}
 
@@ -288,7 +302,7 @@ export default function AdminPage() {
                 Transactions réglées par carte bancaire (SumUp terminal ou simulation).
               </p>
             </div>
-            <TransactionTable transactions={cbTransactions} loading={loading} onRefund={setRefundTxId} />
+            <TransactionTable transactions={cbTransactions} loading={loading} onRefund={setRefundTxId} onReissue={setReissueTx} />
           </Card>
         )}
 
@@ -307,7 +321,7 @@ export default function AdminPage() {
                 </div>
               )}
             </div>
-            <TransactionTable transactions={cashTransactions} loading={loading} onRefund={setRefundTxId} />
+            <TransactionTable transactions={cashTransactions} loading={loading} onRefund={setRefundTxId} onReissue={setReissueTx} />
           </Card>
         )}
 
@@ -329,6 +343,177 @@ export default function AdminPage() {
         onClose={() => setRefundTxId(null)}
         onCompleted={() => setReloadKey(k => k + 1)}
       />
+
+      <ReissueTicketModal
+        tx={reissueTx}
+        onClose={() => setReissueTx(null)}
+      />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Rééditer un ticket : ré-impression MUNBYN + envoi email/SMS optionnel.
+//
+// NF525 oblige le ticket d'origine à rester immuable (hash chain), donc on
+// ne « modifie » jamais une vente passée — on en re-imprime une COPIE et/ou
+// on l'envoie à la cliente. Le backend marque le ticket réémis dans le
+// fichier de log audit (action="receipt.reissue") pour traçabilité.
+// ---------------------------------------------------------------------------
+
+function ReissueTicketModal({
+  tx,
+  onClose,
+}: {
+  tx: Transaction | null;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState<'print' | 'email' | 'sms' | null>(null);
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [adHocEmail, setAdHocEmail] = useState('');
+  const [adHocPhone, setAdHocPhone] = useState('');
+
+  useEffect(() => {
+    if (!tx) {
+      setBusy(null);
+      setToast(null);
+      setAdHocEmail('');
+      setAdHocPhone('');
+    }
+  }, [tx]);
+
+  if (!tx) return null;
+
+  const handleReprint = async () => {
+    setBusy('print');
+    setToast(null);
+    // kickDrawer=false : on ne ré-ouvre PAS le tiroir lors d'une réimpression
+    // — c'est juste une copie du ticket, pas un nouvel encaissement espèces.
+    const result = await printTransactionTicket(tx.id, { kickDrawer: false });
+    setToast({ msg: result.message, ok: result.ok });
+    setBusy(null);
+  };
+
+  const handleResend = async (channel: 'email' | 'sms') => {
+    setBusy(channel);
+    setToast(null);
+    const body: Record<string, unknown> = { channel };
+    const to = channel === 'email' ? adHocEmail.trim() : adHocPhone.trim();
+    if (to) body.to = to;
+    const res = await api.post(`/api/pos/transactions/${tx.id}/resend`, body);
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const simulated = data?.simulated;
+      const target = data?.to || to || (channel === 'email' ? 'cliente' : 'cliente');
+      setToast({
+        msg: simulated
+          ? `⚠ ${channel === 'email' ? 'Email' : 'SMS'} simulé (provider non configuré) — vérifie /settings > Communication.`
+          : `${channel === 'email' ? 'Email' : 'SMS'} envoyé à ${target}`,
+        ok: !simulated,
+      });
+    } else {
+      const err = await res.json().catch(() => ({}));
+      setToast({
+        msg: err?.detail || `Envoi ${channel} impossible`,
+        ok: false,
+      });
+    }
+    setBusy(null);
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Rééditer le ticket #${tx.transaction_number}`}>
+      <div className="space-y-4">
+        <p className="text-sm text-vz-ink-soft">
+          Total <strong className="text-vz-ink">{formatCurrency(tx.total_ttc)}</strong>
+          {tx.created_at && (
+            <>
+              {' '}— encaissé le{' '}
+              <span className="font-mono text-xs">{formatDate(tx.created_at)}</span>
+            </>
+          )}
+          .
+        </p>
+
+        <div className="rounded-lg border border-vz-line p-3 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-vz-ink-mute">
+            Impression
+          </p>
+          <Button
+            onClick={handleReprint}
+            disabled={busy !== null}
+            className="w-full"
+          >
+            {busy === 'print' ? 'Impression…' : 'Réimprimer sur la MUNBYN'}
+          </Button>
+          <p className="text-[11px] text-vz-ink-mute">
+            Copie du ticket d&apos;origine — n&apos;ouvre pas le tiroir, n&apos;ajoute pas
+            de vente. La chaîne fiscale NF525 reste intacte.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-vz-line p-3 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-vz-ink-mute">
+            Renvoyer à la cliente
+          </p>
+
+          <div className="space-y-1.5">
+            <label className="block text-xs text-vz-ink-mute">
+              Email (laisser vide pour utiliser la fiche cliente)
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={adHocEmail}
+                onChange={(e) => setAdHocEmail(e.target.value)}
+                placeholder="cliente@exemple.fr"
+                className="flex-1 px-3 py-2 rounded-lg border border-vz-line text-sm"
+              />
+              <Button
+                variant="outline"
+                onClick={() => handleResend('email')}
+                disabled={busy !== null}
+              >
+                {busy === 'email' ? '…' : 'Email'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-xs text-vz-ink-mute">
+              SMS (laisser vide pour utiliser le tél. de la fiche)
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="tel"
+                value={adHocPhone}
+                onChange={(e) => setAdHocPhone(e.target.value)}
+                placeholder="06 12 34 56 78"
+                className="flex-1 px-3 py-2 rounded-lg border border-vz-line text-sm"
+              />
+              <Button
+                variant="outline"
+                onClick={() => handleResend('sms')}
+                disabled={busy !== null}
+              >
+                {busy === 'sms' ? '…' : 'SMS'}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {toast && (
+          <div
+            className={`p-3 rounded-lg text-sm ${
+              toast.ok
+                ? 'bg-vz-teal-soft text-vz-teal-deep'
+                : 'bg-red-50 text-red-700 border border-red-200'
+            }`}
+          >
+            {toast.msg}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }

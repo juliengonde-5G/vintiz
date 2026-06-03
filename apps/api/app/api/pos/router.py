@@ -1295,10 +1295,17 @@ async def _resolve_ticket_template_and_shop(db: AsyncSession, transaction):
 @router.post("/transactions/{transaction_id}/print")
 async def print_transaction_receipt(
     transaction_id: uuid.UUID,
+    kick_drawer: bool = True,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Send the receipt to the MUNBYN ESC/POS printer (TCP 9100)."""
+    """Send the receipt to the MUNBYN ESC/POS printer (TCP 9100).
+
+    ``kick_drawer=false`` désactive l'ouverture automatique du tiroir-caisse
+    lors d'une réimpression (la vente initiale a déjà fait son office, on
+    veut juste une copie du ticket pour la cliente — pas de nouveau coup
+    de tiroir).
+    """
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
 
@@ -1346,7 +1353,7 @@ async def print_transaction_receipt(
     drawer_kick_ok: bool | None = None
     drawer_error: str | None = None
     drawer_cfg = cfg["cash_drawer"]
-    if drawer_cfg.get("enabled") and drawer_cfg.get("kick_on_cash"):
+    if kick_drawer and drawer_cfg.get("enabled") and drawer_cfg.get("kick_on_cash"):
         has_cash = any(
             (p.method == PaymentMethod.cash)
             for p in (transaction.payments or [])
@@ -1368,6 +1375,23 @@ async def print_transaction_receipt(
                     "Cash drawer kick failed for transaction %s on %s:%s",
                     transaction_id, host, port,
                 )
+
+    # Trace audit : on logge chaque impression pour qu'un manager puisse
+    # voir « combien de copies du ticket #N ont été émises et par qui ».
+    # NF525 n'oblige pas à versionner les réimpressions (le ticket original
+    # reste hash-signé), mais c'est utile pour distinguer une fraude
+    # potentielle (réimpressions multiples « par hasard ») d'une demande
+    # cliente légitime.
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            action="receipt.reprint",
+            entity="transaction",
+            entity_id=transaction_id,
+            data={"kick_drawer": kick_drawer},
+        )
+    )
+    await db.commit()
 
     response: dict = {"success": True, "transaction_id": str(transaction_id)}
     if drawer_kick_ok is not None:

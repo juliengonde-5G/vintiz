@@ -836,6 +836,82 @@ async def send_email_test(
 
 
 # ---------------------------------------------------------------------------
+# SMS gateway — status + test endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sms-config", dependencies=[Depends(manager_only)])
+async def get_sms_config():
+    """Retourne le provider SMS actif + sender ID.
+
+    Brevo (recommandé) partage la clé API avec l'email gateway ; aucun
+    secret SMS dédié à poser. Twilio reste un fallback legacy.
+    """
+    from app.services.sms_gateway import describe_active_provider
+
+    return {"live": describe_active_provider()}
+
+
+class SmsTestRequest(BaseModel):
+    to: str  # E.164 ou national FR — la passerelle normalise
+
+
+@router.post("/sms-config/test", dependencies=[Depends(manager_only)])
+async def send_sms_test(payload: SmsTestRequest):
+    """Envoie un vrai SMS de test pour vérifier la passerelle de bout en bout.
+
+    Surface explicitement le code/détail d'erreur Brevo dans la réponse
+    (« Sender not registered », « SMS credit insufficient », « invalid
+    recipient »…) pour que le manager puisse réagir directement depuis
+    /settings > Communication, sans aller dans les logs.
+    """
+    from app.services.sms_gateway import (
+        SMSDeliveryError,
+        SMSMessage,
+        normalise_phone_e164,
+        send_sms,
+    )
+
+    raw_to = (payload.to or "").strip()
+    if not raw_to:
+        raise HTTPException(status_code=400, detail="Numéro destinataire manquant")
+    to = normalise_phone_e164(raw_to)
+    if not to or len(to) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Numéro invalide après normalisation : '{to}' "
+            "(format attendu : +33612345678 ou 06 12 34 56 78).",
+        )
+
+    msg = SMSMessage(
+        to=to,
+        body="Vintiz test : la passerelle SMS est OK.",
+    )
+    try:
+        result = send_sms(msg)
+        return {
+            "ok": result.status == "sent",
+            "status": result.status,
+            "backend": result.backend,
+            "message_id": result.message_id,
+            "sent_at": result.sent_at,
+            "to": to,
+            "simulated": result.status == "simulated",
+        }
+    except SMSDeliveryError as exc:
+        # On surface l'erreur Brevo telle quelle — le manager voit
+        # « Brevo 400: Sender is invalid » ou « Brevo 402: not enough
+        # credit » et sait quoi faire (enregistrer le sender, recharger…).
+        return {
+            "ok": False,
+            "status": "failed",
+            "backend": "error",
+            "detail": str(exc),
+            "to": to,
+        }
+
+
+# ---------------------------------------------------------------------------
 # Magic-link probe (manager-only) — debug "OTP not arriving"
 # ---------------------------------------------------------------------------
 
