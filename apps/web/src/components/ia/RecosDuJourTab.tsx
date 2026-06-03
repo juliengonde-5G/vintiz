@@ -41,8 +41,10 @@ export default function RecosDuJourTab() {
   const loadRecos = async () => {
     setLoadingRecos(true);
     try {
-      // Reuse the trends endpoint already mounted — top products with action.
-      const r = await api.get('/api/ai/trends?limit=6');
+      // Endpoint dédié : pièces présentes à actionner aujourd'hui, classées
+      // par note. (Avant : /api/ai/trends, qui ne renvoie pas de produits
+      // individuels → items toujours vide → "Aucune recommandation".)
+      const r = await api.get('/api/ai/daily-recommendations?limit=6');
       if (!r.ok) return;
       const data = await r.json();
       const items = data.items || data.products || [];
@@ -70,7 +72,10 @@ export default function RecosDuJourTab() {
       const r = await api.get('/api/admin/scoring-config');
       if (!r.ok) return;
       const cfg = await r.json();
-      setCalendar(cfg.season_boost?.category_calendar || {});
+      // La config de scoring expose le calendrier des saisons à plat sous
+      // ``season_calendar`` (et non ``season_boost.category_calendar``, qui
+      // n'existe pas → "Aucune catégorie configurée" alors qu'il y en a).
+      setCalendar(cfg.season_calendar || {});
     } catch { /* silent */ }
   };
 

@@ -2249,3 +2249,22 @@ async def predictive_audience_debug(
     return serialize_dominant(result)
 
 
+@router.get("/appro-brief", dependencies=[Depends(manager_only)])
+async def get_appro_brief(
+    period_days: int = 90,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+):
+    """Brief d'appro hebdo (PS 360 V5) : demande vs stock → recommandations
+    niveau carton (catégorie × genre × qualité).
+
+    Le service ``build_appro_brief`` dégrade proprement au cold-start (renvoie
+    les catégories les moins stockées quand il n'y a pas encore de signal de
+    demande), donc l'endpoint répond toujours un brief exploitable. Il n'était
+    simplement jamais monté au router → le front affichait « Brief
+    indisponible ».
+    """
+    from app.services.appro_brief import build_appro_brief
+
+    return await build_appro_brief(db, period_days=max(7, min(period_days, 365)))
+
+
