@@ -228,6 +228,44 @@ async def retry_export(
     return _export_out(updated)
 
 
+@router.post("/exports/{export_id}/regenerate", dependencies=[Depends(manager_only)])
+async def regenerate_export(
+    export_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Régénère un export FEC à partir des transactions liées.
+
+    Use case : un FEC a été produit avec une version buguée du moteur
+    (ex. méthode voucher non mappée → débit < crédit). On rejoue la
+    ventilation comptable avec le moteur courant sans toucher à la
+    chaîne fiscale NF525 (hash_chain des Tx intact).
+
+    Refuse si la nouvelle écriture reste déséquilibrée (FECImbalanceError
+    → 422). C'est un garde-fou : impossible de produire un FEC illégal.
+    """
+    from app.services.accounting_service import FECImbalanceError
+
+    result = await db.execute(
+        select(AccountingExport).where(AccountingExport.id == export_id)
+    )
+    exp = result.scalar_one_or_none()
+    if not exp:
+        raise HTTPException(404, detail="Export introuvable")
+
+    svc = AccountingService(db)
+    try:
+        updated = await svc.regenerate_export(exp, triggered_by_user_id=current_user.id)
+    except FECImbalanceError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Régénération refusée — écriture toujours déséquilibrée : {exc}",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _export_out(updated)
+
+
 @router.get("/exports/{export_id}/fec", dependencies=[Depends(manager_only)])
 async def download_fec(
     export_id: uuid.UUID,

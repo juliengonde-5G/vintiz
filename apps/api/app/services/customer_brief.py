@@ -95,7 +95,11 @@ async def get_customer_brief(
                 last_purchases.append({
                     "date": t.created_at.isoformat() if t.created_at else None,
                     "name": prod.name,
-                    "price": float(it.unit_price_ttc or 0),
+                    # ``TransactionItem.unit_price`` est le prix TTC (le POS
+                    # vend en TTC ; HT/TVA sont dérivés au niveau ticket).
+                    # L'ancien champ ``unit_price_ttc`` n'existe pas → cause
+                    # du « taste_profile: AttributeError » sur la fiche client.
+                    "price": float(it.unit_price or 0),
                 })
 
     for t in transactions:
