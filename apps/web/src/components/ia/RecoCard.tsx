@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { mediaUrl } from '@/lib/format';
 
 export type RecoCardData = {
   product_id: string;
@@ -8,14 +9,18 @@ export type RecoCardData = {
   product_thumb?: string | null;
   score?: number | null;
   days_on_shelf?: number | null;
-  action: 'METTRE_EN_AVANT' | 'DEMARQUER' | 'RETIRER' | 'MAINTENIR';
+  // Politique boutique : PAS de réduction de prix post-shelving. La RECO
+  // orange (score 30-50) ne « démarque » donc pas — elle propose un
+  // repositionnement (vitrine, zone Tendance) pour donner une 2ᵉ chance
+  // visuelle à la pièce. D'où le label REPOSITIONNER (ex-DEMARQUER).
+  action: 'METTRE_EN_AVANT' | 'REPOSITIONNER' | 'RETIRER' | 'MAINTENIR';
   reasons: string[];
   similar_products?: { id: string; name: string; thumb?: string | null }[];
 };
 
 const ACTION_META = {
   METTRE_EN_AVANT: { label: 'Mettre en avant', color: 'bg-green-100 text-green-700', icon: '⭐' },
-  DEMARQUER: { label: 'Démarquer', color: 'bg-orange-100 text-orange-700', icon: '🏷️' },
+  REPOSITIONNER: { label: 'Repositionner — vitrine / zone tendance', color: 'bg-orange-100 text-orange-700', icon: '⤴️' },
   RETIRER: { label: 'Retirer du rayon', color: 'bg-red-100 text-red-700', icon: '🚫' },
   MAINTENIR: { label: 'Maintenir', color: 'bg-blue-100 text-blue-700', icon: '✓' },
 };
@@ -31,11 +36,13 @@ export default function RecoCard({ reco, onAccept, onPostpone, onReject }: Props
   const meta = ACTION_META[reco.action];
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col md:flex-row">
-      {/* Photo */}
+      {/* Photo — mediaUrl() préfixe les chemins relatifs /uploads/... par la
+          base API ; sans ça, l'<img> tape le front Next.js → 404 → l'alt
+          text s'affiche à la place de la photo. */}
       <div className="md:w-1/3 aspect-square md:aspect-auto bg-gray-100 flex-shrink-0">
         {reco.product_thumb ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={reco.product_thumb} alt={reco.product_name} className="w-full h-full object-cover" />
+          <img src={mediaUrl(reco.product_thumb)} alt={reco.product_name} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-5xl text-gray-300">👗</div>
         )}
@@ -81,7 +88,7 @@ export default function RecoCard({ reco, onAccept, onPostpone, onReject }: Props
                 <div key={s.id} className="w-12 h-12 rounded bg-gray-100 overflow-hidden">
                   {s.thumb ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.thumb} alt={s.name} className="w-full h-full object-cover" />
+                    <img src={mediaUrl(s.thumb)} alt={s.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-lg">👕</div>
                   )}

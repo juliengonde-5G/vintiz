@@ -1,11 +1,34 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import RecoCard, { type RecoCardData } from './RecoCard';
 import SeasonTimeline from './SeasonTimeline';
 import FashionTrendsWidget, { type FashionSignal } from './FashionTrendsWidget';
 import { api } from '@/lib/api';
+
+// Persistance locale des recos « reportées 7j » / « pourquoi pas ».
+// Pas de round-trip backend pour l'instant : c'est un tri visuel côté
+// manager. Si une décision doit être journalisée plus tard (analytics IA),
+// on remplacera ce store par un POST.
+const RECO_HIDE_KEY = 'vintiz.recos.hidden';
+type HiddenEntry = { id: string; until: number }; // until = epoch ms ; 0 = permanent
+
+function readHidden(): HiddenEntry[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(RECO_HIDE_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw) as HiddenEntry[];
+    const now = Date.now();
+    return list.filter((e) => e.until === 0 || e.until > now);
+  } catch { return []; }
+}
+function writeHidden(list: HiddenEntry[]): void {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(RECO_HIDE_KEY, JSON.stringify(list)); } catch { /* silent */ }
+}
 
 type SubTab = 'recos' | 'season' | 'fashion';
 
@@ -19,11 +42,49 @@ type SubTab = 'recos' | 'season' | 'fashion';
  * "Mapping Boutique" et sera intégrée dans une itération suivante.
  */
 export default function RecosDuJourTab() {
+  const router = useRouter();
   const [sub, setSub] = useState<SubTab>('recos');
 
   // --- Recos data (built from /api/ai/trends top items) ---
   const [recos, setRecos] = useState<RecoCardData[]>([]);
   const [loadingRecos, setLoadingRecos] = useState(false);
+  const [hidden, setHidden] = useState<HiddenEntry[]>([]);
+
+  // Charge les pièces masquées au montage (reportées 7j ou rejetées).
+  useEffect(() => { setHidden(readHidden()); }, []);
+
+  const visibleRecos = useMemo(() => {
+    const hiddenIds = new Set(hidden.map((h) => h.id));
+    return recos.filter((r) => !hiddenIds.has(r.product_id));
+  }, [recos, hidden]);
+
+  // « Accepter » : ouvrir la fiche produit pour passer à l'acte
+  // (déplacement vitrine, etc.). Pas de side-effect IA pour l'instant.
+  const handleAccept = (productId: string) => {
+    router.push(`/inventory/${productId}`);
+  };
+
+  // « Reporter 7j » : masque la reco pendant 7 jours, puis elle revient.
+  const handlePostpone = (productId: string) => {
+    const next = [
+      ...hidden.filter((h) => h.id !== productId),
+      { id: productId, until: Date.now() + 7 * 24 * 3600 * 1000 },
+    ];
+    writeHidden(next);
+    setHidden(next);
+  };
+
+  // « Pourquoi pas » : masque définitivement (jusqu'à ce que le manager
+  // vide manuellement le localStorage ; à câbler à un endpoint de
+  // ``recommendation_dismissed`` quand on saura ce qu'on en fait).
+  const handleReject = (productId: string) => {
+    const next = [
+      ...hidden.filter((h) => h.id !== productId),
+      { id: productId, until: 0 },
+    ];
+    writeHidden(next);
+    setHidden(next);
+  };
 
   // --- Season data (from scoring config category_calendar) ---
   const [calendar, setCalendar] = useState<Record<string, number[]>>({});
@@ -99,7 +160,7 @@ export default function RecosDuJourTab() {
       {/* Sub-tabs */}
       <div className="flex gap-2 border-b border-gray-200 pb-2">
         {[
-          { key: 'recos', label: '💡 Recommandations', count: recos.length },
+          { key: 'recos', label: '💡 Recommandations', count: visibleRecos.length },
           { key: 'season', label: '📅 Vue saisons', count: Object.keys(calendar).length },
           { key: 'fashion', label: '🌟 Influence fashion', count: fashionSignals.length },
         ].map((t) => (
@@ -132,15 +193,29 @@ export default function RecosDuJourTab() {
               </p>
             </Card>
           )}
-          {recos.map((r) => (
+          {visibleRecos.map((r) => (
             <RecoCard
               key={r.product_id}
               reco={r}
-              onAccept={(id) => console.log('Accept', id)}
-              onPostpone={(id) => console.log('Postpone', id)}
-              onReject={(id) => console.log('Reject', id)}
+              onAccept={handleAccept}
+              onPostpone={handlePostpone}
+              onReject={handleReject}
             />
           ))}
+          {!loadingRecos && recos.length > 0 && visibleRecos.length === 0 && (
+            <Card className="p-6">
+              <p className="text-sm text-gray-500">
+                Toutes les recommandations du jour ont été reportées ou écartées.{' '}
+                <button
+                  type="button"
+                  onClick={() => { writeHidden([]); setHidden([]); }}
+                  className="text-vz-teal underline"
+                >
+                  Tout réafficher
+                </button>
+              </p>
+            </Card>
+          )}
         </div>
       )}
 
@@ -162,7 +237,9 @@ export default function RecosDuJourTab() {
 function mapAction(raw: string): RecoCardData['action'] {
   const c = (raw || '').toLowerCase();
   if (c.includes('red') || c.includes('retir')) return 'RETIRER';
-  if (c.includes('orange') || c.includes('demarq') || c.includes('démarq')) return 'DEMARQUER';
+  // orange = score 30-50 : repositionner (vitrine / zone tendance). Pas de
+  // démarque — la boutique ne pratique pas la réduction de prix post-shelving.
+  if (c.includes('orange') || c.includes('repositi') || c.includes('demarq') || c.includes('démarq')) return 'REPOSITIONNER';
   if (c.includes('yellow') || c.includes('avant')) return 'METTRE_EN_AVANT';
   return 'MAINTENIR';
 }
