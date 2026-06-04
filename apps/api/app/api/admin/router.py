@@ -2581,3 +2581,41 @@ async def brevo_sync_client(
         "status_code": res.status_code,
         "detail": res.detail,
     }
+
+
+# ---------------------------------------------------------------------------
+# Capsule du mois — page éditoriale dynamique
+# ---------------------------------------------------------------------------
+
+
+@router.get("/capsule/current", dependencies=[Depends(manager_only)])
+async def get_current_capsule(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Capsule éditoriale du mois en cours (créée à la demande si absente).
+
+    Le contenu (audience, produits tendance, produits événement, pastilles
+    couleurs/types/idées cadeaux) ne contient que des pièces actuellement
+    actives à l'inventaire — un produit vendu disparaît au prochain regen.
+    """
+    from app.services.capsule import get_or_create_current_capsule, serialize_capsule
+
+    row = await get_or_create_current_capsule(db)
+    await db.commit()
+    return serialize_capsule(row)
+
+
+@router.post("/capsule/regenerate", dependencies=[Depends(manager_only)])
+async def regenerate_current_capsule(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Force un nouveau regen de la capsule du mois courant.
+
+    Utile quand le manager vient de saisir une vague de produits ou veut
+    rafraîchir les pastilles IA après changement d'audience.
+    """
+    from app.services.capsule import regenerate_capsule, serialize_capsule
+
+    row = await regenerate_capsule(db)
+    await db.commit()
+    return serialize_capsule(row)

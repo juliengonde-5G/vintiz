@@ -92,6 +92,27 @@ async def run_weekly_social_posts() -> None:
         logger.exception("Social posts job failed: %s", exc)
 
 
+async def run_monthly_capsule() -> None:
+    """Régénère la capsule éditoriale du mois courant. 1er du mois 08:00 Paris."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.capsule import regenerate_capsule
+
+        async with AsyncSession(engine) as db:
+            row = await regenerate_capsule(db)
+            await db.commit()
+            logger.info(
+                "Monthly capsule: iso_month=%s used_llm=%s trend=%d event=%d",
+                row.iso_month,
+                row.used_llm,
+                len(row.proposal.get("trend_products") or []),
+                len(row.proposal.get("event_products") or []),
+            )
+    except Exception as exc:
+        logger.exception("Monthly capsule job failed: %s", exc)
+
+
 async def run_weekly_window_display() -> None:
     """Build Monday's window-display proposal (P2-007). Runs at 06:00 Paris."""
     try:
@@ -532,6 +553,12 @@ def register_all_jobs(scheduler) -> None:
         run_monthly_rfm_segmentation,
         CronTrigger(day="1", hour=4, minute=0),
         id="monthly_rfm_segmentation",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_monthly_capsule,
+        CronTrigger(day="1", hour=8, minute=0),
+        id="monthly_capsule",
         replace_existing=True,
     )
     scheduler.add_job(

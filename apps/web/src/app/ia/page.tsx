@@ -583,6 +583,13 @@ export default function IAPage() {
             <span>📦</span>
             <span>Brief d&apos;appro</span>
           </Link>
+          <Link
+            href="/ia/capsule"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl min-h-[48px] whitespace-nowrap bg-white border border-vz-line text-vz-ink font-medium hover:bg-vz-bg-alt transition-all"
+          >
+            <span>💎</span>
+            <span>Capsule du mois</span>
+          </Link>
         </div>
 
         {/* RECOS DU JOUR TAB (L2.5) */}
