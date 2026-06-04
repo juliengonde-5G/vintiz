@@ -10,9 +10,9 @@ import { mediaUrl } from "@/lib/media";
 // ISR — la home revalide en même temps que /produits.
 export const revalidate = 300;
 
-// Lien externe SharePoint vers la vidéo officielle du lancement.
+// Reel Instagram officiel du lancement (publication Solidarité Textiles).
 const LAUNCH_VIDEO_URL =
-  "https://solidaritetextiles.sharepoint.com/:v:/s/SP_Soltex76/IQBzFwwPACrSQ4OP2I3pvWbqAUvNoAV5xaMMv3eICikJu50?e=hUdMhS";
+  "https://www.instagram.com/reel/DZIWPkZM45u/";
 
 // Galerie « Ils étaient là le 3 juin ». Toutes les photos portent le
 // photocall « Affirmez votre style » distribué à l'entrée.
@@ -118,13 +118,15 @@ export default async function Home() {
                 rel="noopener noreferrer"
                 className="mt-6 inline-flex items-center gap-3 rounded-full bg-white text-vz-teal-deep px-7 py-3.5 text-sm font-semibold hover:bg-vz-bg transition-colors"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                  <path d="M8 5v14l11-7z" />
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <rect x="2" y="2" width="20" height="20" rx="5" />
+                  <circle cx="12" cy="12" r="4" />
+                  <circle cx="18" cy="6" r="1" fill="currentColor" />
                 </svg>
-                Regarder la vidéo (SharePoint)
+                Voir le reel sur Instagram
               </a>
               <p className="mt-3 text-xs opacity-75">
-                Ouverture dans un nouvel onglet · hébergée sur l&apos;intranet Solidarité Textiles.
+                Reel publié par @solidaritetextiles · ouverture dans un nouvel onglet.
               </p>
             </div>
             <div className="relative aspect-video rounded-xl overflow-hidden bg-black/30 shadow-vz-soft">
