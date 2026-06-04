@@ -24,7 +24,6 @@ export default function NewPermanentItemPage() {
   const [barcode, setBarcode] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [salePrice, setSalePrice] = useState('');
-  const [tvaRate, setTvaRate] = useState('20');
   const [availableFrom, setAvailableFrom] = useState('');
   const [description, setDescription] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -66,13 +65,11 @@ export default function NewPermanentItemPage() {
     }
     setSubmitting(true);
     try {
-      const tva = parseFloat(tvaRate.replace(',', '.'));
       const res = await api.post('/api/inventory/permanent', {
         name: name.trim(),
         barcode: barcode.trim() || undefined,
         category_id: categoryId,
         sale_price: price,
-        tva_rate: Number.isFinite(tva) ? tva : 20,
         available_from: availableFrom
           ? new Date(availableFrom).toISOString()
           : null,
@@ -163,31 +160,20 @@ export default function NewPermanentItemPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-vz-ink-soft mb-1.5">
-                    Prix de vente (€) *
-                  </label>
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    value={salePrice}
-                    onChange={(e) => setSalePrice(e.target.value)}
-                    placeholder="ex : 4,90"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-vz-ink-soft mb-1.5">
-                    TVA (%)
-                  </label>
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    value={tvaRate}
-                    onChange={(e) => setTvaRate(e.target.value)}
-                    placeholder="20"
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-vz-ink-soft mb-1.5">
+                  Prix de vente (€) *
+                </label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={salePrice}
+                  onChange={(e) => setSalePrice(e.target.value)}
+                  placeholder="ex : 4,90"
+                />
+                <p className="text-xs text-vz-ink-mute mt-1">
+                  TVA au taux normal (20 %), non modifiable.
+                </p>
               </div>
 
               <div>

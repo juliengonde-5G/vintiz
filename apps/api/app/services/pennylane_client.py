@@ -1,4 +1,16 @@
-"""Client HTTP Pennylane — POST journal_entries vers l'API externe."""
+"""Client HTTP Pennylane — crée des écritures via l'API externe v2.
+
+Important (migration 2026) : l'API v1 a été supprimée et l'endpoint
+``POST /journal_entries`` n'existe sur aucune base (→ HTTP 404). La v2 a
+renommé la ressource en ``ledger_entries`` et raisonne en **identifiants
+numériques** (``journal_id``, ``ledger_account_id``) là où Vintiz manipule
+des codes/numéros lisibles (``journal_code="VTE"``, ``account_number="707100"``).
+
+Ce client résout donc les codes/numéros vers leurs IDs Pennylane via
+``GET /journals`` et ``GET /ledger_accounts`` (avec cache par instance) avant
+de poster l'écriture. Les montants sont envoyés en chaînes décimales et les
+lignes sont équilibrées (Σdébit = Σcrédit), comme l'exige la v2.
+"""
 from __future__ import annotations
 
 import json
@@ -7,16 +19,14 @@ import time
 from dataclasses import dataclass, field
 from datetime import date
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 _log = logging.getLogger("vintiz.pennylane")
 
-# API externe Pennylane v1 — le client public officiel. Une tentative
-# précédente de pointer sur ``/external/v2`` renvoyait 404 sur
-# ``/journal_entries`` (l'endpoint n'existe pas à cette base). Le rollback
-# auto live dans ``accounting_service.py`` corrige toute config persistée.
+# API externe Pennylane v2 (la v1 « ledger events » a été supprimée en 2026).
 # Base surchargeable via ``AccountingConfig.pennylane_api_url``.
-DEFAULT_API_URL = "https://app.pennylane.com/api/external/v1"
+DEFAULT_API_URL = "https://app.pennylane.com/api/external/v2"
 
 
 @dataclass
@@ -49,6 +59,10 @@ class PennylaneClient:
     def __init__(self, api_key: str, api_url: str = DEFAULT_API_URL) -> None:
         self._api_key = api_key
         self._base = api_url.rstrip("/")
+        # Caches par instance (un client = un export) : évite de re-télécharger
+        # la liste des journaux / comptes pour chaque ligne.
+        self._journal_ids: dict[str, int] = {}
+        self._account_ids: dict[str, int] = {}
 
     def _headers(self) -> dict:
         return {
@@ -89,50 +103,121 @@ class PennylaneClient:
                     time.sleep(delays[attempt])
         raise last_exc  # type: ignore[misc]
 
+    # ------------------------------------------------------------------
+    # Pagination helper (v2 = curseur)
+    # ------------------------------------------------------------------
+
+    def _iter_list(self, path: str, *, max_pages: int = 50):
+        """Itère les items d'un endpoint listé v2 (pagination par curseur).
+
+        La v2 renvoie ``{"items": [...], "has_more": bool, "next_cursor": ...}``
+        (ou une liste à plat sur certaines réponses) ; on gère les deux formes
+        défensivement et on plafonne le nombre de pages.
+        """
+        cursor: str | None = None
+        for _ in range(max_pages):
+            query = f"?{urlencode({'cursor': cursor})}" if cursor else ""
+            payload = self._call_with_retry("GET", f"{path}{query}")
+            if isinstance(payload, list):
+                yield from payload
+                return
+            items = payload.get("items") or payload.get("data") or []
+            yield from items
+            if not payload.get("has_more"):
+                return
+            cursor = payload.get("next_cursor") or payload.get("cursor")
+            if not cursor:
+                return
+
+    # ------------------------------------------------------------------
+    # Résolution code/numéro → id Pennylane
+    # ------------------------------------------------------------------
+
+    def _resolve_journal_id(self, journal_code: str) -> int:
+        if journal_code in self._journal_ids:
+            return self._journal_ids[journal_code]
+        for j in self._iter_list("/journals"):
+            code = str(j.get("code") or j.get("label") or "").strip()
+            jid = j.get("id")
+            if code and jid is not None:
+                self._journal_ids[code] = int(jid)
+        if journal_code not in self._journal_ids:
+            raise PennylaneError(
+                f"Journal Pennylane introuvable pour le code « {journal_code} » — "
+                f"créez-le dans Pennylane (Comptabilité > Journaux) ou corrigez "
+                f"le code dans Paramétrage > Comptabilité.",
+                status_code=404,
+            )
+        return self._journal_ids[journal_code]
+
+    def _resolve_account_id(self, account_number: str) -> int:
+        number = str(account_number).strip()
+        if number in self._account_ids:
+            return self._account_ids[number]
+        # Filtre côté serveur si disponible, sinon scan complet (caché).
+        found: int | None = None
+        for a in self._iter_list("/ledger_accounts"):
+            num = str(a.get("number") or "").strip()
+            aid = a.get("id")
+            if num and aid is not None:
+                self._account_ids[num] = int(aid)
+                if num == number:
+                    found = int(aid)
+        if found is None and number not in self._account_ids:
+            raise PennylaneError(
+                f"Compte comptable Pennylane introuvable pour le numéro "
+                f"« {number} » — créez-le dans Pennylane (Plan comptable) ou "
+                f"corrigez le numéro dans Paramétrage > Comptabilité.",
+                status_code=404,
+            )
+        return self._account_ids[number]
+
+    # ------------------------------------------------------------------
+    # API publique
+    # ------------------------------------------------------------------
+
     def ping(self) -> bool:
-        """Teste la connexion. ``GET /companies`` est un probe léger v1
-        disponible sur tout dossier."""
+        """Teste la connexion. ``GET /journals`` est un probe léger v2
+        (liste des journaux du dossier)."""
         try:
-            self._call("GET", "/companies")
+            self._call("GET", "/journals")
             return True
         except PennylaneError:
             return False
 
     def create_journal_entry(self, entry: JournalEntry) -> str:
-        """Crée une écriture comptable (API v1). Retourne l'id Pennylane.
+        """Crée une écriture comptable (API v2 ``/ledger_entries``).
 
-        Schéma v1 : ``POST /journal_entries`` avec
-        ``ledger_event_lines_attributes`` portant ``currency_amount`` +
-        ``direction`` ("debit"|"credit"). ``journal_code`` route vers le bon
-        journal (VTE par défaut).
+        Résout ``journal_code`` → ``journal_id`` et chaque ``account_number`` →
+        ``ledger_account_id``, puis poste l'écriture. Montants en chaînes
+        décimales, lignes équilibrées. Retourne l'id Pennylane de l'écriture.
         """
+        journal_id = self._resolve_journal_id(entry.journal_code)
+
         lines_payload = []
         for line in entry.lines:
-            if line.debit > 0:
-                lines_payload.append({
-                    "account_number": line.account_number,
-                    "label": line.label,
-                    "currency_amount": round(line.debit, 2),
-                    "direction": "debit",
-                })
-            elif line.credit > 0:
-                lines_payload.append({
-                    "account_number": line.account_number,
-                    "label": line.label,
-                    "currency_amount": round(line.credit, 2),
-                    "direction": "credit",
-                })
+            if line.debit <= 0 and line.credit <= 0:
+                continue
+            lines_payload.append({
+                "ledger_account_id": self._resolve_account_id(line.account_number),
+                "label": line.label,
+                "debit": f"{round(line.debit, 2):.2f}",
+                "credit": f"{round(line.credit, 2):.2f}",
+            })
 
         payload = {
-            "journal_entry": {
-                "date": entry.date.isoformat(),
-                "label": entry.label,
-                "currency": entry.currency,
-                "journal_code": entry.journal_code,
-                "ledger_event_lines_attributes": lines_payload,
-            }
+            "date": entry.date.isoformat(),
+            "label": entry.label,
+            "journal_id": journal_id,
+            "currency": entry.currency,
+            "ledger_entry_lines": lines_payload,
         }
-        _log.info("Pennylane v1 → POST /journal_entries (%d lignes)", len(lines_payload))
-        result = self._call_with_retry("POST", "/journal_entries", payload)
-        entry_data = result.get("journal_entry", result)
+        _log.info(
+            "Pennylane v2 → POST /ledger_entries (journal_id=%s, %d lignes)",
+            journal_id, len(lines_payload),
+        )
+        result = self._call_with_retry("POST", "/ledger_entries", payload)
+        # v2 renvoie l'objet à plat ({"id": ..., "status": "recorded"}) ;
+        # on tolère aussi un éventuel enveloppage.
+        entry_data = result.get("ledger_entry", result)
         return str(entry_data.get("id", ""))

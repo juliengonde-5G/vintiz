@@ -86,13 +86,13 @@ class AccountingService:
             cfg = AccountingConfig()
             self.db.add(cfg)
             await self.db.flush()
-        # Rollback v2 → v1 : un précédent passage avait migré l'URL stockée
-        # vers ``/external/v2`` (POST /journal_entries y répond 404 — endpoint
-        # inexistant). On la ramène silencieusement sur v1, qui est l'API
-        # publique officielle. Les URL custom (autre domaine) sont laissées
-        # intactes.
-        if cfg.pennylane_api_url and cfg.pennylane_api_url.rstrip("/").endswith("/external/v2"):
-            cfg.pennylane_api_url = cfg.pennylane_api_url.rstrip("/")[:-1] + "1"
+        # Migration v1 → v2 : l'API v1 de Pennylane a été supprimée (2026) et
+        # ``POST /journal_entries`` renvoie 404 (la ressource s'appelle
+        # désormais ``ledger_entries`` côté v2). On bascule silencieusement
+        # toute URL v1 résiduelle vers v2, sans intervention manuelle. Les URL
+        # custom (autre domaine) sont laissées intactes.
+        if cfg.pennylane_api_url and cfg.pennylane_api_url.rstrip("/").endswith("/external/v1"):
+            cfg.pennylane_api_url = cfg.pennylane_api_url.rstrip("/")[:-1] + "2"
             await self.db.flush()
         return cfg
 
@@ -443,12 +443,15 @@ class AccountingService:
         z_ref = f"Z{z_report.report_number:04d}"
 
         # ── Débit : comptes d'encaissement (une ligne par méthode) ──────────
-        # ``voucher`` (bons cadeaux) est une VRAIE ligne de paiement au POS
-        # (la vente est encaissée à 100 % du TTC, le bon couvrant une part).
-        # S'il manque ici, le débit perd le montant du bon alors que le crédit
-        # (ventes HT+TVA = TTC) le contient → écriture déséquilibrée. On le
-        # mappe sur un compte dédié (4198 « Bons cadeaux à honorer » par
-        # défaut), surchargeable via la config si la colonne existe.
+        # ``voucher`` (bons cadeaux Vintiz) est volontairement EXCLU du débit :
+        # tous les bons émis par la boutique sont des cadeaux marketing
+        # (event_opening, welcome, anniversary, loyalty_milestone…) — aucun
+        # n'est un bon CADEAU PAYÉ par le client qui constituerait une vraie
+        # dette comptable au passif. C'est donc une remise commerciale sur le
+        # ticket : on ne débite pas 4198 (faux passif), on RÉDUIT la vente HT
+        # et la TVA collectée du montant correspondant (cf. plus bas). Voir
+        # la directive métier : « Un remise immédiate sur ticket réduit le
+        # montant HT et la TVA, ne passe pas par 419 ».
         method_map = {
             "cash": (cfg.account_cash, cfg.label_cash),
             "card": (cfg.account_card, cfg.label_card),
@@ -456,10 +459,6 @@ class AccountingService:
             "cheque_cdc": (cfg.account_cheque_cdc, cfg.label_cheque_cdc),
             "avoir": (cfg.account_avoir, cfg.label_avoir),
             "transfer": (cfg.account_transfer, cfg.label_transfer),
-            "voucher": (
-                getattr(cfg, "account_voucher", None) or "4198",
-                getattr(cfg, "label_voucher", None) or "Bons cadeaux a honorer",
-            ),
         }
         for method, (account, label) in method_map.items():
             amount = totals["by_method"].get(method, 0)
@@ -483,12 +482,24 @@ class AccountingService:
                     label=f"Remboursement {label} — {z_ref}",
                 ))
 
-        # ── Crédit : ventes HT (707) NETTES des remboursements ───────────────
-        # net_ht / net_tva soustraient le HT/TVA remboursé : le débit
-        # d'encaissement nette déjà les remboursements (cf. _compute_totals),
-        # donc le crédit doit en faire autant pour rester équilibré.
-        net_ht = round(totals["sales_ht"] - totals.get("refunds_ht", 0.0), 2)
-        net_tva = round(totals["sales_tva"] - totals.get("refunds_tva", 0.0), 2)
+        # ── Crédit : ventes HT (707) NETTES des remboursements ET DES BONS ──
+        # net_ht / net_tva soustraient :
+        #  - le HT/TVA remboursé (le débit d'encaissement nette déjà les
+        #    remboursements, le crédit doit en faire autant) ;
+        #  - le HT/TVA correspondant à la part de TTC encaissée en bons
+        #    cadeaux. Un bon = remise sur ticket → la valeur ne tombe ni en
+        #    caisse ni en CB, donc on n'a rien encaissé pour cette part →
+        #    la vente reconnue est plus faible que le TTC affiché. Le bon
+        #    est ventilé HT+TVA au taux normal Vintiz (tva_rate config,
+        #    20 % par défaut) — c'est le même taux que ``label_tva``.
+        voucher_ttc = float(totals["by_method"].get("voucher", 0) or 0.0)
+        tva_rate = float(getattr(cfg, "tva_rate", 20.0) or 20.0)
+        ratio = 1.0 + tva_rate / 100.0
+        voucher_ht = round(voucher_ttc / ratio, 2) if voucher_ttc else 0.0
+        voucher_tva = round(voucher_ttc - voucher_ht, 2) if voucher_ttc else 0.0
+
+        net_ht = round(totals["sales_ht"] - totals.get("refunds_ht", 0.0) - voucher_ht, 2)
+        net_tva = round(totals["sales_tva"] - totals.get("refunds_tva", 0.0) - voucher_tva, 2)
 
         if abs(net_ht) >= 0.005:
             lines.append(JournalEntryLine(

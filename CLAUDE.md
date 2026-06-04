@@ -214,6 +214,19 @@ TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 TWILIO_FROM=
 
+# Brevo Contacts — synchronisation Clients ↔ Brevo. La même BREVO_API_KEY
+# que pour email/SMS est utilisée. Push automatique sur création/update
+# client + toggle d'opt-in/out (services/brevo_contacts.py). Optionnels :
+# IDs de listes Brevo où l'on inscrit/retire les opt-in correspondants
+# (un client opt-out à un canal est ajouté à la blocklist Brevo).
+BREVO_LIST_EMAIL=               # ex: 12,13 (IDs des listes email marketing)
+BREVO_LIST_SMS=                 # ex: 20 (ID de la liste SMS marketing)
+# Token partagé pour POST /api/brevo/webhook (Brevo → Vintiz). Sans token
+# défini, le webhook refuse les événements. Configurer la même valeur côté
+# Brevo (URL du webhook = …?token=…) pour capter les opt-out cliqués depuis
+# le lien email.
+BREVO_WEBHOOK_TOKEN=
+
 # SEO / Analytics (site public)
 PUBLIC_SITE_URL=https://vintiz.fr
 GA_MEASUREMENT_ID=                # G-XXXXXXXXXX
