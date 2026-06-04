@@ -80,6 +80,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "host": os.getenv("ZEBRA_PRINTER_IP", os.getenv("LABEL_PRINTER_HOST", "")),
         "port": int(os.getenv("ZEBRA_PRINTER_PORT", os.getenv("LABEL_PRINTER_PORT", "9100"))),
         "dpi": 203,
+        # Format preset (clé de LABEL_FORMAT_PRESETS dans le frontend / backend).
+        # ``custom`` = dimensions saisies manuellement (label_width_mm /
+        # label_height_mm libres). Sinon les dimensions sont dérivées du
+        # preset, ce qui évite que la caissière ait à mémoriser les couples
+        # millimètre exacts du rouleau commandé.
+        "label_format": "vintiz_25x52",
         "label_width_mm": 25,
         "label_height_mm": 52,
         # Cloud mode (Weblink + SendFileToPrinter) — Zebra Data Services creds

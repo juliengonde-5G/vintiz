@@ -83,6 +83,19 @@ async def get_compatibility(current_user: User = Depends(get_current_user)):
     return {"items": COMPATIBILITY_MATRIX}
 
 
+@router.get("/label/formats")
+async def get_label_formats(current_user: User = Depends(get_current_user)):
+    """Liste des presets de format d'étiquette pour le dropdown Paramètres.
+
+    Source unique de vérité (cf. ``label_formats.py``) : un changement de
+    preset côté UI traduit en (width_mm, height_mm) côté backend sans que
+    l'opérateur n'ait à mémoriser les dimensions exactes du rouleau.
+    """
+    from app.services.label_formats import list_presets
+
+    return {"presets": list_presets()}
+
+
 def _mask_label_secrets(cfg: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of the config with the Zebra cloud API key masked.
 
