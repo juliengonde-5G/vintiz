@@ -50,7 +50,6 @@ interface HardwareConfig {
   label_printer: {
     enabled: boolean; model: string; host: string; port: number;
     label_width_mm: number; label_height_mm: number;
-    label_format?: string;
     connection?: 'network' | 'cloud' | 'bluetooth';
     cloud_api_key?: string;
     cloud_tenant?: string;
@@ -77,10 +76,6 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<'store' | 'caisse' | 'tickets' | 'communication' | 'templates' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
   const [hardware, setHardware] = useState<HardwareConfig | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityItem[]>([]);
-  const [labelFormats, setLabelFormats] = useState<{
-    key: string; label: string; width_mm: number; height_mm: number;
-    note: string; is_custom: boolean;
-  }[]>([]);
   const [hwSaving, setHwSaving] = useState(false);
 
   // Cahier de Travail state
@@ -437,19 +432,14 @@ export default function SettingsPage() {
   const loadHardware = async () => {
     setLoading(true);
     try {
-      const [cfgRes, compatRes, formatsRes] = await Promise.all([
+      const [cfgRes, compatRes] = await Promise.all([
         api.get('/api/hardware/config'),
         api.get('/api/hardware/compatibility'),
-        api.get('/api/hardware/label/formats'),
       ]);
       if (cfgRes.ok) setHardware(await cfgRes.json());
       if (compatRes.ok) {
         const data = await compatRes.json();
         setCompatibility(data.items || []);
-      }
-      if (formatsRes.ok) {
-        const data = await formatsRes.json();
-        setLabelFormats(data.presets || []);
       }
     } catch {
       setError('Erreur de chargement du materiel');
@@ -1973,77 +1963,24 @@ export default function SettingsPage() {
                         </p>
                       </div>
                     )}
-                    {labelFormats.length > 0 && (
-                      <div className="col-span-2">
-                        <label className="block text-sm font-medium text-black mb-1.5">Format d&apos;étiquette</label>
-                        <select
-                          value={hardware.label_printer.label_format || 'vintiz_25x52'}
-                          onChange={(e) => {
-                            const key = e.target.value;
-                            const preset = labelFormats.find((p) => p.key === key);
-                            if (!preset) return;
-                            setHardware({
-                              ...hardware,
-                              label_printer: {
-                                ...hardware.label_printer,
-                                label_format: key,
-                                // Un preset (≠ custom) verrouille les dimensions sur ses
-                                // valeurs ; ``custom`` conserve les mm saisis manuellement.
-                                ...(preset.is_custom
-                                  ? {}
-                                  : {
-                                      label_width_mm: preset.width_mm,
-                                      label_height_mm: preset.height_mm,
-                                    }),
-                              },
-                            });
-                          }}
-                          className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
-                        >
-                          {labelFormats.map((p) => (
-                            <option key={p.key} value={p.key}>{p.label}</option>
-                          ))}
-                        </select>
-                        {(() => {
-                          const cur = labelFormats.find(
-                            (p) => p.key === (hardware.label_printer.label_format || 'vintiz_25x52'),
-                          );
-                          return cur?.note ? (
-                            <p className="text-xs text-vz-ink-mute mt-1.5">{cur.note}</p>
-                          ) : null;
-                        })()}
-                      </div>
-                    )}
-                    {(() => {
-                      const cur = labelFormats.find(
-                        (p) => p.key === (hardware.label_printer.label_format || 'vintiz_25x52'),
-                      );
-                      const locked = !!cur && !cur.is_custom;
-                      return (
-                        <>
-                          <div>
-                            <label className="block text-sm font-medium text-black mb-1.5">Largeur étiquette (mm)</label>
-                            <input
-                              type="number"
-                              value={hardware.label_printer.label_width_mm}
-                              onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_width_mm: parseInt(e.target.value) || 80 } })}
-                              disabled={locked}
-                              className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal disabled:bg-vz-bg-alt disabled:text-vz-ink-mute"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-black mb-1.5">Hauteur étiquette (mm)</label>
-                            <input
-                              type="number"
-                              value={hardware.label_printer.label_height_mm}
-                              onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_height_mm: parseInt(e.target.value) || 120 } })}
-                              disabled={locked}
-                              className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal disabled:bg-vz-bg-alt disabled:text-vz-ink-mute"
-                            />
-                          </div>
-                        </>
-                      );
-                    })()}
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Largeur étiquette (mm)</label>
+                      <input
+                        type="number"
+                        value={hardware.label_printer.label_width_mm}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_width_mm: parseInt(e.target.value) || 80 } })}
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-1.5">Hauteur étiquette (mm)</label>
+                      <input
+                        type="number"
+                        value={hardware.label_printer.label_height_mm}
+                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_height_mm: parseInt(e.target.value) || 120 } })}
+                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                      />
+                    </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3 mt-4">
                     <Button
