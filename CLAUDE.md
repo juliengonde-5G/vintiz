@@ -393,6 +393,8 @@ GET    /api/admin/store-plan                 Plan zones + occupation + score moy
 GET    /api/admin/window-display/current     Proposition vitrine semaine courante (manager only)
 POST   /api/admin/window-display/regenerate  Régénérer la proposition (manager only)
 POST   /api/admin/window-display/{id}/accept Valider la vitrine (manager only)
+GET    /api/admin/capsule/current            Capsule éditoriale du mois (audience PS + zone tendance + événement + pastilles ; en stock uniquement, manager only)
+POST   /api/admin/capsule/regenerate         Force regen de la capsule du mois (manager only)
 
 # IA Booster (Compagnon IA)
 GET    /api/ai/weekly-checklist              Checklist semaine IA

@@ -74,6 +74,7 @@ from app.models.accounting import (
 )
 from app.models.database_backup import DatabaseBackup, DatabaseBackupConfig
 from app.models.permanent_item import PermanentItem
+from app.models.capsule import MonthlyCapsule
 
 __all__ = [
     "Base",
@@ -112,4 +113,5 @@ __all__ = [
     "AccountingConfig", "AccountingExport", "AccountingExportLine", "ExportStatus",
     "DatabaseBackup", "DatabaseBackupConfig",
     "PermanentItem",
+    "MonthlyCapsule",
 ]

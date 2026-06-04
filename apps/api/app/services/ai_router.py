@@ -49,6 +49,7 @@ DEFAULT_ROUTING: dict[str, dict[str, str]] = {
     "pricing_decision": {"provider": "anthropic", "model": "claude-haiku-4-5"},
     "social_posts": {"provider": "anthropic", "model": "claude-haiku-4-5"},
     "review_reply": {"provider": "anthropic", "model": "claude-haiku-4-5"},
+    "monthly_capsule": {"provider": "anthropic", "model": "claude-haiku-4-5"},
 }
 
 
