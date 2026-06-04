@@ -2508,3 +2508,76 @@ async def get_appro_brief(
     return await build_appro_brief(db, period_days=max(7, min(period_days, 365)))
 
 
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# Brevo Contacts — synchronisation des coordonnées client + opt-in/out
+# ───────────────────────────────────────────────────────────────────────────
+
+@router.get("/brevo/status", dependencies=[Depends(manager_only)])
+async def brevo_status():
+    """Diagnostic rapide : clé configurée ? listes définies ? compte joignable ?"""
+    import os
+    from app.services.brevo_contacts import _api_key, _call, _email_list_ids, _sms_list_ids
+
+    api_key = _api_key()
+    out = {
+        "configured": api_key is not None,
+        "email_list_ids": _email_list_ids(),
+        "sms_list_ids": _sms_list_ids(),
+        "account": None,
+    }
+    if api_key:
+        try:
+            status, body = _call("GET", "/account")
+            if 200 <= status < 300:
+                out["account"] = {
+                    "email": body.get("email"),
+                    "plan_type": (body.get("plan") or [{}])[0].get("type"),
+                }
+            else:
+                out["account"] = {"error": f"HTTP {status}: {str(body)[:120]}"}
+        except Exception as exc:  # noqa: BLE001
+            out["account"] = {"error": str(exc)[:120]}
+    return out
+
+
+class BrevoSyncRequest(BaseModel):
+    only_optin: bool = False
+
+
+@router.post("/brevo/sync-all", dependencies=[Depends(manager_only)])
+async def brevo_sync_all(
+    payload: BrevoSyncRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Pousse en bloc tous les clients vers Brevo (upsert).
+
+    À déclencher en one-shot après config de ``BREVO_API_KEY``, ou pour
+    rattraper un drift (ex. campagnes déclenchées hors Vintiz). Best-effort :
+    chaque échec est compté mais n'interrompt pas la boucle.
+    """
+    from app.services.brevo_contacts import push_all_clients
+
+    return await push_all_clients(db, only_optin=payload.only_optin)
+
+
+@router.post("/brevo/sync-client/{client_id}", dependencies=[Depends(manager_only)])
+async def brevo_sync_client(
+    client_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Pousse un client précis vers Brevo (debug / réparation ponctuelle)."""
+    from app.models.client import Client
+    from app.services.brevo_contacts import push_client
+
+    row = await db.execute(select(Client).where(Client.id == client_id))
+    client = row.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(404, "Client introuvable")
+    res = push_client(client)
+    return {
+        "ok": res.ok,
+        "status_code": res.status_code,
+        "detail": res.detail,
+    }

@@ -87,6 +87,19 @@ class RgpdService:
             setattr(client, flag, granted)
 
         await self.db.flush()
+
+        # Miroir vers Brevo Contacts : à chaque changement d'opt-in
+        # email / SMS, on aligne la fiche Brevo (blocklist + listes). Aucun
+        # impact si BREVO_API_KEY est absent (no-op) ; sinon best-effort —
+        # l'erreur est loguée mais ne fait pas échouer la sauvegarde du
+        # consent côté Vintiz (la source de vérité reste notre base).
+        if flag is not None and (client.email or "").strip():
+            try:
+                from app.services.brevo_contacts import push_client
+                push_client(client)
+            except Exception:  # noqa: BLE001 — best-effort
+                pass
+
         return entry
 
     async def current_consents(self, client_id: uuid.UUID) -> dict[str, dict]:

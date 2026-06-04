@@ -211,6 +211,14 @@ async def create_client(
     await db.flush()
     await db.refresh(client)
     await db.commit()
+
+    # Miroir Brevo Contacts (best-effort, no-op si BREVO_API_KEY absent).
+    try:
+        from app.services.brevo_contacts import push_client
+        push_client(client)
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
         "id": str(client.id),
         "first_name": client.first_name,
@@ -645,6 +653,14 @@ async def update_client(
     await db.flush()
     await db.refresh(client)
     await db.commit()
+
+    # Miroir Brevo Contacts (coordonnées + opt-in/out). Best-effort.
+    try:
+        from app.services.brevo_contacts import push_client
+        push_client(client)
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
         "id": str(client.id),
         "first_name": client.first_name,
