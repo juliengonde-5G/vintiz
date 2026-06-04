@@ -37,6 +37,17 @@ SUMUP_PAGE_LIMIT = 100
 SUMUP_PAGES_HARD_CAP = 20  # Sécurité : 20 × 100 = 2 000 txns / jour max
 
 
+def _iso(dt) -> str | None:
+    """Datetime → ISO 8601 UTC ``Z``. Renvoie None si vide."""
+    if dt is None:
+        return None
+    if isinstance(dt, str):
+        return dt
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 @dataclass
 class SumUpTx:
     transaction_id: str
@@ -64,6 +75,13 @@ class ReconciliationLine:
     # "amount_mismatch" = ID matché mais montants divergents
     status: str
     delta: float = 0.0
+    # Chronodatage — ISO 8601 UTC (front formate localement en HH:MM:SS).
+    # Vintiz = Transaction.created_at, SumUp = item["timestamp"]. Permet au
+    # comptable de retrouver le ticket physique correspondant à la ligne et
+    # de repérer un écart temporel (paiement validé à 11h17 vs SumUp à 11h25
+    # → polling tardif, mais bien la même vente).
+    vintiz_timestamp: str | None = None
+    sumup_timestamp: str | None = None
 
 
 @dataclass
@@ -317,6 +335,8 @@ class SumUpReconciliationService:
                         sumup_amount=sumup_tx.amount,
                         status=status,
                         delta=delta,
+                        vintiz_timestamp=_iso(txn.created_at),
+                        sumup_timestamp=sumup_tx.timestamp or None,
                     )
                 )
             else:
@@ -341,6 +361,8 @@ class SumUpReconciliationService:
                     sumup_amount=tx.amount,
                     status="matched_amount",
                     delta=0.0,
+                    vintiz_timestamp=_iso(txn.created_at),
+                    sumup_timestamp=tx.timestamp or None,
                 )
             )
             matched_sumup_ids.add(tx.transaction_id)
@@ -359,6 +381,7 @@ class SumUpReconciliationService:
                     sumup_amount=None,
                     status="vintiz_only",
                     delta=float(payment.amount),
+                    vintiz_timestamp=_iso(txn.created_at),
                 )
             )
         unmatched_sumup_count = 0
@@ -376,6 +399,7 @@ class SumUpReconciliationService:
                     sumup_amount=tx.amount,
                     status="sumup_only",
                     delta=-tx.amount,
+                    sumup_timestamp=tx.timestamp or None,
                 )
             )
 

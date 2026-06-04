@@ -301,6 +301,37 @@ def test_client_side_filter_strips_non_successful():
 
 
 @pytest.mark.anyio
+async def test_lines_carry_both_timestamps(session, monkeypatch):
+    """Le tableau de contrôle expose le chronodatage Vintiz ET SumUp pour
+    chaque ligne (ID ou montant), pour permettre au comptable de retrouver
+    le ticket physique correspondant et de repérer un polling tardif."""
+    monkeypatch.setenv("SUMUP_API_KEY", "sup_sk_test")
+    user = await _user(session)
+    when_vintiz = datetime(2026, 6, 4, 11, 17, 42, tzinfo=timezone.utc)
+    when_sumup_iso = "2026-06-04T11:25:13Z"
+    _, _payment = await _card_payment(
+        session, user=user, amount=30.0, sumup_transaction_id=None,
+        transaction_number=42, when=when_vintiz,
+    )
+    fake_txs = [SumUpTx(
+        transaction_id="tx_z", transaction_code="CZ", amount=30.0,
+        currency="EUR", status="SUCCESSFUL", timestamp=when_sumup_iso,
+    )]
+    monkeypatch.setattr(
+        SumUpReconciliationService,
+        "_fetch_sumup_transactions",
+        _stub_fetch(fake_txs),
+    )
+
+    report = await SumUpReconciliationService(session).reconcile(date(2026, 6, 4))
+    line = next(ln for ln in report.lines if ln.vintiz_payment_id)
+    assert line.status == "matched_amount"
+    assert line.vintiz_timestamp is not None
+    assert line.vintiz_timestamp.startswith("2026-06-04T11:17:42")
+    assert line.sumup_timestamp == when_sumup_iso
+
+
+@pytest.mark.anyio
 async def test_surfaces_api_error_in_report(session, monkeypatch):
     monkeypatch.setenv("SUMUP_API_KEY", "sup_sk_test")
     user = await _user(session)
