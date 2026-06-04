@@ -747,6 +747,12 @@ export default function POSPage() {
   // Affecter un bon de la cliente comme moyen de paiement (ligne de règlement).
   const addVoucherPayment = (v: ClientVoucher) => {
     if (payments.some((p) => p.voucher_code === v.code)) return;
+    // Un seul bon cadeau événementiel par transaction (garde-fou aligné sur
+    // le backend qui refuse `voucher_tenders > 1`).
+    if (payments.some((p) => p.method === 'voucher')) {
+      setError('Un seul bon cadeau événementiel autorisé par transaction.');
+      return;
+    }
     const remainingNow = Math.max(0, parseFloat((cartTotalAfterLoyalty - totalPaid).toFixed(2)));
     const amount = Math.min(v.value_for_cart || 0, remainingNow);
     if (amount <= 0) {
@@ -2724,10 +2730,13 @@ export default function POSPage() {
                   <div className="space-y-2">
                     {clientVouchers.map((v) => {
                       const used = payments.some((p) => p.voucher_code === v.code);
+                      // Un seul bon par transaction : si un autre bon est déjà
+                      // affecté, les autres deviennent indisponibles.
+                      const anotherUsed = !used && payments.some((p) => p.method === 'voucher');
                       // Bon d'ouverture émis aujourd'hui : utilisable
                       // seulement à partir de demain.
                       const blockedSameDay = v.available_today === false;
-                      const disabled = used || blockedSameDay;
+                      const disabled = used || blockedSameDay || anotherUsed;
                       return (
                         <div
                           key={v.code}
@@ -2755,7 +2764,9 @@ export default function POSPage() {
                             title={
                               blockedSameDay
                                 ? "Ce bon ne peut pas être utilisé le jour de son émission."
-                                : undefined
+                                : anotherUsed
+                                  ? "Un seul bon cadeau événementiel autorisé par transaction."
+                                  : undefined
                             }
                             className="px-3 py-2 rounded-lg bg-vz-teal text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-vz-teal-deep transition-colors whitespace-nowrap"
                           >
@@ -2763,11 +2774,13 @@ export default function POSPage() {
                               ? 'Affecté ✓'
                               : blockedSameDay
                                 ? 'Indisponible'
-                                : v.value_for_cart > 0
-                                  ? `Affecter ${formatCurrency(v.value_for_cart)}`
-                                  : v.requires_item
-                                    ? `+ ${v.free_item_label || 'article'}`
-                                    : 'Affecter'}
+                                : anotherUsed
+                                  ? 'Bon déjà utilisé'
+                                  : v.value_for_cart > 0
+                                    ? `Affecter ${formatCurrency(v.value_for_cart)}`
+                                    : v.requires_item
+                                      ? `+ ${v.free_item_label || 'article'}`
+                                      : 'Affecter'}
                           </button>
                         </div>
                       );
