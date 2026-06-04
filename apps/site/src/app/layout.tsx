@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import CookieBanner from "@/components/CookieBanner";
 import Analytics from "@/components/Analytics";
+import OpeningBanner from "@/components/OpeningBanner";
 
 // Charte graphique Vintiz v2 : Lexend Mega (titres) + Poppins (texte).
 const lexendMega = Lexend_Mega({
@@ -250,6 +251,7 @@ export default function RootLayout({
         )}
       </head>
       <body className="font-sans antialiased bg-vz-bg text-black">
+        <OpeningBanner />
         {children}
         <CookieBanner />
         <Analytics gaId={GA_ID} />

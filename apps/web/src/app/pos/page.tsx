@@ -51,10 +51,18 @@ interface SearchProduct {
   status: string;
   category: string | null;
   photo_url?: string | null;
+  // Présent uniquement quand l'API a résolu vers un article permanent
+  // (catalogue libre, quantité illimitée). L'ID est alors préfixé ``perm:``
+  // côté résultat de recherche.
+  kind?: 'permanent';
+  permanent_item_id?: string;
 }
 
 interface CartItem {
   product_id: string | null;
+  // Article permanent (mutuellement exclusif avec product_id). Permet d'avoir
+  // plusieurs lignes du même article scannées sans agrégation forcée.
+  permanent_item_id?: string | null;
   name: string;
   price: number;
   quantity: number;
@@ -548,7 +556,7 @@ export default function POSPage() {
     if (!query.trim()) { setSearchResults([]); return; }
     setSearchLoading(true);
     try {
-      const res = await api.get(`/api/inventory/products/search?q=${encodeURIComponent(query.trim())}`);
+      const res = await api.get(`/api/inventory/products/search?q=${encodeURIComponent(query.trim())}&include_permanent=true`);
       if (res.ok) {
         const data = await res.json();
         setSearchResults(Array.isArray(data) ? data : []);
@@ -790,6 +798,29 @@ export default function POSPage() {
   // ── Cart operations ──────────────────────────────────────────────
   const addProductToCart = (product: SearchProduct) => {
     setCart(prev => {
+      // Article permanent : on incrémente la ligne existante (stock illimité,
+      // le même code-barres peut être scanné plusieurs fois pour la même vente).
+      if (product.kind === 'permanent' && product.permanent_item_id) {
+        const permId = product.permanent_item_id;
+        const existing = prev.find(i => i.permanent_item_id === permId);
+        if (existing) {
+          return prev.map(i =>
+            i.permanent_item_id === permId
+              ? { ...i, quantity: i.quantity + 1 }
+              : i,
+          );
+        }
+        return [...prev, {
+          product_id: null,
+          permanent_item_id: permId,
+          name: product.name,
+          price: product.sale_price,
+          quantity: 1,
+          discount: 0,
+          isManual: false,
+        }];
+      }
+      // Produit seconde main : pièce unique, on n'agrège pas (quantity reste 1).
       const existing = prev.find(i => i.product_id === product.id && !i.isManual);
       if (existing) {
         return prev.map(i => i.product_id === product.id && !i.isManual
@@ -841,9 +872,10 @@ export default function POSPage() {
         return;
       }
       // Fallback: fuzzy search (legacy behaviour, useful when the
-      // operator types a partial barcode by hand).
+      // operator types a partial barcode by hand). On inclut les articles
+      // permanents pour qu'un scan partiel d'un sac retombe dessus.
       const res = await api.get(
-        `/api/inventory/products/search?q=${encodeURIComponent(code)}`,
+        `/api/inventory/products/search?q=${encodeURIComponent(code)}&include_permanent=true`,
       );
       if (!res.ok) { setError(`Produit introuvable pour ${code}`); return; }
       const data: SearchProduct[] = await res.json();
@@ -1208,6 +1240,7 @@ export default function POSPage() {
       const body: Record<string, unknown> = {
         items: cart.map((item) => ({
           product_id: item.product_id || undefined,
+          permanent_item_id: item.permanent_item_id || undefined,
           name: item.isManual ? item.name : undefined,
           quantity: item.quantity,
           unit_price: item.price,
@@ -1293,6 +1326,7 @@ export default function POSPage() {
       const body: Record<string, unknown> = {
         items: cart.map(item => ({
           product_id: item.product_id || undefined,
+          permanent_item_id: item.permanent_item_id || undefined,
           name: item.isManual ? item.name : undefined,
           quantity: item.quantity,
           unit_price: item.price,

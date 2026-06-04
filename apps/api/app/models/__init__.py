@@ -73,6 +73,7 @@ from app.models.accounting import (
     ExportStatus,
 )
 from app.models.database_backup import DatabaseBackup, DatabaseBackupConfig
+from app.models.permanent_item import PermanentItem
 
 __all__ = [
     "Base",
@@ -110,4 +111,5 @@ __all__ = [
     "SumUpTerminal", "SumUpTerminalStatus",
     "AccountingConfig", "AccountingExport", "AccountingExportLine", "ExportStatus",
     "DatabaseBackup", "DatabaseBackupConfig",
+    "PermanentItem",
 ]

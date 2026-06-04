@@ -22,6 +22,7 @@ from app.models.pos import (
     TransactionItem,
     TransactionType,
 )
+from app.models.permanent_item import PermanentItem
 from app.models.product import Product, ProductStatus
 
 
@@ -97,8 +98,11 @@ class PosService:
                 )
 
         total_ttc = Decimal("0")
-        # (product | None, quantity, unit_price, discount_percent, item_name)
-        line_rows: list[tuple[Product | None, int, Decimal, float, str]] = []
+        # (product | None, permanent_item | None, quantity, unit_price,
+        #  discount_percent, item_name)
+        line_rows: list[
+            tuple[Product | None, PermanentItem | None, int, Decimal, float, str]
+        ] = []
 
         for cart_item in items:
             if cart_item.product_id:
@@ -114,7 +118,25 @@ class PosService:
                 discount = cart_item.discount_percent or 0
                 line_total = (unit_price * cart_item.quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
                 total_ttc += line_total
-                line_rows.append((product, cart_item.quantity, unit_price, discount, product.name))
+                line_rows.append((product, None, cart_item.quantity, unit_price, discount, product.name))
+            elif getattr(cart_item, "permanent_item_id", None):
+                # Article permanent (quantité illimitée) — pas de check de stock
+                # ni de marquage ``sold``. Le même code-barres peut être passé
+                # plusieurs fois sur la même vente.
+                perm_id = cart_item.permanent_item_id
+                result = await self.db.execute(
+                    select(PermanentItem).where(PermanentItem.id == perm_id)
+                )
+                perm = result.scalar_one_or_none()
+                if perm is None:
+                    raise ResourceNotFound("PermanentItem", perm_id)
+                if not perm.is_active:
+                    raise ProductNotAvailable(perm.name, "désactivé")
+                unit_price = Decimal(str(cart_item.unit_price)) if cart_item.unit_price else Decimal(str(perm.sale_price))
+                discount = cart_item.discount_percent or 0
+                line_total = (unit_price * cart_item.quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
+                total_ttc += line_total
+                line_rows.append((None, perm, cart_item.quantity, unit_price, discount, perm.name))
             else:
                 # Manual item (e.g. sac)
                 if not cart_item.name or not cart_item.unit_price:
@@ -123,7 +145,7 @@ class PosService:
                 discount = cart_item.discount_percent or 0
                 line_total = (unit_price * cart_item.quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
                 total_ttc += line_total
-                line_rows.append((None, cart_item.quantity, unit_price, discount, cart_item.name))
+                line_rows.append((None, None, cart_item.quantity, unit_price, discount, cart_item.name))
 
         # TVA 20 %: HT = TTC / 1.20, TVA = TTC - HT
         total_ht = (total_ttc / Decimal("1.20")).quantize(Decimal("0.01"))
@@ -192,12 +214,13 @@ class PosService:
         await self.db.flush()
 
         # Create transaction items
-        for product, quantity, unit_price, discount, _name in line_rows:
+        for product, perm_item, quantity, unit_price, discount, _name in line_rows:
             line_total = (unit_price * quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
             item = TransactionItem(
                 transaction_id=transaction.id,
                 product_id=product.id if product else None,
-                product_name=(product.name if product else _name),
+                permanent_item_id=perm_item.id if perm_item else None,
+                product_name=(product.name if product else (perm_item.name if perm_item else _name)),
                 quantity=quantity,
                 unit_price=float(unit_price),
                 discount_percent=discount,
@@ -205,7 +228,8 @@ class PosService:
             )
             self.db.add(item)
 
-            # Mark product as sold (only real products)
+            # Mark product as sold (only real products — un article permanent
+            # garde sa quantité illimitée).
             if product:
                 product.status = ProductStatus.sold
                 product.sold_at = datetime.now(timezone.utc)
@@ -273,11 +297,11 @@ class PosService:
                         .quantize(Decimal("0.01"))
                     ),
                     "text": (
-                        f"{(prod.name if prod else nm) or ''} "
+                        f"{(prod.name if prod else (perm.name if perm else nm)) or ''} "
                         f"{(prod.category.name if prod and prod.category else '')}"
                     ),
                 }
-                for prod, _qty, up, disc, nm in line_rows
+                for prod, perm, _qty, up, disc, nm in line_rows
             ]
             for amount, code in voucher_tenders:
                 if not code:

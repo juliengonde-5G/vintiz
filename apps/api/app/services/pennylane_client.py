@@ -11,11 +11,12 @@ from urllib.request import Request, urlopen
 
 _log = logging.getLogger("vintiz.pennylane")
 
-# API externe Pennylane v2 (la v1 « ledger events » est dépréciée).
-# Base surchargeable via AccountingConfig.pennylane_api_url ; pour un
-# déploiement existant qui a encore l'URL v1 en base, l'éditer dans
-# /settings > Comptabilité ou laisser le fallback v2 ci-dessous.
-DEFAULT_API_URL = "https://app.pennylane.com/api/external/v2"
+# API externe Pennylane v1 — le client public officiel. Une tentative
+# précédente de pointer sur ``/external/v2`` renvoyait 404 sur
+# ``/journal_entries`` (l'endpoint n'existe pas à cette base). Le rollback
+# auto live dans ``accounting_service.py`` corrige toute config persistée.
+# Base surchargeable via ``AccountingConfig.pennylane_api_url``.
+DEFAULT_API_URL = "https://app.pennylane.com/api/external/v1"
 
 
 @dataclass
@@ -89,23 +90,20 @@ class PennylaneClient:
         raise last_exc  # type: ignore[misc]
 
     def ping(self) -> bool:
-        """Teste la connexion. En v2, GET /journals est un probe léger et
-        toujours disponible (la liste des journaux du dossier). Retourne True
-        si l'API répond 2xx.
-        """
+        """Teste la connexion. ``GET /companies`` est un probe léger v1
+        disponible sur tout dossier."""
         try:
-            self._call("GET", "/journals")
+            self._call("GET", "/companies")
             return True
         except PennylaneError:
             return False
 
     def create_journal_entry(self, entry: JournalEntry) -> str:
-        """Crée une écriture comptable (API v2). Retourne l'id Pennylane.
+        """Crée une écriture comptable (API v1). Retourne l'id Pennylane.
 
-        Schéma v2 : ``POST /journal_entries`` avec des lignes portant des
-        champs ``debit``/``credit`` distincts (montants décimaux en chaîne),
-        au lieu du couple ``direction`` + ``currency_amount`` de la v1.
-        ``journal_code`` reste accepté pour router l'écriture vers le bon
+        Schéma v1 : ``POST /journal_entries`` avec
+        ``ledger_event_lines_attributes`` portant ``currency_amount`` +
+        ``direction`` ("debit"|"credit"). ``journal_code`` route vers le bon
         journal (VTE par défaut).
         """
         lines_payload = []
@@ -114,15 +112,15 @@ class PennylaneClient:
                 lines_payload.append({
                     "account_number": line.account_number,
                     "label": line.label,
-                    "debit": f"{round(line.debit, 2):.2f}",
-                    "credit": "0.00",
+                    "currency_amount": round(line.debit, 2),
+                    "direction": "debit",
                 })
             elif line.credit > 0:
                 lines_payload.append({
                     "account_number": line.account_number,
                     "label": line.label,
-                    "debit": "0.00",
-                    "credit": f"{round(line.credit, 2):.2f}",
+                    "currency_amount": round(line.credit, 2),
+                    "direction": "credit",
                 })
 
         payload = {
@@ -131,11 +129,10 @@ class PennylaneClient:
                 "label": entry.label,
                 "currency": entry.currency,
                 "journal_code": entry.journal_code,
-                "lines": lines_payload,
+                "ledger_event_lines_attributes": lines_payload,
             }
         }
-        _log.info("Pennylane v2 → POST /journal_entries (%d lignes)", len(lines_payload))
+        _log.info("Pennylane v1 → POST /journal_entries (%d lignes)", len(lines_payload))
         result = self._call_with_retry("POST", "/journal_entries", payload)
-        # v2 renvoie {"journal_entry": {"id": ...}} (ou l'objet à plat).
         entry_data = result.get("journal_entry", result)
         return str(entry_data.get("id", ""))

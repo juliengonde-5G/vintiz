@@ -139,6 +139,14 @@ class TransactionItem(Base):
     product_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("products.id"), nullable=True
     )
+    # Pointe vers un article permanent (catalogue libre à quantité illimitée,
+    # ex. sac réutilisable). Mutuellement exclusif avec ``product_id`` —
+    # exactement zéro ou un des deux est posé (lignes manuelles laissent
+    # les deux à NULL et n'ont qu'un product_name). Sert à reconstituer
+    # l'historique de vente de la fiche article permanent.
+    permanent_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("permanent_items.id"), nullable=True
+    )
     # Item label frozen at sale time — required for manual lines (bag, custom
     # article) that have no product_id, and a stable fallback for catalog items
     # whose Product is later edited/deleted. Used on tickets, receipt text and

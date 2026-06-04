@@ -447,6 +447,10 @@ async def search_products(
     current_user: Annotated[User, Depends(get_current_user)],
     q: str = Query(..., min_length=1, description="Search query"),
     include_sold: bool = Query(False, description="Inclure aussi les produits vendus/retournés"),
+    include_permanent: bool = Query(
+        False,
+        description="Inclure les articles permanents (catalogue libre quantité illimitée). Utilisé par le POS pour proposer sacs / accessoires neufs dans la recherche.",
+    ),
 ):
     """Recherche produits par nom, code-barres ou catégorie. Limité à 20 résultats.
 
@@ -488,7 +492,7 @@ async def search_products(
     result = await db.execute(query)
     products = result.scalars().all()
 
-    return [
+    payload = [
         {
             "id": str(p.id),
             "barcode": p.barcode,
@@ -503,6 +507,50 @@ async def search_products(
         }
         for p in products
     ]
+
+    # Compléter avec les articles permanents actifs qui matchent. ID préfixé
+    # ``perm:`` pour que le POS le route différemment côté création de vente.
+    # Gated par ``include_permanent`` pour ne pas polluer les recherches des
+    # autres pages (inventaire seconde main, mouvements, sélection vitrine).
+    from app.models.permanent_item import PermanentItem
+    remaining = max(0, 20 - len(payload))
+    if include_permanent and remaining > 0:
+        perm_q = (
+            select(PermanentItem)
+            .outerjoin(Category, PermanentItem.category_id == Category.id)
+            .where(
+                PermanentItem.is_active.is_(True),
+                or_(
+                    PermanentItem.name.ilike(pattern),
+                    PermanentItem.barcode.ilike(pattern),
+                    Category.name.ilike(pattern),
+                ),
+            )
+            .limit(remaining)
+        )
+        perm_res = await db.execute(perm_q)
+        perms = perm_res.scalars().all()
+        cat_names: dict[str, str] = {}
+        if perms:
+            ids = [p.category_id for p in perms]
+            cat_rows = await db.execute(
+                select(Category.id, Category.name).where(Category.id.in_(ids))
+            )
+            cat_names = {str(cid): cname for cid, cname in cat_rows.all()}
+        for perm in perms:
+            payload.append({
+                "id": f"perm:{perm.id}",
+                "permanent_item_id": str(perm.id),
+                "kind": "permanent",
+                "barcode": perm.barcode,
+                "name": perm.name,
+                "sale_price": float(perm.sale_price),
+                "status": "permanent",
+                "category": cat_names.get(str(perm.category_id)),
+                "photo_url": perm.photo_url,
+            })
+
+    return payload
 
 
 @router.get("/products/by-barcode/{barcode}")
@@ -565,10 +613,41 @@ async def get_product_by_barcode(
         )
         product = result.scalar_one_or_none()
 
-    # Inventory diagnostic log so the manager can see what was actually
-    # scanned when a "not found" report comes in. Logged at INFO so it
-    # ends up in the daily journal without spamming WARNING.
+    # Fallback : aucune correspondance dans le catalogue seconde main → on
+    # tente la table ``permanent_items`` (sacs, accessoires neufs en flux libre).
+    # Le POS reçoit alors un payload portant ``kind=permanent`` et l'ID préfixé
+    # ``perm:`` que le panier sait reconnaître au moment de poster la vente.
     if product is None:
+        from app.models.permanent_item import PermanentItem
+        for needle in (code, code.upper(), code.replace("=", "-")):
+            perm_res = await db.execute(
+                select(PermanentItem)
+                .outerjoin(Category, PermanentItem.category_id == Category.id)
+                .where(PermanentItem.barcode.ilike(needle))
+                .limit(1)
+            )
+            perm = perm_res.scalar_one_or_none()
+            if perm is not None:
+                if not perm.is_active:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Article permanent « {perm.name} » désactivé",
+                    )
+                cat_row = await db.execute(
+                    select(Category.name).where(Category.id == perm.category_id)
+                )
+                return {
+                    "id": f"perm:{perm.id}",
+                    "permanent_item_id": str(perm.id),
+                    "kind": "permanent",
+                    "barcode": perm.barcode,
+                    "name": perm.name,
+                    "sale_price": float(perm.sale_price),
+                    "status": "permanent",
+                    "category": cat_row.scalar_one_or_none(),
+                    "photo_url": perm.photo_url,
+                }
+
         logger.info(
             "barcode lookup miss : raw=%r normalised=%r — check that the printed label matches Product.barcode in DB",
             barcode, code,

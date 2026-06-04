@@ -95,6 +95,8 @@ export const api = {
     fetchAPI(url, { method: 'POST', body: JSON.stringify(data) }),
   put: (url: string, data: unknown) =>
     fetchAPI(url, { method: 'PUT', body: JSON.stringify(data) }),
+  patch: (url: string, data: unknown) =>
+    fetchAPI(url, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (url: string) => fetchAPI(url, { method: 'DELETE' }),
   upload: (url: string, formData: FormData) => uploadAPI(url, formData),
 };
