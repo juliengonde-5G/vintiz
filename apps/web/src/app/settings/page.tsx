@@ -50,6 +50,8 @@ interface HardwareConfig {
   label_printer: {
     enabled: boolean; model: string; host: string; port: number;
     label_width_mm: number; label_height_mm: number;
+    /** Clé du profil sélectionné (25x52_double | 40x60_single). */
+    label_profile?: string;
     connection?: 'network' | 'cloud' | 'bluetooth';
     cloud_api_key?: string;
     cloud_tenant?: string;
@@ -76,6 +78,9 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<'store' | 'caisse' | 'tickets' | 'communication' | 'templates' | 'cahier' | 'fidelite' | 'categories' | 'zones' | 'hardware' | 'scoring' | 'system'>('store');
   const [hardware, setHardware] = useState<HardwareConfig | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityItem[]>([]);
+  const [labelProfiles, setLabelProfiles] = useState<{
+    key: string; name: string; label_width_mm: number; label_height_mm: number; ticket_count: number;
+  }[]>([]);
   const [hwSaving, setHwSaving] = useState(false);
 
   // Cahier de Travail state
@@ -432,14 +437,19 @@ export default function SettingsPage() {
   const loadHardware = async () => {
     setLoading(true);
     try {
-      const [cfgRes, compatRes] = await Promise.all([
+      const [cfgRes, compatRes, profilesRes] = await Promise.all([
         api.get('/api/hardware/config'),
         api.get('/api/hardware/compatibility'),
+        api.get('/api/labels/profiles'),
       ]);
       if (cfgRes.ok) setHardware(await cfgRes.json());
       if (compatRes.ok) {
         const data = await compatRes.json();
         setCompatibility(data.items || []);
+      }
+      if (profilesRes.ok) {
+        const data = await profilesRes.json();
+        setLabelProfiles(data.profiles || []);
       }
     } catch {
       setError('Erreur de chargement du materiel');
@@ -1963,23 +1973,38 @@ export default function SettingsPage() {
                         </p>
                       </div>
                     )}
-                    <div>
-                      <label className="block text-sm font-medium text-black mb-1.5">Largeur étiquette (mm)</label>
-                      <input
-                        type="number"
-                        value={hardware.label_printer.label_width_mm}
-                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_width_mm: parseInt(e.target.value) || 80 } })}
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-black mb-1.5">
+                        Format d&apos;étiquette
+                      </label>
+                      <select
+                        value={hardware.label_printer.label_profile || '25x52_double'}
+                        onChange={(e) => {
+                          const next = labelProfiles.find((p) => p.key === e.target.value);
+                          setHardware({
+                            ...hardware,
+                            label_printer: {
+                              ...hardware.label_printer,
+                              label_profile: e.target.value,
+                              // Synchronise les dimensions persistées (compat
+                              // avec consommateurs qui lisent encore width/height).
+                              label_width_mm: next?.label_width_mm ?? hardware.label_printer.label_width_mm,
+                              label_height_mm: next?.label_height_mm ?? hardware.label_printer.label_height_mm,
+                            },
+                          });
+                        }}
                         className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-black mb-1.5">Hauteur étiquette (mm)</label>
-                      <input
-                        type="number"
-                        value={hardware.label_printer.label_height_mm}
-                        onChange={(e) => setHardware({ ...hardware, label_printer: { ...hardware.label_printer, label_height_mm: parseInt(e.target.value) || 120 } })}
-                        className="w-full min-h-[48px] px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
-                      />
+                      >
+                        {labelProfiles.map((p) => (
+                          <option key={p.key} value={p.key}>
+                            {p.name} ({p.ticket_count === 1 ? '1 ticket' : `${p.ticket_count} tickets`})
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-vz-ink-mute mt-1.5">
+                        Le format détermine les dimensions du rouleau ET la disposition
+                        (deux étiquettes 25×52, ou une seule 40×60 combinant les deux).
+                      </p>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3 mt-4">

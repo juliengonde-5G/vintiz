@@ -814,15 +814,80 @@ async def get_current_drawer(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get the currently open drawer."""
+    """Get the currently open drawer + the live expected cash counter.
+
+    ``expected_cash`` est le fond théorique en caisse à l'instant T :
+    fond d'ouverture + encaissements espèces - remboursements espèces +
+    apports - prélèvements. Affiché côté POS en permanence pour que la
+    caissière voie ce qui devrait être dans le tiroir avant la clôture.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import func
+
+    from app.models.cash_movement import CashMovement, CashMovementDirection
+    from app.models.payment import Payment, PaymentMethod
+    from app.models.transaction import Transaction, TransactionType
+
     pos_service = PosService(db)
     drawer = await pos_service.get_open_drawer()
     if not drawer:
         return {"open": False}
+
+    # Même fenêtre temporelle que ``close_drawer`` pour la cohérence : on
+    # tolère 1 s de marge sur ``opened_at`` (SQLite TEXT vs func.now()).
+    period_start = drawer.opened_at - timedelta(seconds=1)
+
+    cash_in_sales = Decimal(str((await db.execute(
+        select(func.coalesce(func.sum(Payment.amount), 0))
+        .join(Transaction, Payment.transaction_id == Transaction.id)
+        .where(
+            Payment.method == PaymentMethod.cash,
+            Transaction.created_at >= period_start,
+            Transaction.transaction_type != TransactionType.refund,
+        )
+    )).scalar_one()))
+    cash_out_refunds = Decimal(str((await db.execute(
+        select(func.coalesce(func.sum(Payment.amount), 0))
+        .join(Transaction, Payment.transaction_id == Transaction.id)
+        .where(
+            Payment.method == PaymentMethod.cash,
+            Transaction.created_at >= period_start,
+            Transaction.transaction_type == TransactionType.refund,
+        )
+    )).scalar_one()))
+    inflows = Decimal(str((await db.execute(
+        select(func.coalesce(func.sum(CashMovement.amount), 0))
+        .where(
+            CashMovement.drawer_id == drawer.id,
+            CashMovement.direction == CashMovementDirection.inflow,
+        )
+    )).scalar_one()))
+    outflows = Decimal(str((await db.execute(
+        select(func.coalesce(func.sum(CashMovement.amount), 0))
+        .where(
+            CashMovement.drawer_id == drawer.id,
+            CashMovement.direction == CashMovementDirection.outflow,
+        )
+    )).scalar_one()))
+
+    expected = (
+        Decimal(str(drawer.opening_amount))
+        + cash_in_sales
+        - cash_out_refunds
+        + inflows
+        - outflows
+    )
+
     return {
         "open": True,
         "drawer_id": str(drawer.id),
         "opening_amount": float(drawer.opening_amount),
+        "expected_cash": float(expected),
+        "cash_in_sales": float(cash_in_sales),
+        "cash_out_refunds": float(cash_out_refunds),
+        "inflows": float(inflows),
+        "outflows": float(outflows),
     }
 
 

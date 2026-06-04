@@ -35,10 +35,10 @@ from app.services.label_preview import (
     render_zpl_to_png,
 )
 from app.services.zebra_zpl import (
-    build_label_set_zpl,
-    build_label_zpl,
-    build_price_label_zpl,
+    build_label_for_profile,
+    build_preview_pngs_for_profile,
     product_to_label_data,
+    resolve_profile,
 )
 
 router = APIRouter(prefix="/labels", tags=["labels"])
@@ -145,8 +145,13 @@ async def print_label(
     product = await _fetch_product(db, product_id)
     cfg = _label_config()
     _validate_transport(cfg)
-    # Édition étiquette = jeu de 2 tags : produit (code-barres/réf) + prix (logo).
-    zpl = build_label_set_zpl(product_to_label_data(product), copies=max(copies, 1))
+    # Le profil sélectionné détermine la dimension + le nombre de tickets
+    # (25×52 double ou 40×60 simple).
+    zpl = build_label_for_profile(
+        product_to_label_data(product),
+        cfg.get("label_profile"),
+        copies=max(copies, 1),
+    )
     try:
         target = await _dispatch_zpl(cfg, zpl)
     except zebra_printer.PrinterUnreachable as exc:
@@ -188,8 +193,10 @@ async def print_batch(
     for idx, product_id in enumerate(payload.product_ids):
         try:
             product = await _fetch_product(db, product_id)
-            zpl = build_label_set_zpl(
-                product_to_label_data(product), copies=payload.copies
+            zpl = build_label_for_profile(
+                product_to_label_data(product),
+                cfg.get("label_profile"),
+                copies=payload.copies,
             )
             await _dispatch_zpl(cfg, zpl)
             printed.append(str(product.id))
@@ -230,14 +237,19 @@ async def preview_label(
     """
     product = await _fetch_product(db, product_id)
     data = product_to_label_data(product)
+    cfg = load_config()["label_printer"]
+    builders = build_preview_pngs_for_profile(cfg.get("label_profile"))
     try:
-        # Aperçu du JEU : tag produit (code-barres/réf) + tag prix (logo).
-        product_png = await render_zpl_to_png(build_label_zpl(data))
-        price_png = await render_zpl_to_png(build_price_label_zpl(data))
+        # Aperçu du JEU selon le profil (2 PNG empilés pour 25×52, 1 pour 40×60).
+        pngs: list[bytes] = []
+        for builder_fn, size, dpmm in builders:
+            pngs.append(
+                await render_zpl_to_png(builder_fn(data), size=size, dpmm=dpmm)
+            )
     except PreviewUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return Response(
-        content=_stack_pngs_vertically([product_png, price_png]),
+        content=_stack_pngs_vertically(pngs) if len(pngs) > 1 else pngs[0],
         media_type="image/png",
         headers={"Cache-Control": "no-store"},
     )
@@ -266,6 +278,33 @@ def _stack_pngs_vertically(
     out = BytesIO()
     canvas.save(out, format="PNG")
     return out.getvalue()
+
+
+@router.get(
+    "/profiles",
+    dependencies=[Depends(manager_only)],
+)
+async def list_label_profiles():
+    """Liste les profils d'étiquette disponibles (dimensions + nb de tickets).
+
+    Sert le menu déroulant côté ``/settings > Matériel`` : à la place des
+    champs "largeur/hauteur en mm", l'opérateur choisit un profil nommé.
+    """
+    from app.services.zebra_zpl import DEFAULT_PROFILE, LABEL_PROFILES
+
+    return {
+        "default": DEFAULT_PROFILE,
+        "profiles": [
+            {
+                "key": p["key"],
+                "name": p["name"],
+                "label_width_mm": p["label_width_mm"],
+                "label_height_mm": p["label_height_mm"],
+                "ticket_count": p["ticket_count"],
+            }
+            for p in LABEL_PROFILES.values()
+        ],
+    }
 
 
 @router.get(
@@ -391,11 +430,17 @@ async def labels_a4_sheet(
     # (the PDF call raises PreviewUnavailable) — we fall back to a
     # one-PNG-per-cell HTML page so the cashier still gets *something*
     # printable.
+    cfg = load_config()["label_printer"]
+    profile = resolve_profile(cfg.get("label_profile"))
     combined_zpl = "\n".join(
-        build_label_zpl(product_to_label_data(p)) for p in ordered
+        build_label_for_profile(product_to_label_data(p), profile["key"]) for p in ordered
     )
     try:
-        pdf_bytes = await render_zpl_to_pdf(combined_zpl)
+        pdf_bytes = await render_zpl_to_pdf(
+            combined_zpl,
+            size=profile["labelary_size"],
+            dpmm=profile["labelary_dpmm"],
+        )
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -408,9 +453,11 @@ async def labels_a4_sheet(
         logger.warning("Labelary PDF batch failed, falling back to PNG grid: %s", exc)
 
     async def _png_for(p: Product) -> str:
-        zpl = build_label_zpl(product_to_label_data(p))
+        zpl = build_label_for_profile(product_to_label_data(p), profile["key"])
         try:
-            png = await render_zpl_to_png(zpl)
+            png = await render_zpl_to_png(
+                zpl, size=profile["labelary_size"], dpmm=profile["labelary_dpmm"]
+            )
             return base64.b64encode(png).decode("ascii")
         except PreviewUnavailable as exc:
             logger.warning("Labelary failed for product %s: %s", p.id, exc)
@@ -457,7 +504,12 @@ async def product_label_zpl(
     printer's ``/escpos`` endpoint for the WebUSB path.
     """
     product = await _fetch_product(db, product_id)
-    zpl = build_label_set_zpl(product_to_label_data(product), copies=max(copies, 1))
+    cfg = load_config()["label_printer"]
+    zpl = build_label_for_profile(
+        product_to_label_data(product),
+        cfg.get("label_profile"),
+        copies=max(copies, 1),
+    )
     return Response(
         content=zpl,
         media_type="text/plain; charset=utf-8",

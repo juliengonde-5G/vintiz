@@ -104,18 +104,35 @@ export default function NumPadModal({
         {method === 'cash' && amount > 0 && (
           <div
             className={[
-              'rounded-xl px-4 py-3 transition-colors',
-              isCovering ? 'bg-vz-teal-soft' : 'bg-vz-accent-soft',
+              'rounded-xl px-4 py-4 transition-colors',
+              isCovering
+                ? 'bg-vz-teal-soft ring-2 ring-vz-teal/40 shadow-sm'
+                : 'bg-vz-accent-soft',
             ].join(' ')}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-vz-ink-soft">
+            <div
+              className={
+                isCovering
+                  ? 'flex flex-col items-center text-center'
+                  : 'flex items-center justify-between'
+              }
+            >
+              <span
+                className={[
+                  'font-semibold uppercase tracking-wide',
+                  isCovering
+                    ? 'text-base text-vz-teal-deep'
+                    : 'text-sm font-medium text-vz-ink-soft',
+                ].join(' ')}
+              >
                 {isCovering ? 'Monnaie à rendre' : 'Manque à encaisser'}
               </span>
               <span
                 className={[
-                  'font-mono text-2xl font-bold tabular-nums',
-                  isCovering ? 'text-vz-teal-deep' : 'text-vz-ink',
+                  'font-mono font-bold tabular-nums leading-none',
+                  isCovering
+                    ? 'text-5xl md:text-6xl text-vz-teal-deep mt-1'
+                    : 'text-2xl text-vz-ink',
                 ].join(' ')}
               >
                 {formatCurrency(Math.abs(change))}
