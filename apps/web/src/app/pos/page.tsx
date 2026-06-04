@@ -252,8 +252,15 @@ export default function POSPage() {
   const [draining, setDraining] = useState(false);
   const [offlineMsg, setOfflineMsg] = useState('');
 
-  // Cash drawer
-  const [drawer, setDrawer] = useState<{ open: boolean; drawer_id?: string; opening_amount?: number } | null>(null);
+  // Cash drawer — ``expected_cash`` est le compteur de fond en caisse en temps
+  // réel (fond ouverture + espèces encaissées - rendus + apports - prélèvements),
+  // rafraîchi après chaque vente / refund / cash movement.
+  const [drawer, setDrawer] = useState<{
+    open: boolean;
+    drawer_id?: string;
+    opening_amount?: number;
+    expected_cash?: number;
+  } | null>(null);
   const [showDrawerOpen, setShowDrawerOpen] = useState(false);
   const [showDrawerClose, setShowDrawerClose] = useState(false);
   const [drawerAmount, setDrawerAmount] = useState(0);
@@ -416,11 +423,18 @@ export default function POSPage() {
   };
 
   // ── Cash drawer ─────────────────────────────────────────────────
-  useEffect(() => {
-    api.get('/api/pos/drawer/current').then(async (res) => {
+  const refreshDrawer = useCallback(async () => {
+    try {
+      const res = await api.get('/api/pos/drawer/current');
       if (res.ok) setDrawer(await res.json());
-    }).catch(() => {});
+    } catch {
+      /* compteur best-effort — l'UI garde la dernière valeur connue */
+    }
   }, []);
+
+  useEffect(() => {
+    refreshDrawer();
+  }, [refreshDrawer]);
 
   // POS quick-add config — list of reusable bags (Sac Kraft, Grand Sac Kraft…).
   // The API resolves the legacy single-bag fields into a list, so we get a
@@ -484,9 +498,17 @@ export default function POSPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setDrawer({ open: true, drawer_id: data.drawer_id, opening_amount: data.opening_amount });
+        setDrawer({
+          open: true,
+          drawer_id: data.drawer_id,
+          opening_amount: data.opening_amount,
+          expected_cash: data.opening_amount,
+        });
         setShowDrawerOpen(false);
         setDrawerAmount(0);
+        // Ouvre physiquement le tiroir pour déposer le fond — le caissier
+        // n'a pas à cliquer "Tiroir" séparément après l'initialisation.
+        kickDrawer();
       }
     } catch { /* silent */ }
     setDrawerSubmitting(false);
@@ -506,6 +528,9 @@ export default function POSPage() {
         setDrawer({ open: false });
         setDrawerAmount(0);
         setShowDrawerClose(false);
+        // Ouvre le tiroir pour retirer le fond avant que la caissière
+        // ne signe le rapport Z.
+        kickDrawer();
       } else {
         // Avant le fix : on swallow-ait silencieusement → bouton "Générer
         // le rapport Z" qui ne faisait rien à l'écran. On surface la
@@ -1267,6 +1292,9 @@ export default function POSPage() {
       if (tenders.some((p) => p.method === 'especes')) {
         kickDrawer();
       }
+      // Rafraîchit le compteur d'espèces — la ligne vient d'être encaissée,
+      // le tiroir contient désormais opening + cash_in_sales mis à jour.
+      void refreshDrawer();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     }
@@ -1388,6 +1416,9 @@ export default function POSPage() {
       if (payments.some(p => p.method === 'especes')) {
         kickDrawer();
       }
+      // Le compteur de fond en caisse doit refléter la vente qui vient de
+      // tomber (cash_in_sales += amount), peu importe le moyen de paiement.
+      void refreshDrawer();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     }
@@ -1521,14 +1552,20 @@ export default function POSPage() {
 
         <div className="h-7 w-px bg-white/15 hidden lg:block" />
 
-        {/* Drawer status */}
+        {/* Drawer status — affiche le compteur d'espèces en temps réel
+            (expected_cash = fond ouverture + ventes cash - rendus + apports
+            - prélèvements). Refresh après chaque vente. */}
         {drawer !== null && (
           <div className="hidden lg:flex items-center gap-2">
             <span className={`inline-block w-2.5 h-2.5 rounded-full ${drawer.open ? 'bg-green-400' : 'bg-amber-400'}`} title={drawer.open ? 'Caisse ouverte' : 'Caisse fermée'} />
             <div className="flex flex-col leading-tight">
-              <span className="text-[10px] opacity-70 uppercase tracking-wider">Tiroir</span>
+              <span className="text-[10px] opacity-70 uppercase tracking-wider">
+                {drawer.open ? 'Espèces en caisse' : 'Tiroir'}
+              </span>
               <span className="text-xs font-medium font-mono">
-                {drawer.open ? `${drawer.opening_amount?.toFixed(2)} €` : 'Fermé'}
+                {drawer.open
+                  ? `${(drawer.expected_cash ?? drawer.opening_amount ?? 0).toFixed(2)} €`
+                  : 'Fermé'}
               </span>
             </div>
             {drawer.open ? (
@@ -1552,6 +1589,8 @@ export default function POSPage() {
                         ...payload,
                         cashier_id: cashier?.id ?? undefined,
                       });
+                      // Apport/prélèvement : le compteur en caisse change.
+                      void refreshDrawer();
                     }}
                   />
                 )}
@@ -3107,11 +3146,21 @@ export default function POSPage() {
               </p>
               <NumPad value={drawerAmount} onChange={setDrawerAmount} presets={[]} />
               {drawer?.opening_amount != null && (
-                <div className="p-3 bg-vz-bg-alt rounded-xl flex items-center justify-between">
-                  <span className="text-xs uppercase tracking-wider text-vz-ink-mute">Fond ouverture</span>
-                  <span className="font-mono text-base font-semibold text-vz-ink tabular-nums">
-                    {formatCurrency(drawer.opening_amount)}
-                  </span>
+                <div className="p-3 bg-vz-bg-alt rounded-xl space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wider text-vz-ink-mute">Fond ouverture</span>
+                    <span className="font-mono text-base font-semibold text-vz-ink tabular-nums">
+                      {formatCurrency(drawer.opening_amount)}
+                    </span>
+                  </div>
+                  {drawer?.expected_cash != null && (
+                    <div className="flex items-center justify-between border-t border-vz-line/60 pt-1.5">
+                      <span className="text-xs uppercase tracking-wider text-vz-ink-mute">Théorique</span>
+                      <span className="font-mono text-base font-semibold text-vz-teal-deep tabular-nums">
+                        {formatCurrency(drawer.expected_cash)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -3172,8 +3221,11 @@ export default function POSPage() {
                     open: true,
                     drawer_id: data.drawer_id,
                     opening_amount: data.opening_amount,
+                    expected_cash: data.opening_amount,
                   });
                   setShowDrawerOpen(false);
+                  // Ouvre physiquement le tiroir pour déposer le fond.
+                  kickDrawer();
                 }
               } finally {
                 setDrawerSubmitting(false);
@@ -3183,7 +3235,7 @@ export default function POSPage() {
           <CashDrawerCloseModal
             open={showDrawerClose}
             onClose={() => setShowDrawerClose(false)}
-            expectedAmount={drawer?.opening_amount ?? null}
+            expectedAmount={drawer?.expected_cash ?? drawer?.opening_amount ?? null}
             defaultAllowedDiscrepancy={2}
             onSubmit={async ({
               closing_amount,
@@ -3206,6 +3258,8 @@ export default function POSPage() {
                   setZReport(data);
                   setDrawer({ open: false });
                   setShowDrawerClose(false);
+                  // Ouvre le tiroir pour le décompte final / retrait du fond.
+                  kickDrawer();
                   return { z_report_number: data.z_report_number };
                 }
                 // Avant : on retournait undefined sans rien dire au

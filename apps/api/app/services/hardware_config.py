@@ -80,8 +80,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "host": os.getenv("ZEBRA_PRINTER_IP", os.getenv("LABEL_PRINTER_HOST", "")),
         "port": int(os.getenv("ZEBRA_PRINTER_PORT", os.getenv("LABEL_PRINTER_PORT", "9100"))),
         "dpi": 203,
-        "label_width_mm": 25,
-        "label_height_mm": 52,
+        # Profil d'étiquette = combo dimensions + nombre de tickets imprimés.
+        # Les dimensions concrètes vivent dans zebra_zpl.LABEL_PROFILES — on
+        # ne persiste plus que la clé. Valeurs possibles :
+        #   25x52_double : 2 tickets 25×52 (info + prix) — comportement historique
+        #   40x60_single : 1 ticket 40×60 combinant info + prix
+        "label_profile": os.getenv("ZEBRA_LABEL_PROFILE", "25x52_double"),
         # Cloud mode (Weblink + SendFileToPrinter) — Zebra Data Services creds
         "cloud_api_key": os.getenv("ZEBRA_CLOUD_API_KEY", ""),
         "cloud_tenant": os.getenv("ZEBRA_CLOUD_TENANT", ""),

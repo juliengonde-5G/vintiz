@@ -12,7 +12,11 @@ import PhotoGallery from '@/components/inventory/PhotoGallery';
 import ProductHistory from '@/components/inventory/ProductHistory';
 import LocationHistory from '@/components/inventory/LocationHistory';
 import RepriceModal from '@/components/inventory/RepriceModal';
+import MoveProductModal, { type MoveAction } from '@/components/inventory/MoveProductModal';
 import { api } from '@/lib/api';
+
+const FLOOR_STATUSES = new Set(['display', 'displayed', 'discounted', 'deep_discounted']);
+const STOCK_STATUSES = new Set(['stock', 'received', 'sorted', 'tagged']);
 
 interface ProductDetail {
   id: string;
@@ -116,6 +120,7 @@ export default function ProductDetailPage() {
 
   // Reprice flow + movement history
   const [showReprice, setShowReprice] = useState(false);
+  const [moveAction, setMoveAction] = useState<MoveAction | null>(null);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [zoneNames, setZoneNames] = useState<Record<string, string>>({});
 
@@ -313,11 +318,26 @@ export default function ProductDetailPage() {
             <span className="text-gray-300">/</span>
             <h1 className="text-xl font-bold text-black truncate max-w-xs">{product.name}</h1>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             {!isEditing && (
               <Button variant="outline" onClick={() => setShowReprice(true)}>
                 💶 Modifier le prix
               </Button>
+            )}
+            {!isEditing && STOCK_STATUSES.has(product.status) && (
+              <Button variant="outline" onClick={() => setMoveAction('place')}>
+                📤 Mettre en rayon
+              </Button>
+            )}
+            {!isEditing && FLOOR_STATUSES.has(product.status) && product.zone_id && (
+              <>
+                <Button variant="outline" onClick={() => setMoveAction('move')}>
+                  ↔ Déplacer
+                </Button>
+                <Button variant="outline" onClick={() => setMoveAction('reserve')}>
+                  📥 Mettre en réserve
+                </Button>
+              </>
             )}
             <Button variant="outline" onClick={handleGenerateLabel}>
               🏷 Générer étiquette
@@ -593,6 +613,20 @@ export default function ProductDetailPage() {
           onApplied={handleRepriceApplied}
           onPrintLabel={handleGenerateLabel}
         />
+
+        {/* Mouvement de stock (mettre en rayon / déplacer / réserve) */}
+        {moveAction && (
+          <MoveProductModal
+            open={!!moveAction}
+            action={moveAction}
+            productId={product.id}
+            productBarcode={product.barcode}
+            productName={product.name}
+            currentZoneId={product.zone_id}
+            onClose={() => setMoveAction(null)}
+            onApplied={handleRepriceApplied}
+          />
+        )}
 
         {/* Label Modal */}
         <Modal open={showLabel} onClose={() => { setShowLabel(false); setLabelUrl(''); }} title="Étiquette produit">

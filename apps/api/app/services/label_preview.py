@@ -87,13 +87,29 @@ async def _post_with_retry(
     raise PreviewUnavailable(f"Labelary {last_error}")
 
 
-async def render_zpl_to_png(zpl: str) -> bytes:
-    """Render a ZPL job to PNG bytes via Labelary."""
-    url = f"{LABELARY_BASE}/{LABELARY_DPMM}/labels/{LABELARY_SIZE}/0/"
+async def render_zpl_to_png(
+    zpl: str,
+    *,
+    size: str | None = None,
+    dpmm: str | None = None,
+) -> bytes:
+    """Render a ZPL job to PNG bytes via Labelary.
+
+    ``size`` / ``dpmm`` overrides let the caller render a profile other than
+    the default 25×52 (e.g. the 40×60 single-ticket profile).
+    """
+    s = size or LABELARY_SIZE
+    d = dpmm or LABELARY_DPMM
+    url = f"{LABELARY_BASE}/{d}/labels/{s}/0/"
     return await _post_with_retry(url, zpl=zpl, accept="image/png")
 
 
-async def render_zpl_to_pdf(zpl: str) -> bytes:
+async def render_zpl_to_pdf(
+    zpl: str,
+    *,
+    size: str | None = None,
+    dpmm: str | None = None,
+) -> bytes:
     """Render a multi-label ZPL job to a multi-page PDF.
 
     Used by the A4 fallback : we concatenate one ``^XA…^XZ`` block per
@@ -103,5 +119,7 @@ async def render_zpl_to_pdf(zpl: str) -> bytes:
     - 1 print job for the operator instead of multiple
     - Better print quality (PDF preserves vector text + barcode crisp)
     """
-    url = f"{LABELARY_BASE}/{LABELARY_DPMM}/labels/{LABELARY_SIZE}/"
+    s = size or LABELARY_SIZE
+    d = dpmm or LABELARY_DPMM
+    url = f"{LABELARY_BASE}/{d}/labels/{s}/"
     return await _post_with_retry(url, zpl=zpl, accept="application/pdf")

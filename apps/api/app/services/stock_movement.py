@@ -236,6 +236,17 @@ async def move_product(
     if to_zone_id is not None and to_zone_id != before_zone:
         product.zone_id = to_zone_id
         await db.flush()
+    elif (
+        to_zone_id is None
+        and to_status is not None
+        and to_status in STOCK_STATUSES
+        and before_zone is not None
+    ):
+        # Retour en réserve : la cave n'a pas de zones — on libère la zone
+        # d'où vient la pièce (sinon l'historique d'emplacement et le plan
+        # boutique garderaient un fantôme de placement).
+        product.zone_id = None
+        await db.flush()
 
     return await record_move(
         db,
