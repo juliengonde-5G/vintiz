@@ -2615,9 +2615,9 @@ export default function POSPage() {
                     </div>
                   )}
                   {numpadTarget?.type === 'cash' && parseFloat(cashGiven) > 0 && payments[numpadTarget.index] && !cashShort && (
-                    <div className="mt-2 flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-200">
-                      <span className="text-sm font-semibold text-green-800">Monnaie à rendre</span>
-                      <span className="font-mono text-xl font-bold text-green-700">
+                    <div className="mt-2 flex flex-col items-center justify-center p-5 bg-green-50 rounded-xl border-2 border-green-300 shadow-sm">
+                      <span className="text-base font-semibold text-green-800 uppercase tracking-wide">Monnaie à rendre</span>
+                      <span className="font-mono font-bold text-green-700 tabular-nums leading-none mt-1 text-5xl md:text-6xl">
                         {formatCurrency(Math.max(0, parseFloat(cashGiven) - payments[numpadTarget.index].amount))}
                       </span>
                     </div>

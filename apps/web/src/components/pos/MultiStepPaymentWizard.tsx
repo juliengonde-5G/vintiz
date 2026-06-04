@@ -320,11 +320,11 @@ export default function MultiStepPaymentWizard({
               </span>
             </div>
             {change > 0 && (
-              <div className="flex items-center justify-between rounded-xl bg-vz-accent-soft px-4 py-4 ring-2 ring-vz-accent">
-                <span className="text-base font-semibold text-vz-ink">
+              <div className="flex flex-col items-center justify-center rounded-xl bg-vz-accent-soft px-4 py-5 ring-2 ring-vz-accent shadow-sm">
+                <span className="text-base font-semibold uppercase tracking-wide text-vz-ink">
                   Monnaie à rendre
                 </span>
-                <span className="font-mono text-3xl font-bold tabular-nums text-vz-ink">
+                <span className="font-mono font-bold tabular-nums text-vz-ink leading-none mt-1 text-6xl md:text-7xl">
                   {formatCurrency(change)}
                 </span>
               </div>
