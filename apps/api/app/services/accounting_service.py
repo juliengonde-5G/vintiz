@@ -86,13 +86,13 @@ class AccountingService:
             cfg = AccountingConfig()
             self.db.add(cfg)
             await self.db.flush()
-        # Migration douce v1 → v2 : l'API « ledger events » v1 de Pennylane
-        # est dépréciée. Si un déploiement existant a encore l'URL v1 stockée
-        # (valeur par défaut historique), on la bascule sur v2 sans migration
-        # ni intervention manuelle. Une URL custom (autre domaine) est laissée
-        # intacte.
-        if cfg.pennylane_api_url and cfg.pennylane_api_url.rstrip("/").endswith("/external/v1"):
-            cfg.pennylane_api_url = cfg.pennylane_api_url.rstrip("/")[:-1] + "2"
+        # Rollback v2 → v1 : un précédent passage avait migré l'URL stockée
+        # vers ``/external/v2`` (POST /journal_entries y répond 404 — endpoint
+        # inexistant). On la ramène silencieusement sur v1, qui est l'API
+        # publique officielle. Les URL custom (autre domaine) sont laissées
+        # intactes.
+        if cfg.pennylane_api_url and cfg.pennylane_api_url.rstrip("/").endswith("/external/v2"):
+            cfg.pennylane_api_url = cfg.pennylane_api_url.rstrip("/")[:-1] + "1"
             await self.db.flush()
         return cfg
 

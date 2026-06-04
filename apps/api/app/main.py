@@ -20,6 +20,7 @@ from app.services.audit import register_audit_listeners
 from app.models import Base
 from app.api.auth.router import router as auth_router
 from app.api.inventory.router import router as inventory_router
+from app.api.inventory.permanent import router as permanent_items_router
 from app.api.pos.router import router as pos_router
 from app.api.crm.router import router as crm_router
 from app.api.reporting.router import router as reporting_router
@@ -150,6 +151,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Routers
 app.include_router(auth_router, prefix="/api")
 app.include_router(inventory_router, prefix="/api")
+app.include_router(permanent_items_router, prefix="/api")
 app.include_router(pos_router, prefix="/api")
 app.include_router(crm_router, prefix="/api")
 app.include_router(reporting_router, prefix="/api")

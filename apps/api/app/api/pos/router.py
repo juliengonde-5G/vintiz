@@ -40,6 +40,10 @@ router = APIRouter(prefix="/pos", tags=["pos"])
 
 class CartItem(BaseModel):
     product_id: uuid.UUID | None = None
+    # Article permanent (catalogue libre, quantité illimitée). Mutuellement
+    # exclusif avec ``product_id`` — exactement zéro ou un des deux est posé.
+    # Les lignes manuelles (sac, custom) laissent les deux à None.
+    permanent_item_id: uuid.UUID | None = None
     name: str | None = None
     quantity: int = 1
     unit_price: float | None = None

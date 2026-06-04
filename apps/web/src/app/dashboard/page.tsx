@@ -406,8 +406,12 @@ function CahierStrip() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editingTarget, setEditingTarget] = useState(false);
+  const [targetDraft, setTargetDraft] = useState('');
+  const [savingTarget, setSavingTarget] = useState(false);
 
   const today = new Date().toISOString().slice(0, 10);
+  const todayDate = new Date();
 
   const load = useCallback(() => {
     api.get(`/api/cahier/${today}`).then(async (res) => {
@@ -430,6 +434,23 @@ function CahierStrip() {
     setSaving(false);
     if (res.ok) {
       setEditing(false);
+      load();
+    }
+  };
+
+  const saveTarget = async () => {
+    const value = parseFloat(targetDraft.replace(',', '.'));
+    if (!Number.isFinite(value) || value <= 0) return;
+    setSavingTarget(true);
+    const res = await api.put('/api/cahier/monthly-target', {
+      year: todayDate.getFullYear(),
+      month: todayDate.getMonth() + 1,
+      target_eur: value,
+    });
+    setSavingTarget(false);
+    if (res.ok) {
+      setEditingTarget(false);
+      setTargetDraft('');
       load();
     }
   };
@@ -510,10 +531,31 @@ function CahierStrip() {
                   />
                 </div>
               </>
+            ) : editingTarget ? (
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={targetDraft}
+                  onChange={(e) => setTargetDraft(e.target.value)}
+                  placeholder="ex : 25000"
+                  className="w-32 px-2 py-1 rounded text-sm text-vz-ink"
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveTarget(); }}
+                />
+                <span className="text-sm opacity-90">€ ce mois</span>
+                <Button size="sm" variant="secondary" onClick={saveTarget} disabled={savingTarget}>
+                  {savingTarget ? '...' : 'OK'}
+                </Button>
+                <button onClick={() => { setEditingTarget(false); setTargetDraft(''); }} className="text-xs underline opacity-80">
+                  Annuler
+                </button>
+              </div>
             ) : (
-              <Link href="/settings" className="text-sm underline">
+              <button onClick={() => setEditingTarget(true)} className="text-sm underline text-left">
                 Definir un objectif mensuel
-              </Link>
+              </button>
             )}
           </div>
           <div className="flex gap-2 flex-wrap">

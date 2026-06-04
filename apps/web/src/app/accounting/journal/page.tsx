@@ -48,10 +48,10 @@ export default function JournalPage() {
   const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
   return (
-    <div className="flex h-screen bg-vz-bg overflow-hidden">
+    <div className="min-h-screen bg-vz-bg">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto px-6 py-8">
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8">
+        <div className="max-w-5xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-display font-semibold text-vz-ink">Journal comptable</h1>

@@ -160,9 +160,9 @@ export default function ExportDetailPage() {
 
   if (!exp) {
     return (
-      <div className="flex h-screen bg-vz-bg">
+      <div className="min-h-screen bg-vz-bg">
         <Sidebar />
-        <main className="flex-1 flex items-center justify-center">
+        <main className="md:ml-64 flex items-center justify-center min-h-screen">
           <p className="text-vz-ink-mute">Chargement…</p>
         </main>
       </div>
@@ -175,10 +175,10 @@ export default function ExportDetailPage() {
   const balanced = Math.abs(totalDebit - totalCredit) < 0.005;
 
   return (
-    <div className="flex h-screen bg-vz-bg overflow-hidden">
+    <div className="min-h-screen bg-vz-bg">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+      <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8">
+        <div className="max-w-4xl mx-auto space-y-6">
           <div className="flex items-center gap-4">
             <button onClick={() => router.back()} className="text-vz-ink-mute hover:text-vz-ink text-sm">← Retour</button>
             <div className="flex-1">
