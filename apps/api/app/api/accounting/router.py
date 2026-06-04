@@ -354,8 +354,13 @@ async def reconcile_sumup(
         "total_sumup": report.total_sumup,
         "delta": report.delta,
         "matched_count": report.matched_count,
+        "matched_by_amount": report.matched_by_amount,
         "unmatched_vintiz": report.unmatched_vintiz,
         "unmatched_sumup": report.unmatched_sumup,
+        "api_key_present": report.api_key_present,
+        "api_error": report.api_error,
+        "api_pages_fetched": report.api_pages_fetched,
+        "api_raw_tx_count": report.api_raw_tx_count,
         "lines": [
             {
                 "vintiz_payment_id": ln.vintiz_payment_id,

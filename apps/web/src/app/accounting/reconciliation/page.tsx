@@ -24,13 +24,19 @@ interface ReconciliationReport {
   total_sumup: number;
   delta: number;
   matched_count: number;
+  matched_by_amount?: number;
   unmatched_vintiz: number;
   unmatched_sumup: number;
+  api_key_present?: boolean;
+  api_error?: string | null;
+  api_pages_fetched?: number;
+  api_raw_tx_count?: number;
   lines: ReconciliationLine[];
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  matched: { label: '✓ Rapproché', color: 'bg-green-100 text-green-800' },
+  matched: { label: '✓ Rapproché (ID)', color: 'bg-green-100 text-green-800' },
+  matched_amount: { label: '≈ Rapproché (montant)', color: 'bg-teal-100 text-teal-800' },
   vintiz_only: { label: 'Vintiz seulement', color: 'bg-yellow-100 text-yellow-800' },
   sumup_only: { label: 'SumUp seulement', color: 'bg-orange-100 text-orange-800' },
   amount_mismatch: { label: 'Écart montant', color: 'bg-red-100 text-red-800' },
@@ -114,10 +120,30 @@ export default function ReconciliationPage() {
                 ))}
               </div>
 
-              {(report.unmatched_vintiz > 0 || report.unmatched_sumup > 0) && (
+              {/* Diagnostic SumUp API — explique un "0 SumUp" trompeur. */}
+              {(report.api_error || report.api_key_present === false) && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-800 space-y-1">
+                  <p className="font-semibold">🔴 Aucune contrepartie SumUp n&apos;a pu être récupérée.</p>
+                  {report.api_key_present === false && (
+                    <p>Clé API SumUp absente — configure <code className="font-mono">SUMUP_API_KEY</code> ou renseigne <em>Paramètres &gt; Paiement</em>.</p>
+                  )}
+                  {report.api_error && (
+                    <p>Détail : <code className="font-mono">{report.api_error}</code></p>
+                  )}
+                </div>
+              )}
+              {(report.unmatched_vintiz > 0 || report.unmatched_sumup > 0) && !report.api_error && report.api_key_present !== false && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-800">
                   ⚠️ {report.unmatched_vintiz} paiement(s) Vintiz sans contrepartie SumUp — {report.unmatched_sumup} transaction(s) SumUp sans contrepartie Vintiz.
+                  {typeof report.matched_by_amount === 'number' && report.matched_by_amount > 0 && (
+                    <span> ({report.matched_by_amount} appariement(s) par montant inclus dans les rapprochés.)</span>
+                  )}
                 </div>
+              )}
+              {report.api_key_present && !report.api_error && (
+                <p className="text-xs text-vz-ink-mute">
+                  Diagnostic SumUp : {report.api_raw_tx_count ?? 0} transaction(s) brutes reçues sur {report.api_pages_fetched ?? 0} page(s).
+                </p>
               )}
 
               <div className="bg-white rounded-xl border border-vz-line overflow-hidden">
