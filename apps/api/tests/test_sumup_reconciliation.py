@@ -253,6 +253,54 @@ async def test_reports_missing_api_key_explicitly(session, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_query_string_does_not_send_statuses_array(monkeypatch):
+    """L'API SumUp renvoie 400 « Invalid Array value » dès qu'on tente de
+    passer ``statuses=SUCCESSFUL`` en query string. On vérifie qu'on ne
+    construit plus cette URL — le filtrage est fait côté client."""
+    captured: dict[str, str] = {}
+
+    class _FakeResp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b'{"items": []}'
+
+    def _fake_urlopen(req, timeout=15):  # noqa: ARG001
+        captured["url"] = req.full_url
+        return _FakeResp()
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen", _fake_urlopen
+    )
+    svc = SumUpReconciliationService(db=None)
+    items, err = svc._fetch_sumup_page("sup_sk_test", date(2026, 6, 4), oldest_ref=None)
+
+    assert err is None
+    assert items == []
+    assert "statuses" not in captured["url"]
+    assert "oldest_time=2026-06-04" in captured["url"]
+
+
+def test_client_side_filter_strips_non_successful():
+    """Les transactions CANCELLED / FAILED tombées dans la page sont
+    écartées avant matching (le serveur ne sait pas filtrer par statut)."""
+    captured_items = [
+        {"id": "ok", "status": "SUCCESSFUL", "amount": 10.0,
+         "transaction_code": "C-OK", "timestamp": "2026-06-04T10:00:00Z"},
+        {"id": "ko", "status": "CANCELLED", "amount": 10.0,
+         "transaction_code": "C-KO", "timestamp": "2026-06-04T10:01:00Z"},
+        {"id": "ko2", "status": "FAILED", "amount": 10.0,
+         "transaction_code": "C-KO2", "timestamp": "2026-06-04T10:02:00Z"},
+    ]
+    # On stub la pagination en injectant directement les items via _fetch_sumup_page.
+    svc = SumUpReconciliationService(db=None)
+    svc._fetch_sumup_page = lambda *a, **kw: (captured_items, None)  # type: ignore[assignment]
+    out, err, pages = svc._fetch_sumup_transactions("sup_sk_test", date(2026, 6, 4))
+    assert err is None
+    assert pages == 1
+    assert [t.transaction_id for t in out] == ["ok"]
+
+
+@pytest.mark.anyio
 async def test_surfaces_api_error_in_report(session, monkeypatch):
     monkeypatch.setenv("SUMUP_API_KEY", "sup_sk_test")
     user = await _user(session)

@@ -110,14 +110,20 @@ class SumUpReconciliationService:
     def _fetch_sumup_page(
         self, api_key: str, target_date: date, *, oldest_ref: str | None
     ) -> tuple[list[dict], str | None]:
-        """Une page de l'API SumUp. Renvoie (items, error_str_or_None)."""
+        """Une page de l'API SumUp. Renvoie (items, error_str_or_None).
+
+        Note historique : on n'envoie PAS de filtre ``statuses`` côté serveur.
+        SumUp parse ce paramètre comme un array et renvoie systématiquement
+        ``400 Invalid Array value`` quand on lui passe une valeur scalaire
+        (et la syntaxe array varie selon le SDK). On filtre donc en sortie
+        sur ``status == "SUCCESSFUL"`` côté Python (cf. ``_fetch_sumup_transactions``).
+        """
         import json
         from urllib.error import HTTPError, URLError
         from urllib.parse import urlencode
         from urllib.request import Request, urlopen
 
         params: dict[str, Any] = {
-            "statuses": "SUCCESSFUL",
             "oldest_time": f"{target_date.isoformat()}T00:00:00Z",
             "newest_time": f"{target_date.isoformat()}T23:59:59Z",
             "limit": SUMUP_PAGE_LIMIT,
@@ -186,13 +192,19 @@ class SumUpReconciliationService:
 
         out: list[SumUpTx] = []
         for item in all_items:
+            # Filtre côté client : on ne garde que les transactions réussies.
+            # SumUp refuse le filtre ``statuses=SUCCESSFUL`` en query string
+            # (400 "Invalid Array value"), d'où ce filtre Python.
+            raw_status = str(item.get("status") or "").upper()
+            if raw_status and raw_status not in {"SUCCESSFUL", "PAID"}:
+                continue
             out.append(
                 SumUpTx(
                     transaction_id=str(item.get("id") or ""),
                     transaction_code=str(item.get("transaction_code") or ""),
                     amount=float(item.get("amount") or 0),
                     currency=str(item.get("currency") or "EUR"),
-                    status=str(item.get("status") or ""),
+                    status=raw_status or "SUCCESSFUL",
                     timestamp=str(item.get("timestamp") or ""),
                     card_brand=str((item.get("card") or {}).get("brand") or ""),
                     card_last4=str((item.get("card") or {}).get("last_4_digits") or ""),
