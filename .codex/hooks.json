@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/juliengonde/Documents/GitHub/vintiz/.codex/hooks/session-start.sh'"
+          }
+        ]
+      }
+    ]
+  }
+}
