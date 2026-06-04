@@ -366,9 +366,11 @@ async def reconcile_sumup(
                 "vintiz_payment_id": ln.vintiz_payment_id,
                 "vintiz_transaction_number": ln.vintiz_transaction_number,
                 "vintiz_amount": ln.vintiz_amount,
+                "vintiz_timestamp": ln.vintiz_timestamp,
                 "sumup_transaction_id": ln.sumup_transaction_id,
                 "sumup_transaction_code": ln.sumup_transaction_code,
                 "sumup_amount": ln.sumup_amount,
+                "sumup_timestamp": ln.sumup_timestamp,
                 "status": ln.status,
                 "delta": ln.delta,
             }
