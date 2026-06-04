@@ -278,6 +278,13 @@ class PosService:
         # sa valeur, puis on le marque consommé (lié à la vente). Le bon compte
         # dans ``total_paid`` → il réduit le reste à régler en espèces / CB.
         if voucher_tenders:
+            if len(voucher_tenders) > 1:
+                # Un seul bon cadeau événementiel par transaction : empiler
+                # deux bons sur la même vente est interdit côté boutique
+                # (cumul des cadeaux d'ouverture sur un même panier).
+                raise InvalidOperation(
+                    "Un seul bon cadeau événementiel autorisé par transaction"
+                )
             if client_id is None:
                 raise InvalidOperation(
                     "Un bon cadeau nécessite une cliente sélectionnée"

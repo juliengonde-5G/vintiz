@@ -309,3 +309,28 @@ async def test_free_item_voucher_tender_on_scarf(session):
     await session.refresh(coupon)
     assert coupon.redeemed_at is not None
     assert float(transaction.total_ttc) == 8.0
+
+
+@pytest.mark.anyio
+async def test_only_one_event_voucher_per_transaction(session):
+    """Empiler deux bons cadeau événementiels sur une même vente est refusé."""
+    user = await _user(session)
+    client = await _client(session)
+    product = await _product(session, price=10.0)
+    # Deux bons immédiats : les bons "prochain achat" sont déjà limités à 1
+    # par cliente côté émission. Les immédiats peuvent être émis plusieurs
+    # fois — le garde-fou empêche leur cumul *sur une même transaction*.
+    c1 = await ev.issue_voucher(session, client_id=client.id, type_key="imm_1e")
+    c2 = await ev.issue_voucher(session, client_id=client.id, type_key="imm_2e")
+
+    with pytest.raises(InvalidOperation, match="Un seul bon"):
+        await PosService(session).create_transaction(
+            user_id=user.id,
+            items=[_cart_item(product)],
+            payments=[
+                SimpleNamespace(method="voucher", amount=1.0, voucher_code=c1.code),
+                SimpleNamespace(method="voucher", amount=2.0, voucher_code=c2.code),
+                SimpleNamespace(method="cash", amount=7.0),
+            ],
+            client_id=client.id,
+        )
