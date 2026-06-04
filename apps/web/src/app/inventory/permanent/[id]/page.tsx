@@ -8,6 +8,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
+import Modal from '@/components/ui/Modal';
 import { api } from '@/lib/api';
 import { formatCurrency, mediaUrl } from '@/lib/format';
 
@@ -69,6 +70,13 @@ export default function PermanentItemDetailPage() {
   const [sales, setSales] = useState<SalesPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Étiquette Zebra
+  const [showLabel, setShowLabel] = useState(false);
+  const [labelUrl, setLabelUrl] = useState<string | null>(null);
+  const [labelLoading, setLabelLoading] = useState(false);
+  const [labelMsg, setLabelMsg] = useState('');
+  const [labelPrinting, setLabelPrinting] = useState(false);
 
   const [editingPrice, setEditingPrice] = useState(false);
   const [priceDraft, setPriceDraft] = useState('');
@@ -151,6 +159,39 @@ export default function PermanentItemDetailPage() {
     }
   };
 
+  const openLabel = async () => {
+    if (!itemId) return;
+    setShowLabel(true);
+    setLabelLoading(true);
+    setLabelMsg('');
+    setLabelUrl(null);
+    try {
+      const res = await api.get(`/api/inventory/permanent/${itemId}/label/preview`);
+      if (res.ok) {
+        const blob = await res.blob();
+        setLabelUrl(URL.createObjectURL(blob));
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setLabelMsg(e.detail || 'Aperçu indisponible — Labelary injoignable');
+      }
+    } catch {
+      setLabelMsg('Aperçu indisponible');
+    }
+    setLabelLoading(false);
+  };
+
+  const printLabel = async () => {
+    if (!itemId) return;
+    setLabelPrinting(true);
+    setLabelMsg('');
+    const { printPermanentItemLabel } = await import('@/lib/print-label');
+    const result = await printPermanentItemLabel(itemId);
+    setLabelMsg(
+      result.ok ? "Étiquette envoyée à l'imprimante Zebra" : result.message,
+    );
+    setLabelPrinting(false);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-vz-bg">
@@ -203,6 +244,9 @@ export default function PermanentItemDetailPage() {
               </p>
             </div>
             <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" onClick={openLabel}>
+                🏷 Imprimer l'étiquette
+              </Button>
               <Button variant="outline" onClick={toggleActive}>
                 {item.is_active ? 'Désactiver' : 'Réactiver'}
               </Button>
@@ -306,12 +350,6 @@ export default function PermanentItemDetailPage() {
                   )}
                 </div>
                 <div>
-                  <p className="text-xs text-vz-ink-mute">TVA appliquée</p>
-                  <p className="text-2xl font-display font-semibold text-vz-ink mt-1">
-                    {item.tva_rate}%
-                  </p>
-                </div>
-                <div>
                   <p className="text-xs text-vz-ink-mute">Date de mise en vente</p>
                   <p className="text-sm text-vz-ink mt-1">
                     {item.available_from
@@ -410,6 +448,52 @@ export default function PermanentItemDetailPage() {
             )}
           </Card>
         </div>
+
+        {/* Aperçu + impression étiquette */}
+        <Modal
+          open={showLabel}
+          onClose={() => {
+            setShowLabel(false);
+            setLabelUrl(null);
+            setLabelMsg('');
+          }}
+          title="Étiquette article permanent"
+        >
+          <div className="text-center space-y-4">
+            {labelLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-vz-teal" />
+              </div>
+            ) : labelUrl ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={labelUrl}
+                  alt="Étiquette"
+                  className="mx-auto border rounded-lg max-w-full"
+                />
+                <div className="flex justify-center gap-3 flex-wrap">
+                  <a href={labelUrl} download={`etiquette-${item.barcode}.png`}>
+                    <Button variant="outline">⬇ Télécharger</Button>
+                  </a>
+                  <Button onClick={printLabel} disabled={labelPrinting} variant="secondary">
+                    {labelPrinting ? 'Envoi…' : 'Imprimer sur Zebra'}
+                  </Button>
+                </div>
+                <p className="text-xs text-vz-ink-mute">
+                  Astuce : imprimez une fois, puis collez l'étiquette sur le
+                  présentoir ou le tiroir — le code-barres se rescanne à
+                  volonté.
+                </p>
+                {labelMsg && <p className="text-sm text-vz-teal mt-2">{labelMsg}</p>}
+              </>
+            ) : (
+              <p className="text-red-600 py-4">
+                {labelMsg || "Erreur lors de la génération de l'étiquette."}
+              </p>
+            )}
+          </div>
+        </Modal>
       </main>
     </div>
   );

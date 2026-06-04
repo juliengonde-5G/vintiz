@@ -79,25 +79,52 @@ async function fetchZpl(url: string): Promise<{ ok: true; zpl: string } | { ok: 
   return { ok: true, zpl: await res.text() };
 }
 
-/** Print one product label on the configured Zebra. */
-export async function printProductLabel(productId: string, copies = 1): Promise<PrintLabelResult> {
+/**
+ * Core label-print routine shared by every "imprimer une étiquette" button.
+ *
+ * ``printUrl`` is the POST endpoint the backend prints from (network/cloud);
+ * ``zplUrl`` is the GET endpoint the tablet fetches in Bluetooth mode. Both
+ * follow the same shape for products (``/api/labels/...``) and permanent
+ * items (``/api/inventory/permanent/{id}/label/...``).
+ */
+async function printLabelViaTransport(
+  printUrl: string,
+  zplUrl: string,
+): Promise<PrintLabelResult> {
   const cfg = await readLabelConfig();
 
   if (cfg.mode === 'bluetooth') {
-    const qs = copies > 1 ? `?copies=${copies}` : '';
-    const z = await fetchZpl(`/api/labels/${productId}/zpl${qs}`);
+    const z = await fetchZpl(zplUrl);
     if (!z.ok) return { ok: false, transport: 'bluetooth', message: z.message };
     return sendZplOverBluetooth(z.zpl, cfg);
   }
 
   try {
-    const res = await api.post(`/api/labels/print/${productId}${copies > 1 ? `?copies=${copies}` : ''}`, {});
+    const res = await api.post(printUrl, {});
     if (res.ok) return { ok: true, transport: cfg.mode, message: 'Étiquette imprimée' };
     const body = await res.json().catch(() => ({} as Record<string, unknown>));
     return { ok: false, transport: cfg.mode, message: (body.detail as string) || "Échec de l'impression" };
   } catch {
     return { ok: false, transport: cfg.mode, message: 'Imprimante injoignable' };
   }
+}
+
+/** Print one product label on the configured Zebra. */
+export async function printProductLabel(productId: string, copies = 1): Promise<PrintLabelResult> {
+  const qs = copies > 1 ? `?copies=${copies}` : '';
+  return printLabelViaTransport(
+    `/api/labels/print/${productId}${qs}`,
+    `/api/labels/${productId}/zpl${qs}`,
+  );
+}
+
+/** Print one permanent-item label on the configured Zebra. */
+export async function printPermanentItemLabel(itemId: string, copies = 1): Promise<PrintLabelResult> {
+  const qs = copies > 1 ? `?copies=${copies}` : '';
+  return printLabelViaTransport(
+    `/api/inventory/permanent/${itemId}/label/print${qs}`,
+    `/api/inventory/permanent/${itemId}/label/zpl${qs}`,
+  );
 }
 
 /** Print a test label on the configured Zebra (used by /settings). */

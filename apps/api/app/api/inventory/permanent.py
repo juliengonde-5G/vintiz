@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,7 +52,9 @@ class PermanentItemCreate(BaseModel):
     barcode: str | None = None
     category_id: uuid.UUID
     sale_price: float
-    tva_rate: float = 20.0
+    # Le taux de TVA n'est PAS personnalisable côté article permanent : il
+    # est figé au taux normal (20 %) via le défaut du modèle. Pas de champ
+    # d'entrée — voir la demande métier « jamais modifiable ».
     photo_url: str | None = None
     available_from: datetime | None = None
     description: str | None = None
@@ -63,7 +65,6 @@ class PermanentItemUpdate(BaseModel):
     name: str | None = None
     category_id: uuid.UUID | None = None
     sale_price: float | None = None
-    tva_rate: float | None = None
     available_from: datetime | None = None
     description: str | None = None
     is_active: bool | None = None
@@ -231,7 +232,7 @@ async def create_permanent_item(
         barcode=barcode,
         category_id=payload.category_id,
         sale_price=payload.sale_price,
-        tva_rate=payload.tva_rate,
+        # tva_rate non fourni → défaut modèle 20 % (jamais personnalisable).
         photo_url=payload.photo_url,
         available_from=payload.available_from,
         description=payload.description,
@@ -504,3 +505,122 @@ async def list_sales(
             "last_sold_at": last_at.isoformat() if last_at else None,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Étiquette Zebra (réutilise le pipeline ZPL des produits seconde main)
+# ---------------------------------------------------------------------------
+
+async def _load_label_data(db: AsyncSession, item_id: uuid.UUID):
+    """Charge l'article + construit le LabelData (sans taille/genre/semaine).
+
+    Un article permanent n'a ni taille, ni genre, ni numéro de semaine : on
+    n'imprime que le nom, la catégorie, le code-barres et le prix — le même
+    gabarit Zebra que les produits seconde main, qui ignore proprement les
+    champs absents.
+    """
+    from app.services.zebra_zpl import LabelData
+
+    result = await db.execute(select(PermanentItem).where(PermanentItem.id == item_id))
+    item = result.scalar_one_or_none()
+    if item is None:
+        raise HTTPException(404, "Article permanent introuvable")
+    cat_row = await db.execute(select(Category.name).where(Category.id == item.category_id))
+    category_name = cat_row.scalar_one_or_none() or "Article"
+    data = LabelData(
+        product_name=item.name,
+        category=category_name,
+        size=None,
+        condition=None,
+        sale_price=float(item.sale_price),
+        barcode=item.barcode,
+        # L'ancre de date (libellé « Semaine ») retombe sur la mise en vente
+        # puis la création — un article permanent n'a pas de date de rayon.
+        shelf_date=item.available_from,
+        location=None,
+        entry_date=item.created_at,
+        week_number=None,
+        gender=None,
+    )
+    return item, data
+
+
+@router.post("/{item_id}/label/print", dependencies=[Depends(manager_only)])
+async def print_label(
+    item_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    copies: int = 1,
+):
+    """Imprime le jeu d'étiquettes (info + prix) de l'article sur la Zebra.
+
+    Transports réseau / cloud : le backend pousse le ZPL. Le mode Bluetooth
+    est rejeté ici (la tablette imprime via ``/label/zpl`` + Web Bluetooth),
+    exactement comme pour les produits seconde main.
+    """
+    from app.api.labels.router import (
+        _dispatch_zpl,
+        _label_config,
+        _validate_transport,
+    )
+    from app.services import zebra_printer
+    from app.services.zebra_zpl import build_label_set_zpl
+
+    _item, data = await _load_label_data(db, item_id)
+    cfg = _label_config()
+    _validate_transport(cfg)
+    zpl = build_label_set_zpl(data, copies=max(copies, 1))
+    try:
+        target = await _dispatch_zpl(cfg, zpl)
+    except zebra_printer.PrinterUnreachable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "status": "printed",
+        "permanent_item_id": str(item_id),
+        "printer_ip": target,
+        "copies": max(copies, 1),
+    }
+
+
+@router.get("/{item_id}/label/preview", dependencies=[Depends(manager_only)])
+async def preview_label(
+    item_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Aperçu PNG (Labelary) du jeu d'étiquettes — identique au rendu physique."""
+    from app.api.labels.router import _stack_pngs_vertically
+    from app.services.label_preview import PreviewUnavailable, render_zpl_to_png
+    from app.services.zebra_zpl import build_label_zpl, build_price_label_zpl
+
+    _item, data = await _load_label_data(db, item_id)
+    try:
+        product_png = await render_zpl_to_png(build_label_zpl(data))
+        price_png = await render_zpl_to_png(build_price_label_zpl(data))
+    except PreviewUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return Response(
+        content=_stack_pngs_vertically([product_png, price_png]),
+        media_type="image/png",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/{item_id}/label/zpl", dependencies=[Depends(manager_only)])
+async def label_zpl(
+    item_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    copies: int = 1,
+):
+    """ZPL brut du jeu d'étiquettes — consommé par le transport Bluetooth
+    (la tablette l'écrit sur le service BLE Parser de la Zebra)."""
+    from app.services.zebra_zpl import build_label_set_zpl
+
+    _item, data = await _load_label_data(db, item_id)
+    zpl = build_label_set_zpl(data, copies=max(copies, 1))
+    return Response(
+        content=zpl,
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )

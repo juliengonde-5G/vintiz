@@ -72,6 +72,14 @@ WEEKDAY_LABELS_FR = [
 # (Monday weak, Saturday peak). Normalized so Σ = 1.
 DEFAULT_WEEKDAY_WEIGHTS = [0.08, 0.09, 0.12, 0.13, 0.16, 0.27, 0.15]
 
+# Recul minimum avant de faire confiance à la distribution historique des
+# jours de la semaine. En deçà, l'historique est trop maigre (boutique qui
+# vient d'ouvrir → ventes sur 1-2 jours seulement) et tous les autres jours
+# ressortiraient à un poids 0, ce qui les ferait passer pour FERMÉS dans le
+# calcul de l'objectif du jour. On garde alors la distribution par défaut.
+MIN_HISTORY_WEEKS = 6
+MIN_SELLING_DAYS = 12
+
 SHOP_OPEN_HOUR = 10
 SHOP_CLOSE_HOUR = 20  # we display cumulative up to 20h
 
@@ -114,7 +122,10 @@ async def get_weekday_weights(
     Cache is refreshed once per day. Falls back to DEFAULT_WEEKDAY_WEIGHTS
     when the boutique lacks history.
     """
-    cache_key = "cahier.weekday_weights.cache"
+    # Suffixe de version : un changement de logique de pondération invalide
+    # les caches calculés par l'ancienne version (sinon un cache « historique »
+    # périmé du jour resterait servi jusqu'à demain).
+    cache_key = "cahier.weekday_weights.cache.v2"
     today_str = today_paris().isoformat()
 
     if not force_recompute:
@@ -137,6 +148,8 @@ async def get_weekday_weights(
     )
     buckets = [0.0] * 7
     total = 0.0
+    earliest_local: date | None = None
+    distinct_days: set[date] = set()
     for created_at, amount in rows.all():
         # Bucket par jour de la semaine côté Paris (sinon une vente du
         # samedi soir 23 h Paris tomberait dimanche UTC).
@@ -145,15 +158,34 @@ async def get_weekday_weights(
         val = float(amount or 0)
         buckets[wd] += val
         total += val
+        local_date = local.date()
+        distinct_days.add(local_date)
+        if earliest_local is None or local_date < earliest_local:
+            earliest_local = local_date
 
-    if total > 0:
+    # Étendue réelle de l'historique exploitable (du 1er jour vendu à
+    # aujourd'hui). Tant qu'on n'a pas assez de recul, les poids
+    # « historiques » sont trompeurs : une boutique qui vient d'ouvrir n'a
+    # vendu que sur 1-2 jours, donc tous les autres jours de la semaine
+    # ressortent à un poids 0 — et ``compute_daily_target`` les prendrait
+    # alors pour des jours FERMÉS (→ objectif du jour à 0 € un jour ouvré).
+    # On exige donc un minimum de recul avant de basculer sur l'historique ;
+    # en deçà on garde la distribution par défaut (tous les jours > 0).
+    span_weeks = (
+        ((end - earliest_local).days + 1) / 7.0 if earliest_local is not None else 0.0
+    )
+    enough_history = (
+        total > 0 and span_weeks >= MIN_HISTORY_WEEKS and len(distinct_days) >= MIN_SELLING_DAYS
+    )
+
+    if enough_history:
         weights = [b / total for b in buckets]
         source = "historical"
-        sample_weeks = 12
+        sample_weeks = round(span_weeks, 1)
     else:
         weights = list(DEFAULT_WEEKDAY_WEIGHTS)
         source = "default"
-        sample_weeks = 0
+        sample_weeks = round(span_weeks, 1)
 
     payload = {
         "computed_at": today_str,

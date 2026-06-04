@@ -86,13 +86,13 @@ class AccountingService:
             cfg = AccountingConfig()
             self.db.add(cfg)
             await self.db.flush()
-        # Rollback v2 → v1 : un précédent passage avait migré l'URL stockée
-        # vers ``/external/v2`` (POST /journal_entries y répond 404 — endpoint
-        # inexistant). On la ramène silencieusement sur v1, qui est l'API
-        # publique officielle. Les URL custom (autre domaine) sont laissées
-        # intactes.
-        if cfg.pennylane_api_url and cfg.pennylane_api_url.rstrip("/").endswith("/external/v2"):
-            cfg.pennylane_api_url = cfg.pennylane_api_url.rstrip("/")[:-1] + "1"
+        # Migration v1 → v2 : l'API v1 de Pennylane a été supprimée (2026) et
+        # ``POST /journal_entries`` renvoie 404 (la ressource s'appelle
+        # désormais ``ledger_entries`` côté v2). On bascule silencieusement
+        # toute URL v1 résiduelle vers v2, sans intervention manuelle. Les URL
+        # custom (autre domaine) sont laissées intactes.
+        if cfg.pennylane_api_url and cfg.pennylane_api_url.rstrip("/").endswith("/external/v1"):
+            cfg.pennylane_api_url = cfg.pennylane_api_url.rstrip("/")[:-1] + "2"
             await self.db.flush()
         return cfg
 
