@@ -1590,15 +1590,18 @@ export default function POSPage() {
           )}
         </div>
 
-        <div className="h-7 w-px bg-white/15 hidden lg:block" />
+        <div className="h-7 w-px bg-white/15 hidden md:block" />
 
         {/* Drawer status — affiche le compteur d'espèces en temps réel
             (expected_cash = fond ouverture + ventes cash - rendus + apports
-            - prélèvements). Refresh après chaque vente. */}
+            - prélèvements). Refresh après chaque vente.
+            Toujours visible (même sur tablette < 1024px) : l'ouverture et la
+            clôture de caisse sont des actions critiques qui ne doivent jamais
+            disparaître selon la largeur de l'écran. */}
         {drawer !== null && (
-          <div className="hidden lg:flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <span className={`inline-block w-2.5 h-2.5 rounded-full ${drawer.open ? 'bg-green-400' : 'bg-amber-400'}`} title={drawer.open ? 'Caisse ouverte' : 'Caisse fermée'} />
-            <div className="flex flex-col leading-tight">
+            <div className="hidden sm:flex flex-col leading-tight">
               <span className="text-[10px] opacity-70 uppercase tracking-wider">
                 {drawer.open ? 'Espèces en caisse' : 'Tiroir'}
               </span>
@@ -1636,8 +1639,13 @@ export default function POSPage() {
                 )}
                 <button
                   onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
-                  className="text-xs min-h-[40px] px-3 rounded-lg bg-red-500/30 hover:bg-red-500/50 transition-colors font-medium"
-                  title="Clôturer la caisse"
+                  disabled={cart.length > 0}
+                  className="text-xs min-h-[40px] px-3 rounded-lg bg-red-500/30 hover:bg-red-500/50 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-500/30"
+                  title={
+                    cart.length > 0
+                      ? 'Vente en cours : retirez les articles ou validez la transaction avant de clôturer la caisse'
+                      : 'Clôturer la caisse'
+                  }
                 >
                   Clôturer
                 </button>
@@ -2891,13 +2899,17 @@ export default function POSPage() {
             </div>
           </div>
 
-          {/* Bottom action bar — Odoo 17 style big Validate button */}
+          {/* Bottom action bar — Odoo 17 style big Validate button.
+              « Retour » (et non « Annuler ») : ce bouton referme l'écran de
+              paiement et ramène au panier SANS jamais vider la vente en cours.
+              On ne ferme jamais une transaction : on retire les articles un à
+              un, ou on valide. */}
           <footer className="flex-shrink-0 bg-white border-t border-vz-line px-4 md:px-6 py-3 flex items-center gap-3 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
             <button
               onClick={() => setShowPayment(false)}
               className="px-5 py-3 rounded-xl text-sm font-medium text-vz-ink-soft bg-vz-bg-alt hover:bg-vz-line transition-colors min-h-[52px]"
             >
-              Annuler
+              Retour
             </button>
             <button
               disabled={remaining > 0.01 || cashShort || submitting}
