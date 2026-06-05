@@ -1601,14 +1601,14 @@ export default function POSPage() {
         {drawer !== null && (
           <div className="flex items-center gap-2">
             <span className={`inline-block w-2.5 h-2.5 rounded-full ${drawer.open ? 'bg-green-400' : 'bg-amber-400'}`} title={drawer.open ? 'Caisse ouverte' : 'Caisse fermée'} />
-            <div className="hidden sm:flex flex-col leading-tight">
+            <div className="flex flex-col leading-tight">
               <span className="text-[10px] opacity-70 uppercase tracking-wider">
-                {drawer.open ? 'Espèces en caisse' : 'Tiroir'}
+                {drawer.open ? 'Montant en caisse' : 'Caisse'}
               </span>
               <span className="text-xs font-medium font-mono">
                 {drawer.open
                   ? `${(drawer.expected_cash ?? drawer.opening_amount ?? 0).toFixed(2)} €`
-                  : 'Fermé'}
+                  : 'Fermée'}
               </span>
             </div>
             {drawer.open ? (
@@ -1640,22 +1640,22 @@ export default function POSPage() {
                 <button
                   onClick={() => { setDrawerAmount(0); setShowDrawerClose(true); }}
                   disabled={cart.length > 0}
-                  className="text-xs min-h-[40px] px-3 rounded-lg bg-red-500/30 hover:bg-red-500/50 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-500/30"
+                  className="text-xs min-h-[40px] px-3 rounded-lg bg-red-500/30 hover:bg-red-500/50 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-500/30 whitespace-nowrap"
                   title={
                     cart.length > 0
                       ? 'Vente en cours : retirez les articles ou validez la transaction avant de clôturer la caisse'
                       : 'Clôturer la caisse'
                   }
                 >
-                  Clôturer
+                  Clôture Caisse
                 </button>
               </div>
             ) : (
               <button
                 onClick={() => { setDrawerAmount(0); setShowDrawerOpen(true); }}
-                className="text-xs px-3 py-2 rounded-lg bg-vz-accent hover:opacity-90 transition-opacity min-h-[40px] font-medium"
+                className="text-xs px-3 py-2 rounded-lg bg-vz-accent hover:opacity-90 transition-opacity min-h-[40px] font-medium whitespace-nowrap"
               >
-                Initialiser
+                Ouverture Caisse
               </button>
             )}
           </div>
