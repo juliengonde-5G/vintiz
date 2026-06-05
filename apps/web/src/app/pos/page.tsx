@@ -434,9 +434,18 @@ export default function POSPage() {
   const refreshDrawer = useCallback(async () => {
     try {
       const res = await api.get('/api/pos/drawer/current');
-      if (res.ok) setDrawer(await res.json());
-    } catch {
-      /* compteur best-effort — l'UI garde la dernière valeur connue */
+      if (res.ok) {
+        setDrawer(await res.json());
+      } else {
+        // Erreur API (auth, 5xx) : on bascule sur « caisse fermée » plutôt que
+        // de masquer le bloc, sinon les boutons d'ouverture/clôture disparaissent
+        // côté tablette quand l'appel échoue.
+        console.warn('drawer/current failed', res.status);
+        setDrawer({ open: false });
+      }
+    } catch (err) {
+      console.warn('drawer/current network error', err);
+      setDrawer({ open: false });
     }
   }, []);
 
@@ -1592,26 +1601,29 @@ export default function POSPage() {
 
         <div className="h-7 w-px bg-white/15 hidden md:block" />
 
-        {/* Drawer status — affiche le compteur d'espèces en temps réel
-            (expected_cash = fond ouverture + ventes cash - rendus + apports
-            - prélèvements). Refresh après chaque vente.
-            Toujours visible (même sur tablette < 1024px) : l'ouverture et la
-            clôture de caisse sont des actions critiques qui ne doivent jamais
-            disparaître selon la largeur de l'écran. */}
-        {drawer !== null && (
+        {/* Drawer status — toujours rendu (jamais conditionné sur `drawer`).
+            Si l'appel API n'a pas encore répondu OU a échoué, on tombe sur
+            l'état « caisse fermée » → bouton « Ouverture Caisse » visible,
+            ce qui permet à la caissière de démarrer la session même si
+            /drawer/current a temporairement renvoyé une erreur.
+            ``expected_cash`` est le compteur d'espèces live (fond + ventes
+            cash - rendus + apports - prélèvements). */}
+        {(() => {
+          const drawerOpen = drawer?.open ?? false;
+          return (
           <div className="flex items-center gap-2">
-            <span className={`inline-block w-2.5 h-2.5 rounded-full ${drawer.open ? 'bg-green-400' : 'bg-amber-400'}`} title={drawer.open ? 'Caisse ouverte' : 'Caisse fermée'} />
+            <span className={`inline-block w-2.5 h-2.5 rounded-full ${drawerOpen ? 'bg-green-400' : 'bg-amber-400'}`} title={drawerOpen ? 'Caisse ouverte' : 'Caisse fermée'} />
             <div className="flex flex-col leading-tight">
               <span className="text-[10px] opacity-70 uppercase tracking-wider">
-                {drawer.open ? 'Montant en caisse' : 'Caisse'}
+                {drawerOpen ? 'Montant en caisse' : 'Caisse'}
               </span>
               <span className="text-xs font-medium font-mono">
-                {drawer.open
-                  ? `${(drawer.expected_cash ?? drawer.opening_amount ?? 0).toFixed(2)} €`
+                {drawerOpen
+                  ? `${(drawer?.expected_cash ?? drawer?.opening_amount ?? 0).toFixed(2)} €`
                   : 'Fermée'}
               </span>
             </div>
-            {drawer.open ? (
+            {drawerOpen ? (
               <div className="flex gap-0.5">
                 <button
                   onClick={kickDrawer}
@@ -1659,7 +1671,8 @@ export default function POSPage() {
               </button>
             )}
           </div>
-        )}
+          );
+        })()}
 
         <div className="flex-1" />
 
