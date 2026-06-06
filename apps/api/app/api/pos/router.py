@@ -645,6 +645,53 @@ async def get_transaction(
     return transaction
 
 
+class LinkClientRequest(BaseModel):
+    # UUID de la cliente à rattacher, ou null pour détacher.
+    client_id: str | None = None
+
+
+@router.post("/transactions/{transaction_id}/client")
+async def link_transaction_client(
+    transaction_id: uuid.UUID,
+    request: LinkClientRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(manager_only),
+):
+    """Rattacher (ou détacher) une cliente à une transaction déjà réalisée.
+
+    ``client_id`` n'entre PAS dans le hash NF525 (transaction_number | total |
+    created_at | previous_hash) : la liaison a posteriori ne touche donc pas la
+    chaîne fiscale. Le changement est tracé dans l'AuditLog (champ whitelisté).
+    Ne crédite pas de points de fidélité (association CRM uniquement).
+    """
+    from app.models.client import Client
+    from app.models.pos import Transaction
+
+    transaction = (
+        await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+    ).scalar_one_or_none()
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction introuvable")
+
+    new_client_id: uuid.UUID | None = None
+    if request.client_id:
+        try:
+            new_client_id = uuid.UUID(request.client_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="client_id invalide")
+        client = (
+            await db.execute(select(Client).where(Client.id == new_client_id))
+        ).scalar_one_or_none()
+        if client is None:
+            raise HTTPException(status_code=404, detail="Cliente introuvable")
+
+    transaction.client_id = new_client_id
+    await db.commit()
+
+    detail = await PosService(db).get_transaction(transaction_id)
+    return detail
+
+
 @router.post("/drawer/open")
 async def open_drawer(
     request: OpenDrawerRequest,

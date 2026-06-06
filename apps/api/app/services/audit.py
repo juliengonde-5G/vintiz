@@ -40,7 +40,7 @@ from app.models.user import User
 # Per-entity whitelist of fields whose change is recorded in AuditLog.data.
 # Hashed/secret values (pin_hash, password_hash) appear as a boolean flag only.
 _SENSITIVE_FIELDS: dict[type, tuple[str, ...]] = {
-    Transaction: ("total_ttc", "hash_chain", "transaction_type"),
+    Transaction: ("total_ttc", "hash_chain", "transaction_type", "client_id"),
     CashDrawer: ("opening_amount", "closing_amount", "is_open"),
     ZReport: ("total_sales", "total_refunds", "total_net", "hash"),
     Product: ("sale_price", "status", "zone_id"),
