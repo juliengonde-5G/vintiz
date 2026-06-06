@@ -645,6 +645,53 @@ async def get_transaction(
     return transaction
 
 
+class LinkClientRequest(BaseModel):
+    # UUID de la cliente à rattacher, ou null pour détacher.
+    client_id: str | None = None
+
+
+@router.post("/transactions/{transaction_id}/client")
+async def link_transaction_client(
+    transaction_id: uuid.UUID,
+    request: LinkClientRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(manager_only),
+):
+    """Rattacher (ou détacher) une cliente à une transaction déjà réalisée.
+
+    ``client_id`` n'entre PAS dans le hash NF525 (transaction_number | total |
+    created_at | previous_hash) : la liaison a posteriori ne touche donc pas la
+    chaîne fiscale. Le changement est tracé dans l'AuditLog (champ whitelisté).
+    Ne crédite pas de points de fidélité (association CRM uniquement).
+    """
+    from app.models.client import Client
+    from app.models.pos import Transaction
+
+    transaction = (
+        await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+    ).scalar_one_or_none()
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction introuvable")
+
+    new_client_id: uuid.UUID | None = None
+    if request.client_id:
+        try:
+            new_client_id = uuid.UUID(request.client_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="client_id invalide")
+        client = (
+            await db.execute(select(Client).where(Client.id == new_client_id))
+        ).scalar_one_or_none()
+        if client is None:
+            raise HTTPException(status_code=404, detail="Cliente introuvable")
+
+    transaction.client_id = new_client_id
+    await db.commit()
+
+    detail = await PosService(db).get_transaction(transaction_id)
+    return detail
+
+
 @router.post("/drawer/open")
 async def open_drawer(
     request: OpenDrawerRequest,
@@ -902,6 +949,76 @@ async def list_z_reports(
     fiscal_service = FiscalService(db)
     reports = await fiscal_service.list_z_reports(skip=skip, limit=limit)
     return reports
+
+
+# ---------------------------------------------------------------------------
+# Clôture de régularisation a posteriori (jour de caisse oublié)
+# ---------------------------------------------------------------------------
+
+
+class RegularizationRequest(BaseModel):
+    date: str  # journée à régulariser, YYYY-MM-DD
+    reason: str
+
+
+def _day_bounds_utc(day: str) -> tuple[datetime, datetime]:
+    try:
+        d = datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Date invalide (YYYY-MM-DD)")
+    start = d.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+    end = d.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
+    return start, end
+
+
+@router.get(
+    "/z-reports/regularization/preview",
+    dependencies=[Depends(manager_only)],
+)
+async def preview_regularization(
+    date: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Dry-run : transactions orphelines d'une journée + totaux, avant
+    d'établir un Z de régularisation. Aucune écriture."""
+    start, end = _day_bounds_utc(date)
+    return await FiscalService(db).preview_regularization(start, end)
+
+
+@router.post("/z-reports/regularization")
+async def create_regularization(
+    request: RegularizationRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(manager_only),
+):
+    """Établit un Z de régularisation pour une journée d'ouverture oubliée.
+
+    Le Z est créé à sa date réelle, numéroté à la suite et chaîné sur le
+    dernier Z (chaîne NF525 intacte, jamais antidatée). Il couvre uniquement
+    les ventes orphelines (hors de toute session de caisse) ; refus 409 en cas
+    de chevauchement avec une session existante.
+    """
+    start, end = _day_bounds_utc(request.date)
+    fiscal = FiscalService(db)
+    z = await fiscal.create_regularization_z(
+        start, end, request.reason, current_user.id
+    )
+    await db.commit()
+    await db.refresh(z)
+    logger.info(
+        "Z de régularisation #%s établi par user=%s pour la journée %s (motif: %s)",
+        z.report_number, current_user.id, request.date, request.reason,
+    )
+    return {
+        "z_report_number": z.report_number,
+        "id": str(z.id),
+        "is_regularization": True,
+        "total_sales": float(z.total_sales),
+        "total_refunds": float(z.total_refunds),
+        "total_net": float(z.total_net),
+        "transaction_count": z.transaction_count,
+        "period": request.date,
+    }
 
 
 class CBInitiateRequest(BaseModel):
