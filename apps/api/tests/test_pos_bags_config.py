@@ -91,7 +91,19 @@ async def test_put_pos_config_validates_and_mirrors_legacy(monkeypatch, tmp_path
     from app.services import app_config
 
     config_path = tmp_path / "app_config.json"
-    monkeypatch.setattr(app_config, "DEFAULT_PATH", config_path)
+    # Redirect every I/O leaf to ``tmp_path/app_config.json``. A
+    # ``setattr(DEFAULT_PATH)`` patch wouldn't work because Python evaluates
+    # ``def f(path: Path = DEFAULT_PATH)`` at function-definition time, so the
+    # original value is already captured in the bound defaults. Patching the
+    # two leaf functions (load / save) is enough since the wrappers
+    # (get_section / update_section) resolve them at call time.
+    real_load = app_config.load_config
+    real_save = app_config.save_config
+    monkeypatch.setattr(app_config, "load_config", lambda *a, **kw: real_load(config_path))
+    monkeypatch.setattr(
+        app_config, "save_config",
+        lambda config, *a, **kw: real_save(config, path=config_path),
+    )
 
     section = await update_pos_config(PosConfigUpdate(bags=[
         {"label": "Sac Kraft", "price_eur": 0.25},

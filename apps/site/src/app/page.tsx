@@ -4,11 +4,47 @@ import PublicHeader from "@/components/PublicHeader";
 import PublicFooter from "@/components/PublicFooter";
 import NewsletterCard from "@/components/home/NewsletterCard";
 import AddressBlock from "@/components/home/AddressBlock";
-import { listPublicProducts } from "@/lib/storefront-api";
 import { mediaUrl } from "@/lib/media";
+import { formatPriceCents } from "@/lib/format";
 
 // ISR — la home revalide en même temps que /produits.
 export const revalidate = 300;
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+interface Highlight {
+  id: string;
+  slug: string;
+  name: string;
+  brand: string | null;
+  size: string | null;
+  color: string | null;
+  sale_price: number;
+  price_cents: number;
+  photo_url: string | null;
+  reason: string | null;
+}
+
+interface HighlightsPayload {
+  items: Highlight[];
+  curator_note: string;
+}
+
+/** Fetch the manager-curated "coups de cœur" — padded by top trend if the
+ *  curation is incomplete. Returns ``items=[]`` when nothing real is on the
+ *  floor. Revalidated every 60 s to keep the landing snappy without spamming
+ *  the API. */
+async function fetchHighlights(): Promise<HighlightsPayload> {
+  try {
+    const res = await fetch(`${API_URL}/api/crm/storefront/highlights?limit=4`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return { items: [], curator_note: "" };
+    return (await res.json()) as HighlightsPayload;
+  } catch {
+    return { items: [], curator_note: "" };
+  }
+}
 
 // Reel Instagram officiel du lancement (publication Solidarité Textiles).
 const LAUNCH_VIDEO_URL =
@@ -30,13 +66,10 @@ const OPENING_GALLERY: { src: string; alt: string }[] = [
 ];
 
 export default async function Home() {
-  // Coups de cœur = les 4 dernières pièces disponibles avec une photo
-  // (ordre déjà défini par l'API : displayed_at desc, fallback created_at).
-  const apiProducts = await listPublicProducts();
-  const featured = apiProducts
-    .filter((p) => p.available && p.photo_url)
-    .slice(0, 4);
-
+  // Coups de cœur = curation manager (app_config.curation_picks), complétée
+  // par les meilleures pièces du rayon (trend_score). Section masquée si rien
+  // de vendable — aucun fallback démo.
+  const highlights = await fetchHighlights();
   return (
     <>
       <PublicHeader />
@@ -186,36 +219,56 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* COUPS DE COEUR */}
+        {/* COUPS DE COEUR — sélection vivante : curation manager
+            (app_config.curation_picks) complétée par les meilleures pièces du
+            rayon (trend_score). Cartes cliquables vers la fiche produit. */}
         <section className="max-w-7xl mx-auto px-6 pb-16 lg:pb-20">
           <div className="mb-6">
             <h2 className="font-mockSerif text-3xl md:text-4xl text-vz-teal flex items-center gap-3">
               <span aria-hidden>❤️</span> Nos coups de cœur en boutique
             </h2>
-            <p className="text-sm text-black/60 mt-2">
-              À découvrir en rayon dès aujourd&apos;hui. La sélection bouge chaque jour.
-            </p>
+            {highlights.curator_note ? (
+              <p className="text-sm text-black/70 mt-2 italic">{highlights.curator_note}</p>
+            ) : (
+              <p className="text-sm text-black/60 mt-2">
+                À découvrir en rayon dès aujourd&apos;hui. La sélection bouge chaque jour.
+              </p>
+            )}
           </div>
-          {featured.length > 0 ? (
+          {highlights.items.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-              {featured.map((p) => (
-                <Link key={p.slug} href={`/produits/${p.slug}`} className="group block">
-                  <div className="relative aspect-square rounded-md overflow-hidden bg-stone-100">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={mediaUrl(p.photo_url || "")}
-                      alt={`${p.brand ?? ""} — ${p.name}`}
-                      className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
-                      loading="lazy"
-                    />
-                  </div>
-                  <div className="mt-3">
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-black/60">{p.brand}</p>
-                    <p className="text-sm text-black line-clamp-2">{p.name}</p>
-                    <p className="text-sm text-vz-teal font-semibold">{p.price_eur} €</p>
-                  </div>
-                </Link>
-              ))}
+              {highlights.items.map((p) => {
+                const photo = mediaUrl(p.photo_url || "");
+                return (
+                  <Link key={p.id} href={`/produits/${p.slug}`} className="group block">
+                    <div className="relative aspect-square rounded-md overflow-hidden bg-stone-100">
+                      {photo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={photo}
+                          alt={`${p.brand ?? ""} — ${p.name}`}
+                          className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-vz-teal/60 text-sm font-mockSerif">
+                          {p.name}
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-3">
+                      {p.brand && (
+                        <p className="text-[11px] uppercase tracking-[0.12em] text-black/60">{p.brand}</p>
+                      )}
+                      <p className="text-sm text-black line-clamp-2">{p.name}</p>
+                      <p className="text-sm text-vz-teal font-semibold">{formatPriceCents(p.price_cents)}</p>
+                      {p.reason && (
+                        <p className="mt-1 text-xs text-vz-teal/80 italic line-clamp-2">{p.reason}</p>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           ) : (
             <p className="text-sm text-black/60 italic">
