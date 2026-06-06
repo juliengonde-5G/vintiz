@@ -41,6 +41,33 @@ router.include_router(_database_module.router)
 
 
 # ---------------------------------------------------------------------------
+# Monitoring — santé des services externes (DB, Pennylane, SumUp, Brevo)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/monitoring", dependencies=[Depends(manager_only)])
+async def get_monitoring_status(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Rapport de santé de tous les services externes (manager only)."""
+    from app.services.monitoring_service import MonitoringService
+
+    report = await MonitoringService(db).check_all()
+    return {
+        "all_healthy": report.all_healthy,
+        "checked_at": report.checked_at,
+        "services": [
+            {
+                "name": s.name,
+                "healthy": s.healthy,
+                "latency_ms": s.latency_ms,
+                "detail": s.detail,
+                "checked_at": s.checked_at,
+            }
+            for s in report.services
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Transactions / payment attempts — admin filterable history (PR 3/6)
 # ---------------------------------------------------------------------------
 
