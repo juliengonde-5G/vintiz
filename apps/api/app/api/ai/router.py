@@ -31,7 +31,11 @@ from app.models.client import Client
 from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.audit import Settings
 from app.models.store import StoreZone
-from app.services.ai_vision import analyze_product_photo, analyze_photo_from_url
+from app.services.ai_vision import (
+    analyze_product_dictation,
+    analyze_product_photo,
+    analyze_photo_from_url,
+)
 from app.services.weather_service import get_weather_forecast
 from app.services.ai_trend import compute_trend_scores, update_product_scores, get_stale_products
 from app.services.ai_pricing import suggest_price
@@ -91,6 +95,27 @@ async def analyze_photo(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur d'analyse: {str(e)}")
 
+    return result
+
+
+class DictationRequest(BaseModel):
+    transcript: str
+
+
+@router.post("/vision/dictation")
+async def analyze_dictation(
+    request: DictationRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Extrait des champs produit d'une dictée libre (moteur vocal optionnel de
+    l'assistant d'ajout). Renvoie le même schéma que /vision/analyze + ``prix``,
+    pour que le front réutilise le même pré-remplissage de formulaire."""
+    try:
+        result = await analyze_product_dictation(request.transcript)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur d'analyse: {str(e)}")
     return result
 
 

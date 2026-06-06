@@ -212,6 +212,80 @@ async def analyze_product_photo(
     return result
 
 
+_DICTATION_SYSTEM_PROMPT = (
+    "Tu assistes la mise en vente d'un vêtement de seconde main premium chez "
+    "Vintiz. À partir d'une DICTÉE LIBRE en français (le vendeur décrit l'article "
+    "à voix haute), tu extrais les caractéristiques structurées.\n\n"
+    "Renvoie UNIQUEMENT un objet JSON (aucun texte autour) avec ces clés :\n"
+    "  type        : nature du vêtement (ex. \"chemise\", \"robe\", \"jean\")\n"
+    "  couleur     : couleur principale\n"
+    "  matiere     : matière si dictée\n"
+    "  marque      : marque si dictée, sinon null\n"
+    "  taille      : taille (XS,S,M,L,XL, 36..46, etc.)\n"
+    "  etat        : état (\"neuf\", \"très bon état\", \"bon état\", \"satisfaisant\")\n"
+    "  genre       : un de \"homme\",\"femme\",\"enfant\",\"mixte\"\n"
+    "  prix        : prix de vente en euros (nombre) si dicté, sinon null\n"
+    "  description : courte description si pertinente\n"
+    "  confiance   : ta confiance globale entre 0 et 1\n\n"
+    "Mets null (ou omets) toute information NON dictée — n'invente jamais une "
+    "marque ni un prix. Réponds en français."
+)
+
+
+async def analyze_product_dictation(transcript: str) -> dict:
+    """Extrait des champs produit structurés à partir d'une dictée libre.
+
+    Pendant l'ajout produit, en complément (optionnel) de la reconnaissance
+    photo, le vendeur peut dicter la fiche. On renvoie le MÊME schéma de clés
+    que la vision (``type``/``couleur``/``marque``/``taille``/``etat``/``genre``
+    …) + ``prix`` pour que le front réutilise le même mapping. Champs non dictés
+    → null (jamais d'invention)."""
+    transcript = (transcript or "").strip()
+    if not transcript:
+        return {"error": "Dictée vide"}
+    if not settings.ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY not configured")
+
+    import json
+
+    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    message = await client.messages.create(
+        model="claude-haiku-4-5",
+        max_tokens=512,
+        system=_DICTATION_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": transcript[:2000]}],
+    )
+
+    raw = message.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1]
+        if raw.endswith("```"):
+            raw = raw[:-3].strip()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.error("Failed to parse dictation response: %s", raw[:200])
+        return {"error": "Impossible d'analyser la dictée", "raw": raw[:500]}
+
+    result = normalize_vision_payload(payload)
+    # Prix : tolère "12", "12.5", "12,50", "12 €"…
+    raw_price = payload.get("prix")
+    price_val = None
+    if isinstance(raw_price, (int, float)):
+        price_val = float(raw_price)
+    elif isinstance(raw_price, str):
+        cleaned = (
+            raw_price.replace("€", "").replace("EUR", "").replace(",", ".").strip()
+        )
+        try:
+            price_val = float(cleaned)
+        except ValueError:
+            price_val = None
+    result["prix"] = price_val if (price_val is not None and price_val > 0) else None
+    result["transcript"] = transcript
+    return result
+
+
 async def analyze_photo_from_url(photo_url: str) -> dict:
     """Analyze a product photo from a URL."""
     if not settings.ANTHROPIC_API_KEY:
