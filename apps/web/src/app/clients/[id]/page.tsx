@@ -7,6 +7,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
+import TransactionDetailModal from '@/components/pos/TransactionDetailModal';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
 
@@ -150,6 +151,7 @@ export default function ClientDetailPage() {
   const [tab, setTab] = useState<Tab>('synthese');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [openTxId, setOpenTxId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -337,8 +339,13 @@ export default function ClientDetailPage() {
                 </thead>
                 <tbody>
                   {data.transactions.map((t) => (
-                    <tr key={t.id} className="border-t border-gray-100">
-                      <td className="p-2 font-mono">{t.transaction_number}</td>
+                    <tr
+                      key={t.id}
+                      onClick={() => setOpenTxId(t.id)}
+                      className="border-t border-gray-100 cursor-pointer hover:bg-gray-50"
+                      title="Voir le détail de l'achat"
+                    >
+                      <td className="p-2 font-mono text-vz-teal underline">{t.transaction_number}</td>
                       <td className="p-2 text-gray-600">{formatDate(t.created_at)}</td>
                       <td className="p-2">
                         <Badge variant={t.transaction_type === 'refund' ? 'default' : 'sold'}>
@@ -567,6 +574,12 @@ export default function ClientDetailPage() {
           </Button>
         </div>
       </main>
+
+      <TransactionDetailModal
+        transactionId={openTxId}
+        onClose={() => setOpenTxId(null)}
+        allowLink={false}
+      />
     </div>
   );
 }

@@ -1,13 +1,18 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 import Sidebar from '@/components/layout/Sidebar';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
+import CaissePanel from '@/components/pos/CaissePanel';
+import LinkClientControl from '@/components/pos/LinkClientControl';
+import RefundModal from '@/components/pos/RefundModal';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
+import { printTransactionTicket } from '@/lib/print-ticket';
 
 interface CardPayment {
   amount: number;
@@ -115,13 +120,28 @@ function MethodBadge({ method }: { method: string }) {
 }
 
 export default function AdminTransactionsPage() {
-  const [view, setView] = useState<'transactions' | 'failed_cb'>('transactions');
+  return (
+    <Suspense fallback={null}>
+      <AdminTransactionsInner />
+    </Suspense>
+  );
+}
+
+function AdminTransactionsInner() {
+  const searchParams = useSearchParams();
+  const initialView = (() => {
+    const v = searchParams.get('view');
+    return v === 'caisse' || v === 'failed_cb' ? v : 'transactions';
+  })();
+  const [view, setView] = useState<'transactions' | 'failed_cb' | 'caisse'>(initialView);
   const [rows, setRows] = useState<AdminTransaction[]>([]);
   const [attempts, setAttempts] = useState<FailedCbAttempt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [detail, setDetail] = useState<AdminTransaction | null>(null);
+  const [refundTxId, setRefundTxId] = useState<string | null>(null);
+  const [reissueMsg, setReissueMsg] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -294,12 +314,14 @@ export default function AdminTransactionsPage() {
         <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="font-display text-3xl font-semibold text-vz-ink">
-              Historique des transactions
+              Transactions &amp; Caisse
             </h1>
             <p className="text-sm text-vz-ink-mute">
               {view === 'transactions'
                 ? 'Toutes les ventes, refunds et factures — détail CB (TPE Solo) inclus.'
-                : 'Tentatives CB refusées par le TPE Solo — regroupées par cause.'}
+                : view === 'failed_cb'
+                  ? 'Tentatives CB refusées par le TPE Solo — regroupées par cause.'
+                  : 'Suivi de caisse : rapports Z, sessions tiroir et régularisation.'}
             </p>
           </div>
           {view === 'transactions' && (
@@ -341,6 +363,7 @@ export default function AdminTransactionsPage() {
           {([
             ['transactions', 'Transactions'],
             ['failed_cb', 'CB échouées'],
+            ['caisse', 'Caisse'],
           ] as const).map(([key, label]) => (
             <button
               key={key}
@@ -390,6 +413,9 @@ export default function AdminTransactionsPage() {
           </Card>
         )}
 
+        {view === 'caisse' && <CaissePanel />}
+
+        {view !== 'caisse' && (
         <Card className="mt-4">
           {error && (
             <p className="rounded-lg bg-vz-accent-soft px-4 py-3 text-sm text-vz-ink">
@@ -528,6 +554,7 @@ export default function AdminTransactionsPage() {
             </div>
           )}
         </Card>
+        )}
       </main>
 
       <Modal
@@ -594,29 +621,86 @@ export default function AdminTransactionsPage() {
               value={formatCurrency(detail.total_ttc)}
               emphasis
             />
-            <div className="flex flex-wrap gap-2 pt-3">
-              {detail.is_invoice && (
-                <>
-                  <Button onClick={() => void downloadInvoice(detail)}>
-                    Télécharger facture PDF
-                  </Button>
-                  <Button variant="outline" onClick={() => void sendInvoice(detail)}>
-                    Envoyer par email
-                  </Button>
-                </>
+            <DetailRow
+              label="Cliente"
+              value={
+                detail.client_company_name
+                  ? detail.client_company_name
+                  : detail.client_id
+                    ? 'Rattachée'
+                    : 'Aucune'
+              }
+            />
+            <div className="border-t border-vz-line pt-3">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-vz-ink-mute">
+                Rattachement cliente
+              </p>
+              <LinkClientControl
+                transactionId={detail.id}
+                hasClient={!!detail.client_id}
+                onChanged={(d) => {
+                  const nd = d as { client?: { id: string } | null };
+                  setDetail({ ...detail, client_id: nd.client?.id ?? null });
+                  void load();
+                }}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2 border-t border-vz-line pt-3">
+              {detail.type === 'sale' && (
+                <Button variant="outline" onClick={() => setRefundTxId(detail.id)}>
+                  Rembourser
+                </Button>
               )}
               <Button
                 variant="outline"
-                onClick={() => {
-                  window.location.href = `/admin?tx=${detail.id}`;
+                onClick={async () => {
+                  setReissueMsg('');
+                  const r = await printTransactionTicket(detail.id, { kickDrawer: false });
+                  setReissueMsg(r.message);
                 }}
               >
-                Ouvrir dans /admin
+                Réimprimer le ticket
+              </Button>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  setReissueMsg('');
+                  const res = await api.post(`/api/pos/transactions/${detail.id}/resend`, {
+                    channel: 'email',
+                  });
+                  setReissueMsg(
+                    res.ok ? 'Ticket renvoyé par email à la cliente.' : 'Renvoi email impossible.',
+                  );
+                }}
+              >
+                Renvoyer (email)
               </Button>
             </div>
+            {reissueMsg && <p className="text-xs text-vz-ink-soft">{reissueMsg}</p>}
+            {detail.is_invoice && (
+              <div className="flex flex-wrap gap-2 pt-3">
+                <Button onClick={() => void downloadInvoice(detail)}>
+                  Télécharger facture PDF
+                </Button>
+                <Button variant="outline" onClick={() => void sendInvoice(detail)}>
+                  Envoyer par email
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </Modal>
+
+      <RefundModal
+        open={refundTxId !== null}
+        transactionId={refundTxId}
+        onClose={() => setRefundTxId(null)}
+        onCompleted={() => {
+          setRefundTxId(null);
+          setDetail(null);
+          void load();
+        }}
+      />
     </div>
   );
 }
