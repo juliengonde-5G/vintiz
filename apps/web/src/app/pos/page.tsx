@@ -526,6 +526,14 @@ export default function POSPage() {
         // Ouvre physiquement le tiroir pour déposer le fond — le caissier
         // n'a pas à cliquer "Tiroir" séparément après l'initialisation.
         kickDrawer();
+      } else {
+        // Échec (ex. 409 « caisse déjà ouverte ») : ne pas avaler l'erreur.
+        // On affiche la cause et on resynchronise l'état réel — si une session
+        // est déjà ouverte, le bouton bascule alors sur « Clôturer la caisse ».
+        const detail = (await res.json().catch(() => ({})))?.detail || `Erreur ${res.status}`;
+        setError(`Ouverture refusée : ${detail}`);
+        setDrawerToast({ msg: `Ouverture refusée : ${detail}`, ok: false });
+        await refreshDrawer();
       }
     } catch { /* silent */ }
     setDrawerSubmitting(false);
@@ -2135,13 +2143,20 @@ export default function POSPage() {
             )}
             </div>
 
-            {/* Encaisser — pinned button, hors-flux scrollable, toujours visible */}
+            {/* Encaisser — pinned button, hors-flux scrollable, toujours visible.
+                Bloqué tant que la caisse n'est pas ouverte : pas d'encaissement
+                hors session (cohérence fond de caisse + rapport Z). */}
             <button
               disabled={
                 cart.length === 0 ||
+                !(drawer?.open) ||
                 (wizardEnabled && !isInvoiceFormValid(invoiceFields))
               }
               onClick={() => {
+                if (!drawer?.open) {
+                  setError('Ouvrez la caisse avant d’encaisser.');
+                  return;
+                }
                 setPayments([]);
                 setCashGiven('');
                 setError('');
@@ -2151,15 +2166,19 @@ export default function POSPage() {
                 stopCbPolling();
                 setShowPayment(true);
               }}
+              title={!(drawer?.open) ? 'Ouvrez la caisse avant d’encaisser' : undefined}
               className={`flex-shrink-0 w-full py-4 rounded-xl font-bold text-lg tracking-wide transition-colors flex items-center justify-center gap-3 ${
                 cart.length === 0 ||
+                !(drawer?.open) ||
                 (wizardEnabled && !isInvoiceFormValid(invoiceFields))
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   : 'bg-vz-teal text-white hover:bg-vz-teal-deep active:bg-vz-teal-deep shadow-lg'
               }`}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-              Encaisser {cart.length > 0 ? formatCurrency(cartTotalAfterLoyalty) : ''}
+              {!(drawer?.open)
+                ? 'Caisse fermée'
+                : `Encaisser ${cart.length > 0 ? formatCurrency(cartTotalAfterLoyalty) : ''}`}
             </button>
           </div>
         </div>
@@ -3298,6 +3317,12 @@ export default function POSPage() {
                   setShowDrawerOpen(false);
                   // Ouvre physiquement le tiroir pour déposer le fond.
                   kickDrawer();
+                } else {
+                  const detail = (await res.json().catch(() => ({})))?.detail || `Erreur ${res.status}`;
+                  setError(`Ouverture refusée : ${detail}`);
+                  setDrawerToast({ msg: `Ouverture refusée : ${detail}`, ok: false });
+                  setShowDrawerOpen(false);
+                  await refreshDrawer();
                 }
               } finally {
                 setDrawerSubmitting(false);
