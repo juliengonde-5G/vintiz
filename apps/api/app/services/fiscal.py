@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pos import (
     CashDrawer,
+    Payment,
+    PaymentMethod,
     Transaction,
     TransactionType,
     ZReport,
@@ -97,10 +99,19 @@ class FiscalService:
         drawer: CashDrawer,
         user_id: uuid.UUID,
         cashier_id: uuid.UUID | None = None,
+        *,
+        is_regularization: bool = False,
+        regularization_reason: str | None = None,
     ) -> ZReport:
         """Generate an end-of-day Z report for a closed cash drawer.
 
         Computes daily totals and creates an immutable hash-chain entry.
+
+        When ``is_regularization`` is set, the report is flagged as an
+        a-posteriori regularization (a missed cash-drawer day). The flag is
+        folded into the signed hash so the regularization scope is part of the
+        non-repudiable record. The chain is built normally (real creation
+        time, next number, off the latest Z hash) — nothing is antedated.
         """
         # Totals for transactions created during the drawer period
         sales_result = await self.db.execute(
@@ -141,7 +152,9 @@ class FiscalService:
         )
         previous_hash = prev_result.scalar_one_or_none() or "0"
 
-        # Compute Z report hash
+        # Compute Z report hash. Normal Z keep the historical format intact;
+        # a regularization appends a signed marker so it can't be silently
+        # reclassified as an ordinary daily close.
         hash_data = (
             f"{next_number}|"
             f"{float(total_sales):.2f}|"
@@ -150,6 +163,11 @@ class FiscalService:
             f"{sale_count}|"
             f"{previous_hash}"
         )
+        if is_regularization:
+            hash_data += (
+                f"|REG|{drawer.opened_at.isoformat() if drawer.opened_at else ''}"
+                f"|{drawer.closed_at.isoformat() if drawer.closed_at else ''}"
+            )
         report_hash = hashlib.sha256(hash_data.encode("utf-8")).hexdigest()
 
         z_report = ZReport(
@@ -163,11 +181,195 @@ class FiscalService:
             transaction_count=sale_count,
             hash=report_hash,
             previous_hash=previous_hash,
+            is_regularization=is_regularization,
+            regularization_reason=regularization_reason,
         )
         self.db.add(z_report)
         await self.db.flush()
         await self.db.refresh(z_report)
         return z_report
+
+    # ------------------------------------------------------------------
+    # Régularisation a posteriori (jour de caisse oublié)
+    # ------------------------------------------------------------------
+
+    async def _classify_window(
+        self, period_from: datetime, period_to: datetime
+    ) -> dict:
+        """Split the transactions of ``[period_from, period_to]`` into the ones
+        already covered by an existing cash-drawer session and the *orphans*
+        (covered by none). The orphans are what a regularization Z would book.
+        """
+        tx_rows = (
+            await self.db.execute(
+                select(Transaction).where(
+                    Transaction.created_at >= period_from,
+                    Transaction.created_at <= period_to,
+                )
+            )
+        ).scalars().all()
+
+        drawers = (
+            await self.db.execute(
+                select(CashDrawer).where(CashDrawer.opened_at <= period_to)
+            )
+        ).scalars().all()
+
+        now = datetime.now(timezone.utc)
+
+        def _aware(dt: datetime | None) -> datetime | None:
+            # SQLite renvoie des datetimes naïfs même pour DateTime(timezone=True) ;
+            # on les traite comme UTC pour des comparaisons homogènes.
+            if dt is None:
+                return None
+            return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+        def _covered(created_at: datetime) -> bool:
+            created_at = _aware(created_at)
+            if created_at is None:
+                return False
+            for d in drawers:
+                start = _aware(d.opened_at)
+                end = _aware(d.closed_at) or now
+                if start is not None and start <= created_at <= end:
+                    return True
+            return False
+
+        orphans = [t for t in tx_rows if not _covered(t.created_at)]
+        covered = [t for t in tx_rows if _covered(t.created_at)]
+        return {"orphans": orphans, "covered": covered, "all": tx_rows}
+
+    async def preview_regularization(
+        self, period_from: datetime, period_to: datetime
+    ) -> dict:
+        """Dry-run a regularization over a date window. Returns the orphan
+        transactions (uncovered by any session), their totals + payment-method
+        breakdown, and flags any overlap with an existing session (which would
+        cause double counting and therefore blocks the regularization)."""
+        split = await self._classify_window(period_from, period_to)
+        orphans = split["orphans"]
+        orphan_ids = [t.id for t in orphans]
+
+        total_sales = sum(
+            float(t.total_ttc) for t in orphans
+            if t.transaction_type == TransactionType.sale
+        )
+        total_refunds = sum(
+            float(t.total_ttc) for t in orphans
+            if t.transaction_type == TransactionType.refund
+        )
+        sale_count = sum(
+            1 for t in orphans if t.transaction_type == TransactionType.sale
+        )
+
+        by_method: dict[str, float] = {}
+        if orphan_ids:
+            rows = (
+                await self.db.execute(
+                    select(Payment.method, func.coalesce(func.sum(Payment.amount), 0))
+                    .where(Payment.transaction_id.in_(orphan_ids))
+                    .group_by(Payment.method)
+                )
+            ).all()
+            for method, amount in rows:
+                key = method.value if isinstance(method, PaymentMethod) else str(method)
+                by_method[key] = float(amount)
+
+        return {
+            "period_from": period_from.isoformat(),
+            "period_to": period_to.isoformat(),
+            "orphan_count": len(orphans),
+            "sale_count": sale_count,
+            "covered_count": len(split["covered"]),
+            "has_overlap": len(split["covered"]) > 0,
+            "can_regularize": len(orphans) > 0 and len(split["covered"]) == 0,
+            "total_sales": round(total_sales, 2),
+            "total_refunds": round(total_refunds, 2),
+            "total_net": round(total_sales - total_refunds, 2),
+            "by_method": by_method,
+            "transaction_numbers": sorted(
+                t.transaction_number for t in orphans
+            )[:100],
+        }
+
+    async def create_regularization_z(
+        self,
+        period_from: datetime,
+        period_to: datetime,
+        reason: str,
+        user_id: uuid.UUID,
+        cashier_id: uuid.UUID | None = None,
+    ) -> ZReport:
+        """Establish an a-posteriori regularization Z for a missed cash day.
+
+        Guards:
+        - the motif is mandatory;
+        - the window must contain at least one orphan transaction;
+        - the window must NOT overlap an existing session (else booking it
+          would double-count) → 409, narrow the window.
+
+        A technical (regularization) cash-drawer carries the covered period;
+        the Z is then produced via the standard signed pipeline.
+        """
+        reason = (reason or "").strip()
+        if not reason:
+            raise HTTPException(status_code=400, detail="Motif de régularisation obligatoire")
+
+        split = await self._classify_window(period_from, period_to)
+        if split["covered"]:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "La période chevauche une session de caisse existante "
+                    f"({len(split['covered'])} transaction(s) déjà couverte(s)). "
+                    "Restreignez la plage pour ne viser que les ventes orphelines."
+                ),
+            )
+        if not split["orphans"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Aucune transaction orpheline à régulariser sur cette période.",
+            )
+
+        # Espèces attendues sur la période (fond initial = 0 par construction).
+        cash_expected = (
+            await self.db.execute(
+                select(func.coalesce(func.sum(Payment.amount), 0))
+                .join(Transaction, Payment.transaction_id == Transaction.id)
+                .where(
+                    Payment.method == PaymentMethod.cash,
+                    Transaction.created_at >= period_from,
+                    Transaction.created_at <= period_to,
+                )
+            )
+        ).scalar_one()
+
+        now = datetime.now(timezone.utc)
+        note = (
+            f"Régularisation a posteriori — établie le {now.strftime('%d/%m/%Y %H:%M')} "
+            f"(UTC). Comptage espèces non effectué (fiscal seul). Motif : {reason}"
+        )
+        drawer = CashDrawer(
+            user_id=user_id,
+            cashier_id=cashier_id,
+            opened_at=period_from,
+            closed_at=period_to,
+            opening_amount=0,
+            closing_amount=None,          # fiscal seul : pas de recomptage
+            expected_amount=float(cash_expected),
+            is_open=False,
+            closing_note=note,
+        )
+        self.db.add(drawer)
+        await self.db.flush()
+
+        return await self.generate_z_report(
+            drawer,
+            user_id,
+            cashier_id=cashier_id,
+            is_regularization=True,
+            regularization_reason=reason,
+        )
 
     async def list_z_reports(
         self, skip: int = 0, limit: int = 30
@@ -185,6 +387,8 @@ class FiscalService:
                 "id": str(r.id),
                 "report_number": r.report_number,
                 "cashier_id": str(r.cashier_id) if r.cashier_id else None,
+                "is_regularization": bool(r.is_regularization),
+                "regularization_reason": r.regularization_reason,
                 "total_sales": float(r.total_sales),
                 "total_refunds": float(r.total_refunds),
                 "total_net": float(r.total_net),

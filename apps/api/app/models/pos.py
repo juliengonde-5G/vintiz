@@ -283,6 +283,17 @@ class ZReport(Base):
     transaction_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     hash: Mapped[str] = mapped_column(String(64), nullable=False)
     previous_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Clôture de régularisation a posteriori (NF525). Quand un jour d'ouverture
+    # de caisse a été oublié, les ventes existent dans la chaîne fiscale mais
+    # ne sont couvertes par aucun Z. On établit alors un Z de régularisation :
+    # créé À LA DATE RÉELLE (jamais antidaté), numéro incrémental, chaîné sur le
+    # dernier Z — la chaîne reste intacte. ``is_regularization`` le marque, le
+    # motif est obligatoire, et la période couverte est portée par le tiroir
+    # technique lié (``cash_drawer.opened_at`` → ``closed_at``).
+    is_regularization: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    regularization_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     # NF525 intangibility (article 88 CGI) — once ``is_locked=True`` the row
     # may not be updated. The PDF + its SHA-256 are persisted at lock time so
     # any later display reproduces byte-identical output. Email send is also

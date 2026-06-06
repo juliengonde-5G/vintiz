@@ -904,6 +904,76 @@ async def list_z_reports(
     return reports
 
 
+# ---------------------------------------------------------------------------
+# Clôture de régularisation a posteriori (jour de caisse oublié)
+# ---------------------------------------------------------------------------
+
+
+class RegularizationRequest(BaseModel):
+    date: str  # journée à régulariser, YYYY-MM-DD
+    reason: str
+
+
+def _day_bounds_utc(day: str) -> tuple[datetime, datetime]:
+    try:
+        d = datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Date invalide (YYYY-MM-DD)")
+    start = d.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+    end = d.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
+    return start, end
+
+
+@router.get(
+    "/z-reports/regularization/preview",
+    dependencies=[Depends(manager_only)],
+)
+async def preview_regularization(
+    date: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Dry-run : transactions orphelines d'une journée + totaux, avant
+    d'établir un Z de régularisation. Aucune écriture."""
+    start, end = _day_bounds_utc(date)
+    return await FiscalService(db).preview_regularization(start, end)
+
+
+@router.post("/z-reports/regularization")
+async def create_regularization(
+    request: RegularizationRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(manager_only),
+):
+    """Établit un Z de régularisation pour une journée d'ouverture oubliée.
+
+    Le Z est créé à sa date réelle, numéroté à la suite et chaîné sur le
+    dernier Z (chaîne NF525 intacte, jamais antidatée). Il couvre uniquement
+    les ventes orphelines (hors de toute session de caisse) ; refus 409 en cas
+    de chevauchement avec une session existante.
+    """
+    start, end = _day_bounds_utc(request.date)
+    fiscal = FiscalService(db)
+    z = await fiscal.create_regularization_z(
+        start, end, request.reason, current_user.id
+    )
+    await db.commit()
+    await db.refresh(z)
+    logger.info(
+        "Z de régularisation #%s établi par user=%s pour la journée %s (motif: %s)",
+        z.report_number, current_user.id, request.date, request.reason,
+    )
+    return {
+        "z_report_number": z.report_number,
+        "id": str(z.id),
+        "is_regularization": True,
+        "total_sales": float(z.total_sales),
+        "total_refunds": float(z.total_refunds),
+        "total_net": float(z.total_net),
+        "transaction_count": z.transaction_count,
+        "period": request.date,
+    }
+
+
 class CBInitiateRequest(BaseModel):
     amount: float
     description: str = "Vente Vintiz"

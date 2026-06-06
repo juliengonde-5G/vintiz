@@ -201,6 +201,17 @@ async def generate_z_report_pdf(db: AsyncSession, z_report: ZReport) -> bytes:
     title = f"<b>Rapport Z #{z_report.report_number:04d}</b>"
     story.append(Paragraph(title, h1))
 
+    # Régularisation a posteriori — mention explicite (NF525) : ce Z couvre une
+    # journée dont l'ouverture de caisse avait été oubliée. Établi à sa date
+    # réelle, jamais antidaté ; comptage espèces non rejoué.
+    if getattr(z_report, "is_regularization", False):
+        story.append(Paragraph(
+            "<b>⚠ CLÔTURE DE RÉGULARISATION A POSTERIORI</b><br/>"
+            f"Motif : {z_report.regularization_reason or '—'}",
+            body,
+        ))
+        story.append(Spacer(1, 2 * mm))
+
     period_from = drawer_row.opened_at.strftime("%d/%m/%Y %H:%M")
     period_to = (
         drawer_row.closed_at.strftime("%d/%m/%Y %H:%M")
