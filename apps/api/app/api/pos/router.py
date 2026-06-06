@@ -699,18 +699,28 @@ async def open_drawer(
     current_user: User = Depends(get_current_user),
 ):
     """Open cash drawer for the day."""
+    from app.core.exceptions import InvalidOperation
+
     pos_service = PosService(db)
     breakdown = (
         [item.model_dump() for item in request.opening_breakdown]
         if request.opening_breakdown
         else None
     )
-    drawer = await pos_service.open_drawer(
-        current_user.id,
-        request.opening_amount,
-        cashier_id=request.cashier_id,
-        opening_breakdown=breakdown,
-    )
+    try:
+        drawer = await pos_service.open_drawer(
+            current_user.id,
+            request.opening_amount,
+            cashier_id=request.cashier_id,
+            opening_breakdown=breakdown,
+        )
+    except InvalidOperation:
+        # Une caisse est déjà ouverte (session non clôturée) → 409 explicite
+        # plutôt qu'un 500 avalé côté tablette. Le POS resynchronise alors son
+        # état via /drawer/current et bascule sur « Clôturer la caisse ».
+        raise HTTPException(
+            status_code=409, detail="Une caisse est déjà ouverte. Clôturez-la d'abord."
+        )
 
     from app.models.events import EventSource, EventType
     await EventService(db).emit(

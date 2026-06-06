@@ -233,23 +233,25 @@ build_label_set_zpl = build_label_zpl
 
 
 # ---------------------------------------------------------------------------
-# Profil 40×60 — une seule étiquette combinant info + prix
+# Profil 60×40 — une seule étiquette combinant info + prix (paysage)
 # ---------------------------------------------------------------------------
 #
-# Format : 40 mm large × 60 mm haut (portrait). À 12 dpmm (cohérent avec le
-# profil 25×52 historique) : 480 dots large × 720 dots haut. Le contenu des
-# deux étiquettes du profil 25×52 (nom+taille+genre, code-barres, semaine,
-# logo VINTIZ, prix) est empilé verticalement sur un seul ticket.
+# Format physique : 60 mm large × 40 mm haut (PAYSAGE). À 12 dpmm (cohérent
+# avec le profil 25×52 historique, ZD421d 300 dpi) : 720 dots large × 480 dots
+# haut. Le contenu des deux étiquettes du profil 25×52 (nom+taille+genre,
+# code-barres, semaine, logo VINTIZ, prix) est empilé verticalement sur un seul
+# ticket. (Anciennement nommé « 40×60 portrait » — corrigé en 60×40 paysage
+# pour coller au consommable réellement chargé.)
 
-LABEL_WIDTH_DOTS_40x60 = 480   # 40 mm × 12 dpmm
-LABEL_HEIGHT_DOTS_40x60 = 720  # 60 mm × 12 dpmm
-LABELARY_SIZE_40x60 = "1.57x2.36"   # portrait 40 × 60 mm
+LABEL_WIDTH_DOTS_60x40 = 720   # 60 mm × 12 dpmm (axe printhead)
+LABEL_HEIGHT_DOTS_60x40 = 480  # 40 mm × 12 dpmm (axe alimentation)
+LABELARY_SIZE_60x40 = "2.36x1.57"   # paysage 60 × 40 mm
 
 
-def _zpl_head_40x60(pr: int, md: int) -> str:
+def _zpl_head_60x40(pr: int, md: int) -> str:
     return (
         f"^PR{pr}^MD{md}^CI28"
-        f"^PW{LABEL_WIDTH_DOTS_40x60}^LL{LABEL_HEIGHT_DOTS_40x60}"
+        f"^PW{LABEL_WIDTH_DOTS_60x40}^LL{LABEL_HEIGHT_DOTS_60x40}"
         "^LH0,0"
     )
 
@@ -261,16 +263,17 @@ def build_combined_label_zpl(
     print_rate: int = DEFAULT_PRINT_RATE,
     media_darkness: int = DEFAULT_MEDIA_DARKNESS,
 ) -> str:
-    """Étiquette unique 40×60 mm — info + prix sur un seul ticket."""
+    """Étiquette unique 60×40 mm paysage — info + prix sur un seul ticket."""
     copies = max(1, int(copies))
     pr = max(2, min(6, int(print_rate)))
     md = max(-30, min(30, int(media_darkness)))
 
     size = _sanitize(data.size, max_length=5)
     gender = _gender_token(data.gender)
-    name_max = 16 if size else 24
+    # Plus large (720 dots) que l'ancien portrait → on peut allonger le nom.
+    name_max = 24 if size else 34
     if gender:
-        name_max = max(8, name_max - 3)
+        name_max = max(10, name_max - 3)
     name = _sanitize(data.product_name, max_length=name_max) or "Article"
     title = name
     if size:
@@ -281,26 +284,27 @@ def build_combined_label_zpl(
     week = _week_label(data)
     price = _price_str(float(data.sale_price))
 
-    by, bx = _barcode_layout(ref, canvas_w=LABEL_WIDTH_DOTS_40x60, right_shift=0)
+    by, bx = _barcode_layout(ref, canvas_w=LABEL_WIDTH_DOTS_60x40, right_shift=0)
+    w = LABEL_WIDTH_DOTS_60x40
 
-    # Layout vertical 480×720 (12 dpmm), zone imprimable utile ≤ ~700 :
-    #   y=20  : nom + taille + genre (police 26)               → fin y=46
-    #   y=60  : code-barres Code 128, h=90 + interprétation    → fin y=180
-    #   y=200 : semaine (police 24)                            → fin y=224
-    #   y=265 : séparateur ▭
-    #   y=300 : logo "VINTIZ" (police 56)                      → fin y=356
-    #   y=380 : séparateur ▭
-    #   y=420 : prix (police 110×70)                           → fin y=530
+    # Layout vertical 720×480 (12 dpmm, paysage), zone imprimable utile ≤ ~470 :
+    #   y=12  : nom + taille + genre (police 32)               → fin y=44
+    #   y=60  : code-barres Code 128, h=100 + interprétation   → fin y=190
+    #   y=198 : semaine (police 26)                            → fin y=224
+    #   y=250 : séparateur ▭
+    #   y=262 : logo "VINTIZ" (police 46)                      → fin y=308
+    #   y=318 : séparateur ▭
+    #   y=330 : prix (police 100×64)                           → fin y=430
     return (
         "^XA"
-        + _zpl_head_40x60(pr, md)
-        + f"^FO0,20^FB{LABEL_WIDTH_DOTS_40x60},1,0,C,0^A0N,26,24^FD{title}^FS"
-        + f"^FO{bx},60^BY{by},2.5,90^BCN,90,Y,N,N,A^FD{ref}^FS"
-        + f"^FO0,200^FB{LABEL_WIDTH_DOTS_40x60},1,0,C,0^A0N,24,22^FD{week}^FS"
-        + f"^FO40,265^GB{LABEL_WIDTH_DOTS_40x60 - 80},3,3^FS"
-        + f"^FO0,300^FB{LABEL_WIDTH_DOTS_40x60},1,0,C,0^A0N,56,50^FDVINTIZ^FS"
-        + f"^FO40,380^GB{LABEL_WIDTH_DOTS_40x60 - 80},3,3^FS"
-        + f"^FO0,420^FB{LABEL_WIDTH_DOTS_40x60},1,0,C,0^A0N,110,70^FD{price}^FS"
+        + _zpl_head_60x40(pr, md)
+        + f"^FO0,12^FB{w},1,0,C,0^A0N,32,30^FD{title}^FS"
+        + f"^FO{bx},60^BY{by},2.5,100^BCN,100,Y,N,N,A^FD{ref}^FS"
+        + f"^FO0,198^FB{w},1,0,C,0^A0N,26,24^FD{week}^FS"
+        + f"^FO60,250^GB{w - 120},3,3^FS"
+        + f"^FO0,262^FB{w},1,0,C,0^A0N,46,42^FDVINTIZ^FS"
+        + f"^FO60,318^GB{w - 120},3,3^FS"
+        + f"^FO0,330^FB{w},1,0,C,0^A0N,100,64^FD{price}^FS"
         + f"^PQ{copies}"
         + "^XZ"
     )
@@ -315,7 +319,10 @@ def build_combined_label_zpl(
 # planches A4 et les previews Labelary réutilisent ces builders).
 
 PROFILE_25x52_DOUBLE = "25x52_double"
-PROFILE_40x60_SINGLE = "40x60_single"
+PROFILE_60x40_SINGLE = "60x40_single"
+# Compat : l'ancien profil portrait s'appelait « 40x60_single ». On garde un
+# alias pour qu'une config existante continue de résoudre vers le profil unique.
+PROFILE_40x60_SINGLE = PROFILE_60x40_SINGLE
 
 LABEL_PROFILES: dict[str, dict[str, Any]] = {
     PROFILE_25x52_DOUBLE: {
@@ -327,18 +334,20 @@ LABEL_PROFILES: dict[str, dict[str, Any]] = {
         "labelary_dpmm": LABELARY_DPMM,
         "ticket_count": 2,
     },
-    PROFILE_40x60_SINGLE: {
-        "key": PROFILE_40x60_SINGLE,
-        "name": "40×60 — Simple étiquette",
-        "label_width_mm": 40,
-        "label_height_mm": 60,
-        "labelary_size": LABELARY_SIZE_40x60,
+    PROFILE_60x40_SINGLE: {
+        "key": PROFILE_60x40_SINGLE,
+        "name": "60×40 — Étiquette unique (paysage)",
+        "label_width_mm": 60,
+        "label_height_mm": 40,
+        "labelary_size": LABELARY_SIZE_60x40,
         "labelary_dpmm": LABELARY_DPMM,
         "ticket_count": 1,
     },
 }
 
-DEFAULT_PROFILE = PROFILE_25x52_DOUBLE
+# Consommable réellement chargé en boutique : 60×40 paysage, une étiquette par
+# article. (Configurable dans /settings > Matériel.)
+DEFAULT_PROFILE = PROFILE_60x40_SINGLE
 
 
 def resolve_profile(profile_key: str | None) -> dict[str, Any]:

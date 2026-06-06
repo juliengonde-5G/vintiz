@@ -273,3 +273,50 @@ def test_price_label_copies_in_pq():
 
 def test_price_label_has_separator():
     assert "^GB" in build_price_label_zpl(_veste())
+
+
+# ---------------------------------------------------------------------------
+# Profil 60×40 paysage — étiquette unique (info + prix sur un seul ticket)
+# ---------------------------------------------------------------------------
+
+
+def test_combined_60x40_dimensions_and_content():
+    from app.services.zebra_zpl import (
+        DEFAULT_PROFILE,
+        LABEL_HEIGHT_DOTS_60x40,
+        LABEL_WIDTH_DOTS_60x40,
+        build_combined_label_zpl,
+        resolve_profile,
+    )
+
+    data = LabelData(
+        product_name="Chemise Brice",
+        category="Chemises",
+        size="L",
+        condition=None,
+        sale_price=8.0,
+        barcode="VTZ-2026-699374",
+        shelf_date=None,
+        location="rayon",
+        entry_date=None,
+        week_number=23,
+        gender="homme",
+    )
+    zpl = build_combined_label_zpl(data)
+
+    # Paysage 60×40 mm @ 12 dpmm = 720×480 dots.
+    assert LABEL_WIDTH_DOTS_60x40 == 720
+    assert LABEL_HEIGHT_DOTS_60x40 == 480
+    assert "^PW720^LL480" in zpl
+    # Tout sur une seule étiquette : un seul ^XA…^XZ.
+    assert zpl.count("^XA") == 1 and zpl.count("^XZ") == 1
+    # Contenu attendu présent.
+    assert "Chemise Brice" in zpl
+    assert "VTZ-2026-699374" in zpl
+    assert "Semaine 23" in zpl
+    assert "VINTIZ" in zpl
+    assert "8,00" in zpl
+    # Profil par défaut = 60×40 unique ; ancienne clé 40x60_single compat.
+    assert DEFAULT_PROFILE == "60x40_single"
+    assert resolve_profile("40x60_single")["key"] == "60x40_single"
+    assert resolve_profile(None)["ticket_count"] == 1

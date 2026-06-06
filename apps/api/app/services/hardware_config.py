@@ -84,8 +84,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         # Les dimensions concrètes vivent dans zebra_zpl.LABEL_PROFILES — on
         # ne persiste plus que la clé. Valeurs possibles :
         #   25x52_double : 2 tickets 25×52 (info + prix) — comportement historique
-        #   40x60_single : 1 ticket 40×60 combinant info + prix
-        "label_profile": os.getenv("ZEBRA_LABEL_PROFILE", "25x52_double"),
+        #   60x40_single : 1 ticket 60×40 paysage combinant info + prix (défaut
+        #                  actuel — consommable réellement chargé en boutique)
+        "label_profile": os.getenv("ZEBRA_LABEL_PROFILE", "60x40_single"),
         # Cloud mode (Weblink + SendFileToPrinter) — Zebra Data Services creds
         "cloud_api_key": os.getenv("ZEBRA_CLOUD_API_KEY", ""),
         "cloud_tenant": os.getenv("ZEBRA_CLOUD_TENANT", ""),

@@ -23,6 +23,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import StorePlanPicker, { type PlanZone } from '@/components/inventory/StorePlanPicker';
+import VoiceDictationButton from '@/components/inventory/VoiceDictationButton';
 import { api } from '@/lib/api';
 import { mediaUrl } from '@/lib/format';
 import { downscaleImage } from '@/lib/image-resize';
@@ -57,6 +58,8 @@ interface VisionResult {
   description?: string;
   gamme_estimee?: string;
   confiance?: number;
+  prix?: number | null;
+  transcript?: string;
   error?: string;
 }
 
@@ -233,6 +236,56 @@ export default function NewProductWizard() {
 
   const set = (field: string, value: string) => setForm((p) => ({ ...p, [field]: value }));
 
+  // Applique les champs détectés (vision photo OU dictée vocale — même schéma)
+  // au formulaire. Ne remplit que les champs renseignés ; tente un match de
+  // catégorie par nom et reporte le prix s'il est dicté.
+  const applyDetected = (result: VisionResult) => {
+    if (result.type) {
+      const suffix = result.marque && result.marque !== 'non identifiee' ? ` ${result.marque}` : '';
+      set('name', result.type.charAt(0).toUpperCase() + result.type.slice(1) + suffix);
+      const t = result.type.toLowerCase();
+      const match =
+        categories.find((c) => c.name.toLowerCase() === t) ||
+        categories.find(
+          (c) => c.name.toLowerCase().includes(t) || t.includes(c.name.toLowerCase()),
+        );
+      if (match) set('category_id', match.id);
+    }
+    if (result.couleur) set('color', result.couleur);
+    if (result.taille) set('size', result.taille);
+    if (result.marque && result.marque !== 'non identifiee') set('brand', result.marque);
+    const cond = normalizeCondition(result.etat);
+    if (cond) set('condition', cond);
+    const gen = normalizeGender(result.genre);
+    if (gen) set('gender', gen);
+    if (result.prix != null && result.prix > 0) setPrice(String(result.prix));
+  };
+
+  // --- Moteur vocal optionnel : dictée libre → extraction IA → pré-remplissage
+  const [dictating, setDictating] = useState(false);
+  const handleDictation = async (transcript: string) => {
+    setDictating(true);
+    setError('');
+    try {
+      const res = await api.post('/api/ai/vision/dictation', { transcript });
+      if (res.ok) {
+        const result: VisionResult = await res.json();
+        if (result.error) setError(result.error);
+        else {
+          setVision((prev) => ({ ...(prev || {}), ...result }));
+          applyDetected(result);
+        }
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setError(e.detail || 'Dictée indisponible.');
+      }
+    } catch {
+      setError('Dictée indisponible — vous pouvez saisir les champs à la main.');
+    } finally {
+      setDictating(false);
+    }
+  };
+
   // --- Step 1-2: photo capture + auto AI analysis ---
   const handleFile = async (rawFile: File) => {
     // Force a sane capture format: phone cameras emit 4–12 MB full-res JPEGs
@@ -253,19 +306,7 @@ export default function NewProductWizard() {
       if (res.ok) {
         const result: VisionResult = await res.json();
         setVision(result);
-        if (!result.error) {
-          if (result.type) {
-            const suffix = result.marque && result.marque !== 'non identifiee' ? ` ${result.marque}` : '';
-            set('name', result.type.charAt(0).toUpperCase() + result.type.slice(1) + suffix);
-          }
-          if (result.couleur) set('color', result.couleur);
-          if (result.taille) set('size', result.taille);
-          if (result.marque && result.marque !== 'non identifiee') set('brand', result.marque);
-          const cond = normalizeCondition(result.etat);
-          if (cond) set('condition', cond);
-          const gen = normalizeGender(result.genre);
-          if (gen) set('gender', gen);
-        }
+        if (!result.error) applyDetected(result);
       } else {
         const e = await res.json().catch(() => ({}));
         setVision({ error: e.detail || 'Analyse indisponible' });
@@ -645,6 +686,14 @@ export default function NewProductWizard() {
           {step === 'identity' && (
             <Card title="Étape 1 — Nom, marque, catégorie">
               <div className="space-y-4">
+                {/* Moteur vocal optionnel — dictée libre de la fiche, en plus
+                    de la reconnaissance photo. Pré-remplit tous les champs. */}
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-vz-line bg-vz-bg-alt/50 px-3 py-2">
+                  <span className="text-xs text-vz-ink-mute">
+                    Dictez l&apos;article (type, marque, taille, genre, état, prix) — l&apos;IA remplit les champs.
+                  </span>
+                  <VoiceDictationButton onTranscript={handleDictation} busy={dictating} />
+                </div>
                 <Input label="Nom du produit" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex : Robe fleurie Sandro" required />
                 <div>
                   <Input
