@@ -143,6 +143,10 @@ async def list_products(
     total_result = await db.execute(count_query)
     total = total_result.scalar_one()
 
+    # Les articles les plus récemment créés en premier (les 10 derniers saisis
+    # apparaissent en tête de la 1re page).
+    query = query.order_by(Product.created_at.desc())
+
     # Paginate
     query = query.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)

@@ -40,6 +40,7 @@ interface RegPreview {
   sale_count: number;
   covered_count: number;
   has_overlap: boolean;
+  open_drawers_count: number;
   can_regularize: boolean;
   total_sales: number;
   total_refunds: number;
@@ -408,6 +409,7 @@ function RegularizationPanel({ onDone }: { onDone: (msg: string) => void }) {
   const [day, setDay] = useState('');
   const [preview, setPreview] = useState<RegPreview | null>(null);
   const [reason, setReason] = useState('');
+  const [closeOpen, setCloseOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
@@ -439,18 +441,28 @@ function RegularizationPanel({ onDone }: { onDone: (msg: string) => void }) {
       const res = await api.post('/api/pos/z-reports/regularization', {
         date: day,
         reason: reason.trim(),
+        close_open_drawers: closeOpen,
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.detail || 'Échec de la régularisation');
       }
       const data = await res.json();
-      onDone(
-        `Z de régularisation #${data.z_report_number} établi pour le ${day} ` +
-          `(${formatCurrency(data.total_net)} net).`,
-      );
+      const closedN = Array.isArray(data.closed_z_reports) ? data.closed_z_reports.length : 0;
+      const parts: string[] = [];
+      if (closedN > 0) parts.push(`${closedN} caisse(s) ouverte(s) clôturée(s)`);
+      if (data.regularization) {
+        parts.push(
+          `Z de régularisation #${data.regularization.z_report_number} ` +
+            `(${formatCurrency(data.regularization.total_net)} net) pour le ${day}`,
+        );
+      } else if (closedN > 0) {
+        parts.push('journée déjà couverte par la clôture — aucune régularisation nécessaire');
+      }
+      onDone(parts.join(' · ') || 'Opération effectuée.');
       setDay('');
       setReason('');
+      setCloseOpen(false);
       setPreview(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Échec de la régularisation');
@@ -517,20 +529,37 @@ function RegularizationPanel({ onDone }: { onDone: (msg: string) => void }) {
               </div>
             )}
 
-            {preview.has_overlap && (
+            {preview.has_overlap && !closeOpen && (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
                 ⚠ {preview.covered_count} transaction(s) de cette journée sont déjà couvertes par
-                une session de caisse. Impossible de régulariser sans double-comptage.
+                une session de caisse{preview.open_drawers_count > 0 ? ' (restée ouverte)' : ''}.
+                Impossible de régulariser sans double-comptage.
               </p>
             )}
 
-            {preview.orphan_count === 0 && !preview.has_overlap && (
+            {preview.open_drawers_count > 0 && (
+              <label className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <input
+                  type="checkbox"
+                  checked={closeOpen}
+                  onChange={(e) => setCloseOpen(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Clôturer d&apos;abord {preview.open_drawers_count} caisse(s) restée(s) ouverte(s)
+                  (génère leur rapport Z) — débloque l&apos;ouverture du jour. Si la clôture couvre
+                  déjà cette journée, aucune régularisation séparée ne sera créée.
+                </span>
+              </label>
+            )}
+
+            {preview.orphan_count === 0 && !preview.has_overlap && preview.open_drawers_count === 0 && (
               <p className="text-sm text-vz-ink-mute">
                 Aucune transaction orpheline ce jour-là — rien à régulariser.
               </p>
             )}
 
-            {preview.can_regularize && (
+            {(preview.can_regularize || (closeOpen && preview.open_drawers_count > 0)) && (
               <div className="space-y-2 border-t border-vz-line pt-3">
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-vz-ink-mute">
@@ -544,7 +573,11 @@ function RegularizationPanel({ onDone }: { onDone: (msg: string) => void }) {
                   />
                 </label>
                 <Button onClick={() => void create()} disabled={!reason.trim() || creating}>
-                  {creating ? 'Établissement…' : 'Établir la régularisation'}
+                  {creating
+                    ? 'Traitement…'
+                    : closeOpen && preview.open_drawers_count > 0
+                      ? 'Clôturer la caisse + régulariser'
+                      : 'Établir la régularisation'}
                 </Button>
               </div>
             )}

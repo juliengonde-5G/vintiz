@@ -180,3 +180,38 @@ async def test_reason_required(session):
     with pytest.raises(HTTPException) as exc:
         await FiscalService(session).create_regularization_z(DAY_FROM, DAY_TO, "  ", u.id)
     assert exc.value.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_close_open_drawers(session):
+    u = await _user(session)
+    # Caisse restée ouverte (ouverte le 5 à 9h, jamais clôturée) + une vente.
+    drawer = CashDrawer(
+        user_id=u.id,
+        opened_at=datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc),
+        closed_at=None,
+        opening_amount=50.0,
+        is_open=True,
+    )
+    session.add(drawer)
+    await session.flush()
+    await _cash_sale(session, u.id, datetime(2026, 6, 5, 12, 0, tzinfo=timezone.utc), 30.0, 1)
+
+    fiscal = FiscalService(session)
+    reports = await fiscal.close_open_drawers(u.id)
+    await session.flush()
+
+    assert len(reports) == 1
+    assert reports[0].is_regularization is False  # Z normal
+    assert float(reports[0].total_sales) == 30.0
+    # La caisse est désormais fermée.
+    assert drawer.is_open is False
+    assert drawer.closed_at is not None
+    # Fond attendu = ouverture 50 + 30 de vente espèces.
+    assert float(drawer.expected_amount) == 80.0
+    # Plus aucune caisse ouverte.
+    from sqlalchemy import select as _select
+    remaining = (
+        await session.execute(_select(CashDrawer).where(CashDrawer.is_open.is_(True)))
+    ).scalars().all()
+    assert remaining == []

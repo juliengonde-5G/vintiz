@@ -52,17 +52,15 @@ async function readLabelConfig(): Promise<LabelConfig> {
  * requestZebraDevice(), which opens the browser's BLE chooser.
  */
 async function sendZplOverBluetooth(zpl: string, cfg: LabelConfig): Promise<PrintLabelResult> {
-  const { isWebBluetoothSupported, findPairedZebra, requestZebraDevice, sendZpl } =
+  const { isWebBluetoothSupported, resolveZebraDevice, sendZpl } =
     await import('@/lib/web-bluetooth-printer');
   if (!isWebBluetoothSupported()) {
     return { ok: false, transport: 'bluetooth', message: 'Web Bluetooth indisponible — utilisez Chrome Android sur HTTPS' };
   }
   try {
-    let device = await findPairedZebra({ name: cfg.btName });
-    if (!device) {
-      const paired = await requestZebraDevice();
-      device = paired.device;
-    }
+    // Imprimante forcée : sélecteur BLE uniquement à la 1re utilisation, puis
+    // réutilisée automatiquement (cache session + nom mémorisé) ensuite.
+    const device = await resolveZebraDevice(cfg.btName);
     await sendZpl(device, zpl);
     return { ok: true, transport: 'bluetooth', message: 'Étiquette envoyée (Bluetooth)' };
   } catch (err) {
