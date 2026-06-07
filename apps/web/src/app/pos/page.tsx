@@ -845,6 +845,20 @@ export default function POSPage() {
 
   // ── Cart operations ──────────────────────────────────────────────
   const addProductToCart = (product: SearchProduct) => {
+    // Pièce unique (tout sauf article permanent / sac) : interdiction d'ajouter
+    // deux fois la même référence — chaque produit n'existe qu'en un exemplaire.
+    const isPermanent = product.kind === 'permanent' && !!product.permanent_item_id;
+    if (!isPermanent && cart.some(i => i.product_id === product.id && !i.isManual)) {
+      setDrawerToast({
+        msg: `« ${product.name} » est déjà au panier — article unique (un seul exemplaire).`,
+        ok: false,
+      });
+      setTimeout(() => setDrawerToast(null), 4000);
+      setSearchQuery('');
+      setSearchResults([]);
+      refocusSearch();
+      return;
+    }
     setCart(prev => {
       // Article permanent : on incrémente la ligne existante (stock illimité,
       // le même code-barres peut être scanné plusieurs fois pour la même vente).
@@ -868,11 +882,10 @@ export default function POSPage() {
           isManual: false,
         }];
       }
-      // Produit seconde main : pièce unique, on n'agrège pas (quantity reste 1).
-      const existing = prev.find(i => i.product_id === product.id && !i.isManual);
-      if (existing) {
-        return prev.map(i => i.product_id === product.id && !i.isManual
-          ? { ...i, quantity: i.quantity + 1 } : i);
+      // Produit seconde main : pièce unique, jamais agrégée. Garde-fou anti-doublon
+      // (double scan rapide) : si déjà présent, on laisse le panier inchangé.
+      if (prev.some(i => i.product_id === product.id && !i.isManual)) {
+        return prev;
       }
       return [...prev, {
         product_id: product.id,
@@ -1995,7 +2008,9 @@ export default function POSPage() {
                         </button>
                         <span className="w-6 text-center text-sm font-bold text-black">{item.quantity}</span>
                         <button onClick={() => updateQuantity(idx, 1)}
-                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-500">
+                          disabled={!!item.product_id && !item.permanent_item_id && !item.isManual}
+                          title={!!item.product_id && !item.permanent_item_id && !item.isManual ? 'Article unique — un seul exemplaire' : undefined}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-white">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         </button>
                         <button onClick={() => removeFromCart(idx)}
