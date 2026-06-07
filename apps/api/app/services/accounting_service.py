@@ -836,3 +836,89 @@ class AccountingService:
                 ecriture_num += 1
 
         return "\n".join(rows)
+
+    # ------------------------------------------------------------------
+    # Export / FEC par journée (à la demande)
+    # ------------------------------------------------------------------
+
+    async def generate_daily_fec(self, target_date: date) -> str:
+        """FEC d'une seule journée = agrégat des FEC des exports de la date.
+
+        Couvre toutes les clôtures du jour (normales + régularisations). Renvoie
+        au moins l'entête si aucun export (journée non clôturée → utiliser
+        ``ensure_day_exported`` d'abord)."""
+        stmt = (
+            select(AccountingExport)
+            .where(AccountingExport.export_date == target_date)
+            .order_by(AccountingExport.created_at.asc())
+        )
+        exports = list((await self.db.execute(stmt)).scalars().all())
+        rows = ["\t".join(_FEC_COLUMNS)]
+        for exp in exports:
+            if not exp.fec_content:
+                continue
+            for line in exp.fec_content.splitlines()[1:]:  # skip header
+                rows.append(line)
+        return "\n".join(rows)
+
+    async def ensure_day_exported(self, target_date: date, user_id=None) -> dict:
+        """Garantit qu'une journée figure dans les exports comptables.
+
+        1. Régularise les ventes orphelines du jour (crée le Z de régularisation)
+           puis génère son export + FEC.
+        2. Génère l'export manquant de chaque Z déjà clôturé ce jour-là.
+        Idempotent : relançable sans doublonner (run_daily_close dédoublonne par
+        z_report_id, la régularisation refuse 400/409 s'il n'y a rien/déjà couvert).
+        """
+        from datetime import time as _time
+
+        from fastapi import HTTPException
+
+        from app.services.fiscal import FiscalService
+
+        start = datetime.combine(target_date, _time.min, tzinfo=timezone.utc)
+        end = datetime.combine(target_date, _time.max, tzinfo=timezone.utc)
+        fiscal = FiscalService(self.db)
+        created = 0
+
+        # 1. Ventes orphelines → Z de régularisation + export
+        try:
+            z = await fiscal.create_regularization_z(
+                start, end,
+                f"Export comptable — journée {target_date.isoformat()}",
+                user_id,
+            )
+            drawer = (
+                await self.db.execute(
+                    select(CashDrawer).where(CashDrawer.id == z.cash_drawer_id)
+                )
+            ).scalar_one()
+            await self.run_daily_close(z_report=z, drawer=drawer, triggered_by_user_id=user_id)
+            created += 1
+        except HTTPException as exc:
+            if exc.status_code not in (400, 409):
+                raise  # 400 = rien d'orphelin, 409 = déjà couvert → normal
+
+        # 2. Z déjà clôturés ce jour-là mais sans export comptable
+        z_rows = (
+            await self.db.execute(
+                select(ZReport, CashDrawer)
+                .join(CashDrawer, ZReport.cash_drawer_id == CashDrawer.id)
+                .where(CashDrawer.closed_at >= start, CashDrawer.closed_at <= end)
+            )
+        ).all()
+        for z_report, drawer in z_rows:
+            existing = (
+                await self.db.execute(
+                    select(AccountingExport).where(
+                        AccountingExport.z_report_id == z_report.id
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is None:
+                await self.run_daily_close(
+                    z_report=z_report, drawer=drawer, triggered_by_user_id=user_id
+                )
+                created += 1
+
+        return {"date": target_date.isoformat(), "exports_created": created}
