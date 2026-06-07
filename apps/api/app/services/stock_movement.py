@@ -277,8 +277,13 @@ async def move_by_barcode(
     cleaned = (barcode or "").strip()
     if not cleaned:
         raise MovementError("empty_barcode")
+    # Tolérance douchette AZERTY : le « - » des codes-barres Vintiz peut arriver
+    # en « = ». On essaie le code tel quel puis sa variante tirets.
+    candidates = [cleaned]
+    if "=" in cleaned:
+        candidates.append(cleaned.replace("=", "-"))
     product = (await db.execute(
-        select(Product).where(Product.barcode == cleaned)
+        select(Product).where(Product.barcode.in_(candidates))
     )).scalar_one_or_none()
     if product is None:
         raise MovementError("product_not_found")
