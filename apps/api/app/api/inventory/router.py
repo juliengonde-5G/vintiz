@@ -130,10 +130,14 @@ async def list_products(
         query = query.where(Product.status.in_(FLOOR_STATUSES))
     if search:
         pattern = f"%{search}%"
+        # Tolérance douchette : en AZERTY le « - » des codes-barres Vintiz peut
+        # arriver en « = ». On matche aussi la variante tirets sur le barcode.
+        dash_pattern = f"%{search.replace('=', '-')}%"
         query = query.where(
             or_(
                 Product.name.ilike(pattern),
                 Product.barcode.ilike(pattern),
+                Product.barcode.ilike(dash_pattern),
                 Product.brand.ilike(pattern),
             )
         )
@@ -236,10 +240,14 @@ async def export_products_csv(
         query = query.where(Product.status.in_(_INVENTORY_ACTIVE_STATUSES))
     if search:
         pattern = f"%{search}%"
+        # Tolérance douchette : en AZERTY le « - » des codes-barres Vintiz peut
+        # arriver en « = ». On matche aussi la variante tirets sur le barcode.
+        dash_pattern = f"%{search.replace('=', '-')}%"
         query = query.where(
             or_(
                 Product.name.ilike(pattern),
                 Product.barcode.ilike(pattern),
+                Product.barcode.ilike(dash_pattern),
                 Product.brand.ilike(pattern),
             )
         )
@@ -468,6 +476,8 @@ async def search_products(
     # scanner injects Enter as its suffix — same effect).
     clean = "".join(q.split()) or q.strip()
     pattern = f"%{clean}%"
+    # Tolérance douchette AZERTY : « - » des codes-barres peut arriver en « = ».
+    dash_pattern = f"%{clean.replace('=', '-')}%"
     query = (
         select(Product)
         .outerjoin(Category, Product.category_id == Category.id)
@@ -475,6 +485,7 @@ async def search_products(
             or_(
                 Product.name.ilike(pattern),
                 Product.barcode.ilike(pattern),
+                Product.barcode.ilike(dash_pattern),
                 Category.name.ilike(pattern),
             )
         )
