@@ -93,13 +93,12 @@ interface CreatedProduct {
   zone_name: string | null;
 }
 
-type Step = 'photo' | 'identity' | 'attributes' | 'price' | 'zone' | 'done';
+type Step = 'photo' | 'identity' | 'price' | 'zone' | 'done';
 
-const STEP_ORDER: Step[] = ['photo', 'identity', 'attributes', 'price', 'zone', 'done'];
+const STEP_ORDER: Step[] = ['photo', 'identity', 'price', 'zone', 'done'];
 const STEP_LABELS: Record<Step, string> = {
   photo: 'Photo',
-  identity: 'Identité',
-  attributes: 'Détails',
+  identity: 'Fiche',
   price: 'Prix',
   zone: 'Emplacement',
   done: 'Étiquette',
@@ -434,7 +433,7 @@ export default function NewProductWizard() {
   };
 
   // --- Step 6: validate destination (rayon + zone, or stock) ---
-  const validateZone = async () => {
+  const validateZone = async (alsoPrint = false) => {
     if (!created) return;
     setSaving(true);
     setError('');
@@ -487,6 +486,9 @@ export default function NewProductWizard() {
     setSaving(false);
     setStep('done');
     void loadLabel();
+    // #4 — Enregistrer + Imprimer : on lance l'impression directement avec l'id
+    // (l'état ``created`` vient d'être posé et n'est pas encore lisible ici).
+    if (alsoPrint) void printLabel(updated.id);
   };
 
   // --- Step 7: label ---
@@ -509,12 +511,13 @@ export default function NewProductWizard() {
     setLabelLoading(false);
   };
 
-  const printLabel = async () => {
-    if (!created) return;
+  const printLabel = async (productId?: string) => {
+    const id = productId ?? created?.id;
+    if (!id) return;
     setPrinting(true);
     setPrintMsg('');
     const { printProductLabel } = await import('@/lib/print-label');
-    const result = await printProductLabel(created.id);
+    const result = await printProductLabel(id);
     setPrintMsg(result.ok ? 'Étiquette envoyée à l\'imprimante Zebra' : result.message);
     setPrinting(false);
   };
@@ -684,8 +687,8 @@ export default function NewProductWizard() {
 
           {/* STEP 2 — IDENTITY (nom / marque / catégorie) */}
           {step === 'identity' && (
-            <Card title="Étape 1 — Nom, marque, catégorie">
-              <div className="space-y-4">
+            <Card title="Étape 1 — Fiche article">
+              <div className="space-y-5">
                 {/* Moteur vocal optionnel — dictée libre de la fiche, en plus
                     de la reconnaissance photo. Pré-remplit tous les champs. */}
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-vz-line bg-vz-bg-alt/50 px-3 py-2">
@@ -720,18 +723,6 @@ export default function NewProductWizard() {
                     {categories.map((c) => <option key={c.id} value={c.id}>{categoryLabel(c)}</option>)}
                   </select>
                 </div>
-                <div className="flex gap-3 pt-2">
-                  <Button variant="outline" onClick={() => setStep('photo')}>Précédent</Button>
-                  <Button className="flex-1" disabled={!canIdentity} onClick={() => setStep('attributes')}>Continuer</Button>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* STEP 3 — ATTRIBUTES (couleur / taille) */}
-          {step === 'attributes' && (
-            <Card title="Étape 2 — Couleur, taille, genre">
-              <div className="space-y-5">
                 {(() => {
                   const catName = categories.find(c => c.id === form.category_id)?.name ?? '';
                   const isShoe = /chaussure|basket/i.test(catName);
@@ -797,16 +788,16 @@ export default function NewProductWizard() {
                   </div>
                 </div>
                 <div className="flex gap-3 pt-2">
-                  <Button variant="outline" onClick={() => setStep('identity')}>Précédent</Button>
-                  <Button className="flex-1" onClick={() => setStep('price')}>Continuer</Button>
+                  <Button variant="outline" onClick={() => setStep('photo')}>Précédent</Button>
+                  <Button className="flex-1" disabled={!canIdentity} onClick={() => setStep('price')}>Continuer</Button>
                 </div>
               </div>
             </Card>
           )}
 
-          {/* STEP 4 — PRICE */}
+          {/* STEP 2 — PRICE */}
           {step === 'price' && (
-            <Card title="Étape 3 — Prix de vente">
+            <Card title="Étape 2 — Prix de vente">
               <div className="space-y-4">
                 {pricingLoading ? (
                   <div className="text-center py-3 text-sm text-gray-500">
@@ -852,6 +843,23 @@ export default function NewProductWizard() {
 
                 <div>
                   <label className="block text-sm font-medium text-black mb-1.5">Prix TTC (à valider)</label>
+                  {/* Prix ronds en 1 tap — la seconde main se prix souvent rond. */}
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {[3, 5, 8, 10, 12, 15, 20, 25, 30].map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setPrice(String(p))}
+                        className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors min-h-[44px] ${
+                          parseFloat(price) === p
+                            ? 'bg-vz-teal text-white'
+                            : 'bg-gray-100 hover:bg-gray-200 text-black'
+                        }`}
+                      >
+                        {p} €
+                      </button>
+                    ))}
+                  </div>
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => setPrice(String(Math.max(0, (parseFloat(price || '0') - 0.5)).toFixed(2)))}
                       className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">−</button>
@@ -862,7 +870,7 @@ export default function NewProductWizard() {
                 </div>
 
                 <div className="flex gap-3 pt-2">
-                  <Button variant="outline" onClick={() => setStep('attributes')}>Précédent</Button>
+                  <Button variant="outline" onClick={() => setStep('identity')}>Précédent</Button>
                   <Button className="flex-1" disabled={saving || !(parseFloat(price) > 0)} onClick={validatePrice}>
                     {saving ? 'Création…' : 'Valider le prix'}
                   </Button>
@@ -873,7 +881,7 @@ export default function NewProductWizard() {
 
           {/* STEP 5 — ZONE */}
           {step === 'zone' && created && (
-            <Card title="Étape 4 — Emplacement">
+            <Card title="Étape 3 — Emplacement">
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => setDestination('rayon')}
@@ -924,14 +932,22 @@ export default function NewProductWizard() {
                   <p className="text-sm text-gray-500">L&apos;article reste en réserve. Vous pourrez le mettre en rayon plus tard depuis l&apos;inventaire.</p>
                 )}
 
-                <div className="flex gap-3 pt-2">
+                <div className="flex flex-col gap-2 pt-2 sm:flex-row">
                   <Button variant="outline" onClick={() => setStep('price')}>Précédent</Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    disabled={saving || (destination === 'rayon' && planZones.length > 0 && !selectedZoneId)}
+                    onClick={() => validateZone(false)}
+                  >
+                    {saving ? 'Validation…' : 'Enregistrer'}
+                  </Button>
                   <Button
                     className="flex-1"
                     disabled={saving || (destination === 'rayon' && planZones.length > 0 && !selectedZoneId)}
-                    onClick={validateZone}
+                    onClick={() => validateZone(true)}
                   >
-                    {saving ? 'Validation…' : 'Valider et éditer l\'étiquette'}
+                    {saving ? 'Validation…' : 'Enregistrer + Imprimer'}
                   </Button>
                 </div>
               </div>
@@ -1035,7 +1051,7 @@ export default function NewProductWizard() {
                 ) : null}
 
                 <div className="flex flex-col sm:flex-row gap-2 justify-center">
-                  <Button onClick={printLabel} disabled={printing}>
+                  <Button onClick={() => printLabel()} disabled={printing}>
                     {printing ? 'Envoi…' : '🏷 Imprimer l\'étiquette'}
                   </Button>
                   {labelUrl && (
