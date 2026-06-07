@@ -166,14 +166,40 @@ async def update_accounting_config(
 
 @router.post("/pennylane/test", dependencies=[Depends(manager_only)])
 async def test_pennylane(db: Annotated[AsyncSession, Depends(get_db)]):
-    """Teste la connexion à Pennylane avec les credentials configurés."""
+    """Teste la connexion à Pennylane et remonte la cause exacte en cas d'échec
+    (clé invalide, scope manquant, réseau…) au lieu d'un simple « non connecté »."""
+    from app.services.pennylane_client import PennylaneError
+
     svc = AccountingService(db)
     cfg = await svc.get_config()
     if not cfg.pennylane_api_key:
         raise HTTPException(400, detail="Clé API Pennylane non configurée")
     client = PennylaneClient(cfg.pennylane_api_key, cfg.pennylane_api_url)
-    ok = client.ping()
-    return {"connected": ok, "api_url": cfg.pennylane_api_url}
+    try:
+        # Appel réel (GET /journals) — l'exception porte le code HTTP + le corps.
+        client._call("GET", "/journals")
+        return {"connected": True, "api_url": cfg.pennylane_api_url}
+    except PennylaneError as exc:
+        code = getattr(exc, "status_code", None)
+        hint = ""
+        if code == 401:
+            hint = " — clé API invalide ou révoquée (vérifiez le token collé)."
+        elif code == 403:
+            hint = " — scope manquant : cochez « Journaux » (lecture) sur le token Pennylane."
+        elif code == 404:
+            hint = " — URL d'API incorrecte (attendu …/api/external/v2)."
+        return {
+            "connected": False,
+            "api_url": cfg.pennylane_api_url,
+            "status_code": code,
+            "detail": f"{exc}{hint}",
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "connected": False,
+            "api_url": cfg.pennylane_api_url,
+            "detail": f"Erreur inattendue : {exc}",
+        }
 
 
 @router.get("/exports", dependencies=[Depends(manager_only)])
