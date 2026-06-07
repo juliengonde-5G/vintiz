@@ -358,6 +358,15 @@ async def compute_performance(db: AsyncSession, report_date: date) -> dict:
     loyalty_cnt = int(loyalty_agg.scalar_one() or 0)
     loyalty_pct = round(loyalty_cnt / tk * 100, 1) if tk > 0 else 0.0
 
+    # Nouveaux produits ajoutés à l'inventaire ce jour-là (saisie d'arrivage).
+    new_products_agg = await db.execute(
+        select(func.count(Product.id)).where(
+            Product.created_at >= day_start,
+            Product.created_at < day_end,
+        )
+    )
+    new_products = int(new_products_agg.scalar_one() or 0)
+
     return {
         "ca": round(ca, 2),
         "tk": tk,
@@ -366,6 +375,7 @@ async def compute_performance(db: AsyncSession, report_date: date) -> dict:
         "prod": round(ca, 2),  # single operator; CA/vendor-hour not tracked yet
         "tx_crm_pct": tx_crm_pct,
         "loyalty_pct": loyalty_pct,
+        "new_products": new_products,
     }
 
 

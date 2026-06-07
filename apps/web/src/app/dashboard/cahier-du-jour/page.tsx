@@ -35,6 +35,7 @@ interface CahierPayload {
     iv: number;
     pm: number;
     prod: number;
+    new_products: number;
   };
   zoning: {
     zone_id: string;
@@ -423,6 +424,7 @@ export default function CahierDuJourPage() {
                 <span>IV : <strong className="text-black">{data.performance.iv}</strong></span>
                 <span>PM : <strong className="text-black">{CURRENCY(data.performance.pm)}</strong></span>
                 <span>PROD : <strong className="text-black">{CURRENCY(data.performance.prod)}</strong></span>
+                <span>Nouveaux produits : <strong className="text-black">{data.performance.new_products}</strong></span>
               </div>
             </section>
 

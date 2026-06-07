@@ -39,6 +39,9 @@ export default function ExportsPage() {
   const [exports, setExports] = useState<AccountingExport[]>([]);
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [dayDate, setDayDate] = useState('');
+  const [genBusy, setGenBusy] = useState(false);
+  const [genMsg, setGenMsg] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -48,6 +51,57 @@ export default function ExportsPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const generateDay = async () => {
+    if (!dayDate) return;
+    setGenBusy(true);
+    setGenMsg('');
+    try {
+      const res = await api.post(`/api/accounting/exports/day/${dayDate}`, {});
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setGenMsg(data.detail || `Échec (HTTP ${res.status})`);
+        return;
+      }
+      setGenMsg(
+        data.exports_created > 0
+          ? `${data.exports_created} export(s) comptable(s) généré(s) pour le ${dayDate}.`
+          : `Journée ${dayDate} déjà exportée — rien à générer.`,
+      );
+      load();
+    } catch {
+      setGenMsg('Génération impossible (réseau).');
+    } finally {
+      setGenBusy(false);
+    }
+  };
+
+  const downloadDayFec = async () => {
+    if (!dayDate) return;
+    setGenBusy(true);
+    setGenMsg('');
+    try {
+      const res = await api.get(`/api/accounting/fec/day/${dayDate}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setGenMsg(body.detail || `Téléchargement FEC impossible (HTTP ${res.status})`);
+        return;
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `FEC_Vintiz_${dayDate.replace(/-/g, '')}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      setGenMsg('Téléchargement impossible (réseau).');
+    } finally {
+      setGenBusy(false);
+    }
+  };
 
   const retry = async (id: string) => {
     setRetrying(id);
@@ -98,6 +152,37 @@ export default function ExportsPage() {
             </div>
             <Button variant="secondary" size="sm" onClick={load}>Actualiser</Button>
           </div>
+
+          {/* Générer l'export comptable + le FEC d'une journée précise (toute
+              journée, y compris non clôturée → régularisée à la volée). */}
+          <Card className="mb-6">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs font-medium uppercase tracking-wide text-vz-ink-mute mb-1">
+                  Journée comptable
+                </label>
+                <input
+                  type="date"
+                  value={dayDate}
+                  onChange={(e) => { setDayDate(e.target.value); setGenMsg(''); }}
+                  className="rounded-lg border border-vz-line bg-vz-surface px-3 py-2 text-sm"
+                />
+              </div>
+              <Button onClick={generateDay} disabled={!dayDate || genBusy}>
+                {genBusy ? '…' : 'Générer l’export de la journée'}
+              </Button>
+              <Button variant="secondary" onClick={downloadDayFec} disabled={!dayDate || genBusy}>
+                Télécharger le FEC du jour
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-vz-ink-mute">
+              « Générer l’export » clôture/régularise la journée si besoin pour qu’elle
+              figure ci-dessous avec son FEC. Le FEC du jour agrège toutes ses clôtures.
+            </p>
+            {genMsg && (
+              <p className="mt-2 rounded-lg bg-vz-teal-soft px-3 py-2 text-sm text-vz-teal-deep">{genMsg}</p>
+            )}
+          </Card>
 
           {loading ? (
             <p className="text-vz-ink-mute text-center py-12">Chargement…</p>

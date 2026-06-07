@@ -424,3 +424,45 @@ async def list_monthly_closes(
         }
         for row in result.all()
     ]
+
+
+# ---------------------------------------------------------------------------
+# Export / FEC par journée — à la demande (toute journée, y c. régularisations)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/exports/day/{target_date}", dependencies=[Depends(manager_only)])
+async def generate_day_export(
+    target_date: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Génère l'export comptable d'une journée : régularise les ventes
+    orphelines (crée le Z) et produit l'export + FEC de chaque Z du jour. La
+    journée apparaît alors dans la liste des exports. Idempotent."""
+    try:
+        d = date.fromisoformat(target_date)
+    except ValueError:
+        raise HTTPException(400, detail="Date invalide (YYYY-MM-DD)")
+    result = await AccountingService(db).ensure_day_exported(d, current_user.id)
+    await db.commit()
+    return result
+
+
+@router.get("/fec/day/{target_date}", dependencies=[Depends(manager_only)])
+async def download_day_fec(
+    target_date: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Télécharge le FEC agrégé d'une journée (toutes ses clôtures)."""
+    try:
+        d = date.fromisoformat(target_date)
+    except ValueError:
+        raise HTTPException(400, detail="Date invalide (YYYY-MM-DD)")
+    fec = await AccountingService(db).generate_daily_fec(d)
+    filename = f"FEC_Vintiz_{d.strftime('%Y%m%d')}.txt"
+    return Response(
+        content=fec.encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

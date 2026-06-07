@@ -160,6 +160,7 @@ async def get_cahier(
             "iv": perf["iv"],
             "pm": perf["pm"],
             "prod": perf["prod"],
+            "new_products": perf["new_products"],
         },
         "zoning": zoning,
         "crm_loyalty": crm_loyalty,
