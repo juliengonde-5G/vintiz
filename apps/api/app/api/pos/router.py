@@ -969,6 +969,9 @@ async def list_z_reports(
 class RegularizationRequest(BaseModel):
     date: str  # journée à régulariser, YYYY-MM-DD
     reason: str
+    # Clôture d'abord toute caisse restée ouverte (génère son Z) avant de
+    # régulariser — débloque l'ouverture du jour et assainit la détection.
+    close_open_drawers: bool = False
 
 
 def _day_bounds_utc(day: str) -> tuple[datetime, datetime]:
@@ -1007,27 +1010,56 @@ async def create_regularization(
     dernier Z (chaîne NF525 intacte, jamais antidatée). Il couvre uniquement
     les ventes orphelines (hors de toute session de caisse) ; refus 409 en cas
     de chevauchement avec une session existante.
+
+    Si ``close_open_drawers`` est vrai, on clôture d'abord toute caisse restée
+    ouverte (chacune génère son Z) — ce qui débloque l'ouverture du jour. Si la
+    clôture a déjà capté les ventes de la journée, il ne reste alors rien à
+    régulariser (pas d'erreur).
     """
     start, end = _day_bounds_utc(request.date)
     fiscal = FiscalService(db)
-    z = await fiscal.create_regularization_z(
-        start, end, request.reason, current_user.id
-    )
+
+    closed_reports: list = []
+    if request.close_open_drawers:
+        closed_reports = await fiscal.close_open_drawers(current_user.id)
+
+    reg: dict | None = None
+    try:
+        z = await fiscal.create_regularization_z(
+            start, end, request.reason, current_user.id
+        )
+        await db.refresh(z)
+        reg = {
+            "z_report_number": z.report_number,
+            "id": str(z.id),
+            "is_regularization": True,
+            "total_sales": float(z.total_sales),
+            "total_refunds": float(z.total_refunds),
+            "total_net": float(z.total_net),
+            "transaction_count": z.transaction_count,
+            "period": request.date,
+        }
+    except HTTPException as exc:
+        # Après une clôture, il est NORMAL qu'il ne reste rien d'orphelin (la
+        # caisse fermée a capté la journée) ou que tout soit « couvert » : on ne
+        # remonte pas d'erreur dans ce cas, la clôture est l'action utile.
+        if closed_reports and exc.status_code in (400, 409):
+            reg = None
+        else:
+            raise
+
     await db.commit()
-    await db.refresh(z)
     logger.info(
-        "Z de régularisation #%s établi par user=%s pour la journée %s (motif: %s)",
-        z.report_number, current_user.id, request.date, request.reason,
+        "Régularisation %s : %d caisse(s) clôturée(s), reg=%s (user=%s, motif=%s)",
+        request.date, len(closed_reports), bool(reg), current_user.id, request.reason,
     )
     return {
-        "z_report_number": z.report_number,
-        "id": str(z.id),
-        "is_regularization": True,
-        "total_sales": float(z.total_sales),
-        "total_refunds": float(z.total_refunds),
-        "total_net": float(z.total_net),
-        "transaction_count": z.transaction_count,
-        "period": request.date,
+        "closed_z_reports": [
+            {"z_report_number": r.report_number, "id": str(r.id)} for r in closed_reports
+        ],
+        "regularization": reg,
+        # Compat champ historique (présent si une régularisation a été établie).
+        **(reg or {}),
     }
 
 

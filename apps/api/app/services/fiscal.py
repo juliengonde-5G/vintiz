@@ -250,6 +250,14 @@ class FiscalService:
         orphans = split["orphans"]
         orphan_ids = [t.id for t in orphans]
 
+        open_drawers = (
+            await self.db.execute(
+                select(func.count()).select_from(
+                    select(CashDrawer).where(CashDrawer.is_open.is_(True)).subquery()
+                )
+            )
+        ).scalar_one()
+
         total_sales = sum(
             float(t.total_ttc) for t in orphans
             if t.transaction_type == TransactionType.sale
@@ -282,6 +290,7 @@ class FiscalService:
             "sale_count": sale_count,
             "covered_count": len(split["covered"]),
             "has_overlap": len(split["covered"]) > 0,
+            "open_drawers_count": int(open_drawers),
             "can_regularize": len(orphans) > 0 and len(split["covered"]) == 0,
             "total_sales": round(total_sales, 2),
             "total_refunds": round(total_refunds, 2),
@@ -291,6 +300,65 @@ class FiscalService:
                 t.transaction_number for t in orphans
             )[:100],
         }
+
+    async def close_open_drawers(
+        self,
+        user_id: uuid.UUID,
+        cashier_id: uuid.UUID | None = None,
+    ) -> list[ZReport]:
+        """Clôture toute caisse restée ouverte et génère son Z (fiscal seul).
+
+        Une session non clôturée bloque l'ouverture de la caisse du jour ET
+        fausse la détection des ventes orphelines (sa fenêtre court jusqu'à
+        maintenant, couvrant les journées suivantes). On la ferme à l'instant
+        présent — comptage espèces non rejoué, écart non calculé — pour repartir
+        sur une base saine avant une régularisation.
+        """
+        open_rows = (
+            await self.db.execute(
+                select(CashDrawer).where(CashDrawer.is_open.is_(True))
+            )
+        ).scalars().all()
+        if not open_rows:
+            return []
+
+        now = datetime.now(timezone.utc)
+        reports: list[ZReport] = []
+        for drawer in open_rows:
+            cash_sales = Decimal(str((await self.db.execute(
+                select(func.coalesce(func.sum(Payment.amount), 0))
+                .join(Transaction, Payment.transaction_id == Transaction.id)
+                .where(
+                    Payment.method == PaymentMethod.cash,
+                    Transaction.created_at >= drawer.opened_at,
+                    Transaction.transaction_type != TransactionType.refund,
+                )
+            )).scalar_one()))
+            cash_refunds = Decimal(str((await self.db.execute(
+                select(func.coalesce(func.sum(Payment.amount), 0))
+                .join(Transaction, Payment.transaction_id == Transaction.id)
+                .where(
+                    Payment.method == PaymentMethod.cash,
+                    Transaction.created_at >= drawer.opened_at,
+                    Transaction.transaction_type == TransactionType.refund,
+                )
+            )).scalar_one()))
+            expected = Decimal(str(drawer.opening_amount)) + cash_sales - cash_refunds
+
+            drawer.closed_at = now
+            drawer.is_open = False
+            drawer.closing_amount = None  # fiscal seul — pas de recomptage
+            drawer.expected_amount = float(expected)
+            drawer.closing_note = (
+                (drawer.closing_note + " | " if drawer.closing_note else "")
+                + f"Clôturée automatiquement le {now.strftime('%d/%m/%Y %H:%M')} "
+                "(UTC) lors d'une régularisation."
+            )
+            await self.db.flush()
+            reports.append(
+                await self.generate_z_report(drawer, user_id, cashier_id=cashier_id)
+            )
+        return reports
 
     async def create_regularization_z(
         self,

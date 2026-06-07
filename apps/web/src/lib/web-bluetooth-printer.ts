@@ -126,6 +126,70 @@ export async function findPairedZebra(
   }
 }
 
+// Imprimante BLE mémorisée pour la session : une fois choisie (sélecteur), on
+// la réutilise pour toutes les étiquettes suivantes sans re-prompter. Le nom
+// est aussi persisté en localStorage pour la reconnexion silencieuse via
+// getDevices() au prochain démarrage de la tablette.
+const _BT_NAME_KEY = 'vintiz_bt_printer_name';
+let _cachedDevice: BluetoothDevice | null = null;
+
+function _rememberName(name: string | null | undefined): void {
+  if (!name) return;
+  try {
+    localStorage.setItem(_BT_NAME_KEY, name);
+  } catch {
+    /* storage indisponible — la mémorisation se limite alors à la session */
+  }
+}
+
+function _storedName(): string | null {
+  try {
+    return localStorage.getItem(_BT_NAME_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Résout l'imprimante Zebra à utiliser, en évitant le sélecteur autant que
+ * possible :
+ *   1. périphérique déjà choisi pendant la session (cache mémoire) ;
+ *   2. autorisation persistée (getDevices) par nom préféré / mémorisé ;
+ *   3. en dernier recours seulement → sélecteur BLE (geste utilisateur requis).
+ * Le résultat est mis en cache + le nom mémorisé pour ne plus re-prompter.
+ */
+export async function resolveZebraDevice(
+  preferredName?: string | null,
+): Promise<BluetoothDevice> {
+  if (!navigator.bluetooth) {
+    throw new Error('Web Bluetooth non supporté sur ce navigateur');
+  }
+  if (_cachedDevice) return _cachedDevice;
+
+  const wanted = preferredName || _storedName();
+  const paired = await findPairedZebra({ name: wanted });
+  if (paired) {
+    _cachedDevice = paired;
+    _rememberName(paired.name);
+    return paired;
+  }
+
+  const { device } = await requestZebraDevice();
+  _cachedDevice = device;
+  _rememberName(device.name);
+  return device;
+}
+
+/** Oublie l'imprimante mémorisée (forcer une nouvelle sélection). */
+export function forgetZebraDevice(): void {
+  _cachedDevice = null;
+  try {
+    localStorage.removeItem(_BT_NAME_KEY);
+  } catch {
+    /* noop */
+  }
+}
+
 /**
  * Write a ZPL job to a paired Zebra over BLE.
  *
