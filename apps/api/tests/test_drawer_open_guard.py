@@ -65,3 +65,20 @@ async def test_second_open_returns_409(setup):
         r2 = await ac.post("/api/pos/drawer/open", json={"opening_amount": 50})
         assert r2.status_code == 409
         assert "déjà ouverte" in r2.json()["detail"].lower()
+
+
+@pytest.mark.anyio
+async def test_drawer_current_returns_open_after_open(setup):
+    """Régression : /drawer/current 500-ait quand une caisse était OUVERTE
+    (imports fantômes app.models.payment/transaction) → le POS retombait sur
+    « fermée ». On vérifie qu'il renvoie bien open=true + le compteur."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        r = await ac.post("/api/pos/drawer/open", json={"opening_amount": 100})
+        assert r.status_code == 200, r.text
+
+        cur = await ac.get("/api/pos/drawer/current")
+        assert cur.status_code == 200, cur.text
+        body = cur.json()
+        assert body["open"] is True
+        assert body["expected_cash"] == 100.0

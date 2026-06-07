@@ -883,8 +883,7 @@ async def get_current_drawer(
     from sqlalchemy import func
 
     from app.models.cash_movement import CashMovement, CashMovementDirection
-    from app.models.payment import Payment, PaymentMethod
-    from app.models.transaction import Transaction, TransactionType
+    from app.models.pos import Payment, PaymentMethod, Transaction, TransactionType
 
     pos_service = PosService(db)
     drawer = await pos_service.get_open_drawer()
