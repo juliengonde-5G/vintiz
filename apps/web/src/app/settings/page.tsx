@@ -1978,7 +1978,7 @@ export default function SettingsPage() {
                         Format d&apos;étiquette
                       </label>
                       <select
-                        value={hardware.label_printer.label_profile || '25x52_double'}
+                        value={hardware.label_printer.label_profile || '60x40_single'}
                         onChange={(e) => {
                           const next = labelProfiles.find((p) => p.key === e.target.value);
                           setHardware({

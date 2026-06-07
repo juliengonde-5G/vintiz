@@ -244,9 +244,28 @@ async def label_test(
     applies to the local TCP path.
     """
     from app.services import zebra_cloud, zebra_printer
+    from app.services.zebra_zpl import LabelData, build_label_for_profile
 
     cfg = load_config()["label_printer"]
     connection = (cfg.get("connection") or "network").strip().lower()
+
+    # Étiquette de test rendue dans le PROFIL CONFIGURÉ (25×52 = 2 étiquettes,
+    # 60×40 = 1) → le test reflète exactement « 1 ou 2 étiquettes » et permet
+    # de vérifier que la configuration est bien prise.
+    _test_zpl = build_label_for_profile(
+        LabelData(
+            product_name="Étiquette test",
+            category="Test",
+            size="M",
+            condition=None,
+            sale_price=9.90,
+            barcode="VTZ-TEST-0001",
+            shelf_date=None,
+            week_number=None,
+            gender="mixte",
+        ),
+        cfg.get("label_profile"),
+    )
 
     if connection == "bluetooth":
         # The server can't reach a BLE printer — the tablet runs the test
@@ -258,7 +277,7 @@ async def label_test(
 
     if connection == "cloud":
         try:
-            serial = await zebra_cloud.send_zpl(zebra_printer.build_test_label_zpl(), cfg)
+            serial = await zebra_cloud.send_zpl(_test_zpl, cfg)
         except zebra_cloud.CloudConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except zebra_printer.PrinterUnreachable as exc:
@@ -272,7 +291,7 @@ async def label_test(
             status_code=400, detail="Imprimante étiquettes non configurée"
         )
     try:
-        zebra_printer.send_test_label(host=host, port=port)
+        zebra_printer.send_zpl(_test_zpl, host=host, port=port)
     except zebra_printer.PrinterUnreachable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"success": True, "host": host, "port": port}
@@ -290,10 +309,25 @@ async def label_test_zpl(
     """
     from fastapi.responses import Response
 
-    from app.services import zebra_printer
+    from app.services.zebra_zpl import LabelData, build_label_for_profile
 
+    cfg = load_config()["label_printer"]
+    zpl = build_label_for_profile(
+        LabelData(
+            product_name="Étiquette test",
+            category="Test",
+            size="M",
+            condition=None,
+            sale_price=9.90,
+            barcode="VTZ-TEST-0001",
+            shelf_date=None,
+            week_number=None,
+            gender="mixte",
+        ),
+        cfg.get("label_profile"),
+    )
     return Response(
-        content=zebra_printer.build_test_label_zpl(),
+        content=zpl,
         media_type="text/plain; charset=utf-8",
         headers={"Cache-Control": "no-store"},
     )
