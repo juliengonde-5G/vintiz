@@ -175,16 +175,6 @@ const navGroups: NavGroup[] = [
           </svg>
         ),
       },
-      {
-        label: 'Capsule du mois',
-        href: '/ia/capsule',
-        icon: (
-          <svg {...iconProps}>
-            <path d="M3 11l9-9 9 9-9 9z" />
-            <circle cx="12" cy="11" r="3" />
-          </svg>
-        ),
-      },
     ],
   },
   {
