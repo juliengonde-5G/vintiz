@@ -53,7 +53,7 @@ export default function ComptabilitePage() {
   const [form, setForm] = useState<Partial<AccountingConfig & { pennylane_api_key?: string }>>({});
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ connected: boolean } | null>(null);
+  const [testResult, setTestResult] = useState<{ connected: boolean; detail?: string } | null>(null);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
@@ -99,7 +99,7 @@ export default function ComptabilitePage() {
       const result = await api.post('/api/accounting/pennylane/test', {}).then(r => r.json());
       setTestResult(result);
     } catch {
-      setTestResult({ connected: false });
+      setTestResult({ connected: false, detail: 'API Vintiz injoignable.' });
     } finally {
       setTesting(false);
     }
@@ -243,7 +243,9 @@ export default function ComptabilitePage() {
                   </Button>
                   {testResult !== null && (
                     <span className={`text-sm font-medium ${testResult.connected ? 'text-green-600' : 'text-red-600'}`}>
-                      {testResult.connected ? '✓ Connecté' : '✗ Échec de connexion'}
+                      {testResult.connected
+                        ? '✓ Connecté'
+                        : `✗ Échec de connexion${testResult.detail ? ` : ${testResult.detail}` : ''}`}
                     </span>
                   )}
                 </div>
