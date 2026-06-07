@@ -112,7 +112,15 @@ class PosService:
                 product = result.scalar_one_or_none()
                 if product is None:
                     raise ResourceNotFound("Product", cart_item.product_id)
-                if product.status not in (ProductStatus.display, ProductStatus.stock):
+                # On peut vendre une pièce où qu'elle soit dans le cycle de vie
+                # (réserve OU rayon) : un article encore en stock est vendable.
+                # On ne bloque que les statuts réellement non-vendables : déjà
+                # vendu, retiré (returned) ou donné (donated).
+                if product.status in (
+                    ProductStatus.sold,
+                    ProductStatus.returned,
+                    ProductStatus.donated,
+                ):
                     raise ProductNotAvailable(product.name, product.status.value)
                 unit_price = Decimal(str(cart_item.unit_price)) if cart_item.unit_price else Decimal(str(product.sale_price))
                 discount = cart_item.discount_percent or 0
