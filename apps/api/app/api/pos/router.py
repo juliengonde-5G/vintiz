@@ -1000,6 +1000,7 @@ async def preview_regularization(
 @router.post("/z-reports/regularization")
 async def create_regularization(
     request: RegularizationRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(manager_only),
 ):
@@ -1014,6 +1015,11 @@ async def create_regularization(
     ouverte (chacune génère son Z) — ce qui débloque l'ouverture du jour. Si la
     clôture a déjà capté les ventes de la journée, il ne reste alors rien à
     régulariser (pas d'erreur).
+
+    Chaque Z produit (régularisation + caisses clôturées) déclenche en tâche de
+    fond la clôture comptable (AccountingService.run_daily_close) → génération
+    de l'export comptable + du FEC quotidien, exactement comme une clôture
+    normale.
     """
     start, end = _day_bounds_utc(request.date)
     fiscal = FiscalService(db)
@@ -1022,12 +1028,16 @@ async def create_regularization(
     if request.close_open_drawers:
         closed_reports = await fiscal.close_open_drawers(current_user.id)
 
+    # (z_report_id, cash_drawer_id) pour l'export comptable / FEC en tâche de fond.
+    accounting_jobs: list[tuple] = [(r.id, r.cash_drawer_id) for r in closed_reports]
+
     reg: dict | None = None
     try:
         z = await fiscal.create_regularization_z(
             start, end, request.reason, current_user.id
         )
         await db.refresh(z)
+        accounting_jobs.append((z.id, z.cash_drawer_id))
         reg = {
             "z_report_number": z.report_number,
             "id": str(z.id),
@@ -1048,15 +1058,28 @@ async def create_regularization(
             raise
 
     await db.commit()
+
+    # Export comptable + FEC quotidien pour chaque Z, en arrière-plan (Pennylane
+    # HTTP + email peuvent être lents). Idempotent par z_report_id.
+    for z_id, drawer_id in accounting_jobs:
+        background_tasks.add_task(
+            _run_accounting_close_in_bg,
+            z_report_id=z_id,
+            drawer_id=drawer_id,
+            user_id=current_user.id,
+        )
+
     logger.info(
-        "Régularisation %s : %d caisse(s) clôturée(s), reg=%s (user=%s, motif=%s)",
-        request.date, len(closed_reports), bool(reg), current_user.id, request.reason,
+        "Régularisation %s : %d caisse(s) clôturée(s), reg=%s, %d export(s) FEC programmé(s) (user=%s, motif=%s)",
+        request.date, len(closed_reports), bool(reg), len(accounting_jobs),
+        current_user.id, request.reason,
     )
     return {
         "closed_z_reports": [
             {"z_report_number": r.report_number, "id": str(r.id)} for r in closed_reports
         ],
         "regularization": reg,
+        "fec_exports_scheduled": len(accounting_jobs),
         # Compat champ historique (présent si une régularisation a été établie).
         **(reg or {}),
     }
