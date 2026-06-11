@@ -12,6 +12,7 @@ import MessageTemplatesPanel from '@/components/settings/MessageTemplatesPanel';
 import ReceiptInvoiceStudio from '@/components/settings/ReceiptInvoiceStudio';
 import ScoringWeightsPanel from '@/components/settings/ScoringWeightsPanel';
 import SumUpTerminalsPanel from '@/components/settings/SumUpTerminalsPanel';
+import SumUpExchangeLogPanel from '@/components/settings/SumUpExchangeLogPanel';
 import { api } from '@/lib/api';
 
 interface Category {
@@ -2503,6 +2504,7 @@ export default function SettingsPage() {
         {/* SYSTEM TAB */}
         {tab === 'system' && (
           <div className="space-y-6">
+            <SumUpExchangeLogPanel />
             <Card title="Informations systeme">
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between py-2 border-b border-gray-100">

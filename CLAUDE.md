@@ -373,6 +373,8 @@ GET    /api/admin/database/backups/{id}/download  Télécharger un dump .sql.gz 
 DELETE /api/admin/database/backups/{id}      Supprimer une sauvegarde (fichier + ligne) (manager only)
 GET    /api/admin/database/export?table=…    Export CSV d'une table whitelistée (manager only)
 GET    /api/admin/data-quality?days=7        Volumes events_log + courbe (manager only)
+GET    /api/admin/sumup-exchanges?only_failed=  Journal des échanges HTTP avec SumUp (debug CB, payload rédigé ; ?operation=&checkout_id=&from=&to=) (manager only)
+DELETE /api/admin/sumup-exchanges           Vider le journal des échanges SumUp (manager only)
 POST   /api/admin/embeddings/recompute       Recalcul embeddings catalogue (manager only)
 POST   /api/admin/embeddings/customer/{id}   Refresh taste profile cliente (manager only)
 GET    /api/admin/return-to-sorting/preview  Dry-run retour automatique tri (manager only)

@@ -171,9 +171,15 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
     ): Promise<CardCheckoutOutcome> => {
       cancelledRef.current = false;
 
-      // 1. Initiate the checkout
+      // 1. Initiate the checkout. The backend is now authoritative: it
+      //    creates the PaymentAttempt and returns its id, plus a `diagnostic`
+      //    when the checkout fell through to link mode (no reader resolved →
+      //    the Solo terminal will NOT ring). We only *update* that attempt
+      //    through the lifecycle, and fall back to creating one ourselves if
+      //    an older backend didn't return an id.
       let checkoutId: string | undefined;
       let attemptId: string | undefined;
+      let diagnostic: string | undefined;
       try {
         const res = await api.post('/api/pos/payments/cb/initiate', {
           amount,
@@ -182,6 +188,9 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
           // sale's client_uuid so a retried initiate references the same
           // intended payment and the SumUp txn can be looked up later.
           foreign_transaction_id: clientUuidRef.current,
+          // Attribute the server-side attempt to the cashier + drawer.
+          cashier_id: cashierId || undefined,
+          drawer_id: drawerId || undefined,
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
@@ -197,29 +206,38 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
         }
         const data = await res.json();
         checkoutId = data.checkout_id;
+        attemptId = data.attempt_id; // authoritative id created server-side
+        diagnostic = data.diagnostic; // link-mode warning ("le TPE ne sonnera pas"), if any
         const initialStatus = (data.status || 'PENDING').toUpperCase();
         if (initialStatus === 'FAILED') {
-          attemptId = await logAttempt({
-            method: 'card',
-            amount,
-            status: 'failed',
-            error_detail: data.error_detail || 'Refusé par SumUp',
-            sumup_checkout_id: checkoutId,
-          });
-          onStatus('failed', data.error_detail || 'Refusé par SumUp');
+          const detail = data.error_detail || 'Refusé par SumUp';
+          // The backend already recorded the failed attempt when it returned
+          // an id — only log it ourselves as a fallback for older backends.
+          if (!attemptId) {
+            attemptId = await logAttempt({
+              method: 'card',
+              amount,
+              status: 'failed',
+              error_detail: detail,
+              sumup_checkout_id: checkoutId,
+            });
+          }
+          onStatus('failed', detail);
           return {
             status: 'failed',
-            detail: data.error_detail,
+            detail,
             checkout_id: checkoutId,
             attempt_id: attemptId,
           };
         }
-        attemptId = await logAttempt({
-          method: 'card',
-          amount,
-          status: 'pending',
-          sumup_checkout_id: checkoutId,
-        });
+        if (!attemptId) {
+          attemptId = await logAttempt({
+            method: 'card',
+            amount,
+            status: 'pending',
+            sumup_checkout_id: checkoutId,
+          });
+        }
       } catch (err) {
         const detail = err instanceof Error ? err.message : 'Erreur réseau';
         attemptId = await logAttempt({
@@ -232,7 +250,9 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
         return { status: 'failed', detail, attempt_id: attemptId };
       }
 
-      onStatus('pending');
+      // Surface the link-mode diagnostic under the spinner so the cashier
+      // understands why the TPE stays silent instead of waiting it out.
+      onStatus('pending', diagnostic);
 
       // 2. Poll until completion or timeout
       const startedAt = Date.now();
@@ -403,7 +423,7 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
         attempt_id: attemptId,
       };
     },
-    [logAttempt, pollIntervalMs, timeoutMs],
+    [logAttempt, pollIntervalMs, timeoutMs, cashierId, drawerId],
   );
 
   return {

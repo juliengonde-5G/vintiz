@@ -1093,6 +1093,11 @@ class CBInitiateRequest(BaseModel):
     # same intended payment and the resulting transaction can be looked up
     # for reconciliation/refund.
     foreign_transaction_id: str | None = None
+    # Cashier + drawer context, so the authoritative PaymentAttempt created
+    # server-side at initiation is attributed correctly (the POS no longer
+    # has to create the attempt itself — it only updates it).
+    cashier_id: uuid.UUID | None = None
+    drawer_id: uuid.UUID | None = None
 
 
 class ResendRequest(BaseModel):
@@ -1114,8 +1119,20 @@ async def initiate_cb_payment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Initiate a SumUp card checkout. Returns checkout_id for polling."""
+    """Initiate a SumUp card checkout. Returns checkout_id for polling.
+
+    The backend is the authoritative recorder of the attempt: it creates the
+    ``PaymentAttempt`` (pending, or failed when SumUp rejects the initiation)
+    and returns its ``attempt_id`` so the POS only *updates* the lifecycle. A
+    CB sale therefore leaves a server-side trace even if the browser dies —
+    that trace is what surfaces in « CB échouées ». Every HTTP call to SumUp
+    is mirrored into the ``sumup_exchanges`` diagnostic log.
+    """
+    from app.models.payment_attempt import PaymentAttempt, PaymentAttemptStatus
+    from app.models.pos import PaymentMethod
+    from app.services.sumup_exchange_log import persist_sumup_exchanges
     from app.services.sumup_service import SumUpService
+
     svc = SumUpService()
     await svc.resolve_reader_from_registry(db)
     result = await svc.create_checkout(
@@ -1123,18 +1140,76 @@ async def initiate_cb_payment(
         description=request.description,
         foreign_transaction_id=request.foreign_transaction_id,
     )
+
+    status_raw = str(result.get("status", "PENDING")).upper()
+    mode = result.get("mode")
+    failed = status_raw == "FAILED"
+
+    # Debug aid for « les transactions n'aboutissent pas vers le terminal » :
+    # a checkout created in link mode (no reader resolved) will NOT ring the
+    # Solo. Flag it loudly so the cashier/manager understands why the TPE
+    # stays silent instead of waiting out the 90 s front-end timeout.
+    if not failed and mode == "checkout":
+        result["reader_targeted"] = False
+        result["diagnostic"] = (
+            "Aucun TPE ciblé : paiement créé en mode lien — le terminal Solo ne "
+            "sonnera pas. Déclarez un terminal par défaut dans Paramètres › "
+            "Caisse (ou renseignez SUMUP_READER_ID)."
+        )
+    elif mode == "reader":
+        result["reader_targeted"] = True
+
+    # Authoritative PaymentAttempt — created here, then updated by the POS via
+    # /payment-attempts using the returned attempt_id.
+    attempt = PaymentAttempt(
+        method=PaymentMethod.card,
+        amount=float(request.amount),
+        status=(
+            PaymentAttemptStatus.failed if failed else PaymentAttemptStatus.pending
+        ),
+        cashier_id=request.cashier_id or current_user.id,
+        drawer_id=request.drawer_id,
+        sumup_checkout_id=result.get("checkout_id"),
+        error_detail=(
+            redact_sumup_error(
+                result.get("error_detail") or result.get("error_friendly") or "Refusé par SumUp"
+            )
+            if failed
+            else None
+        ),
+    )
+    db.add(attempt)
+    await db.flush()
+    await db.refresh(attempt)
+    result["attempt_id"] = str(attempt.id)
+
+    await persist_sumup_exchanges(db, svc, prune=True)
     return result
 
 
 @router.get("/payments/cb/{checkout_id}/status")
 async def get_cb_payment_status(
     checkout_id: str,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Poll the status of a SumUp checkout."""
+    from app.services.sumup_exchange_log import persist_sumup_exchanges
     from app.services.sumup_service import SumUpService
     svc = SumUpService()
     result = await svc.get_checkout_status(checkout_id)
+
+    # Avoid flooding the diagnostic log with identical PENDING polls (one
+    # every ~1.5 s for up to 90 s): only persist a status exchange when it
+    # carries signal — a terminal outcome or an HTTP/transport error.
+    status_norm = str(result.get("status", "PENDING")).upper()
+    interesting = status_norm != "PENDING" or any(
+        not e.get("ok") for e in svc.exchanges
+    )
+    if interesting:
+        await persist_sumup_exchanges(db, svc)
+    else:
+        svc.drain_exchanges()
     return result
 
 
@@ -1145,10 +1220,12 @@ async def cancel_cb_payment(
     current_user: User = Depends(get_current_user),
 ):
     """Cancel a pending SumUp checkout."""
+    from app.services.sumup_exchange_log import persist_sumup_exchanges
     from app.services.sumup_service import SumUpService
     svc = SumUpService()
     await svc.resolve_reader_from_registry(db)
     ok = await svc.cancel_checkout(checkout_id)
+    await persist_sumup_exchanges(db, svc)
     return {"cancelled": ok}
 
 
@@ -1166,10 +1243,13 @@ async def terminate_cb_reader(
 
     Returns a structured outcome the front renders as a toast.
     """
+    from app.services.sumup_exchange_log import persist_sumup_exchanges
     from app.services.sumup_service import SumUpService
     svc = SumUpService()
     await svc.resolve_reader_from_registry(db)
-    return await svc.terminate_reader_checkout()
+    outcome = await svc.terminate_reader_checkout()
+    await persist_sumup_exchanges(db, svc)
+    return outcome
 
 
 @router.get("/payments/cb/receipt/{sumup_transaction_id}")
@@ -1216,15 +1296,27 @@ async def get_sumup_config(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/payments/cb/ping")
-async def ping_sumup_reader(current_user: User = Depends(get_current_user)):
+async def ping_sumup_reader(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Probe the configured SumUp reader's live status.
 
     Called at POS startup to flag the cashier if the TPE is offline,
     unpaired, or misconfigured — they see the warning before they try
     to encash a CB sale that would otherwise time out 30 s later.
+
+    Resolves the reader from the multi-terminal registry first so the probe
+    targets the exact Solo the POS would push to (the default terminal),
+    matching the real checkout path. The probe exchange is logged.
     """
+    from app.services.sumup_exchange_log import persist_sumup_exchanges
     from app.services.sumup_service import SumUpService
-    return await SumUpService().ping_reader()
+    svc = SumUpService()
+    await svc.resolve_reader_from_registry(db)
+    result = await svc.ping_reader()
+    await persist_sumup_exchanges(db, svc)
+    return result
 
 
 async def _build_full_receipt_text(
@@ -2318,6 +2410,9 @@ async def refund_transaction(
                     + float(refund_tx.total_ttc)
                 )
                 await db.commit()
+            # Mirror the refund call into the SumUp diagnostic log.
+            from app.services.sumup_exchange_log import persist_sumup_exchanges
+            await persist_sumup_exchanges(db, svc)
 
     # Emit a product.refunded event per refunded item (P1-003).
     from app.models.events import EventSource, EventType

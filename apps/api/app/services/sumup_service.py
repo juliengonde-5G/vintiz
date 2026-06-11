@@ -11,9 +11,11 @@ faux paiement.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
+import time
 import uuid
 
 import httpx
@@ -90,6 +92,28 @@ def redact_sumup_error(text: str | None, max_len: int = 300) -> str:
     return safe
 
 
+def _summarize_payload(payload: dict | None) -> str | None:
+    """Build a redacted one-line summary of an outgoing request body/params.
+
+    The ``affiliate`` block carries the secret affiliate ``key`` — we replace
+    the whole object with a marker so it never lands in the log. Everything
+    else (amount, currency, description, foreign_transaction_id) is safe and
+    useful for debugging. The JSON is then run through ``redact_sumup_error``
+    as a belt-and-suspenders pass.
+    """
+    if not payload:
+        return None
+    try:
+        safe = {
+            k: ("<present>" if k == "affiliate" else v)
+            for k, v in payload.items()
+        }
+        text = json.dumps(safe, default=str, ensure_ascii=False)
+    except Exception:  # noqa: BLE001
+        text = str(payload)
+    return redact_sumup_error(text, max_len=300)
+
+
 # ---------------------------------------------------------------------------
 # SumUp service — production API only
 # ---------------------------------------------------------------------------
@@ -105,6 +129,12 @@ class SumUpService:
     """
 
     def __init__(self) -> None:
+        # Diagnostic buffer — every HTTP call to SumUp made by this instance
+        # appends a redacted record here (see ``_send``). The API endpoints
+        # flush it to the ``sumup_exchanges`` table after the call so the
+        # back-office can see exactly what happened on the wire. Never holds
+        # a secret (redaction at insert + Authorization header never logged).
+        self.exchanges: list[dict] = []
         # Persisted config (data/app_config.json) takes precedence over env vars
         # so the manager can configure SumUp credentials from the UI without
         # touching the deployment.
@@ -277,7 +307,7 @@ class SumUpService:
         async with httpx.AsyncClient(timeout=5.0) as client:
             # 1) Pairing state — `Reader.status`
             try:
-                resp = await client.get(reader_url, headers=self._headers)
+                resp = await self._send(client, "ping", "GET", reader_url)
             except httpx.HTTPError as exc:
                 return {
                     **common,
@@ -315,7 +345,7 @@ class SumUpService:
                 }
 
             try:
-                live_resp = await client.get(status_url, headers=self._headers)
+                live_resp = await self._send(client, "ping_status", "GET", status_url)
             except httpx.HTTPError as exc:
                 return {
                     **common,
@@ -367,6 +397,74 @@ class SumUpService:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+
+    # ------------------------------------------------------------------
+    # Exchange logging — wraps every httpx call so the back-office can
+    # see what we sent to SumUp and what came back (redacted).
+    # ------------------------------------------------------------------
+    async def _send(
+        self,
+        client: httpx.AsyncClient,
+        operation: str,
+        method: str,
+        url: str,
+        *,
+        json: dict | None = None,
+        params: dict | None = None,
+        mode: str | None = None,
+        checkout_id: str | None = None,
+        foreign_transaction_id: str | None = None,
+    ) -> httpx.Response:
+        """Issue an authenticated SumUp request and record the exchange.
+
+        Centralises the ``Authorization`` header (never logged) and appends a
+        fully-redacted diagnostic record to ``self.exchanges`` whether the
+        call succeeds, returns a non-2xx, or raises a transport error. Returns
+        the raw ``httpx.Response`` so each call site keeps its own response
+        handling — this is a drop-in for the previous ``client.<verb>(...)``.
+        """
+        record: dict = {
+            "operation": operation,
+            "method": method.upper(),
+            "url": redact_sumup_error(url, max_len=400),
+            "mode": mode,
+            "checkout_id": checkout_id,
+            "reader_id": self.reader_id or None,
+            "foreign_transaction_id": foreign_transaction_id,
+            "environment": self.environment,
+            "request_summary": _summarize_payload(json if json is not None else params),
+            "http_status": None,
+            "ok": False,
+            "latency_ms": None,
+            "response_summary": None,
+            "error": None,
+        }
+        started = time.perf_counter()
+        try:
+            resp = await client.request(
+                method, url, json=json, params=params, headers=self._headers
+            )
+        except Exception as exc:  # noqa: BLE001 — record then re-raise
+            record["latency_ms"] = int((time.perf_counter() - started) * 1000)
+            record["error"] = redact_sumup_error(f"{type(exc).__name__}: {exc}")
+            self.exchanges.append(record)
+            raise
+        record["latency_ms"] = int((time.perf_counter() - started) * 1000)
+        record["http_status"] = resp.status_code
+        record["ok"] = 200 <= resp.status_code < 300
+        try:
+            body = resp.text if resp.content else ""
+        except Exception:  # noqa: BLE001 — never let logging break a checkout
+            body = ""
+        record["response_summary"] = redact_sumup_error(body, max_len=600)
+        self.exchanges.append(record)
+        return resp
+
+    def drain_exchanges(self) -> list[dict]:
+        """Return the buffered exchange records and clear the buffer."""
+        out = self.exchanges
+        self.exchanges = []
+        return out
 
     # ------------------------------------------------------------------
     # Create checkout
@@ -446,10 +544,14 @@ class SumUpService:
         }
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(
+                resp = await self._send(
+                    client,
+                    "create_checkout",
+                    "POST",
                     f"{SUMUP_API_BASE}/checkouts",
                     json=payload,
-                    headers=self._headers,
+                    mode="checkout",
+                    foreign_transaction_id=foreign_transaction_id,
                 )
             if resp.status_code in (200, 201):
                 data = resp.json()
@@ -532,7 +634,15 @@ class SumUpService:
             }
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(url, json=payload, headers=self._headers)
+                resp = await self._send(
+                    client,
+                    "reader_push",
+                    "POST",
+                    url,
+                    json=payload,
+                    mode="reader",
+                    foreign_transaction_id=foreign_transaction_id,
+                )
             if resp.status_code in (200, 201, 202):
                 data = resp.json() if resp.content else {}
                 inner = data.get("data") or {}
@@ -614,9 +724,13 @@ class SumUpService:
 
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
+                resp = await self._send(
+                    client,
+                    "get_status",
+                    "GET",
                     f"{SUMUP_API_BASE}/checkouts/{checkout_id}",
-                    headers=self._headers,
+                    mode="checkout",
+                    checkout_id=checkout_id,
                 )
             if resp.status_code == 200:
                 data = resp.json()
@@ -681,10 +795,14 @@ class SumUpService:
         )
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
+                resp = await self._send(
+                    client,
+                    "reader_status",
+                    "GET",
                     url,
                     params={"client_transaction_id": client_transaction_id},
-                    headers=self._headers,
+                    mode="reader",
+                    checkout_id=f"reader:{client_transaction_id}",
                 )
         except httpx.HTTPError:
             return {**base, "status": "PENDING"}
@@ -751,9 +869,13 @@ class SumUpService:
         # cancelling a PAID checkout debits the customer with no Vintiz sale.
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                peek = await client.get(
+                peek = await self._send(
+                    client,
+                    "cancel_peek",
+                    "GET",
                     f"{SUMUP_API_BASE}/checkouts/{checkout_id}",
-                    headers=self._headers,
+                    mode="checkout",
+                    checkout_id=checkout_id,
                 )
                 if peek.status_code != 200:
                     _log.warning(
@@ -768,9 +890,13 @@ class SumUpService:
                         checkout_id,
                     )
                     return False
-                resp = await client.delete(
+                resp = await self._send(
+                    client,
+                    "cancel_delete",
+                    "DELETE",
                     f"{SUMUP_API_BASE}/checkouts/{checkout_id}",
-                    headers=self._headers,
+                    mode="checkout",
+                    checkout_id=checkout_id,
                 )
                 return resp.status_code in (200, 204)
         except Exception as exc:  # noqa: BLE001
@@ -807,7 +933,7 @@ class SumUpService:
         )
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(url, headers=self._headers)
+                resp = await self._send(client, "terminate", "POST", url, mode="reader")
         except httpx.HTTPError as exc:
             return {
                 "ok": False, "status": "network_error",
@@ -864,7 +990,9 @@ class SumUpService:
             body["amount"] = round(float(amount), 2)
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(url, json=body, headers=self._headers)
+                resp = await self._send(
+                    client, "refund", "POST", url, json=body, checkout_id=transaction_id
+                )
         except httpx.HTTPError as exc:
             return {
                 "ok": False, "status": "network_error",
@@ -921,10 +1049,13 @@ class SumUpService:
         url = f"https://api.sumup.com/v1.1/receipts/{transaction_id}"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
+                resp = await self._send(
+                    client,
+                    "receipt",
+                    "GET",
                     url,
                     params={"mid": self.merchant_code},
-                    headers=self._headers,
+                    checkout_id=transaction_id,
                 )
             if resp.status_code == 200:
                 return resp.json()
@@ -968,7 +1099,9 @@ class SumUpService:
         )
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(url, params=params, headers=self._headers)
+                resp = await self._send(
+                    client, "get_transaction", "GET", url, params=params
+                )
             if resp.status_code == 200:
                 return resp.json()
         except httpx.HTTPError as exc:

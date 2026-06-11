@@ -499,6 +499,102 @@ async def list_admin_payment_attempts(
 
 
 # ---------------------------------------------------------------------------
+# SumUp exchange log — server-side trace of every HTTP call to SumUp
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sumup-exchanges", dependencies=[Depends(manager_only)])
+async def list_sumup_exchanges(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    only_failed: bool = Query(False),
+    operation: str | None = None,
+    checkout_id: str | None = None,
+    period_from: str | None = Query(None, alias="from"),
+    period_to: str | None = Query(None, alias="to"),
+    skip: int = 0,
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Journal des échanges HTTP avec les serveurs SumUp (manager only).
+
+    Source de vérité côté serveur pour diagnostiquer les paiements CB : chaque
+    appel à ``api.sumup.com`` (création checkout, push TPE, statut, annulation,
+    remboursement, ping) y est tracé — payload **rédigé** (aucun secret, PAN ou
+    CVV). Indices : ``only_failed=true`` isole les échecs ; une ligne
+    ``operation=create_checkout`` avec ``mode=checkout`` = paiement créé en lien
+    (le TPE Solo n'a PAS sonné), cause typique de « ça ne passe plus au TPE ».
+    """
+    from app.models.sumup_exchange import SumUpExchange
+
+    stmt = select(SumUpExchange).order_by(SumUpExchange.created_at.desc())
+    if only_failed:
+        stmt = stmt.where(SumUpExchange.ok.is_(False))
+    if operation:
+        stmt = stmt.where(SumUpExchange.operation == operation)
+    if checkout_id:
+        stmt = stmt.where(SumUpExchange.checkout_id == checkout_id)
+    if period_from:
+        stmt = stmt.where(
+            SumUpExchange.created_at >= _parse_iso_date(period_from, "from")
+        )
+    if period_to:
+        stmt = stmt.where(
+            SumUpExchange.created_at <= _parse_iso_date(period_to, "to")
+        )
+    stmt = stmt.offset(max(skip, 0)).limit(limit)
+    rows = (await db.execute(stmt)).scalars().all()
+
+    # Headline diagnostic so the UI can flag the problem at a glance: a CB
+    # checkout that resolved to a payment LINK never rings the terminal.
+    link_checkouts = sum(
+        1 for r in rows if r.operation == "create_checkout" and r.mode == "checkout"
+    )
+    reader_pushes = sum(1 for r in rows if r.operation == "reader_push")
+    failures = sum(1 for r in rows if not r.ok)
+
+    return {
+        "exchanges": [
+            {
+                "id": str(r.id),
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "operation": r.operation,
+                "method": r.method,
+                "url": r.url,
+                "http_status": r.http_status,
+                "ok": bool(r.ok),
+                "latency_ms": r.latency_ms,
+                "mode": r.mode,
+                "checkout_id": r.checkout_id,
+                "reader_id": r.reader_id,
+                "foreign_transaction_id": r.foreign_transaction_id,
+                "request_summary": r.request_summary,
+                "response_summary": r.response_summary,
+                "error": r.error,
+                "environment": r.environment,
+            }
+            for r in rows
+        ],
+        "count": len(rows),
+        "summary": {
+            "reader_pushes": reader_pushes,
+            "link_checkouts": link_checkouts,
+            "failures": failures,
+        },
+    }
+
+
+@router.delete("/sumup-exchanges", dependencies=[Depends(manager_only)])
+async def clear_sumup_exchanges(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Vider le journal des échanges SumUp (debug — pas un registre fiscal)."""
+    from sqlalchemy import delete as sa_delete
+
+    from app.models.sumup_exchange import SumUpExchange
+
+    result = await db.execute(sa_delete(SumUpExchange))
+    await db.flush()
+    return {"cleared": result.rowcount or 0}
+
+
+# ---------------------------------------------------------------------------
 # Cash management config — defaults consumed by POS Open/Close modals
 # ---------------------------------------------------------------------------
 

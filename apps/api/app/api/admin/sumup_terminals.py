@@ -260,11 +260,13 @@ async def ping_sumup_terminal(
             },
         }
 
+    # Target this terminal's reader so the diagnostic log records the right id.
+    svc.reader_id = row.reader_id
     url = f"{SUMUP_API_BASE}/merchants/{svc.merchant_code}/readers/{row.reader_id}"
     probe: dict = {"mode": "live", "url": url}
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(url, headers=svc._headers)
+            resp = await svc._send(client, "ping", "GET", url)
         probe["http_status"] = resp.status_code
         if resp.status_code == 200:
             data = resp.json() if resp.content else {}
@@ -291,6 +293,8 @@ async def ping_sumup_terminal(
     row.last_heartbeat_at = now
     await db.flush()
     await db.commit()
+    from app.services.sumup_exchange_log import persist_sumup_exchanges
+    await persist_sumup_exchanges(db, svc)
     return {**_serialize(row), "probe": probe}
 
 
@@ -316,11 +320,14 @@ async def sync_sumup_terminals(
             "reason": "SumUp not in production or credentials missing.",
         }
 
+    from app.services.sumup_exchange_log import persist_sumup_exchanges
+
     url = f"{SUMUP_API_BASE}/merchants/{svc.merchant_code}/readers"
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(url, headers=svc._headers)
+            resp = await svc._send(client, "sync", "GET", url)
         if resp.status_code != 200:
+            await persist_sumup_exchanges(db, svc)
             return {
                 "live": [],
                 "mode": "live",
@@ -329,12 +336,14 @@ async def sync_sumup_terminals(
             }
         body = resp.json() if resp.content else {}
         readers = body.get("items") or body.get("data") or []
+        await persist_sumup_exchanges(db, svc)
         return {
             "live": readers,
             "mode": "live",
             "count": len(readers),
         }
     except Exception as exc:
+        await persist_sumup_exchanges(db, svc)
         return {
             "live": [],
             "mode": "live",
