@@ -364,22 +364,145 @@ async def database_state(db: AsyncSession) -> dict:
     }
 
 
+def _clients_export_query(dialect_name: str):
+    """Enriched ``clients`` export — a commercial view, not the raw row dump.
+
+    Joins loyalty (membership number + points) and aggregates the client's
+    *sale* transactions (count, CA, average basket, first/last visit) plus the
+    purchased categories/brands (via ``transaction_items`` → ``products`` →
+    ``categories``). ``LEFT JOIN`` keeps clients without any transaction (their
+    aggregates collapse to 0 / NULL). Test clients and clients who requested
+    erasure (RGPD) are excluded.
+
+    ``dialect_name`` is the *live session's* dialect (not the global settings
+    URL — tests bind an in-memory SQLite engine while ``settings.DATABASE_URL``
+    still points at Postgres). PostgreSQL (prod) joins the distinct
+    categories/brands with ``STRING_AGG(DISTINCT … , ' | ' ORDER BY …)``.
+    SQLite (dev/tests) cannot combine ``DISTINCT`` with a custom separator, so
+    it falls back to the comma-joined ``GROUP_CONCAT(DISTINCT …)`` — same data,
+    simpler separator.
+    """
+    if dialect_name == "postgresql":
+        cat_agg = "STRING_AGG(DISTINCT cat.name, ' | ' ORDER BY cat.name)"
+        brand_agg = "STRING_AGG(DISTINCT p.brand, ' | ' ORDER BY p.brand)"
+    else:
+        cat_agg = "GROUP_CONCAT(DISTINCT cat.name)"
+        brand_agg = "GROUP_CONCAT(DISTINCT p.brand)"
+
+    return text(
+        f"""
+        SELECT
+          -- Identité
+          c.id,
+          c.first_name,
+          c.last_name,
+          c.email,
+          c.phone,
+          c.birth_date,
+
+          -- Fidélité
+          c.loyalty_subscribed_at,
+          c.loyalty_expires_at,
+          c.loyalty_subscription_mode,
+          la.membership_number,
+          la.points                  AS loyalty_points,
+
+          -- Profil comportemental
+          c.rfm_segment,
+          c.gender_profile,
+          c.age_band,
+          c.season_bias,
+          c.price_ceiling_cents,
+          c.price_sensitivity,
+          c.trend_affinity,
+
+          -- Consentements
+          c.email_optin,
+          c.sms_optin,
+
+          -- Données géo (extraites depuis notes)
+          c.notes,
+
+          -- Agrégats transactions (calculés)
+          COUNT(DISTINCT t.id)                              AS nb_transactions,
+          COALESCE(SUM(t.total_ttc), 0)                     AS ca_total_ttc,
+          COALESCE(AVG(t.total_ttc), 0)                     AS panier_moyen_ttc,
+          MIN(t.created_at)                                 AS premiere_visite,
+          MAX(t.created_at)                                 AS derniere_visite,
+
+          -- Agrégats articles achetés (via transaction_items + products)
+          COUNT(DISTINCT ti.id)                             AS nb_articles_achetes,
+          {cat_agg}                                         AS categories_achetees,
+          {brand_agg}                                       AS marques_achetees,
+
+          -- Avoir
+          c.avoir_credit,
+
+          -- Méta
+          c.created_at,
+          c.updated_at,
+          c.is_test
+
+        FROM clients c
+        LEFT JOIN loyalty_accounts la
+               ON la.client_id = c.id
+        LEFT JOIN transactions t
+               ON t.client_id = c.id
+              AND t.transaction_type = 'sale'
+        LEFT JOIN transaction_items ti
+               ON ti.transaction_id = t.id
+        LEFT JOIN products p
+               ON p.id = ti.product_id
+        LEFT JOIN categories cat
+               ON cat.id = p.category_id
+        WHERE c.deletion_requested_at IS NULL
+          AND (c.is_test IS NULL OR c.is_test = FALSE)
+        GROUP BY
+          c.id, c.first_name, c.last_name, c.email, c.phone, c.birth_date,
+          c.loyalty_subscribed_at, c.loyalty_expires_at, c.loyalty_subscription_mode,
+          la.membership_number, la.points,
+          c.rfm_segment, c.gender_profile, c.age_band, c.season_bias,
+          c.price_ceiling_cents, c.price_sensitivity, c.trend_affinity,
+          c.email_optin, c.sms_optin, c.notes, c.avoir_credit,
+          c.created_at, c.updated_at, c.is_test
+        ORDER BY c.created_at DESC
+        """
+    )
+
+
 async def export_table_csv(db: AsyncSession, table_key: str) -> tuple[str, str]:
-    """Stream one whitelisted table to CSV. Returns (filename, csv_text)."""
+    """Stream one whitelisted table to CSV. Returns (filename, csv_text).
+
+    ``clients`` is special-cased to an enriched commercial view (loyalty +
+    transaction aggregates + purchased categories/brands) built by
+    :func:`_clients_export_query`. Every other whitelisted table keeps the
+    plain ``SELECT *`` row dump.
+    """
     if table_key not in EXPORTABLE_TABLES:
         raise ValueError(f"Table non exportable : {table_key}")
-    table = _TABLE_MODELS[table_key].__table__
-    columns = [c.name for c in table.columns]
-    # Core select on the table (not the ORM entity) so we don't trigger
-    # selectin relationship loads — we just want the raw rows.
-    result = await db.execute(table.select())
 
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=";")
-    writer.writerow(columns)
-    for row in result:
-        m = row._mapping
-        writer.writerow([_csv_value(m[c]) for c in columns])
+
+    if table_key == "clients":
+        # Detect the dialect from the live session bind, not settings — tests
+        # run on an in-memory SQLite engine while settings.DATABASE_URL is PG.
+        dialect_name = db.bind.dialect.name if db.bind is not None else engine_kind()
+        result = await db.execute(_clients_export_query(dialect_name))
+        writer.writerow(list(result.keys()))
+        for row in result:
+            writer.writerow([_csv_value(v) for v in row])
+    else:
+        table = _TABLE_MODELS[table_key].__table__
+        columns = [c.name for c in table.columns]
+        # Core select on the table (not the ORM entity) so we don't trigger
+        # selectin relationship loads — we just want the raw rows.
+        result = await db.execute(table.select())
+        writer.writerow(columns)
+        for row in result:
+            m = row._mapping
+            writer.writerow([_csv_value(m[c]) for c in columns])
+
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     return f"vintiz_{table_key}_{stamp}.csv", buf.getvalue()
 
