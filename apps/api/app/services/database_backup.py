@@ -367,12 +367,14 @@ async def database_state(db: AsyncSession) -> dict:
 def _clients_export_query(dialect_name: str):
     """Enriched ``clients`` export — a commercial view, not the raw row dump.
 
-    Joins loyalty (membership number + points) and aggregates the client's
-    *sale* transactions (count, CA, average basket, first/last visit) plus the
-    purchased categories/brands (via ``transaction_items`` → ``products`` →
-    ``categories``). ``LEFT JOIN`` keeps clients without any transaction (their
-    aggregates collapse to 0 / NULL). Test clients and clients who requested
-    erasure (RGPD) are excluded.
+    Joins loyalty (membership number + points). The *sale* transaction metrics
+    (count, CA, average basket, first/last visit) come from a pre-aggregated
+    ``tx_agg`` subquery so they are NOT multiplied by the ``transaction_items``
+    fan-out (a sale with N line items would otherwise inflate SUM/AVG N×). The
+    purchased categories/brands + line-item count are aggregated over the items
+    join (DISTINCT, so the fan-out is harmless there). ``LEFT JOIN`` keeps
+    clients without any transaction (their aggregates collapse to 0 / NULL).
+    Test clients and clients who requested erasure (RGPD) are excluded.
 
     ``dialect_name`` is the *live session's* dialect (not the global settings
     URL — tests bind an in-memory SQLite engine while ``settings.DATABASE_URL``
@@ -423,12 +425,14 @@ def _clients_export_query(dialect_name: str):
           -- Données géo (extraites depuis notes)
           c.notes,
 
-          -- Agrégats transactions (calculés)
-          COUNT(DISTINCT t.id)                              AS nb_transactions,
-          COALESCE(SUM(t.total_ttc), 0)                     AS ca_total_ttc,
-          COALESCE(AVG(t.total_ttc), 0)                     AS panier_moyen_ttc,
-          MIN(t.created_at)                                 AS premiere_visite,
-          MAX(t.created_at)                                 AS derniere_visite,
+          -- Agrégats transactions (pré-agrégés dans tx_agg : indépendants du
+          -- fan-out de la jointure transaction_items, qui multiplierait sinon
+          -- SUM/AVG par le nombre d'articles de chaque vente)
+          COALESCE(tx_agg.nb_transactions, 0)               AS nb_transactions,
+          COALESCE(tx_agg.ca_total_ttc, 0)                  AS ca_total_ttc,
+          COALESCE(tx_agg.panier_moyen_ttc, 0)              AS panier_moyen_ttc,
+          tx_agg.premiere_visite                            AS premiere_visite,
+          tx_agg.derniere_visite                            AS derniere_visite,
 
           -- Agrégats articles achetés (via transaction_items + products)
           COUNT(DISTINCT ti.id)                             AS nb_articles_achetes,
@@ -446,6 +450,17 @@ def _clients_export_query(dialect_name: str):
         FROM clients c
         LEFT JOIN loyalty_accounts la
                ON la.client_id = c.id
+        LEFT JOIN (
+            SELECT client_id,
+              COUNT(*)        AS nb_transactions,
+              SUM(total_ttc)  AS ca_total_ttc,
+              AVG(total_ttc)  AS panier_moyen_ttc,
+              MIN(created_at) AS premiere_visite,
+              MAX(created_at) AS derniere_visite
+            FROM transactions
+            WHERE transaction_type = 'sale'
+            GROUP BY client_id
+        ) tx_agg ON tx_agg.client_id = c.id
         LEFT JOIN transactions t
                ON t.client_id = c.id
               AND t.transaction_type = 'sale'
@@ -464,7 +479,9 @@ def _clients_export_query(dialect_name: str):
           c.rfm_segment, c.gender_profile, c.age_band, c.season_bias,
           c.price_ceiling_cents, c.price_sensitivity, c.trend_affinity,
           c.email_optin, c.sms_optin, c.notes, c.avoir_credit,
-          c.created_at, c.updated_at, c.is_test
+          c.created_at, c.updated_at, c.is_test,
+          tx_agg.nb_transactions, tx_agg.ca_total_ttc, tx_agg.panier_moyen_ttc,
+          tx_agg.premiere_visite, tx_agg.derniere_visite
         ORDER BY c.created_at DESC
         """
     )

@@ -223,32 +223,44 @@ async def test_export_table_csv_rejects_unlisted_table(session):
 async def test_export_table_csv_clients_enriched(session):
     """The clients export is an enriched commercial view: loyalty + transaction
     aggregates + purchased categories/brands, with test/erased clients filtered."""
-    cat = Category(name="Robes", gender=Gender.femme)
-    session.add(cat)
+    robes = Category(name="Robes", gender=Gender.femme)
+    manteaux = Category(name="Manteaux", gender=Gender.femme)
+    session.add_all([robes, manteaux])
     await session.flush()
-    product = Product(
-        barcode=f"B-{uuid.uuid4().hex[:8]}", name="Robe noire", category_id=cat.id,
+    prod_a = Product(
+        barcode=f"B-{uuid.uuid4().hex[:8]}", name="Robe noire", category_id=robes.id,
         status=ProductStatus.stock, sale_price=40, purchase_price=10, brand="Sézane",
     )
+    prod_b = Product(
+        barcode=f"B-{uuid.uuid4().hex[:8]}", name="Manteau", category_id=manteaux.id,
+        status=ProductStatus.stock, sale_price=30, purchase_price=8, brand="Gucci",
+    )
     user = User(username="caissier", email="caissier@vintiz.fr", password_hash="x")
-    session.add_all([product, user])
+    session.add_all([prod_a, prod_b, user])
     await session.flush()
 
-    # Buyer: loyalty account + one sale of the product above.
+    # Buyer: 2 sales. The first carries 2 line items — this guards the
+    # transaction_items fan-out: CA must stay 70+10=80 (not 70×2+10=150) and
+    # the basket average 40 (not 50). Aggregates come from the tx_agg subquery.
     buyer = Client(first_name="Marie", last_name="Durand", email="marie@example.fr")
     session.add(buyer)
     await session.flush()
     session.add(LoyaltyAccount(client_id=buyer.id, points=120, membership_number="V000123"))
-    tx = Transaction(
+    tx1 = Transaction(
         transaction_number=1, transaction_type=TransactionType.sale,
-        user_id=user.id, client_id=buyer.id, total_ttc=40, hash_chain="h1",
+        user_id=user.id, client_id=buyer.id, total_ttc=70, hash_chain="h1",
     )
-    session.add(tx)
+    tx2 = Transaction(
+        transaction_number=2, transaction_type=TransactionType.sale,
+        user_id=user.id, client_id=buyer.id, total_ttc=10, hash_chain="h2",
+    )
+    session.add_all([tx1, tx2])
     await session.flush()
-    session.add(TransactionItem(
-        transaction_id=tx.id, product_id=product.id, quantity=1,
-        unit_price=40, line_total=40,
-    ))
+    session.add_all([
+        TransactionItem(transaction_id=tx1.id, product_id=prod_a.id, quantity=1, unit_price=40, line_total=40),
+        TransactionItem(transaction_id=tx1.id, product_id=prod_b.id, quantity=1, unit_price=30, line_total=30),
+        TransactionItem(transaction_id=tx2.id, product_id=prod_a.id, quantity=1, unit_price=10, line_total=10),
+    ])
 
     # Client with no transactions + two clients that must be excluded.
     quiet = Client(first_name="Paul", last_name="Sans", email="paul@example.fr")
@@ -277,15 +289,16 @@ async def test_export_table_csv_clients_enriched(session):
     assert "seed@example.fr" not in by_email
     assert "erased@example.fr" not in by_email
 
-    # Buyer aggregates are populated.
+    # Buyer aggregates are populated and NOT inflated by the items fan-out.
     m = by_email["marie@example.fr"]
-    assert m["nb_transactions"] == "1"
+    assert m["nb_transactions"] == "2"
     assert m["membership_number"] == "V000123"
     assert m["loyalty_points"] == "120"
-    assert float(m["ca_total_ttc"]) == 40.0
-    assert float(m["panier_moyen_ttc"]) == 40.0
-    assert "Robes" in m["categories_achetees"]
-    assert "Sézane" in m["marques_achetees"]
+    assert float(m["ca_total_ttc"]) == 80.0          # 70 + 10, not 70×2 + 10
+    assert float(m["panier_moyen_ttc"]) == 40.0      # (70 + 10) / 2, not /3
+    assert m["nb_articles_achetes"] == "3"
+    assert "Robes" in m["categories_achetees"] and "Manteaux" in m["categories_achetees"]
+    assert "Sézane" in m["marques_achetees"] and "Gucci" in m["marques_achetees"]
     assert m["premiere_visite"] and m["derniere_visite"]
 
     # Client without transactions: zero count, empty aggregate strings.
