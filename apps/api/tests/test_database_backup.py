@@ -5,7 +5,9 @@ monkeypatched — we unit-test the orchestration: ledger row lifecycle, size,
 retention pruning, failure → alert email, config singleton, CSV export, state.
 """
 
+import csv
 import gzip
+import io
 import types
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -19,7 +21,7 @@ from app.models import Base
 from app.models.client import Client, LoyaltyAccount
 from app.models.database_backup import DatabaseBackup, DatabaseBackupConfig
 from app.models.newsletter import NewsletterSubscriber
-from app.models.pos import Transaction
+from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.product import Category, Gender, Product, ProductStatus
 from app.models.user import User
 from app.services import database_backup as svc
@@ -41,6 +43,7 @@ async def engine():
         Client.__table__,
         LoyaltyAccount.__table__,
         Transaction.__table__,
+        TransactionItem.__table__,
         User.__table__,
         NewsletterSubscriber.__table__,
     ]
@@ -214,6 +217,83 @@ async def test_export_table_csv_products(session):
 async def test_export_table_csv_rejects_unlisted_table(session):
     with pytest.raises(ValueError):
         await svc.export_table_csv(session, "users")  # not in the whitelist
+
+
+@pytest.mark.anyio
+async def test_export_table_csv_clients_enriched(session):
+    """The clients export is an enriched commercial view: loyalty + transaction
+    aggregates + purchased categories/brands, with test/erased clients filtered."""
+    cat = Category(name="Robes", gender=Gender.femme)
+    session.add(cat)
+    await session.flush()
+    product = Product(
+        barcode=f"B-{uuid.uuid4().hex[:8]}", name="Robe noire", category_id=cat.id,
+        status=ProductStatus.stock, sale_price=40, purchase_price=10, brand="Sézane",
+    )
+    user = User(username="caissier", email="caissier@vintiz.fr", password_hash="x")
+    session.add_all([product, user])
+    await session.flush()
+
+    # Buyer: loyalty account + one sale of the product above.
+    buyer = Client(first_name="Marie", last_name="Durand", email="marie@example.fr")
+    session.add(buyer)
+    await session.flush()
+    session.add(LoyaltyAccount(client_id=buyer.id, points=120, membership_number="V000123"))
+    tx = Transaction(
+        transaction_number=1, transaction_type=TransactionType.sale,
+        user_id=user.id, client_id=buyer.id, total_ttc=40, hash_chain="h1",
+    )
+    session.add(tx)
+    await session.flush()
+    session.add(TransactionItem(
+        transaction_id=tx.id, product_id=product.id, quantity=1,
+        unit_price=40, line_total=40,
+    ))
+
+    # Client with no transactions + two clients that must be excluded.
+    quiet = Client(first_name="Paul", last_name="Sans", email="paul@example.fr")
+    seed = Client(first_name="Seed", last_name="Bot", email="seed@example.fr", is_test=True)
+    erased = Client(
+        first_name="Parti", last_name="Effacé", email="erased@example.fr",
+        deletion_requested_at=datetime.now(timezone.utc),
+    )
+    session.add_all([quiet, seed, erased])
+    await session.flush()
+
+    filename, content = await svc.export_table_csv(session, "clients")
+    assert filename.startswith("vintiz_clients_")
+
+    rows = list(csv.DictReader(io.StringIO(content), delimiter=";"))
+    header = rows[0].keys() if rows else []
+    for col in (
+        "nb_transactions", "ca_total_ttc", "panier_moyen_ttc", "premiere_visite",
+        "derniere_visite", "categories_achetees", "marques_achetees",
+        "membership_number", "loyalty_points",
+    ):
+        assert col in header
+
+    by_email = {r["email"]: r for r in rows}
+    # Test client + RGPD-erased client are filtered out.
+    assert "seed@example.fr" not in by_email
+    assert "erased@example.fr" not in by_email
+
+    # Buyer aggregates are populated.
+    m = by_email["marie@example.fr"]
+    assert m["nb_transactions"] == "1"
+    assert m["membership_number"] == "V000123"
+    assert m["loyalty_points"] == "120"
+    assert float(m["ca_total_ttc"]) == 40.0
+    assert float(m["panier_moyen_ttc"]) == 40.0
+    assert "Robes" in m["categories_achetees"]
+    assert "Sézane" in m["marques_achetees"]
+    assert m["premiere_visite"] and m["derniere_visite"]
+
+    # Client without transactions: zero count, empty aggregate strings.
+    q = by_email["paul@example.fr"]
+    assert q["nb_transactions"] == "0"
+    assert float(q["ca_total_ttc"]) == 0.0
+    assert q["categories_achetees"] == ""
+    assert q["marques_achetees"] == ""
 
 
 @pytest.mark.anyio
