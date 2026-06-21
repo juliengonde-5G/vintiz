@@ -63,6 +63,17 @@ interface VisionResult {
   error?: string;
 }
 
+interface PriceReferenceCheck {
+  has_reference: boolean;
+  below: boolean;
+  floor: number | null;
+  bucket: 'standard' | 'premium' | string;
+  standard_floor: number | null;
+  premium_floor: number | null;
+  note: string | null;
+  source?: string | null;
+}
+
 interface PriceSuggestion {
   suggested_price: number;
   price_range: { min: number; max: number };
@@ -73,6 +84,7 @@ interface PriceSuggestion {
     recent_sales_count: number;
     new_price_estimate?: number | null;
   };
+  reference?: PriceReferenceCheck | null;
 }
 
 interface ZoneSuggestion {
@@ -868,6 +880,32 @@ export default function NewProductWizard() {
                       className="w-12 h-12 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-bold text-xl flex-shrink-0">+</button>
                   </div>
                 </div>
+
+                {(() => {
+                  const ref = priceSuggestion?.reference;
+                  const p = parseFloat(price);
+                  if (!ref?.has_reference || ref.floor == null || !(p > 0)) return null;
+                  if (p >= ref.floor) {
+                    return (
+                      <p className="text-xs text-vz-teal-deep flex items-center gap-1">
+                        ✓ Conforme à la grille de référence ({ref.bucket === 'premium' ? 'premium' : 'standard'}, plancher {ref.floor.toFixed(2)} €).
+                      </p>
+                    );
+                  }
+                  return (
+                    <div role="alert" className="p-3 rounded-xl bg-amber-50 border border-amber-300">
+                      <p className="text-sm font-medium text-amber-800">
+                        ⚠️ Prix sous la grille de référence
+                      </p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        Plancher {ref.bucket === 'premium' ? 'premium' : 'standard'} pour cette catégorie :{' '}
+                        <strong>{ref.floor.toFixed(2)} €</strong>. Le prix saisi ({p.toFixed(2)} €) est
+                        inférieur. Vous pouvez tout de même valider.
+                      </p>
+                      {ref.note && <p className="text-[11px] text-amber-600 mt-1">{ref.note}</p>}
+                    </div>
+                  );
+                })()}
 
                 <div className="flex gap-3 pt-2">
                   <Button variant="outline" onClick={() => setStep('identity')}>Précédent</Button>

@@ -26,6 +26,7 @@ from app.api.admin import users as _users_module
 from app.api.admin import receipt_templates as _receipt_templates_module
 from app.api.admin import sumup_terminals as _sumup_terminals_module
 from app.api.admin import database as _database_module
+from app.api.admin import price_reference as _price_reference_module
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -38,6 +39,7 @@ router.include_router(_users_module.router)
 router.include_router(_receipt_templates_module.router)
 router.include_router(_sumup_terminals_module.router)
 router.include_router(_database_module.router)
+router.include_router(_price_reference_module.router)
 
 
 # ---------------------------------------------------------------------------
