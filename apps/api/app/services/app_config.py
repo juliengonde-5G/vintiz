@@ -54,6 +54,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "logo_path": "",
         "print_logo_on_ticket": False,
     },
+    # Feature toggles — activer/désactiver des modules de l'application.
+    # ``zoning_enabled`` pilote toute la gestion des zones (placement produit,
+    # moteur IA d'aménagement, KPI par zone…). Désactivé → l'app fonctionne en
+    # « boutique sans zonage » sans rien casser. Voir app/services/feature_flags.py.
+    "features": {
+        "zoning_enabled": True,
+    },
     # SumUp config — editable via /settings > Paiement (overrides env vars)
     "sumup": {
         "environment": "",  # empty = auto-detect (env var fallback)

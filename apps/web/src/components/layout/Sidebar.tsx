@@ -3,6 +3,7 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { api } from '@/lib/api';
 
 type NavItem = {
   label: string;
@@ -345,6 +346,13 @@ function SidebarInner() {
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [userName, setUserName] = useState<string>('Admin');
   const [role, setRole] = useState<'manager' | 'collaborateur' | null>(null);
+  const [zoningEnabled, setZoningEnabled] = useState(true);
+
+  useEffect(() => {
+    api.get('/api/admin/features')
+      .then(async (res) => { if (res.ok) setZoningEnabled((await res.json()).zoning_enabled !== false); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -474,7 +482,10 @@ function SidebarInner() {
             .filter((group) => role !== 'collaborateur' || !COLLAB_HIDDEN_GROUPS.has(group.label))
             .map((group) => {
               const items = group.items.filter(
-                (item) => role !== 'collaborateur' || !COLLAB_HIDDEN_PATHS.has(item.href),
+                (item) =>
+                  (role !== 'collaborateur' || !COLLAB_HIDDEN_PATHS.has(item.href))
+                  // Hide the zones page entirely when zoning is disabled.
+                  && (zoningEnabled || item.href !== '/zones'),
               );
               if (items.length === 0) return null;
               return (

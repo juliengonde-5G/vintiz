@@ -229,6 +229,7 @@ export default function NewProductWizard() {
   const [planZones, setPlanZones] = useState<PlanZone[]>([]);
   const [zoneSuggestion, setZoneSuggestion] = useState<ZoneSuggestion | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState('');
+  const [zoningEnabled, setZoningEnabled] = useState(true);
 
   // Label
   const [labelUrl, setLabelUrl] = useState('');
@@ -242,6 +243,9 @@ export default function NewProductWizard() {
     }).catch(() => {});
     api.get('/api/inventory/brands').then(async (res) => {
       if (res.ok) setBrands(await res.json());
+    }).catch(() => {});
+    api.get('/api/admin/features').then(async (res) => {
+      if (res.ok) setZoningEnabled((await res.json()).zoning_enabled !== false);
     }).catch(() => {});
   }, []);
 
@@ -429,18 +433,22 @@ export default function NewProductWizard() {
     const product = await createOrUpdate();
     if (!product) return;
     // Prepare the zone step: load the boutique plan + the AI zone suggestion.
-    try {
-      const [zres, sres] = await Promise.all([
-        api.get('/api/admin/zones'),
-        api.get(`/api/inventory/products/${product.id}/suggest-zone`),
-      ]);
-      if (zres.ok) setPlanZones(await zres.json());
-      if (sres.ok) {
-        const sug: ZoneSuggestion = await sres.json();
-        setZoneSuggestion(sug);
-        if (sug.primary_zone_id) setSelectedZoneId(sug.primary_zone_id);
-      }
-    } catch { /* zone step still usable manually */ }
+    // Skipped entirely when zoning is disabled (boutique sans zones) — the step
+    // then only offers the rayon/réserve choice.
+    if (zoningEnabled) {
+      try {
+        const [zres, sres] = await Promise.all([
+          api.get('/api/admin/zones'),
+          api.get(`/api/inventory/products/${product.id}/suggest-zone`),
+        ]);
+        if (zres.ok) setPlanZones(await zres.json());
+        if (sres.ok) {
+          const sug: ZoneSuggestion = await sres.json();
+          setZoneSuggestion(sug);
+          if (sug.primary_zone_id) setSelectedZoneId(sug.primary_zone_id);
+        }
+      } catch { /* zone step still usable manually */ }
+    }
     setStep('zone');
   };
 
@@ -932,7 +940,11 @@ export default function NewProductWizard() {
                   </button>
                 </div>
 
-                {destination === 'rayon' && (
+                {destination === 'rayon' && !zoningEnabled && (
+                  <p className="text-sm text-gray-500">L&apos;article sera mis en rayon. La gestion des zones est désactivée.</p>
+                )}
+
+                {destination === 'rayon' && zoningEnabled && (
                   <>
                     {zoneSuggestion?.rationale && (
                       <div className="p-3 rounded-xl bg-vz-teal-soft/40 border border-vz-teal-soft text-sm">

@@ -885,6 +885,35 @@ async def update_shop_info(payload: ShopInfoUpdate):
 
 
 # ---------------------------------------------------------------------------
+# Feature toggles — activer/désactiver des modules (zonage…)
+# ---------------------------------------------------------------------------
+
+
+class FeaturesUpdate(BaseModel):
+    zoning_enabled: bool | None = None
+
+
+@router.get("/features")
+async def get_features_endpoint(current_user: Annotated[User, Depends(get_current_user)]):
+    """Read feature toggles. Readable by any authenticated back-office user so
+    the POS / intake screens can react (e.g. hide the zone step) — not just the
+    manager."""
+    from app.services.feature_flags import get_features
+
+    return get_features()
+
+
+@router.put("/features", dependencies=[Depends(manager_only)])
+async def update_features_endpoint(payload: FeaturesUpdate):
+    """Toggle features (manager only). For now: ``zoning_enabled``."""
+    from app.services.feature_flags import get_features, set_zoning_enabled
+
+    if payload.zoning_enabled is not None:
+        return set_zoning_enabled(payload.zoning_enabled)
+    return get_features()
+
+
+# ---------------------------------------------------------------------------
 # Company logo — uploaded asset rendered on invoices (and opt-in on tickets)
 # ---------------------------------------------------------------------------
 
@@ -1809,10 +1838,15 @@ async def preview_return_to_sorting(
 async def store_plan(db: Annotated[AsyncSession, Depends(get_db)]):
     """Return all zones with their canvas coordinates, current occupancy
     and the score-bucket colour code so the front can render the SVG
-    plan directly (P2-005)."""
+    plan directly (P2-005). Empty + ``zoning_enabled: false`` when zoning is
+    turned off."""
+    from app.services.feature_flags import zoning_enabled
     from app.services.merchandising import MerchandisingService
 
-    return {"zones": await MerchandisingService(db).zone_occupancy()}
+    if not zoning_enabled():
+        return {"zoning_enabled": False, "zones": []}
+
+    return {"zoning_enabled": True, "zones": await MerchandisingService(db).zone_occupancy()}
 
 
 @router.get(

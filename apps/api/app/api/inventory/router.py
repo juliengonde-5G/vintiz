@@ -1813,7 +1813,15 @@ async def movements_weekly_plan(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Aménagement HORIZONTAL de la semaine (Vintiz IA), zone par zone :
-    « de la zone A, déplacez X, Y, Z vers la zone B/C »."""
+    « de la zone A, déplacez X, Y, Z vers la zone B/C ».
+
+    Désactivé quand le zonage est coupé (l'aménagement horizontal n'a pas de
+    sens sans zones) → renvoie un plan vide marqué ``zoning_enabled: false``."""
+    from app.services.feature_flags import zoning_enabled
+
+    if not zoning_enabled():
+        return {"zoning_enabled": False, "zones": [], "moves": []}
+
     from app.services.stock_movement import weekly_layout_plan
 
     return await weekly_layout_plan(db)

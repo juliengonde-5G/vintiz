@@ -458,7 +458,15 @@ async def _zones_ca_for_date(
 
 
 async def compute_zones_today(db: AsyncSession, report_date: date) -> list[dict]:
-    """Per-zone CA/OBJ/Delta for the requested date."""
+    """Per-zone CA/OBJ/Delta for the requested date.
+
+    Empty list when zoning is disabled (boutique sans zones) — the cahier
+    simply omits the per-zone breakdown."""
+    from app.services.feature_flags import zoning_enabled
+
+    if not zoning_enabled():
+        return []
+
     weights_data = await get_weekday_weights(db)
     weights = weights_data["weights"]
 

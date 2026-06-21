@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import CashManagementSettingsPanel from '@/components/settings/CashManagementSettingsPanel';
+import FeaturesPanel from '@/components/settings/FeaturesPanel';
 import PosQuickAddPanel from '@/components/settings/PosQuickAddPanel';
 import MessageTemplatesPanel from '@/components/settings/MessageTemplatesPanel';
 import ReceiptInvoiceStudio from '@/components/settings/ReceiptInvoiceStudio';
@@ -1106,6 +1107,8 @@ export default function SettingsPage() {
                 </>
               )}
             </Card>
+
+            <FeaturesPanel />
 
             <Card title="Terminal de paiement">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">

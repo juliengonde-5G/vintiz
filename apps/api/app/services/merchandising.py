@@ -285,7 +285,21 @@ class MerchandisingService:
 
         Reste consultatif : l'opérateur confirme à l'étiquetage. Les règles
         sont éditables en base (/zones), pas codées en dur.
+
+        Quand le zonage est désactivé (boutique sans zones), on renvoie
+        immédiatement une suggestion neutre — aucun déplacement n'est jamais
+        proposé et l'intake/reprice continue de fonctionner sans zone.
         """
+        from app.services.feature_flags import zoning_enabled
+
+        if not zoning_enabled():
+            return ZoneSuggestion(
+                primary_zone_id=None, primary_zone_name=None,
+                alternative_zone_id=None, alternative_zone_name=None,
+                should_go_to_window=False,
+                rationale="Gestion des zones désactivée.",
+            )
+
         zones_result = await self.db.execute(
             select(StoreZone).order_by(
                 StoreZone.assignment_priority, StoreZone.display_order, StoreZone.name
