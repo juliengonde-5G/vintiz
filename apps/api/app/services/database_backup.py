@@ -120,14 +120,15 @@ def dump_database(dest: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Exhaustive archive (DB dump + uploaded photos + on-disk config)
+# Full archive (DB dump + on-disk JSON config) — NO photo files
 # ---------------------------------------------------------------------------
 #
-# A "full" backup is a single ``.tar.gz`` so a fresh server can be rebuilt from
-# one file: the gzipped SQL dump + everything that lives *outside* the database
-# (product/permanent photos under ``uploads/`` and the editable JSON config
-# under ``data/``). These resolvers are module-level so tests can monkeypatch
-# them onto a temp tree.
+# A "full" backup is a single ``.tar.gz`` bundling the gzipped SQL dump + the
+# editable JSON config (``app_config.json`` / ``hardware.json``). Product /
+# permanent photos are deliberately *excluded* to keep backups light: their
+# links (URLs) already live in the database dump (``ProductPhoto.url``,
+# ``Product.storefront_photo_url``…), so the archive keeps the *reference*, not
+# the image bytes. The resolver is module-level so tests can monkeypatch it.
 
 
 def _api_root() -> Path:
@@ -135,18 +136,15 @@ def _api_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _uploads_root() -> Path:
-    """Where product + permanent photos are stored (StaticFiles mount root)."""
-    return _api_root() / "uploads"
-
-
 def _config_entries() -> list[tuple[Path, str]]:
     """(source_path, arcname) pairs for the on-disk config bundled in a full backup.
 
-    Covers ``app_config.json`` (shop info, SumUp, email/SMS…), ``hardware.json``
-    (printers/drawer/scanner) and the uploaded company logo under
-    ``data/branding/``. The backups directory itself is *never* included (it
-    sits under ``data/`` but bundling it would be recursive)."""
+    Only the editable JSON config — ``app_config.json`` (shop info, SumUp,
+    email/SMS…) and ``hardware.json`` (printers/drawer/scanner). No image files
+    (product photos, branding logo) are bundled: their paths/URLs are kept in
+    the config/database, so only the *link* is preserved. The backups directory
+    itself is never included (it sits under ``data/`` — bundling it would be
+    recursive)."""
     from app.services.app_config import DEFAULT_PATH as APP_CONFIG_PATH
     from app.services.hardware_config import DEFAULT_PATH as HARDWARE_CONFIG_PATH
 
@@ -157,46 +155,26 @@ def _config_entries() -> list[tuple[Path, str]]:
     hw_cfg = Path(HARDWARE_CONFIG_PATH)
     if hw_cfg.is_file():
         entries.append((hw_cfg, "config/hardware.json"))
-    branding = _api_root() / "data" / "branding"
-    if branding.is_dir():
-        for f in sorted(branding.rglob("*")):
-            if f.is_file():
-                entries.append((f, f"config/branding/{f.relative_to(branding).as_posix()}"))
     return entries
 
 
-def _dir_stats(root: Path) -> tuple[int, int]:
-    """(file_count, total_bytes) of a directory tree (best-effort)."""
-    files = 0
-    total = 0
-    for f in root.rglob("*"):
-        if f.is_file():
-            files += 1
-            try:
-                total += f.stat().st_size
-            except OSError:
-                pass
-    return files, total
-
-
 def build_full_archive(dest: Path) -> dict:
-    """Build the exhaustive ``.tar.gz`` and return a manifest of its contents.
+    """Build the ``.tar.gz`` (DB + config, no photos) and return its manifest.
 
     Layout inside the archive::
 
         database.sql.gz          gzipped SQL dump (pg_dump | sqlite iterdump)
-        uploads/...              product + permanent photos
         config/app_config.json   shop info / SumUp / email / POS config
         config/hardware.json     printers / cash drawer / scanner
-        config/branding/...      uploaded company logo
         manifest.json            self-describing inventory
 
-    The DB dump is produced via ``dump_database`` (monkeypatched in tests) into
-    a temp file, streamed into the tar, then removed. Raises on dump failure so
-    ``run_backup`` records the row as failed (no half-written archive offered)."""
+    Photos are intentionally NOT bundled — the database dump already carries
+    their links. The DB dump is produced via ``dump_database`` (monkeypatched in
+    tests) into a temp file, streamed into the tar, then removed. Raises on dump
+    failure so ``run_backup`` records the row as failed (no half-written archive
+    offered)."""
     ts = datetime.now(timezone.utc)
     tmp_sql = dest.parent / f".dbdump_{ts.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}.sql.gz"
-    uploads = _uploads_root()
     config_entries = _config_entries()
 
     manifest: dict = {
@@ -207,17 +185,15 @@ def build_full_archive(dest: Path) -> dict:
     try:
         dump_database(tmp_sql)
         db_bytes = tmp_sql.stat().st_size if tmp_sql.exists() else 0
-        up_files, up_bytes = _dir_stats(uploads) if uploads.is_dir() else (0, 0)
 
         with tarfile.open(dest, "w:gz") as tar:
             tar.add(tmp_sql, arcname="database.sql.gz")
-            if uploads.is_dir():
-                tar.add(uploads, arcname="uploads")
             for src, arcname in config_entries:
                 tar.add(src, arcname=arcname)
 
             manifest["database"] = {"file": "database.sql.gz", "bytes": int(db_bytes)}
-            manifest["uploads"] = {"files": up_files, "bytes": up_bytes}
+            # Photos are not archived — only their links (kept in the DB).
+            manifest["photos"] = {"included": False, "note": "liens conservés dans la base"}
             manifest["config"] = {"files": [a for _, a in config_entries]}
             # Embed the manifest inside the archive too (self-describing dump).
             payload = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")

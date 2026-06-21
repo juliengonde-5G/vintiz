@@ -29,11 +29,11 @@ class DatabaseBackup(Base):
     # auto (nightly cron) | manual (admin trigger)
     trigger: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
     db_engine: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    # ``full`` = exhaustive archive (DB dump + uploads + config) as a .tar.gz ;
-    # ``db`` = legacy DB-only dump (.sql.gz). Lets the operator pick coverage.
+    # ``full`` = archive .tar.gz (DB dump + JSON config, sans les photos —
+    # leurs liens restent dans la base) ; ``db`` = dump base seule (.sql.gz).
     kind: Mapped[str] = mapped_column(String(20), nullable=False, default="full")
-    # Inventory of what the archive contains (db bytes, photo count/size, config
-    # files…) — surfaced in the admin UI so the manager can see the coverage.
+    # Inventory of what the archive contains (db bytes, config files…) —
+    # surfaced in the admin UI so the manager can see the coverage.
     manifest: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     # Sanitised error message when status == failed (full trace stays in logs).
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -53,7 +53,8 @@ class DatabaseBackupConfig(Base):
     alert_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Master switch for the nightly 03:00 cron (manual runs always work).
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    # When True (default), each backup is an *exhaustive* archive bundling the
-    # uploaded photos + on-disk config (app/hardware/branding) next to the DB
-    # dump. When False, the backup is the legacy DB-only .sql.gz.
+    # When True (default), each backup is a .tar.gz bundling the on-disk JSON
+    # config (app_config / hardware) next to the DB dump. Photos are never
+    # bundled (only their links, kept in the DB). When False, the backup is the
+    # DB-only .sql.gz.
     include_files: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

@@ -83,6 +83,17 @@ DATASETS: dict = {
             "quantity": {"label": "Quantité vendue", "expr": func.coalesce(func.sum(TransactionItem.quantity), 0), "format": "number"},
             "tickets": {"label": "Nombre de tickets", "expr": func.count(distinct(Transaction.id)), "format": "number"},
             "avg_price": {"label": "Prix moyen", "expr": func.coalesce(func.avg(TransactionItem.unit_price), 0), "format": "currency"},
+            "margin": {
+                "label": "Marge",
+                "expr": func.coalesce(
+                    func.sum(
+                        TransactionItem.line_total
+                        - TransactionItem.quantity * func.coalesce(Product.purchase_price, 0)
+                    ),
+                    0,
+                ),
+                "format": "currency",
+            },
         },
     },
     "inventory": {
@@ -173,6 +184,30 @@ def _num(value) -> float:
         return round(float(value), 2)
     except (TypeError, ValueError):
         return 0.0
+
+
+async def dimension_values(db: AsyncSession, dataset: str, dimension: str, *, limit: int = 200) -> list[str]:
+    """Distinct values of a categorical dimension — feeds the filter dropdowns.
+
+    Raises ``ValueError`` for unknown / time dimensions (no value list)."""
+    ds = DATASETS.get(dataset)
+    if ds is None:
+        raise ValueError(f"dataset inconnu : {dataset}")
+    ddef = ds["dimensions"].get(dimension)
+    if ddef is None:
+        raise ValueError(f"dimension inconnue pour {dataset} : {dimension}")
+    if ddef.get("time"):
+        raise ValueError("dimension temporelle : pas de liste de valeurs")
+    expr = ddef["expr"]
+    stmt = (
+        ds["build"]([expr.label("v")])
+        .where(expr.is_not(None))
+        .group_by(expr)
+        .order_by(expr.asc())
+        .limit(max(1, min(limit, 500)))
+    )
+    rows = (await db.execute(stmt)).all()
+    return [_coerce_key(r[0]) for r in rows if r[0] is not None and str(r[0]).strip() != ""]
 
 
 async def run_query(

@@ -14,6 +14,7 @@ import LocationHistory from '@/components/inventory/LocationHistory';
 import RepriceModal from '@/components/inventory/RepriceModal';
 import MoveProductModal, { type MoveAction } from '@/components/inventory/MoveProductModal';
 import { api } from '@/lib/api';
+import { useZoningEnabled } from '@/lib/useZoningEnabled';
 
 const FLOOR_STATUSES = new Set(['display', 'displayed', 'discounted', 'deep_discounted']);
 const STOCK_STATUSES = new Set(['stock', 'received', 'sorted', 'tagged']);
@@ -123,6 +124,7 @@ export default function ProductDetailPage() {
   const [moveAction, setMoveAction] = useState<MoveAction | null>(null);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [zoneNames, setZoneNames] = useState<Record<string, string>>({});
+  const zoningEnabled = useZoningEnabled();
 
   // Permanent delete (manager-only — for a product created by mistake)
   const [role, setRole] = useState<string | null>(null);
@@ -331,9 +333,11 @@ export default function ProductDetailPage() {
             )}
             {!isEditing && FLOOR_STATUSES.has(product.status) && product.zone_id && (
               <>
-                <Button variant="outline" onClick={() => setMoveAction('move')}>
-                  ↔ Déplacer
-                </Button>
+                {zoningEnabled !== false && (
+                  <Button variant="outline" onClick={() => setMoveAction('move')}>
+                    ↔ Déplacer
+                  </Button>
+                )}
                 <Button variant="outline" onClick={() => setMoveAction('reserve')}>
                   📥 Mettre en réserve
                 </Button>
@@ -475,11 +479,13 @@ export default function ProductDetailPage() {
                           ? 'Vendu'
                           : product.status === 'returned'
                             ? 'Retourné — hors rayon'
-                            : product.status === 'stock'
-                              ? `Réserve${product.zone_id ? ` · ${zoneNames[product.zone_id] || 'zone affectée'}` : ''}`
-                              : product.zone_id
-                                ? zoneNames[product.zone_id] || 'Zone non identifiée'
-                                : 'En rayon — zone non assignée'}
+                            : zoningEnabled === false
+                              ? (product.status === 'stock' ? 'Réserve' : 'En rayon')
+                              : product.status === 'stock'
+                                ? `Réserve${product.zone_id ? ` · ${zoneNames[product.zone_id] || 'zone affectée'}` : ''}`
+                                : product.zone_id
+                                  ? zoneNames[product.zone_id] || 'Zone non identifiée'
+                                  : 'En rayon — zone non assignée'}
                       </p>
                     </div>
                     <div><p className="text-xs text-gray-500 mb-0.5">Prix d&apos;achat</p><p className="text-sm text-gray-700">{product.purchase_price?.toFixed(2)} €</p></div>
@@ -551,12 +557,14 @@ export default function ProductDetailPage() {
               />
             </Card>
 
-            <Card title="Historique des emplacements">
-              <LocationHistory
-                productId={product.id}
-                refreshKey={historyRefresh}
-              />
-            </Card>
+            {zoningEnabled !== false && (
+              <Card title="Historique des emplacements">
+                <LocationHistory
+                  productId={product.id}
+                  refreshKey={historyRefresh}
+                />
+              </Card>
+            )}
 
             <Card title="Transactions">
               {transactions.length === 0 ? (

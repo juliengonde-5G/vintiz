@@ -5,6 +5,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Button from '@/components/ui/Button';
 import CahierForecastPanel from '@/components/dashboard/CahierForecastPanel';
 import { api } from '@/lib/api';
+import { useZoningEnabled } from '@/lib/useZoningEnabled';
 
 interface CahierPayload {
   date: string;
@@ -88,6 +89,7 @@ export default function CahierDuJourPage() {
   const [editingText, setEditingText] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
+  const zoningEnabled = useZoningEnabled();
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -446,7 +448,8 @@ export default function CahierDuJourPage() {
               />
             </section>
 
-            {/* Zoning */}
+            {/* Zoning — masqué quand la gestion des zones est désactivée */}
+            {zoningEnabled !== false && (
             <section>
               <h2 className="text-sm font-display font-semibold text-black uppercase tracking-wider mb-3">
                 Zoning — performance par zone
@@ -499,6 +502,7 @@ export default function CahierDuJourPage() {
                 </table>
               </div>
             </section>
+            )}
 
             {/* CRM Fidelite */}
             <section>

@@ -200,6 +200,20 @@ export default function ClientDetailPage() {
   const [psSending, setPsSending] = useState(false);
   const [psResult, setPsResult] = useState<{ msg: string; kind: 'success' | 'error' } | null>(null);
 
+  // --- Communication viewer (voir le mail envoyé) ---
+  const [openComm, setOpenComm] = useState<{ id: string; subject: string | null; channel: string; kind: string; status: string; to_address: string | null; body_html: string | null; detail: string | null; created_at: string | null } | null>(null);
+  const [commLoading, setCommLoading] = useState(false);
+
+  const openCommunication = async (commId: string) => {
+    setCommLoading(true);
+    setOpenComm(null);
+    try {
+      const res = await api.get(`/api/crm/communications/${commId}`);
+      if (res.ok) setOpenComm(await res.json());
+    } catch { /* silent */ }
+    setCommLoading(false);
+  };
+
   useEffect(() => {
     if (!id) return;
     void load();
@@ -766,32 +780,37 @@ export default function ClientDetailPage() {
             {data.communications.length === 0 ? (
               <p className="text-gray-500">Aucune communication envoyée.</p>
             ) : (
-              <table className="w-full text-sm">
-                <thead className="text-xs text-gray-500">
-                  <tr>
-                    <th className="text-left p-2">Date</th>
-                    <th className="text-left p-2">Canal</th>
-                    <th className="text-left p-2">Type</th>
-                    <th className="text-left p-2">Objet</th>
-                    <th className="text-left p-2">Statut</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.communications.map((c) => (
-                    <tr key={c.id} className="border-t border-gray-100">
-                      <td className="p-2 text-gray-600">{formatDate(c.created_at)}</td>
-                      <td className="p-2">{c.channel === 'sms' ? '📱 SMS' : '✉️ Email'}</td>
-                      <td className="p-2">{COMM_KIND_LABELS[c.kind] || c.kind}</td>
-                      <td className="p-2 text-gray-600">{c.subject || '—'}</td>
-                      <td className="p-2">
-                        <Badge variant={c.status === 'failed' ? 'default' : 'sold'}>
-                          {COMM_STATUS_LABELS[c.status] || c.status}
-                        </Badge>
-                      </td>
+              <>
+                <p className="text-xs text-gray-400 mb-2">Cliquez sur une ligne pour voir le message envoyé.</p>
+                <table className="w-full text-sm">
+                  <thead className="text-xs text-gray-500">
+                    <tr>
+                      <th className="text-left p-2">Date</th>
+                      <th className="text-left p-2">Canal</th>
+                      <th className="text-left p-2">Type</th>
+                      <th className="text-left p-2">Objet</th>
+                      <th className="text-left p-2">Statut</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {data.communications.map((c) => (
+                      <tr key={c.id}
+                        onClick={() => openCommunication(c.id)}
+                        className="border-t border-gray-100 cursor-pointer hover:bg-vz-bg-alt transition-colors">
+                        <td className="p-2 text-gray-600">{formatDate(c.created_at)}</td>
+                        <td className="p-2">{c.channel === 'sms' ? '📱 SMS' : '✉️ Email'}</td>
+                        <td className="p-2">{COMM_KIND_LABELS[c.kind] || c.kind}</td>
+                        <td className="p-2 text-gray-600">{c.subject || '—'}</td>
+                        <td className="p-2">
+                          <Badge variant={c.status === 'failed' ? 'default' : 'sold'}>
+                            {COMM_STATUS_LABELS[c.status] || c.status}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             )}
           </Card>
         )}
@@ -850,6 +869,49 @@ export default function ClientDetailPage() {
         onClose={() => setOpenTxId(null)}
         allowLink={false}
       />
+
+      {/* Visionneuse du mail/SMS envoyé */}
+      {(commLoading || openComm) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => { setOpenComm(null); }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 p-4 border-b border-vz-line">
+              <div>
+                <p className="text-sm font-semibold text-vz-ink">{openComm?.subject || 'Message'}</p>
+                <p className="text-xs text-vz-ink-mute">
+                  {openComm ? `${COMM_KIND_LABELS[openComm.kind] || openComm.kind} · ${openComm.channel === 'sms' ? 'SMS' : 'Email'}` : ''}
+                  {openComm?.to_address ? ` · ${openComm.to_address}` : ''}
+                  {openComm?.created_at ? ` · ${formatDate(openComm.created_at)}` : ''}
+                </p>
+              </div>
+              <button onClick={() => setOpenComm(null)} aria-label="Fermer"
+                className="text-vz-ink-mute hover:text-vz-ink text-xl leading-none">×</button>
+            </div>
+            <div className="flex-1 overflow-auto">
+              {commLoading ? (
+                <p className="text-sm text-gray-500 p-6 text-center">Chargement…</p>
+              ) : openComm?.body_html ? (
+                <iframe
+                  title="Aperçu du message"
+                  sandbox=""
+                  srcDoc={openComm.body_html}
+                  className="w-full h-[60vh] border-0 bg-white"
+                />
+              ) : (
+                <div className="p-6">
+                  <p className="text-sm text-gray-600">
+                    {openComm?.channel === 'sms'
+                      ? 'SMS — le contenu détaillé n\'est pas archivé pour ce message.'
+                      : 'Le contenu HTML de ce message n\'a pas été archivé (message antérieur ou type sans aperçu).'}
+                  </p>
+                  {openComm?.detail && <p className="text-xs text-gray-400 mt-2">{openComm.detail}</p>}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

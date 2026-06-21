@@ -29,6 +29,7 @@ interface Widget {
   measure: string;
   dimension: string | null;
   granularity: string;
+  filters?: Record<string, string>;
 }
 
 interface SavedReport { id: string; name: string; description: string | null; layout: Widget[]; updated_at: string | null }
@@ -60,6 +61,7 @@ function WidgetCard({ widget, rangeDays, onRemove }: { widget: Widget; rangeDays
       measure: widget.measure,
       dimension: widget.dimension,
       granularity: widget.granularity,
+      filters: widget.filters && Object.keys(widget.filters).length ? widget.filters : undefined,
       range_days: rangeDays,
     }).then(async (res) => {
       if (cancelled) return;
@@ -67,12 +69,21 @@ function WidgetCard({ widget, rangeDays, onRemove }: { widget: Widget; rangeDays
       else { const e = await res.json().catch(() => ({})); setError(e.detail || 'Erreur'); }
     }).catch(() => { if (!cancelled) setError('Erreur réseau'); });
     return () => { cancelled = true; };
-  }, [widget.dataset, widget.measure, widget.dimension, widget.granularity, rangeDays]);
+  }, [widget.dataset, widget.measure, widget.dimension, widget.granularity, widget.filters, rangeDays]);
+
+  const filterChips = Object.entries(widget.filters || {});
 
   return (
     <Card className="relative" title={widget.title}>
       <button onClick={onRemove} aria-label="Retirer"
         className="absolute top-3 right-3 text-vz-ink-mute hover:text-red-500 text-lg leading-none">×</button>
+      {filterChips.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {filterChips.map(([k, v]) => (
+            <span key={k} className="text-[10px] px-1.5 py-0.5 rounded-full bg-vz-bg-alt text-vz-ink-soft">{k} : {v}</span>
+          ))}
+        </div>
+      )}
       {error ? <p className="text-sm text-red-600 py-4">{error}</p> : <ChartWidget type={widget.chart_type} data={data} />}
     </Card>
   );
@@ -94,6 +105,11 @@ export default function ReportBuilderPage() {
   const [fGranularity, setFGranularity] = useState('month');
   const [fChart, setFChart] = useState<ChartType>('bar');
   const [fTitle, setFTitle] = useState('');
+  // Filtres (slicers) du widget en cours de construction
+  const [fFilters, setFFilters] = useState<Record<string, string>>({});
+  const [filterDim, setFilterDim] = useState('');
+  const [filterVal, setFilterVal] = useState('');
+  const [filterValues, setFilterValues] = useState<string[]>([]);
 
   const notify = useCallback((msg: string, kind: 'success' | 'error' = 'success') => {
     setToast({ msg, kind }); setTimeout(() => setToast(null), 3500);
@@ -113,14 +129,35 @@ export default function ReportBuilderPage() {
     [catalog, fDataset],
   );
   const dimIsTime = currentDataset?.dimensions.find((d) => d.key === fDimension)?.time;
+  // Categorical dimensions usable as filters (slicers).
+  const filterableDims = (currentDataset?.dimensions || []).filter((d) => !d.time);
 
   // Keep the form coherent when the dataset changes.
   useEffect(() => {
     if (!currentDataset) return;
     if (!currentDataset.measures.find((m) => m.key === fMeasure)) setFMeasure(currentDataset.measures[0]?.key || '');
     if (fDimension && !currentDataset.dimensions.find((d) => d.key === fDimension)) setFDimension('');
+    setFFilters({}); setFilterDim(''); setFilterVal(''); setFilterValues([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fDataset]);
+
+  // Load the distinct values for the chosen filter dimension.
+  useEffect(() => {
+    if (!fDataset || !filterDim) { setFilterValues([]); return; }
+    let cancelled = false;
+    api.get(`/api/reports/custom/values?dataset=${fDataset}&dimension=${filterDim}`)
+      .then(async (r) => { if (!cancelled && r.ok) setFilterValues((await r.json()).values || []); })
+      .catch(() => { if (!cancelled) setFilterValues([]); });
+    setFilterVal('');
+    return () => { cancelled = true; };
+  }, [fDataset, filterDim]);
+
+  const addFilter = () => {
+    if (!filterDim || !filterVal) return;
+    setFFilters((f) => ({ ...f, [filterDim]: filterVal }));
+    setFilterDim(''); setFilterVal(''); setFilterValues([]);
+  };
+  const removeFilter = (k: string) => setFFilters((f) => { const n = { ...f }; delete n[k]; return n; });
 
   const addWidget = () => {
     if (!fDataset || !fMeasure) { notify('Choisissez un jeu de données et une mesure.', 'error'); return; }
@@ -130,8 +167,10 @@ export default function ReportBuilderPage() {
     setWidgets((w) => [...w, {
       id: uid(), title, chart_type: fChart, dataset: fDataset, measure: fMeasure,
       dimension: fDimension || null, granularity: fGranularity,
+      filters: Object.keys(fFilters).length ? { ...fFilters } : undefined,
     }]);
     setFTitle('');
+    setFFilters({}); setFilterDim(''); setFilterVal(''); setFilterValues([]);
   };
 
   const saveReport = async () => {
@@ -237,6 +276,33 @@ export default function ReportBuilderPage() {
                           <input value={fTitle} onChange={(e) => setFTitle(e.target.value)} placeholder="Auto"
                             className="w-full px-2 py-1.5 rounded-lg border border-vz-line text-sm focus:outline-none focus:ring-2 focus:ring-vz-teal" />
                         </Field>
+
+                        {/* Filtres (slicers) */}
+                        <div>
+                          <span className="block text-xs font-medium text-vz-ink-soft mb-1">Filtres</span>
+                          {Object.entries(fFilters).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-2">
+                              {Object.entries(fFilters).map(([k, v]) => (
+                                <span key={k} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-vz-teal-soft text-vz-teal-deep">
+                                  {k} : {v}
+                                  <button onClick={() => removeFilter(k)} className="hover:text-red-600" aria-label="Retirer">×</button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-1">
+                            <Select value={filterDim} onChange={setFilterDim}
+                              options={[{ v: '', l: '— dimension —' }, ...filterableDims.map((d) => ({ v: d.key, l: d.label }))]} />
+                            {filterDim && (
+                              <Select value={filterVal} onChange={setFilterVal}
+                                options={[{ v: '', l: filterValues.length ? '— valeur —' : '(aucune)' }, ...filterValues.map((v) => ({ v, l: v }))]} />
+                            )}
+                          </div>
+                          {filterDim && filterVal && (
+                            <button onClick={addFilter} className="text-xs text-vz-teal hover:underline mt-1">+ Ajouter ce filtre</button>
+                          )}
+                        </div>
+
                         <Button className="w-full" onClick={addWidget}>+ Ajouter au rapport</Button>
                       </>
                     )}

@@ -151,6 +151,36 @@ async def test_inventory_count_by_brand(session):
 
 
 @pytest.mark.anyio
+async def test_margin_measure(session):
+    await _seed_sales(session)
+    # Robe: 40 - 1*10 = 30 ; Pull: 20 - 2*5 = 10 ; total margin = 40 (refund excluded).
+    res = await eng.run_query(session, dataset="sales", measure="margin")
+    assert res["rows"][0]["value"] == 40.0
+
+
+@pytest.mark.anyio
+async def test_dimension_values_for_filter(session):
+    await _seed_sales(session)
+    vals = await eng.dimension_values(session, "sales", "category")
+    assert set(vals) == {"Robes", "Pulls"}
+    brands = await eng.dimension_values(session, "sales", "brand")
+    assert "Sandro" in brands and "Zara" in brands
+
+
+@pytest.mark.anyio
+async def test_filter_narrows_query(session):
+    await _seed_sales(session)
+    res = await eng.run_query(session, dataset="sales", measure="revenue", filters={"category": "Robes"})
+    assert res["rows"][0]["value"] == 40.0  # only the Robes sale
+
+
+@pytest.mark.anyio
+async def test_dimension_values_rejects_time(session):
+    with pytest.raises(ValueError):
+        await eng.dimension_values(session, "sales", "time")
+
+
+@pytest.mark.anyio
 async def test_unknown_dataset_or_measure_raises(session):
     with pytest.raises(ValueError):
         await eng.run_query(session, dataset="nope", measure="revenue")

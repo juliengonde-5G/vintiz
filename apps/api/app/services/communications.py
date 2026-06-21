@@ -100,6 +100,7 @@ async def log_communication(
     backend: str | None = None,
     detail: str | None = None,
     template_key: str | None = None,
+    body_html: str | None = None,
 ) -> None:
     """Append a CommunicationLog row. Best-effort: never raise into a send path."""
     try:
@@ -114,6 +115,7 @@ async def log_communication(
                 backend=backend,
                 detail=(detail or "")[:2000] or None,
                 template_key=template_key,
+                body_html=body_html,
             )
         )
         await db.flush()

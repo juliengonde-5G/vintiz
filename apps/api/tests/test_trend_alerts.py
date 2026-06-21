@@ -130,6 +130,43 @@ async def test_sends_to_eligible_member(session, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_alert_email_has_visuals_and_stores_body(session, monkeypatch):
+    """The « Alerte tendance personnalisée » carries product images, and the
+    rendered HTML is archived in the communication log (viewable from the fiche)."""
+    sent: list = []
+
+    def fake_send(message):
+        sent.append(message)
+        from app.services.email_gateway import EmailResult
+        return EmailResult(status="simulated", backend="simulation", sent_at="now")
+
+    monkeypatch.setattr("app.services.trend_alerts.send_email", fake_send)
+
+    await _seed_client(session, email="alice@x.fr", with_profiling=True, with_trend=True)
+    product = await _seed_trending_product(session, score=85)
+    product.storefront_photo_url = "/uploads/products/p1/storefront.png"
+    await session.flush()
+
+    summary = await ta.run_trend_alerts(session)
+    assert summary["sent"] == 1
+
+    html = sent[0].html
+    assert ta.ALERT_SUBJECT in html
+    assert sent[0].subject == ta.ALERT_SUBJECT
+    # The product image is embedded as an absolute URL.
+    assert "storefront.png" in html
+    assert "<img" in html
+
+    # The rendered HTML is archived for the fiche client viewer.
+    from sqlalchemy import select
+    from app.models.communications import CommunicationLog
+    row = (await session.execute(
+        select(CommunicationLog).where(CommunicationLog.kind == "trend_alert")
+    )).scalar_one()
+    assert row.body_html and "storefront.png" in row.body_html
+
+
+@pytest.mark.anyio
 async def test_frequency_cap_skips_recent_recipient(session, monkeypatch):
     monkeypatch.setattr(
         "app.services.trend_alerts.send_email",
