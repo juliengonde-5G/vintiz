@@ -21,9 +21,11 @@ import asyncio
 import csv
 import gzip
 import io
+import json
 import logging
 import os
 import subprocess
+import tarfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -118,6 +120,121 @@ def dump_database(dest: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Exhaustive archive (DB dump + uploaded photos + on-disk config)
+# ---------------------------------------------------------------------------
+#
+# A "full" backup is a single ``.tar.gz`` so a fresh server can be rebuilt from
+# one file: the gzipped SQL dump + everything that lives *outside* the database
+# (product/permanent photos under ``uploads/`` and the editable JSON config
+# under ``data/``). These resolvers are module-level so tests can monkeypatch
+# them onto a temp tree.
+
+
+def _api_root() -> Path:
+    """Repo's ``apps/api`` directory (parent of ``uploads/`` and ``data/``)."""
+    return Path(__file__).resolve().parents[2]
+
+
+def _uploads_root() -> Path:
+    """Where product + permanent photos are stored (StaticFiles mount root)."""
+    return _api_root() / "uploads"
+
+
+def _config_entries() -> list[tuple[Path, str]]:
+    """(source_path, arcname) pairs for the on-disk config bundled in a full backup.
+
+    Covers ``app_config.json`` (shop info, SumUp, email/SMS…), ``hardware.json``
+    (printers/drawer/scanner) and the uploaded company logo under
+    ``data/branding/``. The backups directory itself is *never* included (it
+    sits under ``data/`` but bundling it would be recursive)."""
+    from app.services.app_config import DEFAULT_PATH as APP_CONFIG_PATH
+    from app.services.hardware_config import DEFAULT_PATH as HARDWARE_CONFIG_PATH
+
+    entries: list[tuple[Path, str]] = []
+    app_cfg = Path(APP_CONFIG_PATH)
+    if app_cfg.is_file():
+        entries.append((app_cfg, "config/app_config.json"))
+    hw_cfg = Path(HARDWARE_CONFIG_PATH)
+    if hw_cfg.is_file():
+        entries.append((hw_cfg, "config/hardware.json"))
+    branding = _api_root() / "data" / "branding"
+    if branding.is_dir():
+        for f in sorted(branding.rglob("*")):
+            if f.is_file():
+                entries.append((f, f"config/branding/{f.relative_to(branding).as_posix()}"))
+    return entries
+
+
+def _dir_stats(root: Path) -> tuple[int, int]:
+    """(file_count, total_bytes) of a directory tree (best-effort)."""
+    files = 0
+    total = 0
+    for f in root.rglob("*"):
+        if f.is_file():
+            files += 1
+            try:
+                total += f.stat().st_size
+            except OSError:
+                pass
+    return files, total
+
+
+def build_full_archive(dest: Path) -> dict:
+    """Build the exhaustive ``.tar.gz`` and return a manifest of its contents.
+
+    Layout inside the archive::
+
+        database.sql.gz          gzipped SQL dump (pg_dump | sqlite iterdump)
+        uploads/...              product + permanent photos
+        config/app_config.json   shop info / SumUp / email / POS config
+        config/hardware.json     printers / cash drawer / scanner
+        config/branding/...      uploaded company logo
+        manifest.json            self-describing inventory
+
+    The DB dump is produced via ``dump_database`` (monkeypatched in tests) into
+    a temp file, streamed into the tar, then removed. Raises on dump failure so
+    ``run_backup`` records the row as failed (no half-written archive offered)."""
+    ts = datetime.now(timezone.utc)
+    tmp_sql = dest.parent / f".dbdump_{ts.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}.sql.gz"
+    uploads = _uploads_root()
+    config_entries = _config_entries()
+
+    manifest: dict = {
+        "format": "tar.gz",
+        "created_at": ts.isoformat(),
+        "db_engine": engine_kind(),
+    }
+    try:
+        dump_database(tmp_sql)
+        db_bytes = tmp_sql.stat().st_size if tmp_sql.exists() else 0
+        up_files, up_bytes = _dir_stats(uploads) if uploads.is_dir() else (0, 0)
+
+        with tarfile.open(dest, "w:gz") as tar:
+            tar.add(tmp_sql, arcname="database.sql.gz")
+            if uploads.is_dir():
+                tar.add(uploads, arcname="uploads")
+            for src, arcname in config_entries:
+                tar.add(src, arcname=arcname)
+
+            manifest["database"] = {"file": "database.sql.gz", "bytes": int(db_bytes)}
+            manifest["uploads"] = {"files": up_files, "bytes": up_bytes}
+            manifest["config"] = {"files": [a for _, a in config_entries]}
+            # Embed the manifest inside the archive too (self-describing dump).
+            payload = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
+            info = tarfile.TarInfo("manifest.json")
+            info.size = len(payload)
+            info.mtime = int(ts.timestamp())
+            tar.addfile(info, io.BytesIO(payload))
+    finally:
+        try:
+            if tmp_sql.exists():
+                tmp_sql.unlink()
+        except OSError:
+            pass
+    return manifest
+
+
+# ---------------------------------------------------------------------------
 # Config (singleton)
 # ---------------------------------------------------------------------------
 
@@ -133,7 +250,7 @@ async def get_config(db: AsyncSession) -> DatabaseBackupConfig:
 
 async def upsert_config(db: AsyncSession, data: dict) -> DatabaseBackupConfig:
     cfg = await get_config(db)
-    for key in ("retention_days", "alert_email", "enabled"):
+    for key in ("retention_days", "alert_email", "enabled", "include_files"):
         if key in data and data[key] is not None:
             setattr(cfg, key, data[key])
     if cfg.retention_days is not None and cfg.retention_days < 1:
@@ -186,8 +303,12 @@ async def run_backup(db: AsyncSession, *, trigger: str = "manual") -> DatabaseBa
     """Dump the DB, record a ledger row, prune old backups, alert on failure."""
     cfg = await get_config(db)
     kind = engine_kind()
+    full = bool(getattr(cfg, "include_files", True))
     ts = datetime.now(timezone.utc)
-    filename = f"vintiz_{ts.strftime('%Y%m%d_%H%M%S')}.sql.gz"
+    if full:
+        filename = f"vintiz_full_{ts.strftime('%Y%m%d_%H%M%S')}.tar.gz"
+    else:
+        filename = f"vintiz_{ts.strftime('%Y%m%d_%H%M%S')}.sql.gz"
     dest = backup_dir() / filename
 
     backup = DatabaseBackup(
@@ -196,6 +317,7 @@ async def run_backup(db: AsyncSession, *, trigger: str = "manual") -> DatabaseBa
         status="pending",
         trigger=trigger if trigger in ("auto", "manual") else "manual",
         db_engine=kind,
+        kind="full" if full else "db",
         started_at=ts,
     )
     db.add(backup)
@@ -203,13 +325,16 @@ async def run_backup(db: AsyncSession, *, trigger: str = "manual") -> DatabaseBa
 
     started = time.monotonic()
     try:
-        await asyncio.to_thread(dump_database, dest)
+        if full:
+            backup.manifest = await asyncio.to_thread(build_full_archive, dest)
+        else:
+            await asyncio.to_thread(dump_database, dest)
         size = dest.stat().st_size if dest.exists() else 0
         backup.status = "success"
         backup.size_bytes = int(size)
         backup.finished_at = datetime.now(timezone.utc)
         backup.duration_ms = int((time.monotonic() - started) * 1000)
-        logger.info("DB backup OK: %s (%d bytes, %s)", filename, size, trigger)
+        logger.info("DB backup OK: %s (%d bytes, kind=%s, %s)", filename, size, backup.kind, trigger)
     except Exception as exc:  # noqa: BLE001
         logger.exception("DB backup failed: %s", exc)
         backup.status = "failed"
@@ -274,6 +399,8 @@ def serialize_backup(b: DatabaseBackup) -> dict:
         "status": b.status,
         "trigger": b.trigger,
         "db_engine": b.db_engine,
+        "kind": getattr(b, "kind", "db"),
+        "manifest": getattr(b, "manifest", None),
         "error": b.error,
         "created_at": b.created_at.isoformat() if b.created_at else None,
         "started_at": b.started_at.isoformat() if b.started_at else None,

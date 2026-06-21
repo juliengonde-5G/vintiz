@@ -20,6 +20,13 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { api } from '@/lib/api';
 
+interface BackupManifest {
+  format?: string;
+  database?: { bytes?: number };
+  uploads?: { files?: number; bytes?: number };
+  config?: { files?: string[] };
+}
+
 interface BackupRow {
   id: string;
   filename: string;
@@ -27,6 +34,8 @@ interface BackupRow {
   status: 'pending' | 'success' | 'failed' | string;
   trigger: 'auto' | 'manual' | string;
   db_engine: string | null;
+  kind?: 'full' | 'db' | string;
+  manifest?: BackupManifest | null;
   error: string | null;
   created_at: string | null;
   duration_ms: number | null;
@@ -48,6 +57,7 @@ interface BackupConfig {
   retention_days: number;
   alert_email: string | null;
   enabled: boolean;
+  include_files: boolean;
 }
 
 function humanSize(bytes: number | null): string {
@@ -65,6 +75,16 @@ function fmtDate(s: string | null): string {
   const d = new Date(s);
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
     + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function coverageLabel(b: BackupRow): string {
+  if (b.kind !== 'full') return 'Base seule';
+  const parts = ['Base'];
+  const photos = b.manifest?.uploads?.files ?? 0;
+  if (photos > 0) parts.push(`${photos} photo${photos > 1 ? 's' : ''}`);
+  const cfg = b.manifest?.config?.files?.length ?? 0;
+  if (cfg > 0) parts.push('config');
+  return parts.join(' + ');
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -171,6 +191,7 @@ export default function DatabaseManagerPage() {
         retention_days: Number(config.retention_days),
         alert_email: config.alert_email || null,
         enabled: config.enabled,
+        include_files: config.include_files,
       });
       if (res.ok) { setConfig(await res.json()); notify('Réglages enregistrés'); }
       else notify('Échec de l\'enregistrement', 'error');
@@ -247,6 +268,19 @@ export default function DatabaseManagerPage() {
                       className="w-4 h-4 accent-vz-teal" />
                     <span className="text-sm text-gray-700">Sauvegarde automatique chaque nuit à 3&nbsp;h</span>
                   </label>
+                  <label className="flex items-start gap-2 mt-3 cursor-pointer">
+                    <input type="checkbox" checked={config.include_files}
+                      onChange={(e) => setConfig({ ...config, include_files: e.target.checked })}
+                      className="w-4 h-4 mt-0.5 accent-vz-teal" />
+                    <span className="text-sm text-gray-700">
+                      Sauvegarde <strong>exhaustive</strong> (archive complète)
+                      <span className="block text-xs text-gray-500">
+                        Inclut, en plus de la base : les photos produits, la configuration
+                        boutique &amp; matériel et le logo. Décocher pour ne garder que la base
+                        (.sql.gz, plus léger).
+                      </span>
+                    </span>
+                  </label>
                   <div className="mt-4">
                     <Button onClick={saveConfig} disabled={savingCfg}>
                       {savingCfg ? 'Enregistrement…' : 'Enregistrer les réglages'}
@@ -281,6 +315,7 @@ export default function DatabaseManagerPage() {
                         <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
                           <th className="py-2 pr-3">Date</th>
                           <th className="py-2 pr-3">Type</th>
+                          <th className="py-2 pr-3">Contenu</th>
                           <th className="py-2 pr-3">Statut</th>
                           <th className="py-2 pr-3">Taille</th>
                           <th className="py-2 pr-3 text-right">Actions</th>
@@ -291,6 +326,11 @@ export default function DatabaseManagerPage() {
                           <tr key={b.id} className="border-b border-gray-50">
                             <td className="py-2 pr-3 text-gray-700">{fmtDate(b.created_at)}</td>
                             <td className="py-2 pr-3 text-gray-600">{b.trigger === 'auto' ? 'Auto (nuit)' : 'Manuelle'}</td>
+                            <td className="py-2 pr-3">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${b.kind === 'full' ? 'bg-vz-teal-soft text-vz-teal-deep' : 'bg-gray-100 text-gray-600'}`}>
+                                {coverageLabel(b)}
+                              </span>
+                            </td>
                             <td className="py-2 pr-3">
                               <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[b.status] || 'bg-gray-100 text-gray-600'}`}>
                                 {b.status === 'success' ? 'Réussie' : b.status === 'failed' ? 'Échec' : b.status}
