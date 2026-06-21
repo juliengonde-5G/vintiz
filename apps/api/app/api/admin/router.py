@@ -914,6 +914,88 @@ async def update_features_endpoint(payload: FeaturesUpdate):
 
 
 # ---------------------------------------------------------------------------
+# Installation / paramétrage boutique (chaîne d'installation — voir
+# docs/MULTI_STORE.md). Config-only : pilote l'assistant /setup.
+# ---------------------------------------------------------------------------
+
+
+class InstallationUpdate(BaseModel):
+    installed: bool | None = None
+    complete_step: str | None = None  # marque une étape comme faite
+    reset: bool | None = None         # rouvre l'installation
+
+
+_SETUP_STEPS = [
+    ("identity", "Identité & localisation"),
+    ("fiscal", "Fiscalité (TVA)"),
+    ("zoning", "Organisation boutique (zonage)"),
+    ("hardware", "Matériel (encaissement, imprimantes, étiquettes)"),
+    ("users", "Utilisateurs & droits"),
+]
+
+
+def _installation_state() -> dict:
+    from app.services.app_config import get_section
+
+    inst = get_section("installation")
+    shop = get_section("shop_info")
+    completed = set(inst.get("completed_steps") or [])
+    identity_done = bool((shop.get("name") or "").strip() and (shop.get("city") or "").strip())
+    checklist = []
+    for key, label in _SETUP_STEPS:
+        done = identity_done if key == "identity" else key in completed
+        checklist.append({"key": key, "label": label, "done": done})
+    return {
+        "installed": bool(inst.get("installed")),
+        "installed_at": inst.get("installed_at") or "",
+        "completed_steps": sorted(completed | ({"identity"} if identity_done else set())),
+        "checklist": checklist,
+        "all_done": all(c["done"] for c in checklist),
+    }
+
+
+@router.get("/installation")
+async def get_installation(current_user: Annotated[User, Depends(get_current_user)]):
+    """Statut d'installation + checklist (lisible par tout back-office pour le
+    bandeau « installation à terminer »)."""
+    return _installation_state()
+
+
+@router.put("/installation", dependencies=[Depends(manager_only)])
+async def update_installation(payload: InstallationUpdate):
+    """Avancer/terminer l'installation (manager only)."""
+    from datetime import datetime, timezone
+
+    from app.services.app_config import get_section, update_section
+
+    inst = get_section("installation")
+    completed = set(inst.get("completed_steps") or [])
+    values: dict = {}
+
+    if payload.reset:
+        values = {"installed": False, "installed_at": "", "completed_steps": []}
+        update_section("installation", values)
+        return _installation_state()
+
+    valid_keys = {k for k, _ in _SETUP_STEPS}
+    if payload.complete_step:
+        if payload.complete_step not in valid_keys:
+            raise HTTPException(status_code=400, detail="Étape inconnue")
+        completed.add(payload.complete_step)
+        values["completed_steps"] = sorted(completed)
+
+    if payload.installed is not None:
+        values["installed"] = payload.installed
+        values["installed_at"] = (
+            datetime.now(timezone.utc).isoformat() if payload.installed else ""
+        )
+
+    if values:
+        update_section("installation", values)
+    return _installation_state()
+
+
+# ---------------------------------------------------------------------------
 # Company logo — uploaded asset rendered on invoices (and opt-in on tickets)
 # ---------------------------------------------------------------------------
 
