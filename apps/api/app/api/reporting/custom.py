@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,6 +54,21 @@ class WidgetQuery(BaseModel):
 async def get_catalog(current_user: Annotated[User, Depends(get_current_user)]):
     """Datasets, dimensions, measures, granularities and chart types."""
     return reporting_engine.catalog()
+
+
+@router.get("/values")
+async def get_dimension_values(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    dataset: str = Query(...),
+    dimension: str = Query(...),
+    limit: int = Query(200, ge=1, le=500),
+):
+    """Distinct values of a categorical dimension (for the filter dropdowns)."""
+    try:
+        return {"values": await reporting_engine.dimension_values(db, dataset, dimension, limit=limit)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.post("/query")
