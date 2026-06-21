@@ -101,6 +101,7 @@ async def create_and_send(
     backend: str | None = None
     status = "draft"
     detail: str | None = None
+    body_html: str | None = None
 
     if channel == "email":
         if not client.email:
@@ -110,11 +111,12 @@ async def create_and_send(
             try:
                 from app.services.email_gateway import EmailMessage, send_email
 
+                body_html = _render_html(client, message, products)
                 outcome = send_email(EmailMessage(
                     to=client.email,
                     to_name=f"{client.first_name} {client.last_name}".strip() or None,
                     subject=subject,
-                    html=_render_html(client, message, products),
+                    html=body_html,
                     tags=["personal-shopper"],
                 ))
                 status = outcome.status
@@ -157,6 +159,7 @@ async def create_and_send(
             backend=backend,
             detail=detail,
             template_key=None,
+            body_html=body_html,
         ))
 
     await db.flush()

@@ -68,3 +68,7 @@ class CommunicationLog(Base):
     backend: Mapped[str | None] = mapped_column(String(20), nullable=True)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     template_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Rendered HTML actually sent — lets the manager re-open the exact email from
+    # the client fiche. Populated for the rich emails (trend alert, personal
+    # shopper…) ; null for the lightweight ones (magic-link, SMS).
+    body_html: Mapped[str | None] = mapped_column(Text, nullable=True)

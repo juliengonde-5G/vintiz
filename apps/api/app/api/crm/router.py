@@ -1188,6 +1188,35 @@ async def list_personal_shopper_messages(
     return {"messages": await ps_messages.list_for_client(db, client_id, limit=limit)}
 
 
+@router.get("/communications/{comm_id}")
+async def get_communication(
+    comm_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Read one communication incl. the rendered HTML actually sent — lets the
+    fiche client re-open the exact email (alerte tendance, personal shopper…)."""
+    from app.models.communications import CommunicationLog
+
+    row = (
+        await db.execute(select(CommunicationLog).where(CommunicationLog.id == comm_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Communication introuvable")
+    return {
+        "id": str(row.id),
+        "channel": row.channel,
+        "kind": row.kind,
+        "subject": row.subject,
+        "status": row.status,
+        "backend": row.backend,
+        "to_address": row.to_address,
+        "detail": row.detail,
+        "body_html": row.body_html,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
 @router.get("/personal-shopper-v2")
 async def public_personal_shopper_v2(
     email: str = Query(..., min_length=5, max_length=255),

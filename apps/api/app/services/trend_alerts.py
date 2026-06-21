@@ -23,14 +23,15 @@ run respects the cap.
 
 from __future__ import annotations
 
+import html
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.client import Client, Consent, ConsentPurpose
 from app.models.embeddings import CustomerTasteProfile, ProductEmbedding
 from app.models.product import Product, ProductStatus
@@ -47,6 +48,8 @@ MAX_PRODUCTS_PER_RUN = 50
 NEW_ARRIVAL_WINDOW_HOURS = 36  # arrived "recently"
 EMBEDDING_VISUAL_WEIGHT = 0.6
 EMBEDDING_TEXT_WEIGHT = 0.4
+MAX_SELECTION = 4  # produits visuels max dans l'alerte « sélection »
+ALERT_SUBJECT = "Alerte tendance personnalisée"
 
 
 def _now() -> datetime:
@@ -137,26 +140,68 @@ async def _select_audience(db: AsyncSession) -> list[Client]:
     return audience
 
 
-def _build_email(client: Client, product: Product, score: float) -> EmailMessage:
-    name = client.first_name or "Bonjour"
-    public_url = "https://vintiz.fr/account/shopper"
-    html = (
+def _abs_media_url(path: str | None) -> str:
+    """Absolute URL for a product photo so it renders inside an email client."""
+    if not path:
+        return ""
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    base = (settings.PUBLIC_SITE_URL or "https://vintiz.fr").rstrip("/")
+    return f"{base}{path if path.startswith('/') else '/' + path}"
+
+
+def _product_photo(product: Product) -> str:
+    """Best visual for the email — détourée storefront photo if available."""
+    return _abs_media_url(getattr(product, "storefront_photo_url", None))
+
+
+def _selection_cards_html(selection: list[Product]) -> str:
+    """A responsive row of product cards (image + name + price) for the email."""
+    cells = ""
+    for product in selection:
+        img = _product_photo(product)
+        img_tag = (
+            f"<img src='{img}' alt='' width='150' "
+            f"style='width:150px;height:auto;border-radius:10px;display:block;margin:0 auto 6px' />"
+            if img else
+            "<div style='width:150px;height:150px;border-radius:10px;background:#ECEAE3;margin:0 auto 6px'></div>"
+        )
+        cells += (
+            "<td style='padding:8px;vertical-align:top;text-align:center;width:160px'>"
+            f"{img_tag}"
+            f"<div style='font-size:13px;color:#0E0E0C;line-height:1.2'>{html.escape(product.name or '')}</div>"
+            f"<div style='font-weight:bold;color:#0B7A6A;margin-top:2px'>{float(product.sale_price):.2f} €</div>"
+            "</td>"
+        )
+    return f"<table role='presentation' style='margin:8px auto'><tr>{cells}</tr></table>"
+
+
+def build_alert_html(client: Client, selection: list[Product], intro_html: str | None = None) -> str:
+    """The full « Alerte tendance personnalisée » HTML (intro + visual selection)."""
+    name = html.escape(client.first_name or "")
+    public_url = f"{(settings.PUBLIC_SITE_URL or 'https://vintiz.fr').rstrip('/')}/account/shopper"
+    intro = intro_html or (
         f"<p>Bonjour {name},</p>"
-        f"<p>Une nouveauté tendance vient d'arriver chez Vintiz Vernon — "
-        f"elle correspond à vos goûts.</p>"
-        f"<h2 style='color:#008678'>{product.name}</h2>"
-        f"<p>{product.description or ''}</p>"
-        f"<p><strong>{float(product.sale_price):.2f} €</strong></p>"
-        f"<p><a href='{public_url}' style='background:#008678;color:white;"
-        f"padding:12px 18px;border-radius:8px;text-decoration:none'>"
-        f"Voir dans mon espace</a></p>"
-        f"<p style='color:#777;font-size:12px'>Pour ne plus recevoir ces alertes, "
-        f"désactivez « Alertes nouveautés tendance » dans votre espace client.</p>"
+        "<p>De nouvelles pièces tendance viennent d'arriver chez Vintiz Vernon — "
+        "voici une sélection qui correspond à vos goûts.</p>"
     )
+    return (
+        f"<h2 style='color:#0B7A6A;text-align:center'>{ALERT_SUBJECT}</h2>"
+        f"{intro}"
+        f"{_selection_cards_html(selection)}"
+        f"<p style='text-align:center'><a href='{public_url}' style='background:#0B7A6A;color:white;"
+        "padding:12px 18px;border-radius:8px;text-decoration:none;display:inline-block'>"
+        "Voir ma sélection</a></p>"
+        "<p style='color:#8B8B86;font-size:12px'>Pour ne plus recevoir ces alertes, "
+        "désactivez « Alertes nouveautés tendance » dans votre espace client.</p>"
+    )
+
+
+def _build_email(client: Client, selection: list[Product]) -> EmailMessage:
     return EmailMessage(
         to=client.email or "",
-        subject=f"Nouveauté tendance pour vous : {product.name}",
-        html=html,
+        subject=ALERT_SUBJECT,
+        html=build_alert_html(client, selection),
         to_name=f"{client.first_name} {client.last_name}".strip(),
     )
 
@@ -192,33 +237,36 @@ async def run_trend_alerts(db: AsyncSession) -> dict[str, int]:
         if profile is None:
             continue
 
-        # Pick the best matching product for this client.
-        best: tuple[Product, float] | None = None
+        # Rank the matching products for this client → a visual selection.
+        scored: list[tuple[Product, float]] = []
         for product, embedding in products:
             visual = _cosine(profile.visual_centroid, embedding.visual_embedding)
             text = _cosine(profile.text_centroid, embedding.text_embedding)
             score = EMBEDDING_VISUAL_WEIGHT * visual + EMBEDDING_TEXT_WEIGHT * text
-            if score >= MATCH_THRESHOLD and (best is None or score > best[1]):
-                best = (product, score)
+            if score >= MATCH_THRESHOLD:
+                scored.append((product, score))
 
-        if best is None or not client.email:
+        if not scored or not client.email:
             continue
+        scored.sort(key=lambda t: t[1], reverse=True)
+        selection = [p for p, _ in scored[:MAX_SELECTION]]
 
         matched += 1
         from app.services.communications import log_communication, render_template
 
-        product = best[0]
+        # The admin-editable template (if active) provides the intro/subject;
+        # the visual selection is always appended so the alert carries images.
         rendered = await render_template(
             db,
             "trend_alert",
             {
                 "prenom": client.first_name or "",
-                "produit": product.name,
-                "prix": f"{float(product.sale_price):.2f} €",
+                "produit": selection[0].name,
+                "prix": f"{float(selection[0].sale_price):.2f} €",
             },
         )
-        fallback = _build_email(client, product, best[1])
-        subject = rendered.subject or fallback.subject
+        subject = rendered.subject or ALERT_SUBJECT
+        body_html = build_alert_html(client, selection, intro_html=rendered.html or None)
         status = "failed"
         backend = None
         detail = None
@@ -227,8 +275,7 @@ async def run_trend_alerts(db: AsyncSession) -> dict[str, int]:
                 EmailMessage(
                     to=client.email or "",
                     subject=subject,
-                    html=rendered.html or fallback.html,
-                    text=rendered.text or fallback.text,
+                    html=body_html,
                     to_name=f"{client.first_name} {client.last_name}".strip(),
                 )
             )
@@ -245,6 +292,7 @@ async def run_trend_alerts(db: AsyncSession) -> dict[str, int]:
             db, client_id=client.id, channel="email", kind="trend_alert",
             status=status, to_address=client.email, subject=subject,
             backend=backend, detail=detail, template_key=rendered.template_key,
+            body_html=body_html,
         )
 
     if sent or matched:
