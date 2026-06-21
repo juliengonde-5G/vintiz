@@ -66,6 +66,16 @@ const navGroups: NavGroup[] = [
           </svg>
         ),
       },
+      {
+        label: 'Rapports sur-mesure',
+        href: '/reports/builder',
+        icon: (
+          <svg {...iconProps}>
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18M9 21V9" />
+          </svg>
+        ),
+      },
     ],
   },
   {
