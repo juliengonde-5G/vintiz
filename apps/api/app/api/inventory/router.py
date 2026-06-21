@@ -88,6 +88,28 @@ def _coerce_gender(value: str | None) -> Gender | None:
 
 
 # ---------------------------------------------------------------------------
+# Reference pricing grid — advisory floor check
+# ---------------------------------------------------------------------------
+
+@router.get("/pricing/reference-check")
+async def reference_price_check(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    category_id: uuid.UUID,
+    price: float | None = Query(None, description="Prix de vente envisagé (€)"),
+    brand: str | None = Query(None),
+):
+    """Compare a planned sale price against the reference grid floor.
+
+    Returns ``{has_reference, below, floor, bucket, standard_floor,
+    premium_floor, note}`` so the add-product wizard (and the reprice modal)
+    can raise a non-blocking "prix sous la grille" notification."""
+    from app.services import price_reference
+
+    return await price_reference.check(db, category_id, brand, price)
+
+
+# ---------------------------------------------------------------------------
 # Products
 # ---------------------------------------------------------------------------
 
@@ -911,12 +933,23 @@ async def reprice_product(
     await db.commit()
     await db.refresh(product)
 
+    # Advisory reference-grid check on the new price (best-effort: never blocks
+    # the reprice, runs after the commit so the price change is already saved).
+    reference = None
+    try:
+        from app.services import price_reference
+
+        reference = await price_reference.check(db, product.category_id, product.brand, new_price)
+    except Exception:  # noqa: BLE001
+        reference = None
+
     return {
         "product": ProductResponse.model_validate(product).model_dump(mode="json"),
         "old_price": old_price,
         "new_price": new_price,
         "price_changed": price_changed,
         "score": score,
+        "reference": reference,
         "move": {
             "recommended": move_recommended,
             "current_zone_id": current_zone_id,
@@ -1780,7 +1813,15 @@ async def movements_weekly_plan(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Aménagement HORIZONTAL de la semaine (Vintiz IA), zone par zone :
-    « de la zone A, déplacez X, Y, Z vers la zone B/C »."""
+    « de la zone A, déplacez X, Y, Z vers la zone B/C ».
+
+    Désactivé quand le zonage est coupé (l'aménagement horizontal n'a pas de
+    sens sans zones) → renvoie un plan vide marqué ``zoning_enabled: false``."""
+    from app.services.feature_flags import zoning_enabled
+
+    if not zoning_enabled():
+        return {"zoning_enabled": False, "zones": [], "moves": []}
+
     from app.services.stock_movement import weekly_layout_plan
 
     return await weekly_layout_plan(db)

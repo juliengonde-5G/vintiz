@@ -25,6 +25,7 @@ from app.models.reporting import DailyReport, CommercialAction, ActionResult
 from app.models.audit import AuditLog, Settings
 from app.models.batch import IntakeBatch, IntakeSource
 from app.models.brand_tier import BrandTier, BrandTierLevel
+from app.models.price_reference import PriceReference
 from app.models.merchandising import WindowDisplayProposal
 from app.models.visibility import (
     GoogleReview,
@@ -35,6 +36,8 @@ from app.models.visibility import (
     SocialPostCategory,
 )
 from app.models.events import EventLog, EventSource, EventType
+from app.models.personal_shopper import PersonalShopperMessage
+from app.models.custom_report import CustomReport
 from app.models.product_location import LocationMoveType, ProductLocationEvent
 from app.models.embeddings import (
     EMBEDDING_DIM,
@@ -94,6 +97,9 @@ __all__ = [
     "LocationMoveType", "ProductLocationEvent",
     "IntakeBatch", "IntakeSource",
     "BrandTier", "BrandTierLevel",
+    "PriceReference",
+    "PersonalShopperMessage",
+    "CustomReport",
     "WindowDisplayProposal",
     "SEOSnapshot", "SocialPost", "SocialPostCategory", "SocialPlatform",
     "SocialMention", "GoogleReview",

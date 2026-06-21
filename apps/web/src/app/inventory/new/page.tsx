@@ -63,6 +63,17 @@ interface VisionResult {
   error?: string;
 }
 
+interface PriceReferenceCheck {
+  has_reference: boolean;
+  below: boolean;
+  floor: number | null;
+  bucket: 'standard' | 'premium' | string;
+  standard_floor: number | null;
+  premium_floor: number | null;
+  note: string | null;
+  source?: string | null;
+}
+
 interface PriceSuggestion {
   suggested_price: number;
   price_range: { min: number; max: number };
@@ -73,6 +84,7 @@ interface PriceSuggestion {
     recent_sales_count: number;
     new_price_estimate?: number | null;
   };
+  reference?: PriceReferenceCheck | null;
 }
 
 interface ZoneSuggestion {
@@ -217,6 +229,7 @@ export default function NewProductWizard() {
   const [planZones, setPlanZones] = useState<PlanZone[]>([]);
   const [zoneSuggestion, setZoneSuggestion] = useState<ZoneSuggestion | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState('');
+  const [zoningEnabled, setZoningEnabled] = useState(true);
 
   // Label
   const [labelUrl, setLabelUrl] = useState('');
@@ -230,6 +243,9 @@ export default function NewProductWizard() {
     }).catch(() => {});
     api.get('/api/inventory/brands').then(async (res) => {
       if (res.ok) setBrands(await res.json());
+    }).catch(() => {});
+    api.get('/api/admin/features').then(async (res) => {
+      if (res.ok) setZoningEnabled((await res.json()).zoning_enabled !== false);
     }).catch(() => {});
   }, []);
 
@@ -417,18 +433,22 @@ export default function NewProductWizard() {
     const product = await createOrUpdate();
     if (!product) return;
     // Prepare the zone step: load the boutique plan + the AI zone suggestion.
-    try {
-      const [zres, sres] = await Promise.all([
-        api.get('/api/admin/zones'),
-        api.get(`/api/inventory/products/${product.id}/suggest-zone`),
-      ]);
-      if (zres.ok) setPlanZones(await zres.json());
-      if (sres.ok) {
-        const sug: ZoneSuggestion = await sres.json();
-        setZoneSuggestion(sug);
-        if (sug.primary_zone_id) setSelectedZoneId(sug.primary_zone_id);
-      }
-    } catch { /* zone step still usable manually */ }
+    // Skipped entirely when zoning is disabled (boutique sans zones) — the step
+    // then only offers the rayon/réserve choice.
+    if (zoningEnabled) {
+      try {
+        const [zres, sres] = await Promise.all([
+          api.get('/api/admin/zones'),
+          api.get(`/api/inventory/products/${product.id}/suggest-zone`),
+        ]);
+        if (zres.ok) setPlanZones(await zres.json());
+        if (sres.ok) {
+          const sug: ZoneSuggestion = await sres.json();
+          setZoneSuggestion(sug);
+          if (sug.primary_zone_id) setSelectedZoneId(sug.primary_zone_id);
+        }
+      } catch { /* zone step still usable manually */ }
+    }
     setStep('zone');
   };
 
@@ -869,6 +889,32 @@ export default function NewProductWizard() {
                   </div>
                 </div>
 
+                {(() => {
+                  const ref = priceSuggestion?.reference;
+                  const p = parseFloat(price);
+                  if (!ref?.has_reference || ref.floor == null || !(p > 0)) return null;
+                  if (p >= ref.floor) {
+                    return (
+                      <p className="text-xs text-vz-teal-deep flex items-center gap-1">
+                        ✓ Conforme à la grille de référence ({ref.bucket === 'premium' ? 'premium' : 'standard'}, plancher {ref.floor.toFixed(2)} €).
+                      </p>
+                    );
+                  }
+                  return (
+                    <div role="alert" className="p-3 rounded-xl bg-amber-50 border border-amber-300">
+                      <p className="text-sm font-medium text-amber-800">
+                        ⚠️ Prix sous la grille de référence
+                      </p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        Plancher {ref.bucket === 'premium' ? 'premium' : 'standard'} pour cette catégorie :{' '}
+                        <strong>{ref.floor.toFixed(2)} €</strong>. Le prix saisi ({p.toFixed(2)} €) est
+                        inférieur. Vous pouvez tout de même valider.
+                      </p>
+                      {ref.note && <p className="text-[11px] text-amber-600 mt-1">{ref.note}</p>}
+                    </div>
+                  );
+                })()}
+
                 <div className="flex gap-3 pt-2">
                   <Button variant="outline" onClick={() => setStep('identity')}>Précédent</Button>
                   <Button className="flex-1" disabled={saving || !(parseFloat(price) > 0)} onClick={validatePrice}>
@@ -894,7 +940,11 @@ export default function NewProductWizard() {
                   </button>
                 </div>
 
-                {destination === 'rayon' && (
+                {destination === 'rayon' && !zoningEnabled && (
+                  <p className="text-sm text-gray-500">L&apos;article sera mis en rayon. La gestion des zones est désactivée.</p>
+                )}
+
+                {destination === 'rayon' && zoningEnabled && (
                   <>
                     {zoneSuggestion?.rationale && (
                       <div className="p-3 rounded-xl bg-vz-teal-soft/40 border border-vz-teal-soft text-sm">

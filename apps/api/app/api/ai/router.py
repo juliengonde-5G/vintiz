@@ -192,6 +192,14 @@ async def suggest_product_price(
     marque + état quand ce paramètre est absent.
     """
     result = await suggest_price(db, category_id, purchase_price, brand, condition)
+    # Floor prices from the reference grid (advisory) — lets the UI flag a sale
+    # price below the boutique's "grille tarifaire de référence".
+    try:
+        from app.services import price_reference
+
+        result["reference"] = await price_reference.check(db, category_id, brand, None)
+    except Exception:  # noqa: BLE001 — never break the price suggestion on this
+        result["reference"] = None
     return result
 
 

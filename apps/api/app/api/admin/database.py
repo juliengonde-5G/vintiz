@@ -29,6 +29,7 @@ class BackupConfigIn(BaseModel):
     retention_days: int | None = None
     alert_email: str | None = None
     enabled: bool | None = None
+    include_files: bool | None = None
 
 
 def _config_out(cfg) -> dict:
@@ -36,6 +37,7 @@ def _config_out(cfg) -> dict:
         "retention_days": cfg.retention_days,
         "alert_email": cfg.alert_email,
         "enabled": cfg.enabled,
+        "include_files": getattr(cfg, "include_files", True),
     }
 
 

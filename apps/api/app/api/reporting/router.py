@@ -12,7 +12,10 @@ from app.models.user import User
 from app.services.retail_kpis import ess_report, retail_kpis
 from app.services.stock_metrics import stock_movement_metrics
 
+from app.api.reporting.custom import router as _custom_router
+
 router = APIRouter(prefix="/reports", tags=["reporting"])
+router.include_router(_custom_router)
 
 
 @router.get("/stock-movement")

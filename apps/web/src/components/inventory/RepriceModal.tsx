@@ -17,12 +17,21 @@ interface RepriceMove {
   rationale: string;
 }
 
+interface RepriceReference {
+  has_reference: boolean;
+  below: boolean;
+  floor: number | null;
+  bucket: 'standard' | 'premium' | string;
+  note: string | null;
+}
+
 interface RepriceResult {
   old_price: number;
   new_price: number;
   price_changed: boolean;
   score: { total_score: number; action: string; action_color: string };
   move: RepriceMove;
+  reference?: RepriceReference | null;
 }
 
 interface RepriceModalProps {
@@ -241,6 +250,20 @@ export default function RepriceModal({
                 </div>
               </div>
             </div>
+
+            {/* Reference-grid notification (non-blocking) */}
+            {result.reference?.below && result.reference.floor != null && (
+              <div role="alert" className="p-3 rounded-lg border border-amber-300 bg-amber-50">
+                <p className="text-sm font-medium text-amber-800">⚠️ Prix sous la grille de référence</p>
+                <p className="text-xs text-amber-700 mt-1">
+                  Plancher {result.reference.bucket === 'premium' ? 'premium' : 'standard'} :{' '}
+                  <strong>{fmtPrice(result.reference.floor)}</strong>.
+                </p>
+                {result.reference.note && (
+                  <p className="text-[11px] text-amber-600 mt-1">{result.reference.note}</p>
+                )}
+              </div>
+            )}
 
             {/* Move proposal */}
             {result.move.recommended ? (

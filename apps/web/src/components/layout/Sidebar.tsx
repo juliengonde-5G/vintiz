@@ -3,6 +3,7 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { api } from '@/lib/api';
 
 type NavItem = {
   label: string;
@@ -62,6 +63,16 @@ const navGroups: NavGroup[] = [
             <line x1="18" y1="20" x2="18" y2="10" />
             <line x1="12" y1="20" x2="12" y2="4" />
             <line x1="6" y1="20" x2="6" y2="14" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Rapports sur-mesure',
+        href: '/reports/builder',
+        icon: (
+          <svg {...iconProps}>
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18M9 21V9" />
           </svg>
         ),
       },
@@ -248,6 +259,16 @@ const navGroups: NavGroup[] = [
     label: 'Configuration',
     items: [
       {
+        label: 'Installation',
+        href: '/setup',
+        icon: (
+          <svg {...iconProps}>
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        ),
+      },
+      {
         label: 'Utilisateurs',
         href: '/admin/users',
         icon: (
@@ -266,6 +287,16 @@ const navGroups: NavGroup[] = [
           <svg {...iconProps}>
             <line x1="12" y1="1" x2="12" y2="23" />
             <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Grille tarifaire',
+        href: '/admin/price-reference',
+        icon: (
+          <svg {...iconProps}>
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+            <line x1="7" y1="7" x2="7.01" y2="7" />
           </svg>
         ),
       },
@@ -335,6 +366,13 @@ function SidebarInner() {
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [userName, setUserName] = useState<string>('Admin');
   const [role, setRole] = useState<'manager' | 'collaborateur' | null>(null);
+  const [zoningEnabled, setZoningEnabled] = useState(true);
+
+  useEffect(() => {
+    api.get('/api/admin/features')
+      .then(async (res) => { if (res.ok) setZoningEnabled((await res.json()).zoning_enabled !== false); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -464,7 +502,10 @@ function SidebarInner() {
             .filter((group) => role !== 'collaborateur' || !COLLAB_HIDDEN_GROUPS.has(group.label))
             .map((group) => {
               const items = group.items.filter(
-                (item) => role !== 'collaborateur' || !COLLAB_HIDDEN_PATHS.has(item.href),
+                (item) =>
+                  (role !== 'collaborateur' || !COLLAB_HIDDEN_PATHS.has(item.href))
+                  // Hide the zones page entirely when zoning is disabled.
+                  && (zoningEnabled || item.href !== '/zones'),
               );
               if (items.length === 0) return null;
               return (

@@ -26,6 +26,7 @@ from app.api.admin import users as _users_module
 from app.api.admin import receipt_templates as _receipt_templates_module
 from app.api.admin import sumup_terminals as _sumup_terminals_module
 from app.api.admin import database as _database_module
+from app.api.admin import price_reference as _price_reference_module
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -38,6 +39,7 @@ router.include_router(_users_module.router)
 router.include_router(_receipt_templates_module.router)
 router.include_router(_sumup_terminals_module.router)
 router.include_router(_database_module.router)
+router.include_router(_price_reference_module.router)
 
 
 # ---------------------------------------------------------------------------
@@ -880,6 +882,117 @@ async def update_shop_info(payload: ShopInfoUpdate):
 
     values = payload.model_dump(exclude_none=True)
     return update_section("shop_info", values)
+
+
+# ---------------------------------------------------------------------------
+# Feature toggles — activer/désactiver des modules (zonage…)
+# ---------------------------------------------------------------------------
+
+
+class FeaturesUpdate(BaseModel):
+    zoning_enabled: bool | None = None
+
+
+@router.get("/features")
+async def get_features_endpoint(current_user: Annotated[User, Depends(get_current_user)]):
+    """Read feature toggles. Readable by any authenticated back-office user so
+    the POS / intake screens can react (e.g. hide the zone step) — not just the
+    manager."""
+    from app.services.feature_flags import get_features
+
+    return get_features()
+
+
+@router.put("/features", dependencies=[Depends(manager_only)])
+async def update_features_endpoint(payload: FeaturesUpdate):
+    """Toggle features (manager only). For now: ``zoning_enabled``."""
+    from app.services.feature_flags import get_features, set_zoning_enabled
+
+    if payload.zoning_enabled is not None:
+        return set_zoning_enabled(payload.zoning_enabled)
+    return get_features()
+
+
+# ---------------------------------------------------------------------------
+# Installation / paramétrage boutique (chaîne d'installation — voir
+# docs/MULTI_STORE.md). Config-only : pilote l'assistant /setup.
+# ---------------------------------------------------------------------------
+
+
+class InstallationUpdate(BaseModel):
+    installed: bool | None = None
+    complete_step: str | None = None  # marque une étape comme faite
+    reset: bool | None = None         # rouvre l'installation
+
+
+_SETUP_STEPS = [
+    ("identity", "Identité & localisation"),
+    ("fiscal", "Fiscalité (TVA)"),
+    ("zoning", "Organisation boutique (zonage)"),
+    ("hardware", "Matériel (encaissement, imprimantes, étiquettes)"),
+    ("users", "Utilisateurs & droits"),
+]
+
+
+def _installation_state() -> dict:
+    from app.services.app_config import get_section
+
+    inst = get_section("installation")
+    shop = get_section("shop_info")
+    completed = set(inst.get("completed_steps") or [])
+    identity_done = bool((shop.get("name") or "").strip() and (shop.get("city") or "").strip())
+    checklist = []
+    for key, label in _SETUP_STEPS:
+        done = identity_done if key == "identity" else key in completed
+        checklist.append({"key": key, "label": label, "done": done})
+    return {
+        "installed": bool(inst.get("installed")),
+        "installed_at": inst.get("installed_at") or "",
+        "completed_steps": sorted(completed | ({"identity"} if identity_done else set())),
+        "checklist": checklist,
+        "all_done": all(c["done"] for c in checklist),
+    }
+
+
+@router.get("/installation")
+async def get_installation(current_user: Annotated[User, Depends(get_current_user)]):
+    """Statut d'installation + checklist (lisible par tout back-office pour le
+    bandeau « installation à terminer »)."""
+    return _installation_state()
+
+
+@router.put("/installation", dependencies=[Depends(manager_only)])
+async def update_installation(payload: InstallationUpdate):
+    """Avancer/terminer l'installation (manager only)."""
+    from datetime import datetime, timezone
+
+    from app.services.app_config import get_section, update_section
+
+    inst = get_section("installation")
+    completed = set(inst.get("completed_steps") or [])
+    values: dict = {}
+
+    if payload.reset:
+        values = {"installed": False, "installed_at": "", "completed_steps": []}
+        update_section("installation", values)
+        return _installation_state()
+
+    valid_keys = {k for k, _ in _SETUP_STEPS}
+    if payload.complete_step:
+        if payload.complete_step not in valid_keys:
+            raise HTTPException(status_code=400, detail="Étape inconnue")
+        completed.add(payload.complete_step)
+        values["completed_steps"] = sorted(completed)
+
+    if payload.installed is not None:
+        values["installed"] = payload.installed
+        values["installed_at"] = (
+            datetime.now(timezone.utc).isoformat() if payload.installed else ""
+        )
+
+    if values:
+        update_section("installation", values)
+    return _installation_state()
 
 
 # ---------------------------------------------------------------------------
@@ -1807,10 +1920,15 @@ async def preview_return_to_sorting(
 async def store_plan(db: Annotated[AsyncSession, Depends(get_db)]):
     """Return all zones with their canvas coordinates, current occupancy
     and the score-bucket colour code so the front can render the SVG
-    plan directly (P2-005)."""
+    plan directly (P2-005). Empty + ``zoning_enabled: false`` when zoning is
+    turned off."""
+    from app.services.feature_flags import zoning_enabled
     from app.services.merchandising import MerchandisingService
 
-    return {"zones": await MerchandisingService(db).zone_occupancy()}
+    if not zoning_enabled():
+        return {"zoning_enabled": False, "zones": []}
+
+    return {"zoning_enabled": True, "zones": await MerchandisingService(db).zone_occupancy()}
 
 
 @router.get(

@@ -54,6 +54,22 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "logo_path": "",
         "print_logo_on_ticket": False,
     },
+    # Installation / paramétrage de la boutique (chaîne d'installation, phase 1).
+    # ``installed`` passe à True une fois l'assistant /setup terminé ;
+    # ``completed_steps`` mémorise les étapes validées (fiscal, zoning, hardware,
+    # users…). Voir docs/MULTI_STORE.md.
+    "installation": {
+        "installed": False,
+        "installed_at": "",
+        "completed_steps": [],
+    },
+    # Feature toggles — activer/désactiver des modules de l'application.
+    # ``zoning_enabled`` pilote toute la gestion des zones (placement produit,
+    # moteur IA d'aménagement, KPI par zone…). Désactivé → l'app fonctionne en
+    # « boutique sans zonage » sans rien casser. Voir app/services/feature_flags.py.
+    "features": {
+        "zoning_enabled": True,
+    },
     # SumUp config — editable via /settings > Paiement (overrides env vars)
     "sumup": {
         "environment": "",  # empty = auto-detect (env var fallback)
@@ -122,8 +138,11 @@ def _deep_copy(obj: dict[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps(obj))
 
 
-def load_config(path: Path = DEFAULT_PATH) -> dict[str, Any]:
+def load_config(path: Path | None = None) -> dict[str, Any]:
     """Load app config, merging defaults for missing keys."""
+    # Resolve at call time (not as a default arg) so a monkeypatched/overridden
+    # DEFAULT_PATH is honoured — default args bind once at import.
+    path = path or DEFAULT_PATH
     if not path.exists():
         return _deep_copy(DEFAULT_CONFIG)
     try:
@@ -141,8 +160,9 @@ def load_config(path: Path = DEFAULT_PATH) -> dict[str, Any]:
     return merged
 
 
-def save_config(config: dict[str, Any], path: Path = DEFAULT_PATH) -> dict[str, Any]:
+def save_config(config: dict[str, Any], path: Path | None = None) -> dict[str, Any]:
     """Persist a partial app config (merged with current state)."""
+    path = path or DEFAULT_PATH
     _ensure_parent(path)
     current = load_config(path)
     for section, values in (config or {}).items():
@@ -162,14 +182,14 @@ def save_config(config: dict[str, Any], path: Path = DEFAULT_PATH) -> dict[str, 
     return current
 
 
-def get_section(section: str, path: Path = DEFAULT_PATH) -> dict[str, Any]:
+def get_section(section: str, path: Path | None = None) -> dict[str, Any]:
     """Read a single section (returns a copy, never the live dict)."""
-    return _deep_copy(load_config(path).get(section, {}))
+    return _deep_copy(load_config(path or DEFAULT_PATH).get(section, {}))
 
 
-def update_section(section: str, values: dict[str, Any], path: Path = DEFAULT_PATH) -> dict[str, Any]:
+def update_section(section: str, values: dict[str, Any], path: Path | None = None) -> dict[str, Any]:
     """Update a single section."""
-    return save_config({section: values}, path=path)
+    return save_config({section: values}, path=path or DEFAULT_PATH)
 
 
 def resolved_pos_bags(pos_section: dict[str, Any]) -> list[dict[str, Any]]:
