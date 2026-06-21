@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 import CompanionHero from '@/components/ai/CompanionHero';
 import RecosDuJourTab from '@/components/ia/RecosDuJourTab';
 import { api } from '@/lib/api';
+import { useZoningEnabled } from '@/lib/useZoningEnabled';
 import { formatCurrency, mediaUrl } from '@/lib/format';
 
 interface TrendItem {
@@ -337,6 +338,7 @@ interface TrendsMode {
 
 
 export default function IAPage() {
+  const zoningEnabled = useZoningEnabled();
   const [tab, setTab] = useState<'recos_du_jour' | 'checklist' | 'fashion_book' | 'trends_scoring'>('recos_du_jour');
   const [trends, setTrends] = useState<TrendItem[]>([]);
   const [markdowns, setMarkdowns] = useState<MarkdownItem[]>([]);
@@ -569,13 +571,15 @@ export default function IAPage() {
             <span>📣</span>
             <span>Rapport marketing</span>
           </Link>
-          <Link
-            href="/ia/gestion-magasin"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl min-h-[48px] whitespace-nowrap bg-white border border-vz-line text-vz-ink font-medium hover:bg-vz-bg-alt transition-all"
-          >
-            <span>🏬</span>
-            <span>Audit boutique</span>
-          </Link>
+          {zoningEnabled !== false && (
+            <Link
+              href="/ia/gestion-magasin"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl min-h-[48px] whitespace-nowrap bg-white border border-vz-line text-vz-ink font-medium hover:bg-vz-bg-alt transition-all"
+            >
+              <span>🏬</span>
+              <span>Audit boutique</span>
+            </Link>
+          )}
           <Link
             href="/ia/brief-appro"
             className="flex items-center gap-2 px-4 py-2 rounded-xl min-h-[48px] whitespace-nowrap bg-white border border-vz-line text-vz-ink font-medium hover:bg-vz-bg-alt transition-all"

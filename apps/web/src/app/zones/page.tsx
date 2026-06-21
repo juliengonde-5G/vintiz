@@ -8,8 +8,10 @@ import Card from '@/components/ui/Card';
 import SectionHeader from '@/components/ui/SectionHeader';
 import EmptyState from '@/components/ui/EmptyState';
 import IsoCanvas from '@/components/zones/IsoCanvas';
+import ZoningDisabled from '@/components/zones/ZoningDisabled';
 import { ZONE_TAG_OPTIONS } from '@/components/zones/FurnitureSVG';
 import { api } from '@/lib/api';
+import { useZoningEnabled } from '@/lib/useZoningEnabled';
 
 type Zone = {
   id: string;
@@ -117,6 +119,7 @@ function ZoneIcon({ name, className }: { name: string | null; className?: string
 }
 
 export default function ZonesPage() {
+  const zoningEnabled = useZoningEnabled();
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -243,6 +246,10 @@ export default function ZonesPage() {
       setSaving(false);
     }
   };
+
+  if (zoningEnabled === false) {
+    return <ZoningDisabled title="Espaces" />;
+  }
 
   return (
     <div className="min-h-screen bg-vz-bg">

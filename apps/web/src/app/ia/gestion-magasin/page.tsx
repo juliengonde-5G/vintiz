@@ -14,6 +14,8 @@ import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
+import { useZoningEnabled } from '@/lib/useZoningEnabled';
+import ZoningDisabled from '@/components/zones/ZoningDisabled';
 
 interface Metrics {
   active_total: number;
@@ -73,6 +75,7 @@ function Tile({ label, value, hint, tone = 'default' }: { label: string; value: 
 }
 
 export default function StoreOpsAuditPage() {
+  const zoningEnabled = useZoningEnabled();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<Report | null>(null);
@@ -111,6 +114,10 @@ export default function StoreOpsAuditPage() {
 
   const m = report?.metrics;
   const a = report?.audit;
+
+  if (zoningEnabled === false) {
+    return <ZoningDisabled title="Audit boutique" />;
+  }
 
   return (
     <div className="min-h-screen bg-vz-bg">
