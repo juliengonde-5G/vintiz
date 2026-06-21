@@ -544,6 +544,18 @@ async def get_client_full(
     except Exception as exc:  # noqa: BLE001
         _record_error("coupons", exc)
 
+    # --- Personal Shopper (sélections envoyées au client) ---
+    personal_shopper = {"last_message": None, "sent_count": 0}
+    try:
+        from app.services import ps_messages
+
+        personal_shopper = {
+            "last_message": await ps_messages.last_for_client(db, client.id),
+            "sent_count": await ps_messages.count_for_client(db, client.id),
+        }
+    except Exception as exc:  # noqa: BLE001
+        _record_error("personal_shopper", exc)
+
     return {
         "client": {
             "id": str(client.id),
@@ -566,6 +578,7 @@ async def get_client_full(
         "consents": consents,
         "coupons": coupons,
         "communications": communications,
+        "personal_shopper": personal_shopper,
         "audit": audit,
         # Sections qui ont planté (vide quand tout va bien) — le front
         # affiche un bandeau « partial-fail » au lieu d'un 500 aveugle.
@@ -1116,6 +1129,64 @@ async def personal_shopper_v2(
         raise HTTPException(status_code=403, detail=exc.reason)
     await db.commit()
     return result
+
+
+class SendPersonalShopperRequest(BaseModel):
+    message: str
+    product_ids: list[uuid.UUID] = []
+    products: list[dict] = []  # optional snapshot [{id,name,brand,sale_price,photo_url}]
+    channel: str = "email"     # email | sms | none
+    subject: str | None = None
+    algo_version: str | None = None
+
+
+@router.post("/clients/{client_id}/personal-shopper/send")
+async def send_personal_shopper_selection(
+    client_id: uuid.UUID,
+    request: SendPersonalShopperRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Persist + send a Personal Shopper selection to a client (manager).
+
+    Records exactly what the manager is looking at (narrative + products) so the
+    fiche keeps a history of « le personal shopper a envoyé un message », and
+    delivers it through the email/SMS gateway when a channel is requested."""
+    from app.services import ps_messages
+
+    client = (
+        await db.execute(select(Client).where(Client.id == client_id))
+    ).scalar_one_or_none()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Cliente introuvable")
+
+    row = await ps_messages.create_and_send(
+        db, client,
+        message=request.message,
+        product_ids=[str(p) for p in request.product_ids],
+        products=request.products,
+        channel=request.channel,
+        subject=request.subject,
+        algo_version=request.algo_version,
+        sent_by_id=current_user.id,
+    )
+    await db.commit()
+    out = ps_messages.serialize(row)
+    return {"ok": row.status not in ("failed",), "message": out}
+
+
+@router.get("/clients/{client_id}/personal-shopper/messages")
+async def list_personal_shopper_messages(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """History of Personal Shopper selections sent to this client (manager)."""
+    from app.services import ps_messages
+
+    return {"messages": await ps_messages.list_for_client(db, client_id, limit=limit)}
+
 
 @router.get("/personal-shopper-v2")
 async def public_personal_shopper_v2(

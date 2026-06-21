@@ -11,7 +11,40 @@ import TransactionDetailModal from '@/components/pos/TransactionDetailModal';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
 
-type Tab = 'synthese' | 'achats' | 'fidelite' | 'gouts' | 'comms' | 'rgpd' | 'audit';
+type Tab = 'synthese' | 'achats' | 'fidelite' | 'gouts' | 'shopper' | 'comms' | 'rgpd' | 'audit';
+
+interface PSProduct {
+  id?: string;
+  product_id?: string;
+  name?: string;
+  brand?: string | null;
+  size?: string | null;
+  color?: string | null;
+  sale_price?: number | null;
+  price_cents?: number | null;
+  score?: number | null;
+  photo_url?: string | null;
+}
+
+interface PSLive {
+  recommendation_set_id?: string;
+  message?: string;
+  products?: PSProduct[];
+  algo_version?: string;
+  fallback_used?: boolean;
+}
+
+interface PSMessage {
+  id: string;
+  subject: string | null;
+  message: string;
+  product_ids: string[];
+  products: PSProduct[];
+  channel: string;
+  status: string;
+  backend: string | null;
+  created_at: string | null;
+}
 
 interface ClientFull {
   client: {
@@ -88,6 +121,10 @@ interface ClientFull {
     to_address: string | null;
     created_at: string | null;
   }[];
+  personal_shopper?: {
+    last_message: PSMessage | null;
+    sent_count: number;
+  };
   audit: {
     id: string;
     action: string;
@@ -153,11 +190,101 @@ export default function ClientDetailPage() {
   const [error, setError] = useState('');
   const [openTxId, setOpenTxId] = useState<string | null>(null);
 
+  // --- Personal Shopper tab state ---
+  const [psLive, setPsLive] = useState<PSLive | null>(null);
+  const [psGated, setPsGated] = useState<string | null>(null);
+  const [psLoading, setPsLoading] = useState(false);
+  const [psMessages, setPsMessages] = useState<PSMessage[] | null>(null);
+  const [psDraft, setPsDraft] = useState('');
+  const [psChannel, setPsChannel] = useState<'email' | 'sms' | 'none'>('email');
+  const [psSending, setPsSending] = useState(false);
+  const [psResult, setPsResult] = useState<{ msg: string; kind: 'success' | 'error' } | null>(null);
+
   useEffect(() => {
     if (!id) return;
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const loadShopper = async () => {
+    if (!id || psLive || psGated || psLoading) return;
+    setPsLoading(true);
+    setPsGated(null);
+    try {
+      const [liveRes, histRes] = await Promise.all([
+        api.get(`/api/crm/clients/${id}/personal-shopper-v2`),
+        api.get(`/api/crm/clients/${id}/personal-shopper/messages`),
+      ]);
+      if (liveRes.ok) {
+        const live: PSLive = await liveRes.json();
+        setPsLive(live);
+        setPsDraft(live.message || '');
+      } else if (liveRes.status === 403) {
+        const e = await liveRes.json().catch(() => ({}));
+        setPsGated(e.detail || 'Personal Shopper réservé aux membres ayant consenti au profilage.');
+      } else {
+        setPsGated('Sélection indisponible pour le moment.');
+      }
+      if (histRes.ok) setPsMessages((await histRes.json()).messages || []);
+    } catch {
+      setPsGated('Erreur de chargement de la sélection.');
+    }
+    setPsLoading(false);
+  };
+
+  useEffect(() => {
+    if (tab === 'shopper') void loadShopper();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  const sendShopperSelection = async () => {
+    if (!id || !psLive) return;
+    setPsSending(true);
+    setPsResult(null);
+    try {
+      const res = await api.post(`/api/crm/clients/${id}/personal-shopper/send`, {
+        message: psDraft,
+        product_ids: (psLive.products || []).map((p) => p.product_id || p.id).filter(Boolean),
+        products: (psLive.products || []).map((p) => ({
+          id: p.product_id || p.id,
+          name: p.name,
+          brand: p.brand,
+          sale_price: p.sale_price,
+          photo_url: p.photo_url,
+        })),
+        channel: psChannel,
+        algo_version: psLive.algo_version,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        const st = data.message?.status;
+        setPsResult({
+          msg: st === 'simulated'
+            ? 'Sélection enregistrée (envoi simulé — aucun provider configuré).'
+            : psChannel === 'none' ? 'Sélection enregistrée.' : 'Sélection envoyée au client.',
+          kind: 'success',
+        });
+        // Refresh history + bump the synthèse badge without a full reload.
+        const histRes = await api.get(`/api/crm/clients/${id}/personal-shopper/messages`);
+        if (histRes.ok) setPsMessages((await histRes.json()).messages || []);
+        if (data.message) {
+          setData((prev) => prev ? {
+            ...prev,
+            personal_shopper: {
+              last_message: data.message,
+              sent_count: (prev.personal_shopper?.sent_count ?? 0) + 1,
+            },
+          } : prev);
+        }
+      } else {
+        setPsResult({ msg: data.message?.status === 'failed' && psChannel === 'email'
+          ? 'Échec : la cliente n\'a pas d\'email.' : (data.detail || 'Échec de l\'envoi.'), kind: 'error' });
+      }
+    } catch {
+      setPsResult({ msg: 'Erreur réseau.', kind: 'error' });
+    }
+    setPsSending(false);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -256,6 +383,9 @@ export default function ClientDetailPage() {
             ['achats', `Achats (${data.transactions.length})`],
             ['fidelite', 'Fidélité'],
             ['gouts', 'Goûts'],
+            ['shopper', (data.personal_shopper?.sent_count ?? 0) > 0
+              ? `Personal Shopper · ${data.personal_shopper?.sent_count}`
+              : 'Personal Shopper'],
             ['comms', `Communications (${data.communications.length})`],
             ['rgpd', 'RGPD'],
             ['audit', `Audit (${data.audit.length})`],
@@ -264,13 +394,16 @@ export default function ClientDetailPage() {
               key={key}
               onClick={() => setTab(key)}
               className={
-                'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ' +
+                'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors relative ' +
                 (tab === key
                   ? 'border-vz-teal text-vz-teal'
                   : 'border-transparent text-gray-500 hover:text-black')
               }
             >
               {label}
+              {key === 'shopper' && (data.personal_shopper?.sent_count ?? 0) > 0 && (
+                <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-vz-accent align-middle" />
+              )}
             </button>
           ))}
         </nav>
@@ -318,6 +451,143 @@ export default function ClientDetailPage() {
                 </ul>
               </Card>
             )}
+            {data.personal_shopper?.last_message && (
+              <Card title="Personal Shopper" className="md:col-span-2 border-l-4 border-vz-accent">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-sm text-vz-ink">
+                      Dernière sélection {data.personal_shopper.last_message.channel === 'none' ? 'préparée' : 'envoyée'} le{' '}
+                      <strong>{formatDate(data.personal_shopper.last_message.created_at)}</strong>
+                      {' '}· {data.personal_shopper.last_message.product_ids.length} pièce(s)
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {data.personal_shopper.sent_count} sélection(s) au total.
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={() => setTab('shopper')}>
+                    Voir la sélection
+                  </Button>
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {tab === 'shopper' && (
+          <div className="space-y-4">
+            {psResult && (
+              <div role="status" className={`px-4 py-3 rounded-xl text-sm font-medium ${psResult.kind === 'success' ? 'bg-vz-teal text-white' : 'bg-red-600 text-white'}`}>
+                {psResult.msg}
+              </div>
+            )}
+
+            <Card title="Sélection proposée par le Personal Shopper">
+              {psLoading ? (
+                <p className="text-sm text-gray-500 py-4">Calcul de la sélection…</p>
+              ) : psGated ? (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
+                  <p className="text-sm text-amber-800 font-medium">Personal Shopper indisponible</p>
+                  <p className="text-xs text-amber-700 mt-1">{psGated}</p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Conditions : cliente membre fidélité + consentement au profilage (onglet RGPD).
+                  </p>
+                </div>
+              ) : psLive ? (
+                <div className="space-y-4">
+                  {psLive.message && (
+                    <div className="p-3 rounded-xl bg-vz-teal-soft/40 border border-vz-teal-soft">
+                      <p className="text-[11px] uppercase tracking-wide text-vz-ink-mute mb-1">Message du Personal Shopper</p>
+                      <p className="text-sm text-vz-ink whitespace-pre-line">{psLive.message}</p>
+                      {psLive.fallback_used && (
+                        <p className="text-[11px] text-vz-ink-mute mt-1">(message généré sans IA — repli déterministe)</p>
+                      )}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {(psLive.products || []).map((p) => (
+                      <div key={(p.product_id || p.id) as string} className="rounded-xl border border-vz-line overflow-hidden bg-vz-surface">
+                        <div className="aspect-square bg-vz-bg-alt flex items-center justify-center overflow-hidden">
+                          {p.photo_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={p.photo_url} alt={p.name || ''} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-3xl">🧥</span>
+                          )}
+                        </div>
+                        <div className="p-2">
+                          <p className="text-xs font-medium text-vz-ink truncate">{p.name}</p>
+                          <p className="text-[11px] text-vz-ink-mute truncate">{p.brand || '—'}{p.size ? ` · ${p.size}` : ''}</p>
+                          <p className="text-sm font-bold text-vz-teal mt-0.5">
+                            {p.sale_price != null ? `${Number(p.sale_price).toFixed(2)} €` : '—'}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {(psLive.products || []).length === 0 && (
+                    <p className="text-sm text-gray-500">Aucune pièce ne correspond actuellement au profil.</p>
+                  )}
+
+                  {/* Send the selection to the client */}
+                  <div className="pt-2 border-t border-vz-line">
+                    <label className="block text-sm font-medium text-vz-ink mb-1.5">Message à envoyer</label>
+                    <textarea
+                      value={psDraft}
+                      onChange={(e) => setPsDraft(e.target.value)}
+                      rows={4}
+                      className="w-full px-3 py-2 rounded-lg border border-vz-line text-sm focus:outline-none focus:ring-2 focus:ring-vz-teal"
+                    />
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <select
+                        value={psChannel}
+                        onChange={(e) => setPsChannel(e.target.value as 'email' | 'sms' | 'none')}
+                        className="px-3 py-2 rounded-lg border border-vz-line text-sm bg-vz-surface"
+                      >
+                        <option value="email">Par email</option>
+                        <option value="sms">Par SMS</option>
+                        <option value="none">Enregistrer (présentée en boutique)</option>
+                      </select>
+                      <Button onClick={sendShopperSelection} disabled={psSending || (psLive.products || []).length === 0}>
+                        {psSending ? 'Envoi…' : psChannel === 'none' ? 'Enregistrer la sélection' : 'Envoyer au client'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 py-4">Indisponible.</p>
+              )}
+            </Card>
+
+            {/* History of sent selections */}
+            <Card title={`Historique des sélections${psMessages ? ` (${psMessages.length})` : ''}`}>
+              {!psMessages ? (
+                <p className="text-sm text-gray-400 py-2">…</p>
+              ) : psMessages.length === 0 ? (
+                <p className="text-sm text-gray-400 py-2">Aucune sélection envoyée pour le moment.</p>
+              ) : (
+                <ul className="divide-y divide-vz-line">
+                  {psMessages.map((m) => (
+                    <li key={m.id} className="py-3">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <span className="text-sm text-vz-ink">
+                          {formatDate(m.created_at)} · {m.channel === 'none' ? 'En boutique' : m.channel.toUpperCase()}
+                          {' · '}{m.product_ids.length} pièce(s)
+                        </span>
+                        <Badge variant={m.status === 'sent' ? 'sold' : 'default'}>
+                          {m.status === 'sent' ? 'Envoyé' : m.status === 'simulated' ? 'Simulé' : m.status === 'saved' ? 'Enregistré' : m.status}
+                        </Badge>
+                      </div>
+                      {m.message && <p className="text-xs text-gray-500 mt-1 line-clamp-2 whitespace-pre-line">{m.message}</p>}
+                      {m.products && m.products.length > 0 && (
+                        <p className="text-[11px] text-vz-ink-mute mt-1">
+                          {m.products.map((p) => p.name).filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
           </div>
         )}
 
