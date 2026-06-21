@@ -23,7 +23,7 @@ import { api } from '@/lib/api';
 interface BackupManifest {
   format?: string;
   database?: { bytes?: number };
-  uploads?: { files?: number; bytes?: number };
+  photos?: { included?: boolean };
   config?: { files?: string[] };
 }
 
@@ -80,8 +80,6 @@ function fmtDate(s: string | null): string {
 function coverageLabel(b: BackupRow): string {
   if (b.kind !== 'full') return 'Base seule';
   const parts = ['Base'];
-  const photos = b.manifest?.uploads?.files ?? 0;
-  if (photos > 0) parts.push(`${photos} photo${photos > 1 ? 's' : ''}`);
   const cfg = b.manifest?.config?.files?.length ?? 0;
   if (cfg > 0) parts.push('config');
   return parts.join(' + ');
@@ -273,11 +271,11 @@ export default function DatabaseManagerPage() {
                       onChange={(e) => setConfig({ ...config, include_files: e.target.checked })}
                       className="w-4 h-4 mt-0.5 accent-vz-teal" />
                     <span className="text-sm text-gray-700">
-                      Sauvegarde <strong>exhaustive</strong> (archive complète)
+                      Sauvegarde <strong>complète</strong> (base + configuration)
                       <span className="block text-xs text-gray-500">
-                        Inclut, en plus de la base : les photos produits, la configuration
-                        boutique &amp; matériel et le logo. Décocher pour ne garder que la base
-                        (.sql.gz, plus léger).
+                        Inclut, en plus de la base : la configuration boutique &amp; matériel
+                        (.tar.gz). Les photos ne sont pas archivées — seuls leurs liens sont
+                        conservés (dans la base). Décocher pour ne garder que la base (.sql.gz).
                       </span>
                     </span>
                   </label>

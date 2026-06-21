@@ -116,8 +116,11 @@ async def test_run_backup_success_records_downloadable_row(session, backup_dir, 
 
 
 @pytest.mark.anyio
-async def test_build_full_archive_bundles_db_uploads_and_config(tmp_path, backup_dir, monkeypatch):
-    """A full archive is a .tar.gz with the DB dump + photos + config + manifest."""
+async def test_build_full_archive_bundles_db_and_config_no_photos(tmp_path, backup_dir, monkeypatch):
+    """A full archive is a .tar.gz with the DB dump + JSON config — NO photos.
+
+    Photos are excluded on purpose: their links live in the database dump, so
+    the archive keeps only the reference, not the image bytes."""
     import tarfile
 
     # Fake DB dump.
@@ -126,12 +129,6 @@ async def test_build_full_archive_bundles_db_uploads_and_config(tmp_path, backup
             f.write("-- dump\nSELECT 1;\n")
 
     monkeypatch.setattr(svc, "dump_database", _fake_dump)
-
-    # Fake uploads tree (a product photo).
-    uploads = tmp_path / "uploads"
-    (uploads / "products" / "p1").mkdir(parents=True)
-    (uploads / "products" / "p1" / "intake_1.jpg").write_bytes(b"\xff\xd8photo")
-    monkeypatch.setattr(svc, "_uploads_root", lambda: uploads)
 
     # Fake on-disk config.
     cfg_file = tmp_path / "app_config.json"
@@ -143,17 +140,17 @@ async def test_build_full_archive_bundles_db_uploads_and_config(tmp_path, backup
 
     assert dest.exists()
     assert manifest["format"] == "tar.gz"
-    assert manifest["uploads"]["files"] == 1
-    assert manifest["uploads"]["bytes"] > 0
+    assert manifest["photos"]["included"] is False
     assert manifest["config"]["files"] == ["config/app_config.json"]
     assert manifest["database"]["bytes"] > 0
 
     with tarfile.open(dest, "r:gz") as tar:
         names = set(tar.getnames())
     assert "database.sql.gz" in names
-    assert "uploads/products/p1/intake_1.jpg" in names
     assert "config/app_config.json" in names
     assert "manifest.json" in names
+    # No photo files / uploads tree in the archive.
+    assert not any(n.startswith("uploads/") for n in names)
 
     # The temp DB dump must not be left behind next to the archive.
     assert not list(backup_dir.glob(".dbdump_*"))
@@ -167,7 +164,6 @@ async def test_run_backup_full_produces_tar_archive(session, backup_dir, tmp_pat
             f.write("dump")
 
     monkeypatch.setattr(svc, "dump_database", _fake_dump)
-    monkeypatch.setattr(svc, "_uploads_root", lambda: tmp_path / "no_uploads")
     monkeypatch.setattr(svc, "_config_entries", lambda: [])
 
     backup = await svc.run_backup(session, trigger="auto")
@@ -175,6 +171,7 @@ async def test_run_backup_full_produces_tar_archive(session, backup_dir, tmp_pat
     assert backup.kind == "full"
     assert backup.filename.endswith(".tar.gz")
     assert backup.manifest and backup.manifest["format"] == "tar.gz"
+    assert backup.manifest["photos"]["included"] is False
     assert (backup_dir / backup.filename).exists()
 
     out = svc.serialize_backup(backup)
