@@ -39,6 +39,10 @@ class OfferType(str, enum.Enum):
     progressive_voucher = "progressive_voucher"
     bundle_3_for_2 = "bundle_3_for_2"
     seasonal_gift = "seasonal_gift"
+    # Solde boutique — remise multi-articles automatique appliquée en caisse
+    # sur les pièces les moins chères (paquets de 6 → 3 moins chères à -50 %,
+    # puis paires → la moins chère à -30 %). Voir services/solde_engine.py.
+    solde = "solde"
 
 
 class Offer(Base):

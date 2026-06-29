@@ -9,6 +9,7 @@ import LoyaltyCardConfig from '@/components/admin/LoyaltyCardConfig';
 import { api } from '@/lib/api';
 
 type OfferType =
+  | 'solde'
   | 'end_of_series'
   | 'birthday'
   | 'shoes_third_free'
@@ -30,6 +31,7 @@ interface Offer {
 }
 
 const TYPE_LABEL: Record<OfferType, string> = {
+  solde:                'Solde (remise multi-articles automatique en caisse)',
   end_of_series:        'Fin de série (semaine 6 −20% si combiné)',
   birthday:             'Anniversaire fidélité (−10%)',
   shoes_third_free:     '3 paires de chaussures, la 3e offerte',
@@ -39,6 +41,19 @@ const TYPE_LABEL: Record<OfferType, string> = {
 };
 
 const TEMPLATES: { type: OfferType; label: string; build: () => Partial<Offer> }[] = [
+  {
+    type: 'solde',
+    label: 'Solde boutique (2 achetés → 2ᵉ à −30 %, 6 achetés → −50 % sur 3)',
+    build: () => ({
+      name: 'Soldes',
+      type: 'solde',
+      requires_loyalty: false,
+      priority: 10,
+      valid_from: new Date().toISOString().slice(0, 10),
+      valid_until: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      config: { pair_pct: 30, six_pct: 50 },
+    }),
+  },
   {
     type: 'end_of_series',
     label: 'Offre fin de série (−20% sur produit semaine 6 si combiné)',

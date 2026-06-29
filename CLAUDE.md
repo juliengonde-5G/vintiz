@@ -453,10 +453,21 @@ POST   /api/pos/transactions                       Crée vente (accepte coupon_c
 # Événementiel ouverture — bons cadeau (crédit fiche client + débit en caisse)
 GET    /api/pos/event-vouchers/catalog             Catalogue des bons (boutons zone Événementiel)
 POST   /api/pos/event-vouchers/issue               Créditer un bon sur la fiche client (body: client_id, type_key)
-GET    /api/pos/clients/{id}/vouchers              Bons actifs d'une cliente (affichés à l'identification)
+GET    /api/pos/clients/{id}/vouchers              Bons actifs d'une cliente (event_opening + chèques cadeau fidélité loyalty_milestone) affichés à l'identification
 POST   /api/pos/transactions                       Débit d'un bon : ligne paiement method=voucher + voucher_code
 GET    /api/admin/event-vouchers/catalog           Lit le catalogue des bons cadeau (manager)
 PUT    /api/admin/event-vouchers/catalog           Édite montants / % / validité / activation (manager)
+
+# Solde / opérations commerciales en caisse (Offer type=solde, /admin/operations)
+GET    /api/pos/operations/active                  Opérations en cours (bandeau caisse — Solde + dates)
+POST   /api/pos/operations/evaluate                Aperçu remise Solde du panier (body: items[{unit_price,quantity,discount_percent,is_product}])
+# Règle Solde (solde_engine) : paquets de 6 → 3 pièces les moins chères à -50 %,
+# puis paires → la moins chère à -30 %. Appliquée d'office en caisse sur les
+# pièces d'inventaire les moins chères. Les lignes en promotion/opération ne
+# cotisent PAS de points de fidélité (TransactionItem.promotional).
+# Fidélité : 1 € = 1 pt ; 100 pts = chèque cadeau de 5 € auto-généré (coupon
+# loyalty_milestone) + notification cliente (email/SMS), affecté en caisse
+# comme bon cadeau (method=voucher). Le rachat direct de points a été retiré.
 
 # Refonte Relation Client — PR1: Magic-link + souscription + ticket fidélité
 POST   /api/auth/magic-link/request                Issue OTP 6 chiffres + lien cliquable email (public, 204 toujours, anti-énumération)

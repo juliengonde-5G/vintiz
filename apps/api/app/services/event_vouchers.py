@@ -241,14 +241,22 @@ async def list_client_vouchers(
     only_active: bool = True,
     now: datetime | None = None,
 ) -> list[Coupon]:
-    """Event-opening vouchers held by a client. ``only_active`` keeps the
-    redeemable ones (active, unredeemed, within validity)."""
+    """Bons cadeau affectables au paiement pour une cliente.
+
+    Inclut les bons d'ouverture (``event_opening``) ET les chèques cadeau
+    fidélité (``loyalty_milestone``, palier 100 pts = 5 €) : tous deux
+    s'affectent comme moyen de paiement (``PaymentMethod.voucher``), seul rail
+    qui réduit réellement le montant à régler. ``only_active`` ne garde que les
+    bons utilisables (actifs, non consommés, dans leur fenêtre)."""
     now = now or datetime.now(timezone.utc)
     rows = (await db.execute(
         select(Coupon)
         .where(
             Coupon.client_id == client_id,
-            Coupon.source == CouponSource.event_opening,
+            Coupon.source.in_([
+                CouponSource.event_opening,
+                CouponSource.loyalty_milestone,
+            ]),
         )
         .order_by(Coupon.created_at.desc())
     )).scalars().all()

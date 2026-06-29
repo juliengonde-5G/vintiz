@@ -44,7 +44,7 @@ class CouponSource(str, enum.Enum):
     welcome = "welcome"                   # signup nudge
     manual = "manual"                     # admin one-off
     progressive = "progressive"           # bon généré sur cumul (Offer.progressive_voucher)
-    loyalty_milestone = "loyalty_milestone"  # palier 100 pts = 8 €
+    loyalty_milestone = "loyalty_milestone"  # palier 100 pts = chèque cadeau 5 €
     # Bon cadeau distribué à l'ouverture de la boutique (zone Événementiel du
     # POS). Crédité sur la fiche client, débité au prochain passage en caisse
     # comme moyen de paiement (PaymentMethod.voucher).

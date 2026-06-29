@@ -78,21 +78,6 @@ interface PaymentLine {
   label?: string;
 }
 
-// Bons cadeau d'ouverture (zone Événementiel)
-interface VoucherType {
-  key: string;
-  label: string;
-  discount_type: string;
-  discount_value: number;
-  free_item_label: string | null;
-  valid_until?: string;
-  active?: boolean;
-  // true = immediate voucher (utilisable sur l'achat en cours) — pas de
-  // règle « 1 par personne » ni « pas le jour même ». false = bon
-  // « prochain achat » (cadré par les 2 règles).
-  immediate?: boolean;
-}
-
 interface ClientVoucher {
   code: string;
   label: string;
@@ -176,21 +161,14 @@ export default function POSPage() {
   const [showClientSelect, setShowClientSelect] = useState(false);
   const [customerBrief, setCustomerBrief] = useState<CustomerBrief | null>(null);
 
-  // Bons cadeau d'ouverture (zone Événementiel) : catalogue + bons de la cliente.
-  const [voucherCatalog, setVoucherCatalog] = useState<VoucherType[]>([]);
+  // Bons cadeau de la cliente — affichés comme chips et affectables comme
+  // règlement (méthode 'voucher'). Inclut les bons d'ouverture ET les
+  // chèques cadeau fidélité (loyalty_milestone) renvoyés par le backend.
   const [clientVouchers, setClientVouchers] = useState<ClientVoucher[]>([]);
-  const [showEventModal, setShowEventModal] = useState(false);
-  const [eventBusy, setEventBusy] = useState(false);
-  const [eventToast, setEventToast] = useState('');
   // Compagnon caisse — modale plein écran déclenchée par le bouton dans
   // le ticket (cf. ClientCompanion). Sort le panneau du flux ticket pour
   // garder Encaisser visible.
   const [showCompanionModal, setShowCompanionModal] = useState(false);
-  // Sélection des bons cochés dans la modale Événementiel (validation via
-  // bouton "Valider" plutôt que sur clic direct). Permet de cocher
-  // plusieurs bons immédiats à la fois pour la même cliente sans
-  // confirmation à chaque clic.
-  const [eventSelected, setEventSelected] = useState<string[]>([]);
 
   // Manual article
   const [showManualEntry, setShowManualEntry] = useState(false);
@@ -224,8 +202,9 @@ export default function POSPage() {
   const cbTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const CB_POLL_MAX_MS = 90_000; // 90s — past this the cashier confirms manually
 
-  // Loyalty redemption
-  const [redeemPoints, setRedeemPoints] = useState(false);
+  // Solde / opérations commerciales actives (remise automatique catalogue)
+  const [soldeDiscount, setSoldeDiscount] = useState(0);
+  const [activeOps, setActiveOps] = useState<{ name: string; message: string; valid_until: string | null }[]>([]);
 
   // Loyalty subscription (PR1)
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
@@ -350,7 +329,7 @@ export default function POSPage() {
     if (showPayment || showClientSelect || showClientPopup || showSubscribeModal) return;
     if (showDrawerOpen || showDrawerClose || showCashierModal || showReceipt) return;
     if (showWizardReceipt || showManualEntry) return;
-    if (showCompanionModal || showEventModal) return;
+    if (showCompanionModal) return;
     requestAnimationFrame(() => {
       searchInputRef.current?.focus();
     });
@@ -359,7 +338,7 @@ export default function POSPage() {
     showPayment, showClientSelect, showClientPopup, showSubscribeModal,
     showDrawerOpen, showDrawerClose, showCashierModal, showReceipt,
     showWizardReceipt, showManualEntry,
-    showCompanionModal, showEventModal,
+    showCompanionModal,
   ]);
 
   // Landscape lock for the Lenovo Idea Tab Pro Gen 2 (TB39OFU) when running
@@ -377,12 +356,10 @@ export default function POSPage() {
     [cart],
   );
 
-  // Loyalty discount: 1 point = 0.10 EUR, max 50% of cart
-  const loyaltyPoints = selectedClient?.loyalty?.points || 0;
-  const loyaltyDiscount = redeemPoints ? Math.min(loyaltyPoints * 0.10, cartTotal * 0.5) : 0;
   // ``cartTotalAfterLoyalty`` is the amount the cashier needs to collect.
-  // Coupon discount (P4-008) stacks on top of loyalty.
-  const cartTotalAfterLoyalty = Math.max(0, cartTotal - loyaltyDiscount - couponDiscount);
+  // Solde (opération commerciale, remise auto catalogue) + coupon (P4-008)
+  // sont déduits du sous-total panier.
+  const cartTotalAfterLoyalty = Math.max(0, cartTotal - soldeDiscount - couponDiscount);
 
   const totalPaid = useMemo(
     () => payments.reduce((sum, p) => sum + p.amount, 0),
@@ -663,18 +640,61 @@ export default function POSPage() {
     } catch { /* silent */ }
   };
 
-  // ── Bons cadeau d'ouverture (zone Événementiel) ─────────────────
-  // Catalogue chargé une fois (boutons de la zone Événementiel).
+  // ── Opérations commerciales actives (Solde) ─────────────────────
+  // Chargées une fois au montage : bannière + remise auto sur le panier.
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const res = await api.get('/api/pos/event-vouchers/catalog');
-        if (res.ok && active) setVoucherCatalog((await res.json()).vouchers || []);
+        const res = await api.get('/api/pos/operations/active');
+        if (!res.ok || !active) return;
+        const data = await res.json();
+        if (data.active && Array.isArray(data.operations)) {
+          setActiveOps(
+            data.operations.map((o: { name: string; message: string; valid_until: string | null }) => ({
+              name: o.name,
+              message: o.message,
+              valid_until: o.valid_until,
+            })),
+          );
+        }
       } catch { /* silent */ }
     })();
     return () => { active = false; };
   }, []);
+
+  // Évalue la remise Solde sur le panier courant. Le Solde ne s'applique
+  // qu'aux pièces d'inventaire (is_product = ligne avec product_id) ; les
+  // lignes manuelles / articles permanents sont exclus.
+  useEffect(() => {
+    if (activeOps.length === 0 || cart.length === 0) {
+      setSoldeDiscount(0);
+      return;
+    }
+    let active = true;
+    (async () => {
+      try {
+        const res = await api.post('/api/pos/operations/evaluate', {
+          items: cart.map((item) => ({
+            unit_price: item.price,
+            quantity: item.quantity,
+            discount_percent: item.discount,
+            is_product: !!item.product_id,
+          })),
+        });
+        if (!res.ok || !active) {
+          if (active) setSoldeDiscount(0);
+          return;
+        }
+        const data = await res.json();
+        if (active) setSoldeDiscount(data.active ? (data.total_discount || 0) : 0);
+      } catch {
+        if (active) setSoldeDiscount(0);
+      }
+    })();
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, activeOps]);
 
   // Bons actifs de la cliente — rafraîchis à l'identification et quand le panier
   // change (la valeur affectable d'un % / d'un foulard dépend du panier).
@@ -694,72 +714,6 @@ export default function POSPage() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClient, cart, cartTotal]);
-
-  // Émettre les bons cochés via le bouton « Valider » de la modale
-  // Événementiel. Les émissions tournent en séquence (l'API est
-  // best-effort par bon : un échec n'interrompt pas les autres) puis on
-  // recharge la liste des bons actifs de la cliente.
-  const issueSelectedVouchers = async () => {
-    if (!selectedClient || eventBusy || eventSelected.length === 0) return;
-    setEventBusy(true);
-    const results: { key: string; label: string; ok: boolean; detail?: string }[] = [];
-    for (const typeKey of eventSelected) {
-      const label = voucherCatalog.find((v) => v.key === typeKey)?.label || typeKey;
-      try {
-        const res = await api.post('/api/pos/event-vouchers/issue', {
-          client_id: selectedClient.id,
-          type_key: typeKey,
-        });
-        const data = await res.json().catch(() => null);
-        if (res.ok) {
-          results.push({ key: typeKey, label, ok: true });
-        } else {
-          results.push({ key: typeKey, label, ok: false, detail: data?.detail });
-        }
-      } catch {
-        results.push({ key: typeKey, label, ok: false, detail: 'Erreur réseau' });
-      }
-    }
-    // Recharger la liste des bons actifs de la cliente.
-    try {
-      const ids = cart.filter((i) => i.product_id).map((i) => i.product_id).join(',');
-      const cents = Math.round(cartTotal * 100);
-      const vres = await api.get(
-        `/api/pos/clients/${selectedClient.id}/vouchers?cart_total_cents=${cents}&items=${encodeURIComponent(ids)}`,
-      );
-      if (vres.ok) setClientVouchers((await vres.json()).vouchers || []);
-    } catch { /* silent */ }
-    setEventBusy(false);
-    const okKeys = new Set(results.filter((r) => r.ok).map((r) => r.key));
-    const okCount = okKeys.size;
-    const koResults = results.filter((r) => !r.ok);
-    if (koResults.length === 0) {
-      setEventToast(
-        `${okCount} bon${okCount > 1 ? 's' : ''} crédité${okCount > 1 ? 's' : ''} sur le compte de ${selectedClient.first_name}.`,
-      );
-      setEventSelected([]);
-      setShowEventModal(false);
-    } else {
-      const detail = koResults
-        .map((r) => `${r.label} : ${r.detail || 'refusé'}`)
-        .join(' · ');
-      setEventToast(
-        okCount > 0
-          ? `${okCount} OK, ${koResults.length} refusé${koResults.length > 1 ? 's' : ''} (${detail})`
-          : `Émission refusée : ${detail}`,
-      );
-      // Garder la modale ouverte mais retirer les bons déjà crédités
-      // de la sélection (évite un double crédit si on re-valide).
-      setEventSelected((prev) => prev.filter((k) => !okKeys.has(k)));
-    }
-    setTimeout(() => setEventToast(''), 4500);
-  };
-
-  const toggleEventSelected = (typeKey: string) => {
-    setEventSelected((prev) =>
-      prev.includes(typeKey) ? prev.filter((k) => k !== typeKey) : [...prev, typeKey],
-    );
-  };
 
   // Affecter un bon de la cliente comme moyen de paiement (ligne de règlement).
   const addVoucherPayment = (v: ClientVoucher) => {
@@ -1313,7 +1267,6 @@ export default function POSPage() {
           ...(p.method === 'carte' && cbDetails ? cbDetails : {}),
           ...(p.method === 'voucher' && p.voucher_code ? { voucher_code: p.voucher_code } : {}),
         })),
-        redeem_loyalty_discount: redeemPoints ? loyaltyDiscount : 0,
         client_uuid: posPayment.clientUuid,
       };
       if (selectedClient) body.client_id = selectedClient.id;
@@ -1402,7 +1355,6 @@ export default function POSPage() {
           ...(p.method === 'carte' && cbDetails ? cbDetails : {}),
           ...(p.method === 'voucher' && p.voucher_code ? { voucher_code: p.voucher_code } : {}),
         })),
-        redeem_loyalty_discount: redeemPoints ? loyaltyDiscount : 0,
         client_uuid: clientUuid,
       };
       if (selectedClient) body.client_id = selectedClient.id;
@@ -1533,7 +1485,6 @@ export default function POSPage() {
     setCouponCode(''); setCouponDiscount(0); setCouponApplied(null); setCouponError('');
     setCbCheckoutId(null);
     setCbStatus('idle');
-    setRedeemPoints(false);
     setNumpadTarget(null);
     stopCbPolling();
   };
@@ -1755,6 +1706,22 @@ export default function POSPage() {
         </div>
       )}
 
+      {/* Bannière opération commerciale active (Solde) — remise auto sur
+          les pièces d'inventaire, appliquée au panier en temps réel. */}
+      {activeOps.length > 0 && (
+        <div className="flex-shrink-0 px-3 py-2 bg-vz-accent-soft border-b border-vz-accent/30 text-vz-ink text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-semibold text-vz-accent">🏷️ SOLDES</span>
+          {activeOps.map((op, i) => (
+            <span key={i} className="flex items-center gap-1">
+              <span>{op.message}</span>
+              {op.valid_until && (
+                <span className="text-xs text-vz-ink-mute">jusqu&apos;au {new Date(op.valid_until).toLocaleDateString('fr-FR')}</span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* ── Main POS area ─────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
 
@@ -1840,15 +1807,6 @@ export default function POSPage() {
                 Ajouter cliente
               </button>
             )}
-            {/* Zone Événementiel — distribution des bons cadeau d'ouverture */}
-            <button
-              onClick={() => setShowEventModal(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-vz-accent/40 bg-vz-accent-soft text-vz-ink hover:bg-vz-accent-soft/70 transition-colors text-sm min-h-[44px]"
-              title="Bons cadeau d'ouverture"
-            >
-              <span aria-hidden>🎟</span>
-              <span className="hidden sm:inline">Événementiel</span>
-            </button>
           </div>
 
           {error && !showPayment && (
@@ -2063,16 +2021,11 @@ export default function POSPage() {
               visible en bas du panneau (demande prio cashier). */}
           <div className="flex-shrink-0 border-t border-gray-200 bg-white px-4 pt-3 pb-3 flex flex-col max-h-[60%]">
             <div className="overflow-y-auto space-y-3 mb-3">
-            {/* Loyalty redemption */}
-            {selectedClient?.loyalty && loyaltyPoints > 0 && (
-              <div className="flex items-center justify-between p-2 bg-purple-50 rounded-lg">
-                <p className="text-xs font-medium text-purple-800">
-                  Fidélité ({loyaltyPoints} pts = {(loyaltyPoints * 0.10).toFixed(2)} €)
-                </p>
-                <button onClick={() => setRedeemPoints(prev => !prev)}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${redeemPoints ? 'bg-purple-600' : 'bg-gray-300'}`}>
-                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${redeemPoints ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                </button>
+            {/* Solde — remise automatique opération commerciale */}
+            {soldeDiscount > 0 && (
+              <div className="flex items-center justify-between p-2 bg-vz-accent-soft border border-vz-accent/30 rounded-lg">
+                <p className="text-xs font-medium text-vz-ink">🏷️ Solde</p>
+                <span className="text-xs font-semibold text-vz-accent">−{formatCurrency(soldeDiscount)}</span>
               </div>
             )}
 
@@ -2105,7 +2058,7 @@ export default function POSPage() {
                     try {
                       const body: Record<string, unknown> = {
                         code: couponCode,
-                        cart_total: cartTotal - loyaltyDiscount,
+                        cart_total: cartTotal - soldeDiscount,
                       };
                       if (selectedClient) body.client_id = selectedClient.id;
                       const res = await api.post('/api/pos/coupons/validate', body);
@@ -2134,7 +2087,7 @@ export default function POSPage() {
             <div className="flex items-center justify-between">
               <span className="text-base font-bold text-black">Total TTC</span>
               <div className="text-right">
-                {redeemPoints && loyaltyDiscount > 0 && (
+                {(soldeDiscount > 0 || couponDiscount > 0) && (
                   <p className="text-xs text-gray-400 line-through">{formatCurrency(cartTotal)}</p>
                 )}
                 <span className="text-2xl font-bold text-vz-teal">{formatCurrency(cartTotalAfterLoyalty)}</span>
@@ -2356,91 +2309,6 @@ export default function POSPage() {
         )}
       </Modal>
 
-      {/* ── Zone Événementiel — bons cadeau d'ouverture ──────────────
-           Un bouton par type de bon (catalogue). Sur clic → le bon est
-           crédité sur la fiche de la cliente identifiée ; affiché ensuite à
-           l'identification + affectable comme moyen de paiement. */}
-      <Modal
-        open={showEventModal}
-        onClose={() => {
-          setShowEventModal(false);
-          setEventSelected([]);
-        }}
-        title="Bons cadeau d'ouverture"
-        actions={
-          <div className="flex items-center gap-2 w-full justify-end">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowEventModal(false);
-                setEventSelected([]);
-              }}
-              disabled={eventBusy}
-            >
-              Annuler
-            </Button>
-            <Button
-              onClick={issueSelectedVouchers}
-              disabled={
-                !selectedClient || eventBusy || eventSelected.length === 0
-              }
-            >
-              {eventBusy
-                ? '...'
-                : `Valider${eventSelected.length > 0 ? ` (${eventSelected.length})` : ''}`}
-            </Button>
-          </div>
-        }
-      >
-        {selectedClient ? (
-          <p className="text-xs text-vz-ink-mute mb-4">
-            Sur le compte de{' '}
-            <strong>{selectedClient.first_name} {selectedClient.last_name}</strong>
-            {clientVouchers.length > 0 ? ` · ${clientVouchers.length} bon(s) déjà crédité(s)` : ''}.
-            Cochez les bons à créditer puis cliquez sur Valider.
-          </p>
-        ) : (
-          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-4">
-            Sélectionnez d&apos;abord une cliente (ou créez sa fiche) pour lui attribuer un bon.
-          </p>
-        )}
-        <div className="grid grid-cols-2 gap-2">
-          {voucherCatalog
-            .filter((v) => v.active !== false)
-            .map((v) => {
-              const checked = eventSelected.includes(v.key);
-              return (
-                <button
-                  key={v.key}
-                  type="button"
-                  onClick={() => toggleEventSelected(v.key)}
-                  disabled={!selectedClient || eventBusy}
-                  className={`flex flex-col items-center justify-center gap-1 p-4 rounded-xl border-2 transition-all min-h-[84px] text-vz-ink disabled:opacity-40 disabled:cursor-not-allowed ${
-                    checked
-                      ? 'border-vz-teal bg-vz-teal-soft shadow-md'
-                      : 'border-vz-line bg-vz-bg-alt hover:border-vz-teal hover:bg-white hover:shadow-md'
-                  }`}
-                >
-                  <span className="font-display text-xl text-vz-teal">{v.label}</span>
-                  <span className="text-[10px] text-vz-ink-mute">
-                    {v.immediate
-                      ? 'applicable immédiatement'
-                      : 'utilisable au prochain achat'}
-                  </span>
-                  {checked && (
-                    <span className="text-[10px] text-vz-teal-deep font-semibold">✓ sélectionné</span>
-                  )}
-                </button>
-              );
-            })}
-        </div>
-        {eventToast && (
-          <p className="mt-4 text-sm text-vz-teal-deep bg-vz-teal-soft rounded-lg px-3 py-2">
-            {eventToast}
-          </p>
-        )}
-      </Modal>
-
       <ClientSelectionScreen
         open={showClientSelect}
         onClose={() => setShowClientSelect(false)}
@@ -2588,23 +2456,6 @@ export default function POSPage() {
                 </div>
               )}
 
-              {/* Loyalty redemption toggle */}
-              {selectedClient?.loyalty && loyaltyPoints > 0 && (
-                <div className="p-3 bg-vz-accent-soft rounded-xl flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-vz-ink">Utiliser les points fidélité</p>
-                    <p className="text-xs text-vz-ink-soft">{loyaltyPoints} pts = {(loyaltyPoints * 0.10).toFixed(2)} €</p>
-                  </div>
-                  <button
-                    onClick={() => setRedeemPoints(prev => !prev)}
-                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${redeemPoints ? 'bg-vz-accent' : 'bg-vz-line'}`}
-                    aria-label="Activer fidélité"
-                  >
-                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${redeemPoints ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
-                </div>
-              )}
-
               {/* Récap commande */}
               <section className="bg-white rounded-2xl border border-vz-line p-4">
                 <header className="flex items-center justify-between mb-3">
@@ -2629,18 +2480,18 @@ export default function POSPage() {
                     );
                   })}
                 </ul>
-                {(loyaltyDiscount > 0 || couponDiscount > 0) && (
+                {(soldeDiscount > 0 || couponDiscount > 0) && (
                   <div className="mt-2 pt-2 border-t border-vz-line space-y-1 text-xs">
+                    {soldeDiscount > 0 && (
+                      <div className="flex justify-between text-vz-accent">
+                        <span>Solde</span>
+                        <span>−{formatCurrency(soldeDiscount)}</span>
+                      </div>
+                    )}
                     {couponDiscount > 0 && (
                       <div className="flex justify-between text-vz-accent">
                         <span>Coupon {couponApplied?.code}</span>
                         <span>−{formatCurrency(couponDiscount)}</span>
-                      </div>
-                    )}
-                    {loyaltyDiscount > 0 && (
-                      <div className="flex justify-between text-vz-accent">
-                        <span>Fidélité ({redeemPoints ? loyaltyPoints : 0} pts)</span>
-                        <span>−{formatCurrency(loyaltyDiscount)}</span>
                       </div>
                     )}
                   </div>

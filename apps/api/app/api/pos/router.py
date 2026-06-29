@@ -360,8 +360,11 @@ class IssueVoucherRequest(BaseModel):
 
 def _voucher_label(coupon) -> str:
     """Human label for a voucher chip (fallback when notes are empty)."""
-    from app.models.coupon import CouponDiscountType
+    from app.models.coupon import CouponDiscountType, CouponSource
 
+    # Chèque cadeau fidélité (palier 100 pts) — libellé dédié et lisible.
+    if coupon.source == CouponSource.loyalty_milestone:
+        return f"Chèque cadeau fidélité {float(coupon.discount_value):g} €"
     if coupon.notes:
         return coupon.notes.split("—", 1)[-1].strip() or coupon.notes
     val = float(coupon.discount_value)
@@ -616,6 +619,131 @@ async def client_vouchers(
             "immediate": immediate,
         })
     return {"vouchers": out, "count": len(out)}
+
+
+# ---------------------------------------------------------------------------
+# Opérations commerciales en caisse — bandeau + aperçu remise Solde
+# ---------------------------------------------------------------------------
+
+
+class OpEvalItem(BaseModel):
+    unit_price: float
+    quantity: int = 1
+    discount_percent: float = 0.0
+    # La remise Solde ne s'applique qu'aux pièces d'inventaire ; les lignes
+    # manuelles (sac) et articles permanents sont neutres.
+    is_product: bool = True
+
+
+class OperationsEvaluateRequest(BaseModel):
+    items: list[OpEvalItem]
+
+
+@router.get("/operations/active")
+async def active_operations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Opérations commerciales actuellement en cours (bandeau caisse).
+
+    Aujourd'hui : la Solde boutique. Renvoie une liste d'opérations actives
+    dans leur fenêtre de dates, prête à afficher en bandeau au POS.
+    """
+    from app.services.solde_engine import get_active_solde
+
+    operations: list[dict] = []
+    solde = await get_active_solde(db)
+    if solde is not None:
+        operations.append({
+            "type": "solde",
+            "name": solde.name,
+            "valid_from": solde.valid_from.isoformat() if solde.valid_from else None,
+            "valid_until": solde.valid_until.isoformat() if solde.valid_until else None,
+            "message": (
+                "SOLDES en cours — remise automatique appliquée en caisse "
+                "(2 achetés : le 2ᵉ à -30 % sur le moins cher ; 6 achetés : "
+                "-50 % sur les 3 moins chers)."
+            ),
+        })
+    return {"active": bool(operations), "operations": operations}
+
+
+@router.post("/operations/evaluate")
+async def evaluate_operations(
+    payload: OperationsEvaluateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Aperçu de la remise Solde sur le panier courant.
+
+    Reçoit les lignes du panier (prix unitaire + quantité + remise manuelle +
+    is_product) et renvoie le total après Solde + la remise par ligne. Même
+    logique que la création de vente (``solde_engine``) → l'encaissement
+    correspond à l'aperçu.
+    """
+    from app.services.solde_engine import (
+        compute_solde_rates,
+        get_active_solde,
+        solde_config_from_offer,
+    )
+
+    solde = await get_active_solde(db)
+
+    # Taux Solde par unité d'inventaire (qty=1 chacune).
+    solde_pct_by_line: dict[int, float] = {}
+    if solde is not None:
+        cfg = solde_config_from_offer(solde)
+        unit_owner: list[int] = []
+        unit_prices: list[float] = []
+        for idx, item in enumerate(payload.items):
+            if not item.is_product:
+                continue
+            per_unit = float(item.unit_price) * (1 - float(item.discount_percent) / 100.0)
+            for _ in range(max(1, int(item.quantity))):
+                unit_owner.append(idx)
+                unit_prices.append(per_unit)
+        rates = compute_solde_rates(unit_prices, cfg)
+        accum: dict[int, list[float]] = {}
+        for owner, rate in zip(unit_owner, rates):
+            accum.setdefault(owner, []).append(rate)
+        for idx, rate_list in accum.items():
+            solde_pct_by_line[idx] = sum(rate_list) / len(rate_list)
+
+    lines: list[dict] = []
+    total_before = 0.0
+    total_after = 0.0
+    for idx, item in enumerate(payload.items):
+        qty = max(1, int(item.quantity))
+        manual_total = round(
+            float(item.unit_price) * qty * (1 - float(item.discount_percent) / 100.0), 2
+        )
+        solde_pct = solde_pct_by_line.get(idx, 0.0)
+        line_total = round(manual_total * (1 - solde_pct / 100.0), 2)
+        total_before += manual_total
+        total_after += line_total
+        lines.append({
+            "index": idx,
+            "solde_pct": round(solde_pct, 2),
+            "line_total": line_total,
+        })
+
+    total_before = round(total_before, 2)
+    total_after = round(total_after, 2)
+    return {
+        "active": solde is not None,
+        "operation": (
+            {
+                "type": "solde",
+                "name": solde.name,
+                "valid_until": solde.valid_until.isoformat() if solde.valid_until else None,
+            }
+            if solde is not None else None
+        ),
+        "lines": lines,
+        "total_before": total_before,
+        "total_discount": round(total_before - total_after, 2),
+        "total_after": total_after,
+    }
 
 
 @router.get("/transactions")

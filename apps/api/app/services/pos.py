@@ -97,13 +97,10 @@ class PosService:
                     "Facture B2B : adresse de facturation obligatoire"
                 )
 
-        total_ttc = Decimal("0")
-        # (product | None, permanent_item | None, quantity, unit_price,
-        #  discount_percent, item_name)
-        line_rows: list[
-            tuple[Product | None, PermanentItem | None, int, Decimal, float, str]
-        ] = []
-
+        # Pass 1 — résoudre chaque ligne (produit / article permanent / manuel)
+        # avec sa remise MANUELLE éventuelle. La remise opération (Solde) est
+        # appliquée dans un 2ᵉ temps sur les pièces d'inventaire les moins chères.
+        resolved: list[dict] = []
         for cart_item in items:
             if cart_item.product_id:
                 result = await self.db.execute(
@@ -124,9 +121,11 @@ class PosService:
                     raise ProductNotAvailable(product.name, product.status.value)
                 unit_price = Decimal(str(cart_item.unit_price)) if cart_item.unit_price else Decimal(str(product.sale_price))
                 discount = cart_item.discount_percent or 0
-                line_total = (unit_price * cart_item.quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
-                total_ttc += line_total
-                line_rows.append((product, None, cart_item.quantity, unit_price, discount, product.name))
+                resolved.append({
+                    "product": product, "perm": None,
+                    "quantity": cart_item.quantity, "unit_price": unit_price,
+                    "manual_discount": float(discount), "name": product.name,
+                })
             elif getattr(cart_item, "permanent_item_id", None):
                 # Article permanent (quantité illimitée) — pas de check de stock
                 # ni de marquage ``sold``. Le même code-barres peut être passé
@@ -142,18 +141,94 @@ class PosService:
                     raise ProductNotAvailable(perm.name, "désactivé")
                 unit_price = Decimal(str(cart_item.unit_price)) if cart_item.unit_price else Decimal(str(perm.sale_price))
                 discount = cart_item.discount_percent or 0
-                line_total = (unit_price * cart_item.quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
-                total_ttc += line_total
-                line_rows.append((None, perm, cart_item.quantity, unit_price, discount, perm.name))
+                resolved.append({
+                    "product": None, "perm": perm,
+                    "quantity": cart_item.quantity, "unit_price": unit_price,
+                    "manual_discount": float(discount), "name": perm.name,
+                })
             else:
                 # Manual item (e.g. sac)
                 if not cart_item.name or not cart_item.unit_price:
                     raise InvalidOperation("Manual items require name and unit_price")
                 unit_price = Decimal(str(cart_item.unit_price))
                 discount = cart_item.discount_percent or 0
-                line_total = (unit_price * cart_item.quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
-                total_ttc += line_total
-                line_rows.append((None, None, cart_item.quantity, unit_price, discount, cart_item.name))
+                resolved.append({
+                    "product": None, "perm": None,
+                    "quantity": cart_item.quantity, "unit_price": unit_price,
+                    "manual_discount": float(discount), "name": cart_item.name,
+                })
+
+        # Pass 2 — Solde : remise automatique sur les pièces d'inventaire les
+        # moins chères (paquets de 6 → 3 à -50 %, paires → 1 à -30 %). Calculée
+        # sur le prix unitaire APRÈS remise manuelle. Source unique de vérité
+        # partagée avec l'aperçu POS (solde_engine).
+        from app.services.solde_engine import (
+            compute_solde_rates,
+            get_active_solde,
+            solde_config_from_offer,
+        )
+
+        solde_pct_by_line: dict[int, float] = {}
+        solde_offer = await get_active_solde(self.db)
+        if solde_offer is not None:
+            cfg = solde_config_from_offer(solde_offer)
+            unit_owner: list[int] = []
+            unit_prices: list[float] = []
+            for ridx, row in enumerate(resolved):
+                if row["product"] is None:
+                    continue  # Solde uniquement sur les pièces d'inventaire
+                per_unit = float(row["unit_price"]) * (1 - row["manual_discount"] / 100.0)
+                for _ in range(max(1, int(row["quantity"]))):
+                    unit_owner.append(ridx)
+                    unit_prices.append(per_unit)
+            rates = compute_solde_rates(unit_prices, cfg)
+            # Toutes les unités d'une même ligne ont le même prix → le taux
+            # moyen appliqué au total ligne est exact.
+            accum: dict[int, list[float]] = {}
+            for owner, rate in zip(unit_owner, rates):
+                accum.setdefault(owner, []).append(rate)
+            for ridx, rate_list in accum.items():
+                solde_pct_by_line[ridx] = sum(rate_list) / len(rate_list)
+
+        # Pass 3 — calculer les totaux + marquer les lignes promotionnelles.
+        # (product | None, permanent_item | None, quantity, unit_price,
+        #  discount_percent, item_name, promotional, line_total)
+        total_ttc = Decimal("0")
+        line_rows: list[
+            tuple[Product | None, PermanentItem | None, int, Decimal, float, str, bool, Decimal]
+        ] = []
+        for ridx, row in enumerate(resolved):
+            unit_price = row["unit_price"]
+            quantity = row["quantity"]
+            manual_discount = row["manual_discount"]
+            solde_pct = solde_pct_by_line.get(ridx, 0.0)
+            gross = unit_price * Decimal(str(quantity))
+            line_total = (
+                gross
+                * (Decimal("100") - Decimal(str(manual_discount))) / Decimal("100")
+                * (Decimal("100") - Decimal(str(solde_pct))) / Decimal("100")
+            ).quantize(Decimal("0.01"))
+            # Remise effective combinée (manuelle + solde) figée sur la ligne.
+            effective_discount = (
+                float((Decimal("1") - (line_total / gross)) * Decimal("100"))
+                if gross > 0 else 0.0
+            )
+            product = row["product"]
+            # Promotionnel = remise solde appliquée OU produit déjà démarqué
+            # (statut discounted / deep_discounted). Ces lignes ne cotisent pas
+            # de points de fidélité.
+            promotional = solde_pct > 0 or (
+                product is not None
+                and product.status in (
+                    ProductStatus.discounted,
+                    ProductStatus.deep_discounted,
+                )
+            )
+            total_ttc += line_total
+            line_rows.append((
+                product, row["perm"], quantity, unit_price,
+                round(effective_discount, 2), row["name"], promotional, line_total,
+            ))
 
         # TVA 20 %: HT = TTC / 1.20, TVA = TTC - HT
         total_ht = (total_ttc / Decimal("1.20")).quantize(Decimal("0.01"))
@@ -222,8 +297,7 @@ class PosService:
         await self.db.flush()
 
         # Create transaction items
-        for product, perm_item, quantity, unit_price, discount, _name in line_rows:
-            line_total = (unit_price * quantity * (Decimal("100") - Decimal(str(discount))) / Decimal("100")).quantize(Decimal("0.01"))
+        for product, perm_item, quantity, unit_price, discount, _name, promotional, line_total in line_rows:
             item = TransactionItem(
                 transaction_id=transaction.id,
                 product_id=product.id if product else None,
@@ -233,6 +307,7 @@ class PosService:
                 unit_price=float(unit_price),
                 discount_percent=discount,
                 line_total=float(line_total),
+                promotional=promotional,
             )
             self.db.add(item)
 
@@ -316,7 +391,7 @@ class PosService:
                         f"{(prod.category.name if prod and prod.category else '')}"
                     ),
                 }
-                for prod, perm, _qty, up, disc, nm in line_rows
+                for prod, perm, _qty, up, disc, nm, _promo, _lt in line_rows
             ]
             for amount, code in voucher_tenders:
                 if not code:
@@ -675,7 +750,7 @@ class PosService:
             )
 
     # ------------------------------------------------------------------
-    # Loyalty (1 € = 1 pt, 100 pts = 8 € auto)
+    # Loyalty (1 € = 1 pt, 100 pts = chèque cadeau 5 € auto)
     # ------------------------------------------------------------------
 
     async def _credit_loyalty_and_emit_milestones(
@@ -701,8 +776,20 @@ class PosService:
         )
 
         cfg = await get_earning_config(self.db)
-        amount = float(transaction.total_ttc or 0)
-        points = points_to_credit(amount, cfg.euro_per_point)
+        # Les articles en promotion / opération (Solde, markdown) ne cotisent
+        # PAS de points de fidélité : on ne crédite que sur les lignes non
+        # promotionnelles. Repli sur total_ttc si la vente n'a pas d'items
+        # chargés (compat anciens appels / seeds).
+        items = list(transaction.items or [])
+        if items:
+            eligible_amount = sum(
+                float(item.line_total or 0)
+                for item in items
+                if not getattr(item, "promotional", False)
+            )
+        else:
+            eligible_amount = float(transaction.total_ttc or 0)
+        points = points_to_credit(eligible_amount, cfg.euro_per_point)
         if points <= 0:
             return
 
@@ -754,6 +841,7 @@ class PosService:
         now = datetime.now(timezone.utc)
         valid_until = now + timedelta(days=cfg.voucher_valid_days)
         voucher_value = cfg.voucher_value_cents / 100.0
+        created_codes: list[str] = []
         for _ in range(crossed):
             code = await _draw_unique_code(self.db, "LOYAL")
             self.db.add(Coupon(
@@ -765,5 +853,129 @@ class PosService:
                 valid_from=now,
                 valid_until=valid_until,
                 is_active=True,
-                notes=f"Palier {LOYALTY_VOUCHER_VALUE:.0f} € — atteint sur tx #{transaction.transaction_number}",
+                notes=(
+                    f"Chèque cadeau fidélité {voucher_value:g} € — palier "
+                    f"{cfg.voucher_threshold} pts (tx #{transaction.transaction_number})"
+                ),
             ))
+            created_codes.append(code)
+
+        # Notification cliente : un chèque cadeau vient d'être généré. Best-effort
+        # (email + SMS si opt-in) — n'échoue jamais la vente.
+        await self.db.flush()
+        for code in created_codes:
+            try:
+                await self._notify_loyalty_voucher(
+                    transaction.client_id, code, voucher_value, valid_until
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Loyalty voucher notification failed for tx=%s code=%s: %s",
+                    transaction.id, code, exc,
+                )
+
+    async def _notify_loyalty_voucher(
+        self,
+        client_id: uuid.UUID,
+        code: str,
+        value_eur: float,
+        valid_until: datetime,
+    ) -> None:
+        """Prévient la cliente qu'un chèque cadeau fidélité a été généré.
+
+        Information contractuelle (mouvement de cagnotte) → envoyée même sans
+        opt-in marketing ; seul l'absence de contact (email/téléphone) arrête.
+        Email prioritaire (template ``loyalty_voucher``, éditable), SMS si la
+        cliente n'a pas d'email mais un téléphone.
+        """
+        from app.models.client import Client
+        from app.services.communications import log_communication, render_template
+
+        client = (
+            await self.db.execute(select(Client).where(Client.id == client_id))
+        ).scalar_one_or_none()
+        if client is None:
+            return
+
+        valid_str = valid_until.date().strftime("%d/%m/%Y")
+        prenom = (client.first_name or "").strip() or "Bonjour"
+        context = {
+            "prenom": prenom,
+            "valeur": f"{value_eur:g}",
+            "code_bon": code,
+            "valide_jusqu_au": valid_str,
+        }
+
+        if client.email:
+            from app.services.email_gateway import (
+                EmailDeliveryError,
+                EmailMessage,
+                send_email,
+            )
+
+            rendered = await render_template(
+                self.db,
+                "loyalty_voucher",
+                context,
+                fallback_subject="🎁 Vintiz — votre chèque cadeau fidélité de {valeur} €",
+                fallback_html=(
+                    "<p>Bonjour {prenom},</p>"
+                    "<p>Félicitations ! Vous avez atteint 100 points de fidélité. "
+                    "Un <strong>chèque cadeau de {valeur} €</strong> (code "
+                    "<strong>{code_bon}</strong>) vient d'être crédité sur votre "
+                    "compte. Valable jusqu'au {valide_jusqu_au}, à présenter en "
+                    "caisse lors de votre prochain passage.</p>"
+                ),
+                fallback_text=(
+                    "Bonjour {prenom}, vous avez atteint 100 points : un chèque "
+                    "cadeau de {valeur} € (code {code_bon}) a été crédité sur votre "
+                    "compte. Valable jusqu'au {valide_jusqu_au}."
+                ),
+            )
+            status = "sent"
+            backend = "simulation"
+            try:
+                outcome = send_email(EmailMessage(
+                    to=client.email,
+                    to_name=client.first_name or None,
+                    subject=rendered.subject or "Vintiz — votre chèque cadeau fidélité",
+                    html=rendered.html or "",
+                    text=rendered.text or "",
+                    tags=["loyalty-voucher"],
+                ))
+                status = outcome.status
+                backend = outcome.backend
+            except EmailDeliveryError as exc:
+                status = "failed"
+                backend = "error"
+                logger.warning("loyalty_voucher email failed for %s: %s", client.email, exc)
+            await log_communication(
+                self.db,
+                client_id=client.id,
+                channel="email",
+                kind="loyalty_voucher",
+                status=status,
+                to_address=client.email,
+                subject=rendered.subject,
+                backend=backend,
+                template_key=rendered.template_key,
+            )
+        elif client.phone:
+            from app.services.sms_gateway import SMSMessage, send_sms
+
+            body = (
+                f"Vintiz : bravo {prenom} ! 100 pts atteints. Cheque cadeau de "
+                f"{value_eur:g} EUR (code {code}) credite sur votre compte, "
+                f"valable jusqu'au {valid_str}."
+            )
+            outcome = send_sms(SMSMessage(to=client.phone, body=body))
+            await log_communication(
+                self.db,
+                client_id=client.id,
+                channel="sms",
+                kind="loyalty_voucher",
+                status=getattr(outcome, "status", "sent"),
+                to_address=client.phone,
+                subject=None,
+                backend=getattr(outcome, "backend", "simulation"),
+            )
