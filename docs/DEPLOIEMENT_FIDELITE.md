@@ -76,7 +76,7 @@ Dans **/settings > Fidélité** :
 - **Mode** : libre choix parmi *gratuite* / *payante* / *offerte 1er achat*.
 - **Plage temporelle** : facultatif. Hors plage → retour au mode gratuit
   par défaut (utile pour une opération « adhésion offerte » pendant 1 mois).
-- 1 € = 1 pt · 100 pts = bon de 8 € · péremption 24 mois sans activité.
+- 1 € = 1 pt · 100 pts = chèque cadeau de 5 € · péremption 24 mois sans activité.
 
 ### 6. Formation caissière (J-1, 30 minutes)
 

@@ -267,10 +267,15 @@ async def _eligible_coupons(
             Coupon.client_id == client_id,
             Coupon.is_active.is_(True),
             Coupon.redeemed_at.is_(None),
-            # Les bons cadeau d'ouverture (event_opening) sont affectés comme
-            # moyen de paiement (PaymentMethod.voucher) via leur propre rail —
-            # ils sont surfacés séparément, pas dans la section remise-coupon.
-            Coupon.source != CouponSource.event_opening,
+            # Les bons cadeau d'ouverture (event_opening) ET les chèques cadeau
+            # fidélité (loyalty_milestone) sont affectés comme moyen de paiement
+            # (PaymentMethod.voucher) via leur propre rail — ils réduisent
+            # réellement le montant à régler. Ils sont surfacés séparément
+            # (chips bons cadeau), pas dans la section remise-coupon.
+            Coupon.source.notin_([
+                CouponSource.event_opening,
+                CouponSource.loyalty_milestone,
+            ]),
         )
         .order_by(Coupon.valid_until.asc())
     )
@@ -348,12 +353,20 @@ async def _build_alerts(
             })
 
     # Loyalty milestone progress — encourage the upsell.
-    until_next = (100 - (points_current % 100)) if points_current >= 0 else None
+    from app.services.loyalty_config import get_earning_config
+
+    cfg = await get_earning_config(db)
+    threshold = max(1, int(cfg.voucher_threshold or 100))
+    voucher_eur = cfg.voucher_value_cents / 100.0
+    until_next = (threshold - (points_current % threshold)) if points_current >= 0 else None
     if until_next is not None and 0 < until_next <= 14:
         alerts.append({
             "type": "loyalty_milestone_close",
             "level": "info",
-            "message": f"Encore {until_next} pts pour le prochain bon de 8 €.",
+            "message": (
+                f"Encore {until_next} pts pour le prochain chèque cadeau "
+                f"de {voucher_eur:g} €."
+            ),
         })
 
     return alerts

@@ -29,6 +29,7 @@ from app.models.pos import (
     TransactionItem,
     TransactionType,
 )
+from app.models.offer import Offer
 from app.models.product import Category, Product, ProductPhoto, ProductStatus
 from app.models.user import User, UserRole
 from app.services.pos import PosService
@@ -55,6 +56,7 @@ async def engine():
         LoyaltyAccount.__table__,
         LoyaltyTransaction.__table__,
         AvoirTransaction.__table__,
+        Offer.__table__,
     ]
     async with eng.begin() as conn:
         await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=tables))

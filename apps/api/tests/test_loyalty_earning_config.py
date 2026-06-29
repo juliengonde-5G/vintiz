@@ -33,7 +33,8 @@ async def session():
 async def test_defaults_match_historical_constants(session):
     cfg = await get_earning_config(session)
     assert cfg.euro_per_point == DEFAULT_EURO_PER_POINT == 1
-    assert cfg.voucher_value_cents == 800
+    # Règle boutique : 100 pts = chèque cadeau de 5 € (500 cents).
+    assert cfg.voucher_value_cents == 500
     assert cfg.voucher_threshold == DEFAULT_VOUCHER_THRESHOLD == 100
     assert cfg.voucher_valid_days == 180
     assert cfg.points_expiry_days == 730

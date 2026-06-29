@@ -463,14 +463,14 @@ async def evaluate_cart(
 
 
 # ---------------------------------------------------------------------------
-# Loyalty milestone (1 € = 1 pt, 100 pts = 8 €)
+# Loyalty milestone (1 € = 1 pt, 100 pts = 5 €)
 # ---------------------------------------------------------------------------
 
 
 LOYALTY_POINT_PER_EURO = 1
 LOYALTY_MILESTONE = 100
-LOYALTY_VOUCHER_VALUE = 8.0
-LOYALTY_VOUCHER_VALID_DAYS = 180  # bon d'achat fidélité valable 6 mois
+LOYALTY_VOUCHER_VALUE = 5.0
+LOYALTY_VOUCHER_VALID_DAYS = 180  # chèque cadeau fidélité valable 6 mois
 
 
 def points_to_credit(amount_ttc: float, euro_per_point: int = LOYALTY_POINT_PER_EURO) -> int:

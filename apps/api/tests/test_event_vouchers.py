@@ -25,6 +25,7 @@ from app.models.client import (
     LoyaltyTransaction,
 )
 from app.models.coupon import Coupon, CouponDiscountType, CouponSource
+from app.models.offer import Offer
 from app.models.pos import Payment, PaymentMethod, Receipt, Transaction, TransactionItem
 from app.models.product import Category, Product, ProductPhoto, ProductStatus
 from app.models.user import User, UserRole
@@ -57,6 +58,7 @@ async def engine():
         Receipt.__table__,
         Coupon.__table__,
         Settings.__table__,
+        Offer.__table__,
     ]
     async with eng.begin() as conn:
         await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=tables))

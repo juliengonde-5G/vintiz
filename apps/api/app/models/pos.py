@@ -165,6 +165,10 @@ class TransactionItem(Base):
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     discount_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     line_total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    # True quand la ligne a bénéficié d'une remise promotionnelle / opération
+    # (Solde, markdown produit). Les lignes promotionnelles NE cotisent PAS de
+    # points de fidélité (cf. services/pos.py _credit_loyalty_and_emit_milestones).
+    promotional: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Taux de TVA effectivement appliqué à cette ligne — figé au moment
     # de la vente même si le taux du Product change ensuite. Permet de
     # justifier le calcul HT/TVA/TTC lors d'un contrôle DGFiP, et de

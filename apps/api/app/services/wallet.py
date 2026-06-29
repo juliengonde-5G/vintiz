@@ -40,7 +40,7 @@ from app.models.client import Client
 
 
 PRIMARY_COLOR = "#008678"  # Vintiz teal — single brand color now
-BENEFIT_TEXT = "1 € = 1 pt · 100 pts = bon de 8 €"
+BENEFIT_TEXT = "1 € = 1 pt · 100 pts = chèque cadeau de 5 €"
 
 
 @dataclass

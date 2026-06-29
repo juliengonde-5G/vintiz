@@ -119,10 +119,10 @@ KEY_VOUCHER_THRESHOLD = "loyalty_voucher_threshold"    # points per voucher
 KEY_VOUCHER_VALID_DAYS = "loyalty_voucher_valid_days"  # voucher validity (days)
 KEY_POINTS_EXPIRY_DAYS = "loyalty_points_expiry_days"  # points validity (days)
 
-# Defaults = the historical constants (offers_engine / loyalty).
+# Defaults = règles fidélité boutique : 1 € = 1 pt, 100 pts = chèque de 5 €.
 DEFAULT_EURO_PER_POINT = 1
-DEFAULT_VOUCHER_VALUE_CENTS = 800      # 8 €
-DEFAULT_VOUCHER_THRESHOLD = 100        # 100 pts → 1 voucher
+DEFAULT_VOUCHER_VALUE_CENTS = 500      # 5 €
+DEFAULT_VOUCHER_THRESHOLD = 100        # 100 pts → 1 chèque cadeau
 DEFAULT_VOUCHER_VALID_DAYS = 180       # 6 months
 DEFAULT_POINTS_EXPIRY_DAYS = 730       # 24 months
 
