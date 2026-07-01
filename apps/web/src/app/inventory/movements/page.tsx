@@ -24,7 +24,7 @@ import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
 import { looksLikeScannerMojibake, SCANNER_MOJIBAKE_MESSAGE } from '@/lib/barcode';
 
-type Tab = 'amenagement' | 'achalandage';
+type Tab = 'amenagement' | 'achalandage' | 'retrait';
 
 interface PlanItem {
   product_id: string;
@@ -218,7 +218,7 @@ export default function StockMovementsPage() {
   // (Re)load the active tab's plan.
   const reload = useCallback(() => {
     if (tab === 'amenagement') loadWeekly();
-    else loadRestock();
+    else if (tab === 'achalandage') loadRestock();
   }, [tab, loadWeekly, loadRestock]);
 
   useEffect(() => {
@@ -511,6 +511,7 @@ export default function StockMovementsPage() {
           {([
             { key: 'amenagement', label: 'Aménagement (hebdo)' },
             { key: 'achalandage', label: 'Achalandage (réserve → rayon)' },
+            { key: 'retrait', label: 'Retrait (tri / refus)' },
           ] as { key: Tab; label: string }[]).map((t) => (
             <button
               key={t.key}
@@ -727,6 +728,80 @@ export default function StockMovementsPage() {
           </Card>
         )}
 
+        {/* RETRAIT — sortir une pièce de la vente : Retour centre de tri
+            (statut Retourné) ou Refuser (statut Rejeté). */}
+        {tab === 'retrait' && (
+          <Card className="mb-4">
+            <label className="block text-sm font-medium text-black mb-1.5">
+              Rechercher ou flasher la pièce à retirer
+            </label>
+            <div className="relative">
+              <input
+                ref={inputRef}
+                autoFocus
+                value={freeQuery}
+                onChange={(e) => setFreeQuery(e.target.value)}
+                placeholder="Nom, marque ou code-barres…"
+                className="w-full min-h-[48px] px-4 py-2.5 pr-9 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+              />
+              {freeQuery && (
+                <button
+                  type="button"
+                  onClick={() => { setFreeQuery(''); setFreeResults([]); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label="Effacer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              « Retour centre de tri » renvoie la pièce au tri (statut Retourné).
+              « Refuser » la rejette (statut Rejeté). Dans les deux cas la pièce
+              n&apos;est plus en vente et quitte le magasin.
+            </p>
+
+            {freeLoading && <p className="mt-2 text-xs text-gray-400">Recherche…</p>}
+            {freeResults.length > 0 && (
+              <ul className="mt-3 divide-y divide-gray-100 max-h-80 overflow-y-auto">
+                {freeResults.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-sm text-black truncate">{p.name}</p>
+                      <p className="text-xs text-gray-400 font-mono truncate">
+                        {p.barcode}{p.category ? ` · ${p.category}` : ''} · {p.status}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => withdrawProduct(p, 'returned')}
+                        disabled={executing}
+                        title="Renvoi au centre de tri — retiré de la vente (Retourné)"
+                        className="min-h-[44px] px-3 rounded-lg border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+                      >
+                        Retour centre de tri
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => withdrawProduct(p, 'rejected')}
+                        disabled={executing}
+                        title="Refuser la pièce — retirée de la vente (Rejeté)"
+                        className="min-h-[44px] px-3 rounded-lg border border-red-300 text-red-700 text-sm font-medium hover:bg-red-50 disabled:opacity-50"
+                      >
+                        Refuser
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {freeQuery && !freeLoading && freeResults.length === 0 && (
+              <p className="mt-2 text-xs text-gray-400">Aucun article trouvé.</p>
+            )}
+          </Card>
+        )}
+
         {/* Toast partagé (les deux onglets) */}
         {toast && (
           <div className={`mb-4 px-3 py-2 rounded-lg border text-sm ${toastCls}`}>
@@ -738,13 +813,13 @@ export default function StockMovementsPage() {
           <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-lg">{error}</div>
         )}
 
-        {loading ? (
+        {loading && tab !== 'retrait' ? (
           <div className="flex justify-center py-16">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-vz-teal" />
           </div>
         ) : tab === 'amenagement' ? (
           <WeeklyView plan={weekly} done={done} />
-        ) : (
+        ) : tab === 'achalandage' ? (
           <RestockView
             plan={restock}
             done={done}
@@ -756,9 +831,9 @@ export default function StockMovementsPage() {
               zoneId,
             )}
           />
-        )}
+        ) : null}
 
-        {!loading && plan && totalProposed === 0 && (
+        {!loading && tab !== 'retrait' && plan && totalProposed === 0 && (
           <Card>
             <p className="text-gray-400 text-center py-6">
               Aucun mouvement proposé cette semaine.
