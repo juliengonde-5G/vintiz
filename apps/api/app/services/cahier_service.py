@@ -380,6 +380,116 @@ async def compute_performance(db: AsyncSession, report_date: date) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Impact des remises (soldes, opérations, avantage fidélité)
+# ---------------------------------------------------------------------------
+
+async def compute_discounts_impact(db: AsyncSession, report_date: date) -> dict:
+    """Décompose l'avantage client accordé ce jour-là.
+
+    Deux natures distinctes :
+
+    * **Remises en caisse** (réduisent le CA) :
+        - ``remises_soldes_operations`` : réductions de ligne sur les articles
+          en opération/solde (``TransactionItem.promotional``).
+        - ``remises_manuelles`` : remises saisies à la main en caisse (chip -%)
+          sur des articles hors opération.
+    * **Bons affectés en paiement** (remplacent espèces/CB, n'entament pas le CA) :
+        - ``avantage_fidelite`` : chèques cadeau fidélité (coupons
+          ``loyalty_milestone``) affectés au règlement.
+        - ``bons_evenementiels`` : bons cadeau d'ouverture (``event_opening``).
+
+    Les montants sont en euros TTC. ``taux_remise_pct`` = remises caisse /
+    CA brut (CA net + remises caisse).
+    """
+    from sqlalchemy import and_
+
+    from app.models.coupon import Coupon, CouponSource
+    from app.models.pos import Payment, PaymentMethod
+
+    day_start, day_end = _day_window(report_date)
+
+    # Réduction de ligne = prix catalogue (unit_price × qté) − total encaissé.
+    line_reduction = (
+        TransactionItem.unit_price * TransactionItem.quantity
+        - TransactionItem.line_total
+    )
+
+    async def _sum_line_reduction(*extra_where) -> float:
+        row = await db.execute(
+            select(func.coalesce(func.sum(line_reduction), 0))
+            .join(Transaction, Transaction.id == TransactionItem.transaction_id)
+            .where(
+                Transaction.transaction_type == TransactionType.sale,
+                Transaction.created_at >= day_start,
+                Transaction.created_at < day_end,
+                *extra_where,
+            )
+        )
+        return float(row.scalar_one() or 0)
+
+    remises_operations = await _sum_line_reduction(
+        TransactionItem.promotional.is_(True)
+    )
+    remises_manuelles = await _sum_line_reduction(
+        TransactionItem.promotional.is_(False),
+        TransactionItem.discount_percent > 0,
+    )
+
+    # Bons affectés en paiement (method=voucher), ventilés par source du coupon
+    # via le lien redeemed_transaction_id (1 bon max par transaction).
+    voucher_rows = await db.execute(
+        select(Coupon.source, func.coalesce(func.sum(Payment.amount), 0))
+        .select_from(Coupon)
+        .join(Transaction, Transaction.id == Coupon.redeemed_transaction_id)
+        .join(
+            Payment,
+            and_(
+                Payment.transaction_id == Transaction.id,
+                Payment.method == PaymentMethod.voucher,
+            ),
+        )
+        .where(
+            Transaction.transaction_type == TransactionType.sale,
+            Transaction.created_at >= day_start,
+            Transaction.created_at < day_end,
+            Coupon.source.in_([
+                CouponSource.loyalty_milestone,
+                CouponSource.event_opening,
+            ]),
+        )
+        .group_by(Coupon.source)
+    )
+    avantage_fidelite = 0.0
+    bons_evenementiels = 0.0
+    for source, amount in voucher_rows.all():
+        if source == CouponSource.loyalty_milestone:
+            avantage_fidelite = float(amount or 0)
+        elif source == CouponSource.event_opening:
+            bons_evenementiels = float(amount or 0)
+
+    total_remises_caisse = round(remises_operations + remises_manuelles, 2)
+    total_bons = round(avantage_fidelite + bons_evenementiels, 2)
+
+    ca_net = await _sum_sales_on(db, report_date)
+    ca_brut = ca_net + total_remises_caisse
+    taux_remise_pct = (
+        round(total_remises_caisse / ca_brut * 100, 1) if ca_brut > 0 else 0.0
+    )
+
+    return {
+        "remises_soldes_operations": round(remises_operations, 2),
+        "remises_manuelles": round(remises_manuelles, 2),
+        "total_remises_caisse": total_remises_caisse,
+        "avantage_fidelite": round(avantage_fidelite, 2),
+        "bons_evenementiels": round(bons_evenementiels, 2),
+        "total_bons": total_bons,
+        "total_avantages": round(total_remises_caisse + total_bons, 2),
+        "ca_brut": round(ca_brut, 2),
+        "taux_remise_pct": taux_remise_pct,
+    }
+
+
+# ---------------------------------------------------------------------------
 # CRM / Fidelite block
 # ---------------------------------------------------------------------------
 
