@@ -33,7 +33,7 @@ export default function MonthlyClosePage() {
       .finally(() => setLoading(false))
   }, [])
 
-  async function downloadFec(year: number, month: number) {
+  async function downloadCsv(year: number, month: number) {
     const key = `${year}-${month}`
     setDownloading(key)
     try {
@@ -43,11 +43,11 @@ export default function MonthlyClosePage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `FEC_Vintiz_${year}${String(month).padStart(2, '0')}.txt`
+      a.download = `Ecritures_Vintiz_${year}${String(month).padStart(2, '0')}.csv`
       a.click()
       URL.revokeObjectURL(url)
     } catch {
-      alert('Erreur lors du téléchargement du FEC')
+      alert('Erreur lors du téléchargement du CSV')
     } finally {
       setDownloading(null)
     }
@@ -57,7 +57,7 @@ export default function MonthlyClosePage() {
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-display font-semibold text-vz-ink">Clôtures mensuelles</h1>
-        <p className="text-sm text-vz-ink-mute mt-1">FEC mensuel agrégé (NF525 / DGFiP) par mois exporté</p>
+        <p className="text-sm text-vz-ink-mute mt-1">Export CSV mensuel des écritures (NF525 / DGFiP) — importable dans Pennylane</p>
       </div>
 
       {loading && <div className="text-vz-ink-mute text-sm">Chargement…</div>}
@@ -90,7 +90,7 @@ export default function MonthlyClosePage() {
                     </p>
                   </div>
                   <button
-                    onClick={() => downloadFec(m.year, m.month)}
+                    onClick={() => downloadCsv(m.year, m.month)}
                     disabled={isDownloading}
                     className="flex items-center gap-2 px-4 py-2 bg-vz-teal text-white rounded-lg text-sm font-medium hover:bg-vz-teal-deep disabled:opacity-50 transition-colors"
                   >
@@ -109,7 +109,7 @@ export default function MonthlyClosePage() {
                           <polyline points="7 10 12 15 17 10" />
                           <line x1="12" y1="15" x2="12" y2="3" />
                         </svg>
-                        Télécharger FEC
+                        Télécharger CSV (Pennylane)
                       </>
                     )}
                   </button>

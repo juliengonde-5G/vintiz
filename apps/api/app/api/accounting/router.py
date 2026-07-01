@@ -406,20 +406,27 @@ async def reconcile_sumup(
 
 
 @router.get("/monthly-close/{year}/{month}", dependencies=[Depends(manager_only)])
-async def get_monthly_fec(
+async def get_monthly_csv(
     year: int,
     month: int,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Télécharge le FEC mensuel agrégé (feature A — audit fiscal)."""
+    """Télécharge l'export CSV mensuel des écritures — importable dans Pennylane.
+
+    Remplace le FEC .txt mensuel par un CSV NF525/DGFiP-fidèle (écritures des
+    clôtures Z, séquentielles, équilibrées) au format Pennylane : séparateur
+    « ; », décimales à la virgule, UTF-8 BOM, dates JJ/MM/AAAA. Le FEC .txt
+    quotidien par Z reste disponible (trace fiscale légale, endpoints /fec).
+    """
     if not (1 <= month <= 12):
         raise HTTPException(400, detail="Mois invalide")
     svc = AccountingService(db)
-    fec_content = await svc.generate_monthly_fec(year, month)
-    filename = f"FEC_Vintiz_{year}{month:02d}.txt"
+    csv_content = await svc.generate_monthly_csv(year, month)
+    filename = f"Ecritures_Vintiz_{year}{month:02d}.csv"
     return Response(
-        content=fec_content.encode("utf-8"),
-        media_type="text/plain; charset=utf-8",
+        # UTF-8 BOM (utf-8-sig) pour qu'Excel ouvre les accents correctement.
+        content=csv_content.encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
