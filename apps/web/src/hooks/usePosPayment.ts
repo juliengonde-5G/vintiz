@@ -292,6 +292,41 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
           } catch {
             /* fall through to the timeout/cancel path */
           }
+          // Second canal de confirmation, indépendant du polling checkout :
+          // on interroge SumUp par la référence de la vente
+          // (foreign_transaction_id = client_uuid). Rattrape un paiement abouti
+          // dont la confirmation TPE a été perdue → évite un double encaissement.
+          try {
+            const recRes = await api.get(
+              `/api/pos/payments/cb/recover?foreign_transaction_id=${encodeURIComponent(
+                clientUuidRef.current,
+              )}`,
+            );
+            if (recRes.ok) {
+              const rec = await recRes.json();
+              if ((rec.status || '').toUpperCase() === 'PAID') {
+                const sumup = extractSumUpDetails(rec, checkoutId);
+                attemptId = await logAttempt(
+                  {
+                    method: 'card',
+                    amount,
+                    status: 'succeeded',
+                    ...sumupAttemptFields(sumup, checkoutId),
+                  },
+                  attemptId,
+                );
+                onStatus('paid');
+                return {
+                  status: 'paid',
+                  checkout_id: checkoutId,
+                  attempt_id: attemptId,
+                  sumup,
+                };
+              }
+            }
+          } catch {
+            /* réseau toujours coupé — on retombe sur le timeout prudent */
+          }
           // Hard timeout — try to cancel server-side and report to caller.
           try {
             if (checkoutId) {
@@ -310,10 +345,14 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
             },
             attemptId,
           );
-          onStatus('timeout', 'Pas de réponse du TPE après 90 s.');
+          const timeoutMsg =
+            'Pas de réponse du TPE après 90 s. Si la carte a été débitée, '
+            + 'vérifiez le reçu du TPE ou le journal CB AVANT de relancer '
+            + '(le paiement est rattaché à cette vente).';
+          onStatus('timeout', timeoutMsg);
           return {
             status: 'timeout',
-            detail: 'Pas de réponse du TPE après 90 s.',
+            detail: timeoutMsg,
             checkout_id: checkoutId,
             attempt_id: attemptId,
           };

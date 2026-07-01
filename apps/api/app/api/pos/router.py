@@ -1341,6 +1341,53 @@ async def get_cb_payment_status(
     return result
 
 
+@router.get("/payments/cb/recover")
+async def recover_cb_payment(
+    foreign_transaction_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Vérifie, par la référence de la vente, si la carte a DÉJÀ été débitée.
+
+    Second canal de confirmation, INDÉPENDANT du polling checkout : interroge
+    SumUp par ``foreign_transaction_id`` (= client_uuid de la vente) pour
+    savoir si un paiement a abouti. Sert à récupérer une confirmation TPE
+    perdue (« la caisse ne reçoit pas le retour du terminal ») AVANT de
+    réencaisser — évite les doubles paiements. Retourne le statut normalisé
+    (PAID / FAILED / PENDING / NOT_FOUND) + les identifiants SumUp si payé.
+    """
+    from app.services.sumup_exchange_log import persist_sumup_exchanges
+    from app.services.sumup_service import SumUpService, _normalize_txn_status
+
+    svc = SumUpService()
+    if not svc.is_configured:
+        return {"found": False, "status": "UNKNOWN", "configured": False}
+
+    txn = await svc.get_transaction(foreign_transaction_id=foreign_transaction_id)
+    await persist_sumup_exchanges(db, svc)
+    if not txn:
+        return {"found": False, "status": "NOT_FOUND", "configured": True}
+
+    # La réponse peut renvoyer la transaction directement ou dans items[].
+    if isinstance(txn, dict) and isinstance(txn.get("items"), list):
+        txn = (txn["items"] or [{}])[0] or {}
+    raw_status = (txn.get("status") or "").upper()
+    norm = _normalize_txn_status(raw_status)
+    card = txn.get("card") or {}
+    return {
+        "found": True,
+        "configured": True,
+        "status": norm,
+        "sumup_status": raw_status,
+        "sumup_transaction_id": txn.get("id"),
+        "sumup_transaction_code": txn.get("transaction_code"),
+        "sumup_auth_code": txn.get("auth_code"),
+        "sumup_card_brand": card.get("type") or card.get("scheme"),
+        "sumup_card_last4": card.get("last_4_digits"),
+        "amount": txn.get("amount"),
+    }
+
+
 @router.delete("/payments/cb/{checkout_id}")
 async def cancel_cb_payment(
     checkout_id: str,

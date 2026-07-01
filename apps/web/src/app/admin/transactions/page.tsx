@@ -37,6 +37,7 @@ interface AdminTransaction {
   card_payments: CardPayment[];
   cashier_id: string | null;
   client_id: string | null;
+  client_name: string | null;
   client_company_name: string | null;
   created_at: string | null;
 }
@@ -508,7 +509,9 @@ function AdminTransactionsInner() {
                         <TypeBadge type={tx.type} isInvoice={tx.is_invoice} />
                       </td>
                       <td className="px-3 py-3 text-vz-ink-soft">
-                        {tx.client_company_name || (tx.client_id ? 'Client' : '—')}
+                        {tx.client_name
+                          || tx.client_company_name
+                          || (tx.client_id ? 'Client' : '—')}
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex flex-wrap gap-1">
@@ -624,11 +627,9 @@ function AdminTransactionsInner() {
             <DetailRow
               label="Cliente"
               value={
-                detail.client_company_name
-                  ? detail.client_company_name
-                  : detail.client_id
-                    ? 'Rattachée'
-                    : 'Aucune'
+                detail.client_name
+                  || detail.client_company_name
+                  || (detail.client_id ? 'Rattachée' : 'Aucune')
               }
             />
             <div className="border-t border-vz-line pt-3">
