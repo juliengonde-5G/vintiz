@@ -95,6 +95,7 @@ TERMINAL_STATES = {
     ProductStatus.sold,
     ProductStatus.donated,
     ProductStatus.returned_to_sorting,
+    ProductStatus.rejected,
 }
 
 # Map a destination state to the analytics event we emit (when applicable).

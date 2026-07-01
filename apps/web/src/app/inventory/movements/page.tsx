@@ -316,6 +316,41 @@ export default function StockMovementsPage() {
     }
   }, [placement, executing, zones, focusInput]);
 
+  // Retrait de la vente : « Retour centre de tri » (statut Retourné) ou
+  // « Refuser » (statut Rejeté). Dans les deux cas la pièce quitte le magasin
+  // et n'est plus vendable. Confirmation obligatoire (action destructive).
+  const withdrawProduct = useCallback(
+    async (p: FreeProduct, reason: 'returned' | 'rejected') => {
+      if (executing) return;
+      const label = reason === 'returned' ? 'Retour centre de tri' : 'Refuser';
+      if (!window.confirm(
+        `${label} : « ${p.name} » ne sera plus en vente et sera retiré du magasin. Confirmer ?`,
+      )) return;
+      setExecuting(true);
+      try {
+        const res = await api.post(`/api/inventory/products/${p.id}/withdraw`, { reason });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setToast({ kind: 'error', text: (data && data.detail) || 'Retrait refusé.' });
+          return;
+        }
+        setFreeResults((prev) => prev.filter((x) => x.id !== p.id));
+        setPlacement((prev) => (prev && prev.product.id === p.id ? null : prev));
+        setToast({
+          kind: 'success',
+          text: `${p.name} — ${reason === 'returned' ? 'retour centre de tri' : 'rejeté'} ✓`,
+        });
+        setScanValue('');
+        focusInput();
+      } catch {
+        setToast({ kind: 'error', text: 'Erreur réseau pendant le retrait.' });
+      } finally {
+        setExecuting(false);
+      }
+    },
+    [executing, focusInput],
+  );
+
   // Resolve the scanned barcode against the CURRENT tab's proposals.
   const resolveWeekly = (
     barcode: string,
@@ -577,14 +612,34 @@ export default function StockMovementsPage() {
                           {p.barcode}{p.category ? ` · ${p.category}` : ''} · {p.status}
                         </p>
                       </div>
-                      <Button
-                        variant="outline"
-                        onClick={() => selectForPlacement(p)}
-                        disabled={onFloor}
-                        title={onFloor ? 'Déjà en rayon' : 'Choisir et placer en rayon'}
-                      >
-                        {onFloor ? 'En rayon' : 'Placer'}
-                      </Button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          variant="outline"
+                          onClick={() => selectForPlacement(p)}
+                          disabled={onFloor}
+                          title={onFloor ? 'Déjà en rayon' : 'Choisir et placer en rayon'}
+                        >
+                          {onFloor ? 'En rayon' : 'Placer'}
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => withdrawProduct(p, 'returned')}
+                          disabled={executing}
+                          title="Renvoi au centre de tri — retiré de la vente"
+                          className="min-h-[40px] px-3 rounded-lg border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+                        >
+                          Retour tri
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => withdrawProduct(p, 'rejected')}
+                          disabled={executing}
+                          title="Refuser la pièce — retirée de la vente (Rejeté)"
+                          className="min-h-[40px] px-3 rounded-lg border border-red-300 text-red-700 text-sm font-medium hover:bg-red-50 disabled:opacity-50"
+                        >
+                          Refuser
+                        </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -644,10 +699,28 @@ export default function StockMovementsPage() {
                     </button>
                   )}
                 </div>
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Button onClick={confirmPlacement} disabled={executing}>
                     {executing ? 'Placement…' : 'Confirmer le placement →'}
                   </Button>
+                  <button
+                    type="button"
+                    onClick={() => withdrawProduct(placement.product, 'returned')}
+                    disabled={executing}
+                    title="Renvoi au centre de tri — retiré de la vente"
+                    className="min-h-[48px] px-4 rounded-lg border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+                  >
+                    Retour centre de tri
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => withdrawProduct(placement.product, 'rejected')}
+                    disabled={executing}
+                    title="Refuser la pièce — retirée de la vente (Rejeté)"
+                    className="min-h-[48px] px-4 rounded-lg border border-red-300 text-red-700 text-sm font-medium hover:bg-red-50 disabled:opacity-50"
+                  >
+                    Refuser
+                  </button>
                 </div>
               </div>
             )}

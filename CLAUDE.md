@@ -295,6 +295,7 @@ POST   /api/inventory/products/import-csv    Import en masse CSV (multipart, ?dr
 GET    /api/inventory/products/{id}/history  Historique mouvements (audit_logs)
 POST   /api/inventory/products/{id}/transition  Transition cycle de vie produit (FSM)
 DELETE /api/inventory/products/{id}          Soft-delete (statut → returned)
+POST   /api/inventory/products/{id}/withdraw Retirer de la vente (body: reason=returned|rejected) : Retour centre de tri (statut Retourné) ou Refus (statut Rejeté). Non vendable + zone vidée + mouvement historisé (409 si déjà vendu)
 DELETE /api/inventory/products/{id}/permanent  Suppression définitive d'un produit créé à tort (manager only, 409 si déjà vendu, nettoie photos/zone/embedding/order/events, audité)
 POST   /api/inventory/batches                Créer un lot d'arrivage (carton)
 GET    /api/inventory/batches                Liste des lots

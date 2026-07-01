@@ -65,6 +65,7 @@ TERMINAL_STATUSES: frozenset[ProductStatus] = frozenset({
     ProductStatus.donated,
     ProductStatus.returned_to_sorting,
     ProductStatus.returned,
+    ProductStatus.rejected,
 })
 
 

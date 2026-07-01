@@ -155,11 +155,12 @@ async def test_cannot_transition_out_of_terminal(session):
 
 @pytest.mark.anyio
 async def test_terminal_states_match_audit():
-    """V1 §2.2.6 lists three terminal states."""
+    """V1 §2.2.6 terminal states + ``rejected`` (refus à la mise en vente)."""
     assert TERMINAL_STATES == {
         ProductStatus.sold,
         ProductStatus.donated,
         ProductStatus.returned_to_sorting,
+        ProductStatus.rejected,
     }
 
 

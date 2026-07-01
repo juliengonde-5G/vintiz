@@ -46,6 +46,7 @@ const STATUS_LABELS: Record<string, string> = {
   discounted: 'Démarqué',
   deep_discounted: 'Démarque -50%',
   donated: 'Donné',
+  rejected: 'Rejeté',
 };
 
 function formatPrice(value: unknown): string {
