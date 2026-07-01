@@ -80,26 +80,25 @@ async def test_monthly_csv_groups_and_balances(session):
     parsed = [r.split(";") for r in body]
     col = {name: i for i, name in enumerate(_PENNYLANE_CSV_COLUMNS)}
 
-    # Format : journal, décimales virgule, date JJ/MM/AAAA.
-    assert parsed[0][col["Journal"]] == "VTE"
+    # Format modèle Pennylane : journal, décimales virgule, date JJ/MM/AAAA,
+    # débit dans « Débit et/ou Crédit », crédit dans « Crédit ».
+    assert parsed[0][col["Code Journal"]] == "VTE"
     assert parsed[0][col["Date"]] == "05/07/2026"
-    assert parsed[0][col["Debit"]] == "120,00"
-    assert parsed[0][col["Devise"]] == "EUR"
+    assert parsed[0][col["Numéro de compte"]] == "531000"
+    assert parsed[0][col["Débit et/ou Crédit"]] == "120,00"
+    assert parsed[0][col["Crédit"]] == "0,00"
 
-    # Chaque Z partage un unique NumeroEcriture ; les deux Z ont des numéros
-    # distincts.
-    ecr = [r[col["NumeroEcriture"]] for r in parsed]
-    assert ecr[0] == ecr[1] == ecr[2]
-    assert ecr[3] == ecr[4] == ecr[5]
-    assert ecr[0] != ecr[3]
-    assert ecr[0] == "202607-0001"
-    assert ecr[3] == "202607-0002"
+    # Chaque Z partage un unique « Numéro de pièce » (= réf. Z) ; les deux Z
+    # ont des numéros distincts → deux écritures équilibrées côté Pennylane.
+    piece = [r[col["Numéro de pièce"]] for r in parsed]
+    assert piece[0] == piece[1] == piece[2] == "Z0001"
+    assert piece[3] == piece[4] == piece[5] == "Z0002"
 
     # Équilibre débit = crédit par écriture.
     def _amt(s: str) -> float:
         return float(s.replace(",", "."))
 
     for group in (parsed[:3], parsed[3:]):
-        deb = sum(_amt(r[col["Debit"]]) for r in group)
-        cre = sum(_amt(r[col["Credit"]]) for r in group)
+        deb = sum(_amt(r[col["Débit et/ou Crédit"]]) for r in group)
+        cre = sum(_amt(r[col["Crédit"]]) for r in group)
         assert round(deb - cre, 2) == 0.0

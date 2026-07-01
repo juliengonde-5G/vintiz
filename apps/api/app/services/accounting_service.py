@@ -77,18 +77,33 @@ def _fec_date(d: date | datetime | None) -> str:
 # Export CSV mensuel — écritures comptables importables dans Pennylane
 # ---------------------------------------------------------------------------
 #
-# Remplace le FEC .txt mensuel par un CSV propre (séparateur « ; », décimales
-# à la virgule, UTF-8 BOM, dates JJ/MM/AAAA) importable dans Pennylane. Reste
-# fidèle à la norme NF525/DGFiP : ce sont les écritures comptables issues des
-# clôtures Z (séquentielles, référence pièce = Z####, date de validation),
-# équilibrées (Σdébit = Σcrédit par écriture). Point clé Pennylane : toutes
-# les lignes d'un même Z partagent le MÊME numéro d'écriture → Pennylane les
-# regroupe en une écriture équilibrée (sinon chaque ligne serait rejetée).
+# Remplace le FEC .txt mensuel par un CSV au format du modèle d'import
+# Pennylane (« trame import écritures »), séparateur « ; », décimales à la
+# virgule, UTF-8 BOM, dates JJ/MM/AAAA. Reste fidèle NF525/DGFiP : ce sont les
+# écritures des clôtures Z (séquentielles, réf. pièce Z####), équilibrées
+# (Σdébit = Σcrédit par écriture). Point clé Pennylane : toutes les lignes
+# d'un même Z partagent le MÊME « Numéro de pièce » → Pennylane les regroupe
+# en une écriture équilibrée (sinon chaque ligne serait rejetée).
+#
+# Colonnes = celles du modèle Pennylane fourni. Le débit va dans la colonne
+# « Débit et/ou Crédit », le crédit dans « Crédit ».
 
 _PENNYLANE_CSV_COLUMNS = [
-    "Journal", "Date", "NumeroEcriture", "Compte", "LibelleCompte",
-    "NumeroPiece", "DatePiece", "LibelleEcriture",
-    "Debit", "Credit", "Lettrage", "DateValidation", "Devise",
+    "Date",
+    "Code Journal",
+    "Numéro de compte",
+    "Libellé de compte",
+    "Libellé de ligne",
+    "Taux de TVA du compte",
+    "Code pays du compte",
+    "Libellé de pièce",
+    "Numéro de pièce",
+    "Débit et/ou Crédit",
+    "Crédit",
+    "Famille de catégories",
+    "Catégorie",
+    "Identifiant de ligne",
+    "Identifiant de lettrage",
 ]
 
 
@@ -881,7 +896,6 @@ class AccountingService:
         )
         exports = list((await self.db.execute(stmt)).scalars().all())
 
-        valid_date = _csv_date(datetime.now(timezone.utc))
         rows = [_csv_row(_PENNYLANE_CSV_COLUMNS)]
         ecriture_seq = 0
         for exp in exports:
@@ -889,25 +903,29 @@ class AccountingService:
             if not lines:
                 continue
             ecriture_seq += 1
-            # Numéro d'écriture séquentiel et unique dans le mois, partagé par
-            # toutes les lignes du Z → une seule écriture équilibrée côté Pennylane.
-            ecriture_num = f"{year}{month:02d}-{ecriture_seq:04d}"
             ecr_date = _csv_date(exp.export_date)
+            # « Numéro de pièce » = référence de la clôture Z (unique dans le
+            # mois), partagé par toutes les lignes du Z → Pennylane regroupe en
+            # une seule écriture équilibrée. Repli sur un compteur si absent.
+            piece_num = exp.lines[0].piece_reference or f"Z-{ecriture_seq:04d}"
+            piece_label = f"Clôture caisse {piece_num} du {ecr_date}"
             for ln in lines:
                 rows.append(_csv_row([
-                    cfg.pennylane_journal_code,
-                    ecr_date,
-                    ecriture_num,
-                    ln.account_number,
-                    ln.account_label,
-                    ln.piece_reference or "",
-                    _csv_date(ln.piece_date or exp.export_date),
-                    ln.label,
-                    _csv_amount(ln.debit),
-                    _csv_amount(ln.credit),
-                    "",          # Lettrage (non géré côté boutique)
-                    valid_date,
-                    "EUR",
+                    ecr_date,                       # Date
+                    cfg.pennylane_journal_code,     # Code Journal
+                    ln.account_number,              # Numéro de compte
+                    ln.account_label,               # Libellé de compte
+                    ln.label,                       # Libellé de ligne
+                    "",                             # Taux de TVA du compte
+                    "",                             # Code pays du compte
+                    piece_label,                    # Libellé de pièce
+                    piece_num,                      # Numéro de pièce (regroupement)
+                    _csv_amount(ln.debit),          # Débit et/ou Crédit
+                    _csv_amount(ln.credit),         # Crédit
+                    "",                             # Famille de catégories
+                    "",                             # Catégorie
+                    "",                             # Identifiant de ligne
+                    "",                             # Identifiant de lettrage
                 ]))
         return "\r\n".join(rows) + "\r\n"
 
