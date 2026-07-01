@@ -150,6 +150,23 @@ async def list_admin_transactions(
     stmt = stmt.offset(max(skip, 0)).limit(limit)
     rows = (await db.execute(stmt)).scalars().all()
 
+    # Nom de la cliente rattachée — chargé en un seul SELECT groupé (évite le
+    # N+1) pour l'afficher directement dans la colonne « Client ».
+    from app.models.client import Client
+
+    client_ids = {t.client_id for t in rows if t.client_id}
+    client_names: dict[str, str] = {}
+    if client_ids:
+        crows = await db.execute(
+            select(Client.id, Client.first_name, Client.last_name).where(
+                Client.id.in_(client_ids)
+            )
+        )
+        for cid, first_name, last_name in crows.all():
+            name = f"{(first_name or '').strip()} {(last_name or '').strip()}".strip()
+            if name:
+                client_names[str(cid)] = name
+
     out: list[dict] = []
     for t in rows:
         methods = [p.method.value for p in (t.payments or [])]
@@ -182,6 +199,9 @@ async def list_admin_transactions(
                 "card_payments": card_payments,
                 "cashier_id": str(t.cashier_id) if t.cashier_id else None,
                 "client_id": str(t.client_id) if t.client_id else None,
+                "client_name": (
+                    client_names.get(str(t.client_id)) if t.client_id else None
+                ),
                 "client_company_name": t.client_company_name,
                 "created_at": t.created_at.isoformat() if t.created_at else None,
             }

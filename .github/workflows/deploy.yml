@@ -28,7 +28,26 @@ jobs:
     environment: production
 
     steps:
+      # Garde-fou : si les secrets SSH ne sont pas configures dans ce repo,
+      # on n'echoue pas (rouge trompeur). On emet un avertissement clair et on
+      # marque l'etape de deploiement comme ignoree — le deploiement se fait
+      # alors manuellement sur le VPS (voir bloc commente en bas de fichier).
+      - name: Verifier la configuration du deploiement
+        id: check
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          if [ -z "${VPS_HOST}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Deploiement SSH ignore::Secret VPS_HOST absent dans ce repo. \
+            L'auto-deploiement GitHub est desactive. Deployer manuellement sur le VPS : \
+            cd /opt/vintiz && git pull origin main && ./scripts/deploy.sh"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy via SSH
+        if: steps.check.outputs.configured == 'true'
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}

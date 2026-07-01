@@ -133,6 +133,44 @@ function extractCbDetails(
   };
 }
 
+/**
+ * Référence de la transaction SumUp affichée sur le ticket de vente validée.
+ * Permet de rapprocher la vente du reçu TPE (débit carte) — utile en cas de
+ * doute sur une confirmation TPE perdue. Ne s'affiche que si la vente courante
+ * comporte bien un règlement CB.
+ */
+function CbReferenceCard({ details }: { details: SumUpPaymentDetails | null }) {
+  if (!details) return null;
+  const reference = details.sumup_transaction_code || details.sumup_transaction_id;
+  if (!reference) return null;
+  const hasCard = details.sumup_card_brand || details.sumup_card_last4;
+  return (
+    <div className="mt-3 rounded-lg border border-vz-line bg-vz-bg-alt/60 px-3 py-2 text-sm">
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-vz-ink-mute">
+        Paiement CB — SumUp
+      </p>
+      <div className="flex items-center justify-between">
+        <span className="text-vz-ink-mute">Réf. transaction</span>
+        <span className="font-mono text-vz-ink">{reference}</span>
+      </div>
+      {hasCard && (
+        <div className="flex items-center justify-between">
+          <span className="text-vz-ink-mute">Carte</span>
+          <span className="font-mono text-vz-ink">
+            {details.sumup_card_brand || 'CB'} ••{details.sumup_card_last4 || '????'}
+          </span>
+        </div>
+      )}
+      {details.sumup_auth_code && (
+        <div className="flex items-center justify-between">
+          <span className="text-vz-ink-mute">Autorisation</span>
+          <span className="font-mono text-vz-ink">{details.sumup_auth_code}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 export default function POSPage() {
   // Search
@@ -1485,6 +1523,7 @@ export default function POSPage() {
     setCouponCode(''); setCouponDiscount(0); setCouponApplied(null); setCouponError('');
     setCbCheckoutId(null);
     setCbStatus('idle');
+    setCbDetails(null);
     setNumpadTarget(null);
     stopCbPolling();
   };
@@ -2965,6 +3004,9 @@ export default function POSPage() {
               });
             }}
           />
+          {payments.some((p) => p.method === 'carte') && (
+            <CbReferenceCard details={cbDetails} />
+          )}
         </Modal>
       )}
 
@@ -2987,6 +3029,9 @@ export default function POSPage() {
         <div className="bg-gray-50 p-4 rounded-lg">
           <pre className="whitespace-pre-wrap text-sm font-mono text-black">{receiptText}</pre>
         </div>
+        {payments.some((p) => p.method === 'carte') && (
+          <CbReferenceCard details={cbDetails} />
+        )}
         {printMsg && (
           <p className="mt-3 text-sm text-vz-teal">{printMsg}</p>
         )}
