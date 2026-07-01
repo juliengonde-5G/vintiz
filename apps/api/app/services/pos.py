@@ -117,6 +117,8 @@ class PosService:
                     ProductStatus.sold,
                     ProductStatus.returned,
                     ProductStatus.donated,
+                    ProductStatus.returned_to_sorting,
+                    ProductStatus.rejected,
                 ):
                     raise ProductNotAvailable(product.name, product.status.value)
                 unit_price = Decimal(str(cart_item.unit_price)) if cart_item.unit_price else Decimal(str(product.sale_price))

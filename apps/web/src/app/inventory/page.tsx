@@ -25,6 +25,7 @@ const statusLabels: Record<string, { label: string; variant: 'stock' | 'display'
   returned: { label: 'Retourné', variant: 'returned' },
   returned_to_sorting: { label: 'Retour tri', variant: 'returned' },
   donated: { label: 'Donné', variant: 'returned' },
+  rejected: { label: 'Rejeté', variant: 'returned' },
 };
 
 // Coarse "où est l'article" view used by the Stock / Magasin split.

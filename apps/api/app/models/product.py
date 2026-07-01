@@ -53,6 +53,10 @@ class ProductStatus(str, enum.Enum):
     deep_discounted = "deep_discounted"
     donated = "donated"
     returned_to_sorting = "returned_to_sorting"
+    # Pièce refusée à la mise en vente (défaut, non conforme…). Terminal, non
+    # vendable, retirée du magasin. Distinct de ``returned`` (renvoi centre de
+    # tri) pour tracer le motif de sortie.
+    rejected = "rejected"
 
 
 class Category(Base):

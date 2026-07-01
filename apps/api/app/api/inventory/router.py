@@ -979,6 +979,91 @@ async def delete_product(
     await db.flush()
 
 
+class WithdrawRequest(BaseModel):
+    # "returned" = retour centre de tri (statut Retourné) ;
+    # "rejected" = refusé à la vente (statut Rejeté).
+    reason: str
+    note: str | None = None
+
+
+_WITHDRAW_TARGETS: dict[str, ProductStatus] = {
+    "returned": ProductStatus.returned,
+    "rejected": ProductStatus.rejected,
+}
+
+_WITHDRAW_DEFAULT_REASON = {
+    "returned": "Retour centre de tri",
+    "rejected": "Refusé à la vente",
+}
+
+
+@router.post("/products/{product_id}/withdraw")
+async def withdraw_product(
+    product_id: uuid.UUID,
+    request: WithdrawRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Retirer une pièce de la vente depuis les mouvements de stock.
+
+    ``reason=returned`` → statut **Retourné** (renvoi au centre de tri).
+    ``reason=rejected`` → statut **Rejeté** (refus à la mise en vente).
+
+    Dans les deux cas la pièce devient non vendable et quitte le magasin
+    (``zone_id`` remis à NULL). Un mouvement de sortie est historisé. Un
+    article déjà vendu ne peut pas être retiré (passer par un remboursement).
+    """
+    target = _WITHDRAW_TARGETS.get(request.reason)
+    if target is None:
+        raise HTTPException(
+            status_code=400,
+            detail="reason doit être 'returned' (retour tri) ou 'rejected' (refus).",
+        )
+
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if product.status == ProductStatus.sold:
+        raise HTTPException(
+            status_code=409,
+            detail="Un article vendu ne peut pas être retiré — passer par un remboursement.",
+        )
+
+    from_status = product.status
+    from_zone = product.zone_id
+    product.status = target
+    product.zone_id = None  # retiré du magasin
+    await db.flush()
+
+    # Historise la sortie (best-effort — n'échoue jamais le retrait).
+    try:
+        from app.services.stock_movement import record_move
+
+        await record_move(
+            db,
+            product,
+            from_status=from_status,
+            to_status=target,
+            from_zone_id=from_zone,
+            to_zone_id=None,
+            user_id=current_user.id,
+            reason=request.note or _WITHDRAW_DEFAULT_REASON[request.reason],
+            source="manual",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("vintiz").warning(
+            "withdraw_product: movement history failed for %s: %s", product.id, exc
+        )
+
+    return {
+        "product_id": str(product.id),
+        "barcode": product.barcode,
+        "name": product.name,
+        "status": product.status.value,
+    }
+
+
 @router.delete(
     "/products/{product_id}/permanent",
     dependencies=[Depends(RoleChecker(["manager"]))],

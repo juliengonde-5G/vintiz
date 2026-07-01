@@ -73,6 +73,52 @@ def _fec_date(d: date | datetime | None) -> str:
     return d.strftime("%Y%m%d")
 
 
+# ---------------------------------------------------------------------------
+# Export CSV mensuel — écritures comptables importables dans Pennylane
+# ---------------------------------------------------------------------------
+#
+# Remplace le FEC .txt mensuel par un CSV propre (séparateur « ; », décimales
+# à la virgule, UTF-8 BOM, dates JJ/MM/AAAA) importable dans Pennylane. Reste
+# fidèle à la norme NF525/DGFiP : ce sont les écritures comptables issues des
+# clôtures Z (séquentielles, référence pièce = Z####, date de validation),
+# équilibrées (Σdébit = Σcrédit par écriture). Point clé Pennylane : toutes
+# les lignes d'un même Z partagent le MÊME numéro d'écriture → Pennylane les
+# regroupe en une écriture équilibrée (sinon chaque ligne serait rejetée).
+
+_PENNYLANE_CSV_COLUMNS = [
+    "Journal", "Date", "NumeroEcriture", "Compte", "LibelleCompte",
+    "NumeroPiece", "DatePiece", "LibelleEcriture",
+    "Debit", "Credit", "Lettrage", "DateValidation", "Devise",
+]
+
+
+def _csv_amount(value) -> str:
+    """Montant à 2 décimales, virgule décimale (convention française)."""
+    return f"{float(value or 0):.2f}".replace(".", ",")
+
+
+def _csv_date(d: date | datetime | None) -> str:
+    """Date au format JJ/MM/AAAA (lisible Excel + import Pennylane)."""
+    if d is None:
+        return ""
+    if isinstance(d, datetime):
+        d = d.date()
+    return d.strftime("%d/%m/%Y")
+
+
+def _csv_field(value) -> str:
+    """Échappement CSV : guillemets si le champ contient « ; », guillemet ou
+    saut de ligne (RFC 4180)."""
+    s = "" if value is None else str(value)
+    if any(c in s for c in (";", '"', "\n", "\r")):
+        return '"' + s.replace('"', '""') + '"'
+    return s
+
+
+def _csv_row(values) -> str:
+    return ";".join(_csv_field(v) for v in values)
+
+
 class AccountingService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -803,39 +849,67 @@ class AccountingService:
         except Exception as exc:
             _log.warning("Daily accounting email failed: %s", exc)
 
-    # ── FEC mensuel (feature A) ──────────────────────────────────────────────
+    # ── Export mensuel (CSV Pennylane — remplace le FEC .txt mensuel) ─────────
 
-    async def generate_monthly_fec(self, year: int, month: int) -> str:
-        """Génère un FEC mensuel agrégé de tous les exports du mois."""
+    async def generate_monthly_csv(self, year: int, month: int) -> str:
+        """CSV mensuel des écritures comptables, importable dans Pennylane.
+
+        Remplace le FEC .txt mensuel. Agrège les écritures de toutes les
+        clôtures Z du mois à partir des lignes structurées
+        (``AccountingExportLine``), en regroupant les lignes d'un même Z sous
+        un unique numéro d'écriture (écriture équilibrée). Fidèle NF525/DGFiP
+        (séquentiel, réf. pièce Z####, date de validation).
+        """
         from calendar import monthrange
-        cfg = await self.get_config()
 
+        from sqlalchemy.orm import selectinload
+
+        cfg = await self.get_config()
         last_day = monthrange(year, month)[1]
         date_from = date(year, month, 1)
         date_to = date(year, month, last_day)
 
         stmt = (
             select(AccountingExport)
+            .options(selectinload(AccountingExport.lines))
             .where(AccountingExport.export_date >= date_from)
             .where(AccountingExport.export_date <= date_to)
-            .order_by(AccountingExport.export_date.asc())
+            .order_by(
+                AccountingExport.export_date.asc(),
+                AccountingExport.created_at.asc(),
+            )
         )
-        result = await self.db.execute(stmt)
-        exports = list(result.scalars().all())
+        exports = list((await self.db.execute(stmt)).scalars().all())
 
-        if not exports:
-            return "\t".join(_FEC_COLUMNS) + "\n"
-
-        rows = ["\t".join(_FEC_COLUMNS)]
-        ecriture_num = 1
+        valid_date = _csv_date(datetime.now(timezone.utc))
+        rows = [_csv_row(_PENNYLANE_CSV_COLUMNS)]
+        ecriture_seq = 0
         for exp in exports:
-            if not exp.fec_content:
+            lines = sorted(exp.lines or [], key=lambda ln: ln.line_number)
+            if not lines:
                 continue
-            for line in exp.fec_content.splitlines()[1:]:  # skip header
-                rows.append(line)
-                ecriture_num += 1
-
-        return "\n".join(rows)
+            ecriture_seq += 1
+            # Numéro d'écriture séquentiel et unique dans le mois, partagé par
+            # toutes les lignes du Z → une seule écriture équilibrée côté Pennylane.
+            ecriture_num = f"{year}{month:02d}-{ecriture_seq:04d}"
+            ecr_date = _csv_date(exp.export_date)
+            for ln in lines:
+                rows.append(_csv_row([
+                    cfg.pennylane_journal_code,
+                    ecr_date,
+                    ecriture_num,
+                    ln.account_number,
+                    ln.account_label,
+                    ln.piece_reference or "",
+                    _csv_date(ln.piece_date or exp.export_date),
+                    ln.label,
+                    _csv_amount(ln.debit),
+                    _csv_amount(ln.credit),
+                    "",          # Lettrage (non géré côté boutique)
+                    valid_date,
+                    "EUR",
+                ]))
+        return "\r\n".join(rows) + "\r\n"
 
     # ------------------------------------------------------------------
     # Export / FEC par journée (à la demande)

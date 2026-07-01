@@ -80,6 +80,7 @@ async def get_cahier(
     perf = await svc.compute_performance(db, report_date)
     zoning = await svc.compute_zones_today(db, report_date)
     crm_loyalty = await svc.compute_crm_loyalty(db, report_date)
+    remises = await svc.compute_discounts_impact(db, report_date)
     prog_horaire = await svc.compute_progression_horaire(db, report_date)
     cible_horaire = svc.compute_progression_cible(ca_objectif_jour or 0.0)
     prog_mois = await svc.compute_monthly_progress(db, report_date)
@@ -164,6 +165,7 @@ async def get_cahier(
         },
         "zoning": zoning,
         "crm_loyalty": crm_loyalty,
+        "remises": remises,
         "progression_horaire": prog_horaire,
         "progression_cible_horaire": cible_horaire,
     }

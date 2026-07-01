@@ -54,12 +54,27 @@ interface CahierPayload {
     reprints: number;
     tickets_fidelo: number;
   };
+  remises: {
+    remises_soldes_operations: number;
+    remises_manuelles: number;
+    total_remises_caisse: number;
+    avantage_fidelite: number;
+    bons_evenementiels: number;
+    total_bons: number;
+    total_avantages: number;
+    ca_brut: number;
+    taux_remise_pct: number;
+  };
   progression_horaire: { hour: number; ca_cumul: number; ca_hour?: number }[];
   progression_cible_horaire: { hour: number; ca_target: number }[];
 }
 
 const CURRENCY = (n: number | null | undefined) =>
   n == null ? '—' : n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+
+// Variante avec centimes — pour les montants de remises (souvent < 100 €).
+const CURRENCY_2 = (n: number | null | undefined) =>
+  n == null ? '—' : n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Local date → YYYY-MM-DD. Avoids the Date.toISOString() pitfall which
 // converts to UTC and can shift the date by one day in fuseaux ≠ UTC
@@ -516,6 +531,50 @@ export default function CahierDuJourPage() {
                 <StatBlock label="Tickets fidelite" value={String(data.crm_loyalty.tickets_fidelo)} />
               </div>
             </section>
+
+            {/* Impact des remises (soldes, opérations, avantage fidélité) */}
+            {data.remises && (
+            <section>
+              <h2 className="text-sm font-display font-semibold text-black uppercase tracking-wider mb-1">
+                Impact des remises
+              </h2>
+              <p className="text-[11px] text-vz-ink-mute mb-3">
+                CA brut {CURRENCY_2(data.remises.ca_brut)} · taux de remise{' '}
+                <strong className="text-black">{data.remises.taux_remise_pct}%</strong>{' '}
+                (les bons sont un moyen de paiement, ils n&apos;entament pas le CA).
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <StatBlock
+                  label="Soldes / operations"
+                  value={CURRENCY_2(data.remises.remises_soldes_operations)}
+                  accent="teal"
+                />
+                <StatBlock
+                  label="Remises manuelles"
+                  value={CURRENCY_2(data.remises.remises_manuelles)}
+                />
+                <StatBlock
+                  label="Total remises caisse"
+                  value={CURRENCY_2(data.remises.total_remises_caisse)}
+                  hint="Réduit le CA"
+                />
+                <StatBlock
+                  label="Cheques cadeau fidelite"
+                  value={CURRENCY_2(data.remises.avantage_fidelite)}
+                  accent="pink"
+                />
+                <StatBlock
+                  label="Bons evenementiels"
+                  value={CURRENCY_2(data.remises.bons_evenementiels)}
+                />
+                <StatBlock
+                  label="Total avantages client"
+                  value={CURRENCY_2(data.remises.total_avantages)}
+                  hint="Remises + bons"
+                />
+              </div>
+            </section>
+            )}
 
           </div>
         )}
