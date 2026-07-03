@@ -1866,15 +1866,53 @@ export default function POSPage() {
             </div>
           )}
 
-          {/* Bons cadeau sur le compte — affichés dès l'identification cliente */}
+          {/* Bons cadeau (dont chèques cadeau fidélité) sur le compte — proposés
+              ET affectables dès l'identification cliente. Réutilise le rail
+              voucher (addVoucherPayment) : le bon devient un moyen de paiement
+              qui réduit le montant dû. Désactivé tant que le panier est vide. */}
           {selectedClient && clientVouchers.length > 0 && (
-            <div className="px-3 pt-2">
-              <div className="rounded-xl border border-vz-accent/40 bg-vz-accent-soft px-3 py-2 text-xs text-vz-ink flex items-center gap-2">
-                <span aria-hidden>🎟</span>
-                <span>
-                  <strong>{clientVouchers.length} bon{clientVouchers.length > 1 ? 's' : ''} d&apos;achat</strong> sur ce compte — à affecter au paiement.
-                </span>
-              </div>
+            <div className="px-3 pt-2 space-y-1.5">
+              <p className="text-[11px] uppercase tracking-wider text-vz-ink-mute px-1">
+                Remise fidélité / bons cadeau
+              </p>
+              {clientVouchers.map((v) => {
+                const used = payments.some((p) => p.voucher_code === v.code);
+                const anotherUsed = !used && payments.some((p) => p.method === 'voucher');
+                const blockedSameDay = v.available_today === false;
+                const cartEmpty = cartTotal <= 0;
+                const disabled = used || blockedSameDay || anotherUsed || cartEmpty;
+                return (
+                  <div
+                    key={v.code}
+                    className="rounded-xl border border-vz-accent/40 bg-vz-accent-soft px-3 py-2 text-xs text-vz-ink flex items-center justify-between gap-2"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span aria-hidden>🎟</span>{' '}
+                      <strong>{v.label}</strong>
+                      {blockedSameDay && <span className="text-amber-700"> · dispo demain</span>}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => addVoucherPayment(v)}
+                      disabled={disabled}
+                      title={cartEmpty ? 'Ajoutez des articles au panier pour affecter ce bon.' : undefined}
+                      className="shrink-0 px-2.5 py-1 rounded-lg bg-vz-teal text-white text-[11px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-vz-teal-deep transition-colors whitespace-nowrap"
+                    >
+                      {used
+                        ? 'Affecté ✓'
+                        : blockedSameDay
+                          ? 'Indispo'
+                          : anotherUsed
+                            ? 'Autre bon'
+                            : cartEmpty
+                              ? 'Panier vide'
+                              : v.value_for_cart > 0
+                                ? `Affecter ${formatCurrency(v.value_for_cart)}`
+                                : 'Affecter'}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
 
