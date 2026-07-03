@@ -63,6 +63,7 @@ from app.models.communications import (
     MessageTemplate,
 )
 from app.models.payment_attempt import PaymentAttempt, PaymentAttemptStatus
+from app.models.failed_payment import FailedPayment, FailedPaymentStatus
 from app.models.cash_movement import (
     CashMovement,
     CashMovementDirection,
@@ -115,6 +116,7 @@ __all__ = [
     "ReceiptKind", "ReceiptTemplate",
     "CommunicationLog", "MessageChannel", "MessageTemplate",
     "PaymentAttempt", "PaymentAttemptStatus",
+    "FailedPayment", "FailedPaymentStatus",
     "CashMovement", "CashMovementDirection", "CashMovementReason",
     "SumUpTerminal", "SumUpTerminalStatus",
     "SumUpExchange",

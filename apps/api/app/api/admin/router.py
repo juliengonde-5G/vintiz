@@ -623,6 +623,57 @@ async def analyze_payment_failures(
     }
 
 
+@router.get("/failed-payments", dependencies=[Depends(manager_only)])
+async def list_failed_payments(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    status_filter: str | None = Query(None, alias="status"),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """File des paiements CB échoués en attente de réessai (offline groundwork).
+
+    ``status`` : pending | succeeded | exhausted | abandoned. Manager only.
+    """
+    from app.models.failed_payment import FailedPaymentStatus
+    from app.services.failed_payment_service import FailedPaymentService
+
+    try:
+        status_enum = FailedPaymentStatus(status_filter) if status_filter else None
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="status must be pending | succeeded | exhausted | abandoned",
+        )
+
+    rows = await FailedPaymentService().get_failed_payments(
+        db, status=status_enum, limit=limit
+    )
+    return {
+        "failed_payments": [
+            {
+                "id": str(fp.id),
+                "amount": float(fp.amount),
+                "currency": fp.currency,
+                "status": fp.status.value,
+                "checkout_reference": fp.checkout_reference,
+                "attempt_count": fp.attempt_count,
+                "max_attempts": fp.max_attempts,
+                "next_retry_at": (
+                    fp.next_retry_at.isoformat() if fp.next_retry_at else None
+                ),
+                "last_attempt_at": (
+                    fp.last_attempt_at.isoformat() if fp.last_attempt_at else None
+                ),
+                "error_detail": fp.error_detail,
+                "resolved_checkout_id": fp.resolved_checkout_id,
+                "is_recoverable": fp.is_recoverable,
+                "created_at": fp.created_at.isoformat() if fp.created_at else None,
+            }
+            for fp in rows
+        ],
+        "count": len(rows),
+    }
+
+
 # ---------------------------------------------------------------------------
 # SumUp exchange log — server-side trace of every HTTP call to SumUp
 # ---------------------------------------------------------------------------
