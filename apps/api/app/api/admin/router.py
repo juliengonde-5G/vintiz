@@ -520,6 +520,109 @@ async def list_admin_payment_attempts(
     }
 
 
+@router.get("/payment-failures", dependencies=[Depends(manager_only)])
+async def analyze_payment_failures(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    days: int = Query(7, ge=1, le=90),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Analyse des échecs de paiement CB sur les ``days`` derniers jours.
+
+    Croise deux sources pour trouver les causes racines de « les paiements ne
+    passent plus » :
+
+    - ``payment_attempts`` (status=failed) → l'échec vu côté caisse, agrégé
+      par ``error_detail`` pour le top-N des causes.
+    - ``sumup_exchanges`` (is_error) → l'échec vu sur le fil HTTP, agrégé par
+      ``error_type`` (READER_OFFLINE, http_500, ConnectError…), avec le nombre
+      d'appels qui ont dû être rejoués (``retry_count`` cumulé).
+
+    Manager only. Read-only.
+    """
+    from app.models.payment_attempt import PaymentAttempt, PaymentAttemptStatus
+    from app.models.sumup_exchange import SumUpExchange
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    failed_where = (
+        PaymentAttempt.status == PaymentAttemptStatus.failed,
+        PaymentAttempt.created_at >= cutoff,
+    )
+
+    total_failed = (
+        await db.execute(
+            select(func.count(PaymentAttempt.id)).where(*failed_where)
+        )
+    ).scalar_one()
+
+    rows = (
+        await db.execute(
+            select(PaymentAttempt)
+            .where(*failed_where)
+            .order_by(PaymentAttempt.created_at.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+
+    # Top causes as seen at the till (grouped by the redacted error_detail).
+    error_stats = (
+        await db.execute(
+            select(
+                PaymentAttempt.error_detail,
+                func.count(PaymentAttempt.id).label("count"),
+            )
+            .where(*failed_where)
+            .group_by(PaymentAttempt.error_detail)
+            .order_by(func.count(PaymentAttempt.id).desc())
+        )
+    ).all()
+
+    # Top causes as seen on the wire (classified error_type + retries).
+    exchange_stats = (
+        await db.execute(
+            select(
+                SumUpExchange.error_type,
+                func.count(SumUpExchange.id).label("count"),
+                func.coalesce(func.sum(SumUpExchange.retry_count), 0).label("retries"),
+            )
+            .where(
+                SumUpExchange.is_error.is_(True),
+                SumUpExchange.created_at >= cutoff,
+            )
+            .group_by(SumUpExchange.error_type)
+            .order_by(func.count(SumUpExchange.id).desc())
+        )
+    ).all()
+
+    return {
+        "time_range_days": days,
+        "total_failed_attempts": int(total_failed or 0),
+        "failures": [
+            {
+                "id": str(a.id),
+                "amount": float(a.amount),
+                "method": a.method.value,
+                "error_detail": a.error_detail,
+                "sumup_checkout_id": a.sumup_checkout_id,
+                "cashier_id": str(a.cashier_id) if a.cashier_id else None,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in rows
+        ],
+        "error_stats": [
+            {"error": e[0], "count": int(e[1])} for e in error_stats
+        ],
+        "sumup_error_types": [
+            {
+                "error_type": e[0],
+                "count": int(e[1]),
+                "total_retries": int(e[2] or 0),
+            }
+            for e in exchange_stats
+        ],
+    }
+
+
 # ---------------------------------------------------------------------------
 # SumUp exchange log — server-side trace of every HTTP call to SumUp
 # ---------------------------------------------------------------------------
@@ -530,6 +633,7 @@ async def list_sumup_exchanges(
     db: Annotated[AsyncSession, Depends(get_db)],
     only_failed: bool = Query(False),
     operation: str | None = None,
+    error_type: str | None = None,
     checkout_id: str | None = None,
     period_from: str | None = Query(None, alias="from"),
     period_to: str | None = Query(None, alias="to"),
@@ -541,17 +645,20 @@ async def list_sumup_exchanges(
     Source de vérité côté serveur pour diagnostiquer les paiements CB : chaque
     appel à ``api.sumup.com`` (création checkout, push TPE, statut, annulation,
     remboursement, ping) y est tracé — payload **rédigé** (aucun secret, PAN ou
-    CVV). Indices : ``only_failed=true`` isole les échecs ; une ligne
-    ``operation=create_checkout`` avec ``mode=checkout`` = paiement créé en lien
-    (le TPE Solo n'a PAS sonné), cause typique de « ça ne passe plus au TPE ».
+    CVV). Indices : ``only_failed=true`` isole les échecs (via l'index
+    ``is_error``) ; ``error_type=READER_OFFLINE`` cible une cause précise ; une
+    ligne ``operation=create_checkout`` avec ``mode=checkout`` = paiement créé
+    en lien (le TPE Solo n'a PAS sonné), cause typique de « ça ne passe plus ».
     """
     from app.models.sumup_exchange import SumUpExchange
 
     stmt = select(SumUpExchange).order_by(SumUpExchange.created_at.desc())
     if only_failed:
-        stmt = stmt.where(SumUpExchange.ok.is_(False))
+        stmt = stmt.where(SumUpExchange.is_error.is_(True))
     if operation:
         stmt = stmt.where(SumUpExchange.operation == operation)
+    if error_type:
+        stmt = stmt.where(SumUpExchange.error_type == error_type)
     if checkout_id:
         stmt = stmt.where(SumUpExchange.checkout_id == checkout_id)
     if period_from:
@@ -583,6 +690,9 @@ async def list_sumup_exchanges(
                 "url": r.url,
                 "http_status": r.http_status,
                 "ok": bool(r.ok),
+                "is_error": bool(r.is_error),
+                "error_type": r.error_type,
+                "retry_count": r.retry_count,
                 "latency_ms": r.latency_ms,
                 "mode": r.mode,
                 "checkout_id": r.checkout_id,

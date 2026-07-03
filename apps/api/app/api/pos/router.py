@@ -1494,6 +1494,29 @@ async def ping_sumup_reader(
     return result
 
 
+@router.get("/payments/cb/terminal-status")
+async def cb_terminal_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """État courant du terminal SumUp — pour l'indicateur 🟢/🔴 de la caisse.
+
+    Alias explicite de ``/payments/cb/ping`` : même sonde live du TPE (état
+    d'appairage + statut ONLINE/OFFLINE + batterie/connexion), nommé pour l'UI
+    qui affiche en continu la santé du terminal sans déclencher de vente.
+    Résout d'abord le TPE par défaut du registre multi-terminal pour sonder
+    exactement le Solo que la caisse utiliserait. La sonde est journalisée.
+    """
+    from app.services.sumup_exchange_log import persist_sumup_exchanges
+    from app.services.sumup_service import SumUpService
+
+    svc = SumUpService()
+    await svc.resolve_reader_from_registry(db)
+    result = await svc.ping_reader()
+    await persist_sumup_exchanges(db, svc)
+    return result
+
+
 async def _build_full_receipt_text(
     db: AsyncSession, transaction_id: uuid.UUID
 ) -> str | None:
