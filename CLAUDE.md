@@ -319,10 +319,12 @@ POST   /api/pos/drawer/close                 Fermer + rapport Z
 GET    /api/pos/drawer/current               État tiroir
 
 # POS — CB SumUp
-POST   /api/pos/payments/cb/initiate         Initier paiement SumUp (production)
+POST   /api/pos/payments/cb/initiate         Initier paiement SumUp (pré-vol TPE + retry backoff + repli lien si erreur récupérable ; met en file un échec récupérable → failed_payment_id)
 GET    /api/pos/payments/cb/{id}/status      Poller statut SumUp
 DELETE /api/pos/payments/cb/{id}             Annuler checkout
 GET    /api/pos/payments/cb/config           Config SumUp (clés masquées)
+GET    /api/pos/payments/cb/terminal-status  État live du TPE (🟢/🔴 caisse : appairage + online/offline + batterie)
+POST   /api/pos/payments/cb/retry/{failed_payment_id}  Réessai manuel d'un paiement CB échoué (mode lien)
 
 # Hardware (back-office /settings > Materiel)
 GET    /api/hardware/compatibility           Liste matériel supporté
@@ -374,8 +376,10 @@ GET    /api/admin/database/backups/{id}/download  Télécharger un dump .sql.gz 
 DELETE /api/admin/database/backups/{id}      Supprimer une sauvegarde (fichier + ligne) (manager only)
 GET    /api/admin/database/export?table=…    Export CSV d'une table whitelistée (manager only)
 GET    /api/admin/data-quality?days=7        Volumes events_log + courbe (manager only)
-GET    /api/admin/sumup-exchanges?only_failed=  Journal des échanges HTTP avec SumUp (debug CB, payload rédigé ; ?operation=&checkout_id=&from=&to=) (manager only)
+GET    /api/admin/sumup-exchanges?only_failed=  Journal des échanges HTTP avec SumUp (debug CB, payload rédigé ; ?operation=&error_type=&checkout_id=&from=&to= ; expose is_error/error_type/retry_count) (manager only)
 DELETE /api/admin/sumup-exchanges           Vider le journal des échanges SumUp (manager only)
+GET    /api/admin/payment-failures?days=7   Analyse des échecs CB (top causes payment_attempts + error_type sumup_exchanges + retries) (manager only)
+GET    /api/admin/failed-payments?status=   File des paiements CB échoués en attente de réessai (pending/succeeded/exhausted/abandoned) (manager only)
 POST   /api/admin/embeddings/recompute       Recalcul embeddings catalogue (manager only)
 POST   /api/admin/embeddings/customer/{id}   Refresh taste profile cliente (manager only)
 GET    /api/admin/return-to-sorting/preview  Dry-run retour automatique tri (manager only)
