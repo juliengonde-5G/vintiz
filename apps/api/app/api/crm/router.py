@@ -1,7 +1,7 @@
 import logging
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -180,7 +180,11 @@ class UpdateClientRequest(BaseModel):
     last_name: str | None = None
     phone: str | None = None
     email: str | None = None
+    # ``notes`` is the real column ; ``city`` is a legacy alias kept for the
+    # clients list form (it maps to ``notes``). ``notes`` wins when both sent.
+    notes: str | None = None
     city: str | None = None
+    birth_date: str | None = None  # ISO date "YYYY-MM-DD" ; "" clears it
     email_optin: bool | None = None
     sms_optin: bool | None = None
 
@@ -564,6 +568,7 @@ async def get_client_full(
             "email": client.email,
             "phone": client.phone,
             "notes": client.notes,
+            "birth_date": client.birth_date.isoformat() if client.birth_date else None,
             "email_optin": client.email_optin,
             "sms_optin": client.sms_optin,
             "rfm_segment": client.rfm_segment,
@@ -656,8 +661,24 @@ async def update_client(
         client.phone = request.phone
     if request.email is not None:
         client.email = request.email
-    if request.city is not None:
+    # ``notes`` is the real column ; ``city`` is a legacy alias (clients list
+    # form). ``notes`` wins when both are sent.
+    if request.notes is not None:
+        client.notes = request.notes
+    elif request.city is not None:
         client.notes = request.city
+    if request.birth_date is not None:
+        raw = request.birth_date.strip()
+        if not raw:
+            client.birth_date = None
+        else:
+            try:
+                client.birth_date = date.fromisoformat(raw)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="birth_date doit être au format AAAA-MM-JJ",
+                )
     if request.email_optin is not None:
         client.email_optin = request.email_optin
     if request.sms_optin is not None:
@@ -680,6 +701,8 @@ async def update_client(
         "last_name": client.last_name,
         "phone": client.phone,
         "email": client.email,
+        "notes": client.notes,
+        "birth_date": client.birth_date.isoformat() if client.birth_date else None,
         "email_optin": client.email_optin,
         "sms_optin": client.sms_optin,
     }

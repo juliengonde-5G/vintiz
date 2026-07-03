@@ -7,6 +7,8 @@ import Sidebar from '@/components/layout/Sidebar';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
+import Modal from '@/components/ui/Modal';
+import Input from '@/components/ui/Input';
 import TransactionDetailModal from '@/components/pos/TransactionDetailModal';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
@@ -54,6 +56,7 @@ interface ClientFull {
     email: string | null;
     phone: string | null;
     notes: string | null;
+    birth_date: string | null;
     email_optin: boolean;
     sms_optin: boolean;
     rfm_segment: string | null;
@@ -203,6 +206,63 @@ export default function ClientDetailPage() {
   // --- Communication viewer (voir le mail envoyé) ---
   const [openComm, setOpenComm] = useState<{ id: string; subject: string | null; channel: string; kind: string; status: string; to_address: string | null; body_html: string | null; detail: string | null; created_at: string | null } | null>(null);
   const [commLoading, setCommLoading] = useState(false);
+
+  // --- Édition de la fiche client (coordonnées) ---
+  const [showEdit, setShowEdit] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editErr, setEditErr] = useState('');
+  const [editForm, setEditForm] = useState({
+    first_name: '', last_name: '', email: '', phone: '',
+    birth_date: '', notes: '', email_optin: false, sms_optin: false,
+  });
+
+  const openEdit = () => {
+    if (!data) return;
+    const c = data.client;
+    setEditErr('');
+    setEditForm({
+      first_name: c.first_name || '',
+      last_name: c.last_name || '',
+      email: c.email || '',
+      phone: c.phone || '',
+      birth_date: c.birth_date || '',
+      notes: c.notes || '',
+      email_optin: c.email_optin,
+      sms_optin: c.sms_optin,
+    });
+    setShowEdit(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editForm.first_name.trim() || !editForm.last_name.trim()) {
+      setEditErr('Le prénom et le nom sont requis.');
+      return;
+    }
+    setSavingEdit(true);
+    setEditErr('');
+    try {
+      const res = await api.put(`/api/crm/clients/${id}`, {
+        first_name: editForm.first_name.trim(),
+        last_name: editForm.last_name.trim(),
+        email: editForm.email.trim() || null,
+        phone: editForm.phone.trim() || null,
+        birth_date: editForm.birth_date,
+        notes: editForm.notes,
+        email_optin: editForm.email_optin,
+        sms_optin: editForm.sms_optin,
+      });
+      if (res.ok) {
+        setShowEdit(false);
+        await load();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        setEditErr(e.detail || 'Erreur lors de l’enregistrement.');
+      }
+    } catch {
+      setEditErr('Erreur de connexion — la fiche n’a pas été enregistrée.');
+    }
+    setSavingEdit(false);
+  };
 
   const openCommunication = async (commId: string) => {
     setCommLoading(true);
@@ -362,7 +422,7 @@ export default function ClientDetailPage() {
               {data.loyalty && ` · ${data.loyalty.membership_number}`}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {c.rfm_segment && (
               <Badge variant="default">RFM · {c.rfm_segment}</Badge>
             )}
@@ -372,6 +432,7 @@ export default function ClientDetailPage() {
               <Badge variant="default">Non membre</Badge>
             )}
             {c.deletion_pending && <Badge variant="default">Suppression en cours</Badge>}
+            <Button variant="secondary" onClick={openEdit}>Modifier la fiche</Button>
           </div>
         </header>
 
@@ -869,6 +930,89 @@ export default function ClientDetailPage() {
         onClose={() => setOpenTxId(null)}
         allowLink={false}
       />
+
+      {/* Édition de la fiche client (coordonnées) */}
+      <Modal
+        open={showEdit}
+        onClose={() => setShowEdit(false)}
+        title="Modifier la fiche client"
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setShowEdit(false)} disabled={savingEdit}>
+              Annuler
+            </Button>
+            <Button onClick={saveEdit} disabled={savingEdit}>
+              {savingEdit ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {editErr && (
+            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {editErr}
+            </p>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Prénom"
+              value={editForm.first_name}
+              onChange={(e) => setEditForm((f) => ({ ...f, first_name: e.target.value }))}
+            />
+            <Input
+              label="Nom"
+              value={editForm.last_name}
+              onChange={(e) => setEditForm((f) => ({ ...f, last_name: e.target.value }))}
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={editForm.email}
+              onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+            />
+            <Input
+              label="Téléphone"
+              value={editForm.phone}
+              onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+            />
+            <Input
+              label="Date de naissance"
+              type="date"
+              value={editForm.birth_date}
+              onChange={(e) => setEditForm((f) => ({ ...f, birth_date: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] uppercase tracking-[0.12em] font-medium text-vz-ink-mute mb-1.5">
+              Notes
+            </label>
+            <textarea
+              className="w-full px-4 py-2.5 rounded-vz border border-vz-line bg-vz-surface text-vz-ink placeholder-vz-ink-mute transition-colors focus:outline-none focus:ring-2 focus:ring-vz-teal focus:border-vz-teal"
+              rows={3}
+              value={editForm.notes}
+              onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-wrap gap-4 pt-1">
+            <label className="flex items-center gap-2 text-sm text-vz-ink">
+              <input
+                type="checkbox"
+                checked={editForm.email_optin}
+                onChange={(e) => setEditForm((f) => ({ ...f, email_optin: e.target.checked }))}
+              />
+              Newsletter (email)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-vz-ink">
+              <input
+                type="checkbox"
+                checked={editForm.sms_optin}
+                onChange={(e) => setEditForm((f) => ({ ...f, sms_optin: e.target.checked }))}
+              />
+              SMS marketing
+            </label>
+          </div>
+        </div>
+      </Modal>
 
       {/* Visionneuse du mail/SMS envoyé */}
       {(commLoading || openComm) && (

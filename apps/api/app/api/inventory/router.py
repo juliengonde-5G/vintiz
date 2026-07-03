@@ -1273,6 +1273,14 @@ async def create_category(
     )
     found = existing.scalars().first()
     if found is not None:
+        # Re-adding a name that already exists is idempotent — but if that
+        # category had been deactivated, "adding" it again is a clear intent to
+        # make it available, so reactivate it (otherwise it re-appears greyed
+        # out and the manager thinks nothing happened).
+        if not found.is_active:
+            found.is_active = True
+            await db.flush()
+            await db.refresh(found)
         return CategoryResponse.model_validate(found)
 
     category = Category(
