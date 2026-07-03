@@ -19,10 +19,54 @@ import time
 import uuid
 
 import httpx
+from tenacity import (
+    AsyncRetrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 _log = logging.getLogger("vintiz")
 
 SUMUP_API_BASE = "https://api.sumup.com/v0.1"
+
+# ---------------------------------------------------------------------------
+# Network timeouts & retry policy
+# ---------------------------------------------------------------------------
+# The SumUp Solo talks to SumUp Cloud over the shop Wi-Fi/4G ; a busy terminal
+# or a congested link routinely takes >15 s to answer a checkout push. The old
+# 15 s ceiling turned those slow-but-successful calls into false "TPE
+# injoignable" failures. Bumping the write-path budgets to 30 s (20 s for
+# status polls) keeps the cashier waiting a little longer instead of losing the
+# sale. Overridable via env for field tuning without a redeploy.
+CHECKOUT_TIMEOUT = float(os.getenv("SUMUP_CHECKOUT_TIMEOUT", "30"))   # create/push/refund
+STATUS_TIMEOUT = float(os.getenv("SUMUP_STATUS_TIMEOUT", "20"))       # poll status / lookups
+PING_TIMEOUT = float(os.getenv("SUMUP_PING_TIMEOUT", "5"))            # pre-flight reader probe
+
+# Retry with exponential backoff on *transient* transport errors. We retry the
+# connection-phase errors for every call (the request never reached SumUp, so a
+# replay can't double-charge) and additionally the read-phase errors for
+# idempotent GETs only — retrying a POST that may already have been received by
+# the terminal could ring/charge twice, so we never do it. Waits are read fresh
+# from the module each call so tests can zero them out (no real sleeps).
+RETRY_MAX_ATTEMPTS = int(os.getenv("SUMUP_RETRY_ATTEMPTS", "3"))
+RETRY_WAIT_MULTIPLIER = float(os.getenv("SUMUP_RETRY_WAIT_MULTIPLIER", "1"))
+RETRY_WAIT_MIN = float(os.getenv("SUMUP_RETRY_WAIT_MIN", "1"))
+RETRY_WAIT_MAX = float(os.getenv("SUMUP_RETRY_WAIT_MAX", "8"))
+
+# Connection-phase transport errors — the request never made it to SumUp.
+# Always safe to retry (idempotent or not).
+_RETRY_CONNECT_EXC: tuple[type[Exception], ...] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+)
+# Read-phase transport errors — the request may have been received but the
+# response never arrived. Only safe to retry for idempotent (GET) calls.
+_RETRY_READ_EXC: tuple[type[Exception], ...] = (
+    httpx.ReadTimeout,
+    httpx.RemoteProtocolError,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +158,29 @@ def _summarize_payload(payload: dict | None) -> str | None:
     return redact_sumup_error(text, max_len=300)
 
 
+def _extract_sumup_error_code(body_text: str | None) -> str | None:
+    """Pull the SumUp ``error_code`` out of a JSON error body, if present.
+
+    SumUp error payloads carry the machine-readable code under ``error_code``
+    (Readers API : ``READER_BUSY`` / ``READER_OFFLINE`` …) or, on some
+    endpoints, ``error_code`` nested / a bare ``type``. Returns the uppercased
+    code or ``None`` when the body isn't JSON or carries no code. Never raises.
+    """
+    if not body_text:
+        return None
+    try:
+        data = json.loads(body_text)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    for key in ("error_code", "code", "type"):
+        val = data.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip().upper()
+    return None
+
+
 # ---------------------------------------------------------------------------
 # SumUp service — production API only
 # ---------------------------------------------------------------------------
@@ -135,6 +202,10 @@ class SumUpService:
         # back-office can see exactly what happened on the wire. Never holds
         # a secret (redaction at insert + Authorization header never logged).
         self.exchanges: list[dict] = []
+        # Optional httpx transport override — ``None`` uses the real network.
+        # Tests inject an ``httpx.MockTransport`` here to exercise the full
+        # checkout / retry / fallback paths without hitting SumUp.
+        self._transport = None
         # Persisted config (data/app_config.json) takes precedence over env vars
         # so the manager can configure SumUp credentials from the UI without
         # touching the deployment.
@@ -304,7 +375,7 @@ class SumUpService:
         )
         status_url = f"{reader_url}/status"
 
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with self._client(PING_TIMEOUT) as client:
             # 1) Pairing state — `Reader.status`
             try:
                 resp = await self._send(client, "ping", "GET", reader_url)
@@ -398,6 +469,62 @@ class SumUpService:
             "Content-Type": "application/json",
         }
 
+    def _client(self, timeout: float) -> httpx.AsyncClient:
+        """Build an httpx client honouring the optional test transport.
+
+        Every call site goes through here so a single ``self._transport``
+        override (an ``httpx.MockTransport`` in tests) reroutes the whole
+        checkout / retry / fallback flow off the network.
+        """
+        kwargs: dict = {"timeout": timeout}
+        if self._transport is not None:
+            kwargs["transport"] = self._transport
+        return httpx.AsyncClient(**kwargs)
+
+    async def _request_with_retry(
+        self,
+        client: httpx.AsyncClient,
+        method: str,
+        url: str,
+        *,
+        json: dict | None = None,
+        params: dict | None = None,
+        counter: dict | None = None,
+    ) -> httpx.Response:
+        """Issue the HTTP request, retrying *transient transport errors*.
+
+        Returns the ``httpx.Response``. ``counter["n"]`` is incremented on each
+        try so the caller can read the real attempt count even when the final
+        exception propagates (needed to record ``retry_count`` accurately).
+        Retries use exponential backoff. Only transport-level errors are
+        retried — a non-2xx *response* is returned as-is for the caller to
+        handle (we never retry a 4xx/5xx, and never replay a POST that may
+        already have reached the terminal). See the ``_RETRY_*`` module
+        constants for the safe-to-replay error sets.
+        """
+        if counter is None:
+            counter = {"n": 0}
+        idempotent = method.upper() in ("GET", "HEAD", "OPTIONS")
+        retry_exc = _RETRY_CONNECT_EXC + (_RETRY_READ_EXC if idempotent else ())
+        resp: httpx.Response | None = None
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(max(RETRY_MAX_ATTEMPTS, 1)),
+            wait=wait_exponential(
+                multiplier=RETRY_WAIT_MULTIPLIER,
+                min=RETRY_WAIT_MIN,
+                max=RETRY_WAIT_MAX,
+            ),
+            retry=retry_if_exception_type(retry_exc),
+            reraise=True,
+        ):
+            with attempt:
+                counter["n"] += 1
+                resp = await client.request(
+                    method, url, json=json, params=params, headers=self._headers
+                )
+        # reraise=True guarantees resp is set once we exit the loop cleanly.
+        return resp  # type: ignore[return-value]
+
     # ------------------------------------------------------------------
     # Exchange logging — wraps every httpx call so the back-office can
     # see what we sent to SumUp and what came back (redacted).
@@ -422,6 +549,11 @@ class SumUpService:
         call succeeds, returns a non-2xx, or raises a transport error. Returns
         the raw ``httpx.Response`` so each call site keeps its own response
         handling — this is a drop-in for the previous ``client.<verb>(...)``.
+
+        Transient network errors are retried with exponential backoff
+        (see :meth:`_request_with_retry`) and the number of retries is recorded
+        on the exchange (``retry_count``) alongside a classified ``error_type``
+        so the back-office can filter "les paiements qui ont galéré".
         """
         record: dict = {
             "operation": operation,
@@ -435,28 +567,43 @@ class SumUpService:
             "request_summary": _summarize_payload(json if json is not None else params),
             "http_status": None,
             "ok": False,
+            "is_error": True,
+            "error_type": None,
+            "retry_count": 0,
             "latency_ms": None,
             "response_summary": None,
             "error": None,
         }
         started = time.perf_counter()
+        counter = {"n": 0}
         try:
-            resp = await client.request(
-                method, url, json=json, params=params, headers=self._headers
+            resp = await self._request_with_retry(
+                client, method, url, json=json, params=params, counter=counter
             )
         except Exception as exc:  # noqa: BLE001 — record then re-raise
             record["latency_ms"] = int((time.perf_counter() - started) * 1000)
             record["error"] = redact_sumup_error(f"{type(exc).__name__}: {exc}")
+            record["error_type"] = type(exc).__name__
+            record["retry_count"] = max(counter["n"] - 1, 0)
             self.exchanges.append(record)
             raise
         record["latency_ms"] = int((time.perf_counter() - started) * 1000)
+        record["retry_count"] = max(counter["n"] - 1, 0)
         record["http_status"] = resp.status_code
-        record["ok"] = 200 <= resp.status_code < 300
+        ok = 200 <= resp.status_code < 300
+        record["ok"] = ok
+        record["is_error"] = not ok
         try:
             body = resp.text if resp.content else ""
         except Exception:  # noqa: BLE001 — never let logging break a checkout
             body = ""
         record["response_summary"] = redact_sumup_error(body, max_len=600)
+        if not ok:
+            # Prefer the SumUp error_code (READER_BUSY, …) for the classified
+            # type; fall back to the HTTP status bucket.
+            record["error_type"] = (
+                _extract_sumup_error_code(body) or f"http_{resp.status_code}"
+            )
         self.exchanges.append(record)
         return resp
 
@@ -476,15 +623,25 @@ class SumUpService:
         description: str = "Vente Vintiz",
         reference: str | None = None,
         foreign_transaction_id: str | None = None,
+        prefer_link: bool = False,
     ) -> dict:
         """Create a checkout against the SumUp production API.
 
         - **Avec `SUMUP_READER_ID`** — push directly to the SumUp Solo
           terminal via the Readers API. The TPE rings on the cashier's side;
           the customer taps their card; no manual amount entry on the TPE.
+          Before pushing we **pre-flight the reader status** (:meth:`ping_reader`)
+          so an offline/unpaired terminal fails fast with an actionable message
+          instead of timing out. If the reader push fails with a *recoverable*
+          error (offline, busy, network) we **fall back to a payment-link
+          checkout** so the sale can still be taken (flagged ``fallback_mode``).
         - **Sans reader id** — classic Checkouts API; the customer pays
           via a payment link or the Solo app on the same merchant account
           (cashier types the amount on the TPE).
+
+        ``prefer_link=True`` skips the reader push entirely and always creates a
+        payment-link checkout — used by the failed-payment retry flow, where
+        ringing an unattended terminal would make no sense.
 
         ``foreign_transaction_id`` is the Vintiz-side identifier (typically
         ``Transaction.client_uuid``). When set, it lets us **dedupe** a
@@ -521,20 +678,87 @@ class SumUpService:
                 "error_detail": "SumUp non configuré (SUMUP_API_KEY manquant) — paiement CB indisponible.",
             }
 
-        # Prefer the Readers API if a reader is configured. A Solo shop wants
-        # the TPE to ring — we do NOT silently fall back to a payment-link
-        # checkout on reader error (that would leave the cashier polling a
-        # link the customer never sees). _push_to_reader always returns a
-        # dict now (PENDING or FAILED), so this return is unconditional.
-        if self.reader_id and self.merchant_code:
-            return await self._push_to_reader(
-                amount, currency, description, ref,
-                foreign_transaction_id=foreign_transaction_id,
-            )
+        # Prefer the Readers API when a reader is configured (unless the caller
+        # explicitly wants a link, e.g. the retry flow). A Solo shop wants the
+        # TPE to ring — but if the push can't succeed for a *recoverable* reason
+        # (offline, busy, network blip) we now degrade gracefully to a
+        # payment-link checkout so the sale isn't lost. Definitive errors
+        # (bad key, unknown reader) are surfaced as-is.
+        if self.reader_id and self.merchant_code and not prefer_link:
+            # Pre-flight the reader so an offline/unpaired TPE fails fast with an
+            # actionable message rather than after a full checkout timeout.
+            preflight = await self.ping_reader()
+            if not preflight.get("ready"):
+                reader_result = {
+                    "checkout_id": f"OFFLINE-{ref}",
+                    "checkout_reference": ref,
+                    "amount": amount,
+                    "currency": currency,
+                    "status": "FAILED",
+                    "environment": self.environment,
+                    "mode": "reader",
+                    "reader_id": self.reader_id,
+                    "error_detail": redact_sumup_error(
+                        preflight.get("message") or "TPE indisponible"
+                    ),
+                    "error_friendly": preflight.get("message")
+                    or "Le terminal de paiement est indisponible — vérifiez le Wi-Fi/4G du Solo.",
+                    "recoverable": True,
+                }
+            else:
+                reader_result = await self._push_to_reader(
+                    amount, currency, description, ref,
+                    foreign_transaction_id=foreign_transaction_id,
+                )
 
-        # Classic Checkouts API (customer pays via link/app). ``merchant_code``
-        # is the documented payee field — sending the merchant code in
-        # ``pay_to_email`` made SumUp reject every link-mode checkout (422).
+            # Recoverable reader failure → try a payment-link checkout so the
+            # cashier can still get paid (QR / link) instead of losing the sale.
+            if (
+                str(reader_result.get("status")).upper() == "FAILED"
+                and reader_result.get("recoverable")
+            ):
+                _log.warning(
+                    "Reader push failed recoverably (%s) — falling back to link checkout",
+                    reader_result.get("error_detail"),
+                )
+                fallback = await self._create_link_checkout(
+                    amount, currency, description, ref,
+                    foreign_transaction_id=foreign_transaction_id,
+                )
+                if str(fallback.get("status")).upper() != "FAILED":
+                    fallback["fallback_mode"] = True
+                    fallback["reader_error"] = reader_result.get("error_friendly")
+                    fallback["diagnostic"] = (
+                        f"Push TPE échoué ({reader_result.get('error_friendly')}). "
+                        "Mode lien de paiement activé — le client paie via le lien / QR SumUp."
+                    )
+                    return fallback
+                # Link fallback also failed — the reader error is more
+                # actionable for the cashier, so surface that one.
+                return reader_result
+            return reader_result
+
+        # Classic Checkouts API (customer pays via link/app).
+        return await self._create_link_checkout(
+            amount, currency, description, ref,
+            foreign_transaction_id=foreign_transaction_id,
+        )
+
+    async def _create_link_checkout(
+        self,
+        amount: float,
+        currency: str,
+        description: str,
+        ref: str,
+        foreign_transaction_id: str | None = None,
+    ) -> dict:
+        """Create a classic Checkouts-API (payment link / Solo app) checkout.
+
+        ``merchant_code`` is the documented payee field — sending the merchant
+        code in ``pay_to_email`` made SumUp reject every link-mode checkout
+        (422). Extracted from :meth:`create_checkout` so it can be reused as the
+        automatic fallback when a reader push fails recoverably.
+        """
         payload = {
             "checkout_reference": ref,
             "amount": round(amount, 2),
@@ -543,7 +767,7 @@ class SumUpService:
             "description": description,
         }
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with self._client(CHECKOUT_TIMEOUT) as client:
                 resp = await self._send(
                     client,
                     "create_checkout",
@@ -571,8 +795,13 @@ class SumUpService:
                 "currency": currency,
                 "status": "FAILED",
                 "environment": "production",
+                "mode": "checkout",
                 "http_status": resp.status_code,
                 "error_detail": redact_sumup_error(resp.text),
+                "error_friendly": _friendly_error(resp.status_code, resp.text),
+                # A link checkout that SumUp rejects with 5xx/429 is worth
+                # retrying later; a 4xx (bad data / auth) is definitive.
+                "recoverable": resp.status_code in (429, 500, 502, 503, 504),
             }
         except Exception as e:
             return {
@@ -582,7 +811,10 @@ class SumUpService:
                 "currency": currency,
                 "status": "FAILED",
                 "environment": "production",
+                "mode": "checkout",
                 "error_detail": redact_sumup_error(f"network error: {e}"),
+                "error_friendly": _ERROR_CODES_FR["NETWORK_ERROR"],
+                "recoverable": True,
             }
 
     async def _push_to_reader(
@@ -633,7 +865,7 @@ class SumUpService:
                 "foreign_transaction_id": foreign_transaction_id,
             }
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with self._client(CHECKOUT_TIMEOUT) as client:
                 resp = await self._send(
                     client,
                     "reader_push",
@@ -663,11 +895,18 @@ class SumUpService:
                     "reader_id": self.reader_id,
                     "foreign_transaction_id": foreign_transaction_id,
                 }
-            # Non-2xx from the Readers API — surface but signal failure.
-            # 422 ReaderBusy / ReaderOffline both come here ; the caller
-            # maps them to user-friendly French via friendly_error().
-            return {
-                "checkout_id": f"ERR-{ref}",
+            # Non-2xx from the Readers API — surface but signal failure. A 422
+            # carries a machine code (READER_BUSY / READER_OFFLINE …) that tells
+            # us whether the failure is *recoverable* (worth a retry / link
+            # fallback) or *definitive* (bad key, unknown reader). The caller
+            # uses ``recoverable`` to decide whether to fall back to a link.
+            body_text = resp.text if resp.content else ""
+            error_code = _extract_sumup_error_code(body_text)
+            recoverable, retry_after = _reader_error_recoverability(
+                resp.status_code, error_code
+            )
+            result = {
+                "checkout_id": f"{'BUSY' if error_code == 'READER_BUSY' else 'ERR'}-{ref}",
                 "checkout_reference": ref,
                 "amount": amount,
                 "currency": currency,
@@ -675,13 +914,18 @@ class SumUpService:
                 "environment": self.environment,
                 "mode": "reader",
                 "http_status": resp.status_code,
-                "error_detail": redact_sumup_error(resp.text),
-                "error_friendly": _friendly_error(resp.status_code, resp.text),
+                "error_code": error_code,
+                "error_detail": redact_sumup_error(body_text),
+                "error_friendly": _friendly_error(resp.status_code, body_text),
+                "recoverable": recoverable,
             }
+            if retry_after:
+                result["retry_after"] = retry_after
+            return result
         except httpx.HTTPError as exc:
-            # Network error pushing to the Solo — surface a clear FAILED
-            # rather than None (which used to silently switch to a payment
-            # link the cashier never expects).
+            # Network error pushing to the Solo (after retries) — surface a
+            # clear, *recoverable* FAILED so the caller can fall back to a
+            # payment link rather than losing the sale.
             return {
                 "checkout_id": f"ERR-{ref}",
                 "checkout_reference": ref,
@@ -690,8 +934,10 @@ class SumUpService:
                 "status": "FAILED",
                 "environment": self.environment,
                 "mode": "reader",
+                "error_type": type(exc).__name__,
                 "error_detail": redact_sumup_error(f"network error: {exc}"),
                 "error_friendly": "TPE injoignable — vérifiez le Wi-Fi/4G du Solo et réessayez",
+                "recoverable": True,
             }
 
     # ------------------------------------------------------------------
@@ -723,7 +969,7 @@ class SumUpService:
             return await self._reader_checkout_status(checkout_id[len("reader:"):])
 
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with self._client(STATUS_TIMEOUT) as client:
                 resp = await self._send(
                     client,
                     "get_status",
@@ -794,7 +1040,7 @@ class SumUpService:
             f"https://api.sumup.com/v2.1/merchants/{self.merchant_code}/transactions"
         )
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with self._client(STATUS_TIMEOUT) as client:
                 resp = await self._send(
                     client,
                     "reader_status",
@@ -868,7 +1114,7 @@ class SumUpService:
         # than blindly DELETE a checkout that might have just been paid —
         # cancelling a PAID checkout debits the customer with no Vintiz sale.
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with self._client(STATUS_TIMEOUT) as client:
                 peek = await self._send(
                     client,
                     "cancel_peek",
@@ -932,7 +1178,7 @@ class SumUpService:
             f"/readers/{self.reader_id}/terminate"
         )
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with self._client(STATUS_TIMEOUT) as client:
                 resp = await self._send(client, "terminate", "POST", url, mode="reader")
         except httpx.HTTPError as exc:
             return {
@@ -989,7 +1235,7 @@ class SumUpService:
         if amount is not None:
             body["amount"] = round(float(amount), 2)
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with self._client(CHECKOUT_TIMEOUT) as client:
                 resp = await self._send(
                     client, "refund", "POST", url, json=body, checkout_id=transaction_id
                 )
@@ -1048,7 +1294,7 @@ class SumUpService:
             return None
         url = f"https://api.sumup.com/v1.1/receipts/{transaction_id}"
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with self._client(STATUS_TIMEOUT) as client:
                 resp = await self._send(
                     client,
                     "receipt",
@@ -1098,7 +1344,7 @@ class SumUpService:
             f"https://api.sumup.com/v2.1/merchants/{self.merchant_code}/transactions"
         )
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with self._client(STATUS_TIMEOUT) as client:
                 resp = await self._send(
                     client, "get_transaction", "GET", url, params=params
                 )
@@ -1115,15 +1361,45 @@ class SumUpService:
 
 # Top documented SumUp error codes mapped to actionable French copy. The
 # generic ``_friendly_error`` fallback covers anything not in this table.
+# Messages are written FOR THE CASHIER : say what to check and what to do,
+# not just what broke.
 _ERROR_CODES_FR: dict[str, str] = {
-    "READER_BUSY": "Le TPE traite déjà un paiement — patientez quelques secondes ou redémarrez le terminal",
-    "READER_OFFLINE": "TPE hors ligne — vérifiez le Wi-Fi/4G du Solo (le TPE doit afficher l'écran d'accueil)",
-    "READER_NOT_FOUND": "TPE inconnu — vérifiez SUMUP_READER_ID dans /settings > Paiement",
-    "CONFLICT": "Cette transaction n'est pas dans un état remboursable (déjà remboursée, expirée, ou non finalisée)",
-    "NOT_ENOUGH_BALANCE": "Solde SumUp insuffisant pour le remboursement — voir l'app SumUp",
-    "NOT_FOUND": "Transaction introuvable côté SumUp",
-    "MISSING_FIELD": "Données invalides envoyées à SumUp — voir détail",
+    "READER_BUSY": "Le terminal traite déjà un paiement. Patientez ~10 secondes puis réessayez, ou redémarrez le TPE.",
+    "READER_OFFLINE": "Le terminal est hors ligne. Vérifiez : 1) le Wi-Fi/4G du SumUp Solo est connecté, 2) le TPE affiche l'écran d'accueil.",
+    "READER_NOT_FOUND": "Terminal inconnu. Vérifiez SUMUP_READER_ID dans Paramètres › Paiement.",
+    "CONFLICT": "Cette transaction n'est pas dans un état remboursable (déjà remboursée, expirée, ou non finalisée).",
+    "NOT_ENOUGH_BALANCE": "Solde SumUp insuffisant pour ce remboursement. Voir l'app SumUp.",
+    "NOT_FOUND": "Transaction introuvable côté SumUp. Vérifiez l'identifiant ou patientez quelques minutes.",
+    "MISSING_FIELD": "Données manquantes envoyées à SumUp — voir détail / contactez le support.",
+    # Vintiz-side synthetic codes (transport failures, not SumUp bodies).
+    "NETWORK_ERROR": "Problème de connexion à SumUp. Vérifiez la connexion Internet de la caisse, puis réessayez.",
+    "TIMEOUT": "Le terminal met trop de temps à répondre. Réessayez, ou encaissez avec un autre mode de paiement.",
 }
+
+# SumUp reader error codes that are *transient* : the checkout can succeed on a
+# later attempt (or via a payment-link fallback). Everything else is definitive.
+_RECOVERABLE_READER_CODES = {"READER_BUSY", "READER_OFFLINE"}
+
+
+def _reader_error_recoverability(
+    http_status: int, error_code: str | None
+) -> tuple[bool, int | None]:
+    """Classify a reader-push non-2xx as (recoverable, retry_after_seconds).
+
+    - ``READER_BUSY`` / ``READER_OFFLINE`` (422) → recoverable ; BUSY suggests a
+      short wait (``retry_after``) before retrying the same terminal.
+    - 429 / 5xx (rate-limit, SumUp outage) → recoverable, no fixed delay.
+    - Everything else (401/403 bad key, 404 unknown reader, other 422) →
+      definitive : retrying / falling back to a link won't help the same way.
+    """
+    code = (error_code or "").upper()
+    if code == "READER_BUSY":
+        return True, 5
+    if code in _RECOVERABLE_READER_CODES:
+        return True, None
+    if http_status == 429 or 500 <= http_status < 600:
+        return True, None
+    return False, None
 
 
 def _normalize_txn_status(raw: str | None) -> str:
@@ -1146,13 +1422,23 @@ def _normalize_txn_status(raw: str | None) -> str:
 
 
 def _friendly_error(http_status: int, body_text: str) -> str:
-    """Generic mapping of (HTTP status, error body) → French message."""
+    """Generic mapping of (HTTP status, error body) → French message.
+
+    A recognised SumUp ``error_code`` in the body wins over the raw HTTP
+    status so the cashier gets the specific, actionable copy (e.g.
+    ``READER_OFFLINE``) rather than a generic "Données refusées par SumUp".
+    """
+    code = _extract_sumup_error_code(body_text)
+    if code and code in _ERROR_CODES_FR:
+        return _ERROR_CODES_FR[code]
     if http_status == 401:
         return "Clé API SumUp invalide ou expirée — re-créer la clé dans /settings"
     if http_status == 403:
         return "Permissions insuffisantes sur la clé SumUp — vérifier les scopes (payments, readers.read, readers.write)"
     if http_status == 404:
         return "Ressource SumUp introuvable"
+    if http_status in (408, 504):
+        return "Le terminal met trop de temps à répondre — vérifiez le Wi-Fi/4G du Solo puis réessayez"
     if http_status == 409:
         return "Conflit côté SumUp (paiement déjà traité ou en cours)"
     if http_status == 422:
