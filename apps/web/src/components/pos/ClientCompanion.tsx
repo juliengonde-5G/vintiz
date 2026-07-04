@@ -196,14 +196,11 @@ export default function ClientCompanion({
                 </span>
               </div>
             )}
-            {payload.loyalty.can_redeem_max_cents > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-gray-500">Rachat max possible</span>
-                <span className="font-medium text-black">
-                  {formatEur(payload.loyalty.can_redeem_max_cents)}
-                </span>
-              </div>
-            )}
+            {/* NB : le rachat direct de points a été retiré (modèle chèque
+                cadeau). On n'affiche plus « Rachat max possible » — c'était un
+                reliquat non actionnable qui laissait croire à une remise
+                applicable. La remise fidélité se propose via les chèques cadeau
+                (100 pts → 5 €) affectés au paiement (bandeau bons cadeau). */}
           </section>
 
           {payload.alerts.length > 0 && (

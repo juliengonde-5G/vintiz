@@ -497,10 +497,39 @@ async def run_daily_trend_alerts() -> None:
         logger.exception("Trend alerts cron failed: %s", exc)
 
 
+async def run_retry_failed_payments() -> None:
+    """Retry recoverable failed CB payments (offline groundwork). Every 5 min.
+
+    Re-attempts each due ``FailedPayment`` as a payment-link checkout. No-op
+    when SumUp is unconfigured or the queue is empty (cheap indexed query).
+    """
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.failed_payment_service import FailedPaymentService
+
+        async with AsyncSession(engine) as db:
+            results = await FailedPaymentService().retry_failed_payments(db)
+        if results:
+            succeeded = sum(1 for r in results if r.get("status") == "SUCCESS")
+            logger.info(
+                "Failed-payment retry: %d processed, %d recovered",
+                len(results), succeeded,
+            )
+    except Exception as exc:
+        logger.exception("Failed-payment retry cron failed: %s", exc)
+
+
 def register_all_jobs(scheduler) -> None:
     """Register all cron jobs with the given APScheduler instance."""
     from apscheduler.triggers.cron import CronTrigger
 
+    scheduler.add_job(
+        run_retry_failed_payments,
+        CronTrigger(minute="*/5"),
+        id="retry_failed_payments",
+        replace_existing=True,
+    )
     scheduler.add_job(
         run_weekly_scoring,
         CronTrigger(day_of_week="mon", hour=4, minute=0),

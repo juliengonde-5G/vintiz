@@ -74,3 +74,17 @@ class SumUpExchange(Base):
     # Redacted exception text on a network/transport error.
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     environment: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # --- Fast error triage (indexed) ------------------------------------
+    # ``is_error`` mirrors ``not ok`` but is indexed so the back-office can
+    # filter failures directly (``ok`` was only ever scanned). ``error_type``
+    # is the classified cause — a SumUp ``error_code`` (READER_OFFLINE…), an
+    # ``http_<status>`` bucket, or a transport exception name (ConnectError…).
+    # ``retry_count`` = number of automatic retries this call went through
+    # before the recorded outcome (0 = succeeded/failed first shot).
+    is_error: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
+    error_type: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, index=True
+    )
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

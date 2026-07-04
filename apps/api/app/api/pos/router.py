@@ -1311,6 +1311,28 @@ async def initiate_cb_payment(
     await db.refresh(attempt)
     result["attempt_id"] = str(attempt.id)
 
+    # Offline groundwork : a *recoverable* CB failure (terminal offline/busy,
+    # SumUp outage, network) is queued for automatic retry so the sale isn't
+    # simply lost. Definitive failures (bad key, unknown reader, unconfigured)
+    # carry no ``recoverable`` flag and are not queued — configuring is the fix.
+    if failed and result.get("recoverable"):
+        from app.services.failed_payment_service import FailedPaymentService
+
+        fp = await FailedPaymentService().create_failed_payment(
+            db,
+            amount=float(request.amount),
+            checkout_reference=str(
+                result.get("checkout_reference") or result.get("checkout_id") or ""
+            ),
+            error_detail=result.get("error_detail") or result.get("error_friendly"),
+            foreign_transaction_id=request.foreign_transaction_id,
+            description=request.description,
+            reader_id=result.get("reader_id"),
+            cashier_id=request.cashier_id or current_user.id,
+            is_recoverable=True,
+        )
+        result["failed_payment_id"] = str(fp.id)
+
     await persist_sumup_exchanges(db, svc, prune=True)
     return result
 
@@ -1492,6 +1514,57 @@ async def ping_sumup_reader(
     result = await svc.ping_reader()
     await persist_sumup_exchanges(db, svc)
     return result
+
+
+@router.get("/payments/cb/terminal-status")
+async def cb_terminal_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """État courant du terminal SumUp — pour l'indicateur 🟢/🔴 de la caisse.
+
+    Alias explicite de ``/payments/cb/ping`` : même sonde live du TPE (état
+    d'appairage + statut ONLINE/OFFLINE + batterie/connexion), nommé pour l'UI
+    qui affiche en continu la santé du terminal sans déclencher de vente.
+    Résout d'abord le TPE par défaut du registre multi-terminal pour sonder
+    exactement le Solo que la caisse utiliserait. La sonde est journalisée.
+    """
+    from app.services.sumup_exchange_log import persist_sumup_exchanges
+    from app.services.sumup_service import SumUpService
+
+    svc = SumUpService()
+    await svc.resolve_reader_from_registry(db)
+    result = await svc.ping_reader()
+    await persist_sumup_exchanges(db, svc)
+    return result
+
+
+@router.post("/payments/cb/retry/{failed_payment_id}")
+async def retry_failed_cb_payment(
+    failed_payment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Réessaye immédiatement un paiement CB échoué (file d'attente offline).
+
+    Recrée un checkout **en mode lien de paiement** (le client règle via le
+    lien / QR SumUp) — on ne sonne jamais un TPE sans client présent. Répond
+    l'issue du réessai (SUCCESS / FAILED / EXHAUSTED / SKIPPED). 404 si l'ID
+    n'existe pas.
+    """
+    from app.models.failed_payment import FailedPayment
+    from app.services.failed_payment_service import FailedPaymentService
+    from app.services.sumup_exchange_log import persist_sumup_exchanges
+
+    fp = await db.get(FailedPayment, failed_payment_id)
+    if fp is None:
+        raise HTTPException(status_code=404, detail="Paiement échoué introuvable")
+
+    service = FailedPaymentService()
+    outcome = await service.retry_one(db, fp)
+    await db.flush()
+    await persist_sumup_exchanges(db, service.svc)
+    return outcome
 
 
 async def _build_full_receipt_text(

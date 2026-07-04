@@ -379,11 +379,11 @@ async def test_admin_sumup_exchanges_lists_log_with_summary(app_ctx):
         s.add_all([
             SumUpExchange(
                 operation="create_checkout", method="POST", mode="checkout",
-                http_status=201, ok=True, checkout_id="chk_1",
+                http_status=201, ok=True, is_error=False, checkout_id="chk_1",
             ),
             SumUpExchange(
                 operation="reader_push", method="POST", mode="reader",
-                http_status=409, ok=False, error="ReaderBusy",
+                http_status=409, ok=False, is_error=True, error="ReaderBusy",
             ),
         ])
         await s.commit()

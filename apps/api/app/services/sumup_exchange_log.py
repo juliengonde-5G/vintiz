@@ -45,6 +45,9 @@ _ALLOWED_KEYS = {
     "request_summary",
     "http_status",
     "ok",
+    "is_error",
+    "error_type",
+    "retry_count",
     "latency_ms",
     "response_summary",
     "error",
@@ -68,11 +71,12 @@ async def persist_sumup_exchanges(
     try:
         async with db.begin_nested():
             for r in records:
-                db.add(
-                    SumUpExchange(
-                        **{k: v for k, v in r.items() if k in _ALLOWED_KEYS}
-                    )
-                )
+                fields = {k: v for k, v in r.items() if k in _ALLOWED_KEYS}
+                # ``is_error`` mirrors ``not ok`` — derive it when a record
+                # predates the field so the indexed failure filter stays correct.
+                if "is_error" not in fields:
+                    fields["is_error"] = not fields.get("ok", False)
+                db.add(SumUpExchange(**fields))
             if prune or random.random() < 0.05:
                 cutoff = datetime.now(timezone.utc) - timedelta(
                     days=MAX_EXCHANGE_AGE_DAYS
