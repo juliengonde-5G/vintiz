@@ -1,22 +1,21 @@
+import csv
+import io
 import logging
-import os
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import RoleChecker, get_current_user
 from app.models.client import (
-    AvoirTransaction,
     Client,
     Consent,
     ConsentPurpose,
-    LoyaltyAccount,
     LoyaltyTransaction,
     LoyaltyTxType,
 )
@@ -291,6 +290,70 @@ async def list_clients(
         }
         for r in rows
     ]
+
+# ---------------------------------------------------------------------------
+# Top clients par CA — bouton « Top Clients » de la page Clients.
+# Déclaré AVANT /clients/{client_id} pour que « top » ne soit pas avalé par
+# le paramètre UUID (même raison que /clients/lookup plus haut).
+# ---------------------------------------------------------------------------
+
+@router.get("/clients/top")
+async def get_top_clients(
+    period: str = Query("month", pattern="^(day|week|month|year)$"),
+    limit: int = Query(10, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Classement des plus grosses clientes par CA sur la période calendaire.
+
+    ``period`` fenêtre en Europe/Paris (jour / semaine ISO / mois / année en
+    cours). CA = ventes rattachées à la fiche − remboursements ; les ventes
+    anonymes sont hors classement. Renvoie n° fidélité + points courants.
+    """
+    from app.services.top_clients import top_clients
+
+    return await top_clients(db, period=period, limit=limit)
+
+
+@router.get("/clients/top/export")
+async def export_top_clients_csv(
+    period: str = Query("month", pattern="^(day|week|month|year)$"),
+    limit: int = Query(10, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export CSV du tableau Top Clients — mêmes données que l'écran.
+
+    Format tableur boutique : séparateur « ; », décimales à la virgule,
+    UTF-8 BOM pour qu'Excel ouvre les accents correctement (comme l'export
+    comptable Pennylane).
+    """
+    from app.services.top_clients import top_clients
+
+    data = await top_clients(db, period=period, limit=limit)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow(
+        ["Rang", "Numéro fidélité", "Nom", "Prénom", "Points fidélité", "CA total (EUR)"]
+    )
+    for row in data["results"]:
+        writer.writerow([
+            row["rank"],
+            row["membership_number"] or "",
+            row["last_name"],
+            row["first_name"],
+            row["loyalty_points"] if row["loyalty_active"] else "",
+            f"{row['revenue']:.2f}".replace(".", ","),
+        ])
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    filename = f"vintiz-top-clients-{period}-{stamp}.csv"
+    return Response(
+        content=buf.getvalue().encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 @router.get("/clients/{client_id}/full")
 async def get_client_full(

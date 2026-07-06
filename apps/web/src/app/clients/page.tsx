@@ -32,6 +32,27 @@ interface Transaction {
   items_count: number;
 }
 
+interface TopClient {
+  rank: number;
+  client_id: string;
+  membership_number: string | null;
+  loyalty_active: boolean;
+  loyalty_points: number;
+  first_name: string;
+  last_name: string;
+  revenue: number;
+  transactions_count: number;
+}
+
+const TOP_PERIODS = [
+  { value: 'day', label: 'Jour' },
+  { value: 'week', label: 'Semaine' },
+  { value: 'month', label: 'Mois' },
+  { value: 'year', label: 'Année' },
+] as const;
+type TopPeriod = (typeof TOP_PERIODS)[number]['value'];
+
+const TOP_LIMITS = [10, 20, 50, 100];
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -39,6 +60,15 @@ function formatDate(dateStr: string): string {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const year = d.getFullYear();
   return `${day}/${month}/${year}`;
+}
+
+// Le début de période renvoyé par l'API est déjà en heure boutique
+// (Europe/Paris). On formate la partie calendaire de l'ISO telle quelle :
+// passer par new Date() la reconvertirait dans le fuseau du navigateur et
+// afficherait la veille (ex. « 31/12 » pour un 1er janvier 00:00 Paris).
+function formatIsoDay(isoStr: string): string {
+  const [y, m, d] = isoStr.slice(0, 10).split('-');
+  return d && m && y ? `${d}/${m}/${y}` : isoStr;
 }
 
 export default function ClientsPage() {
@@ -79,6 +109,16 @@ export default function ClientsPage() {
   const [clientTransactions, setClientTransactions] = useState<Transaction[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
 
+  // Top Clients view (classement par CA sur une période calendaire)
+  const [showTop, setShowTop] = useState(false);
+  const [topPeriod, setTopPeriod] = useState<TopPeriod>('month');
+  const [topLimit, setTopLimit] = useState(10);
+  const [topRows, setTopRows] = useState<TopClient[]>([]);
+  const [topStart, setTopStart] = useState('');
+  const [topLoading, setTopLoading] = useState(false);
+  const [topError, setTopError] = useState('');
+  const [topExporting, setTopExporting] = useState(false);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchClients = useCallback(async (query?: string) => {
@@ -113,6 +153,54 @@ export default function ClientsPage() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [search, fetchClients]);
+
+  // Classement Top Clients — rechargé à chaque changement de période/limite
+  useEffect(() => {
+    if (!showTop) return;
+    let cancelled = false;
+    (async () => {
+      setTopLoading(true);
+      try {
+        const res = await api.get(
+          `/api/crm/clients/top?period=${topPeriod}&limit=${topLimit}`
+        );
+        if (!res.ok) throw new Error('Erreur');
+        const json = await res.json();
+        if (!cancelled) {
+          setTopRows(json.results || []);
+          setTopStart(json.start || '');
+          setTopError('');
+        }
+      } catch {
+        if (!cancelled) setTopError('Impossible de charger le classement des clients.');
+      } finally {
+        if (!cancelled) setTopLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showTop, topPeriod, topLimit]);
+
+  const handleExportTopCsv = async () => {
+    setTopExporting(true);
+    try {
+      const res = await api.get(
+        `/api/crm/clients/top/export?period=${topPeriod}&limit=${topLimit}`
+      );
+      if (!res.ok) throw new Error('Erreur');
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `vintiz-top-clients-${topPeriod}-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch {
+      setTopError('Export CSV impossible.');
+    } finally {
+      setTopExporting(false);
+    }
+  };
 
   const handleCreateClient = async () => {
     if (!newForm.first_name.trim() || !newForm.last_name.trim()) {
@@ -236,81 +324,257 @@ export default function ClientsPage() {
     loyalty_active: c.loyalty_active,
   }));
 
+  const topColumns = [
+    {
+      key: 'rank',
+      header: '#',
+      className: 'w-14',
+      render: (val: unknown) => {
+        const rank = val as number;
+        return rank <= 3 ? (
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-vz-teal-soft text-vz-teal font-bold text-sm">
+            {rank}
+          </span>
+        ) : (
+          <span className="font-mono text-gray-500 pl-2">{rank}</span>
+        );
+      },
+    },
+    {
+      key: 'membership_number',
+      header: 'N° fidélité',
+      render: (val: unknown) =>
+        val ? (
+          <span className="font-mono text-black">{val as string}</span>
+        ) : (
+          <span className="text-gray-400">—</span>
+        ),
+    },
+    { key: 'last_name', header: 'Nom' },
+    { key: 'first_name', header: 'Prénom' },
+    {
+      key: 'loyalty_points',
+      header: 'Points fidélité',
+      render: (val: unknown, row: Record<string, unknown>) =>
+        row.loyalty_active ? (
+          <span className="font-bold text-vz-teal">{val as number}</span>
+        ) : (
+          <span className="text-gray-400">—</span>
+        ),
+    },
+    {
+      key: 'revenue',
+      header: 'CA total',
+      render: (val: unknown) => (
+        <span className="font-bold text-black">{formatCurrency(val as number)}</span>
+      ),
+    },
+  ];
+
+  const topTableData = topRows.map((r) => ({ ...r, id: r.client_id }));
+
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
       <main className="md:ml-64 px-4 pt-16 pb-6 md:p-8">
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-black">Clients</h1>
-            <p className="text-gray-500 mt-1">Gestion CRM et fidelite</p>
+            <h1 className="text-2xl font-bold text-black">
+              {showTop ? 'Top Clients' : 'Clients'}
+            </h1>
+            <p className="text-gray-500 mt-1">
+              {showTop
+                ? 'Classement par chiffre d’affaires généré sur la période'
+                : 'Gestion CRM et fidelite'}
+            </p>
           </div>
-          <Button
-            onClick={() => {
-              setNewForm({ first_name: '', last_name: '', phone: '', email: '', city: '', email_optin: false, sms_optin: false });
-              setNewError('');
-              setShowNew(true);
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            Nouveau client
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setShowTop((v) => !v)}>
+              {showTop ? (
+                <>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                    <line x1="19" y1="12" x2="5" y2="12" />
+                    <polyline points="12 19 5 12 12 5" />
+                  </svg>
+                  Tous les clients
+                </>
+              ) : (
+                <>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                    <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+                    <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+                    <path d="M4 22h16" />
+                    <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+                    <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+                    <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+                  </svg>
+                  Top Clients
+                </>
+              )}
+            </Button>
+            {!showTop && (
+              <Button
+                onClick={() => {
+                  setNewForm({ first_name: '', last_name: '', phone: '', email: '', city: '', email_optin: false, sms_optin: false });
+                  setNewError('');
+                  setShowNew(true);
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Nouveau client
+              </Button>
+            )}
+          </div>
         </div>
 
-        {error && (
+        {!showTop && error && (
           <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-lg">{error}</div>
         )}
+        {showTop && topError && (
+          <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-lg">{topError}</div>
+        )}
 
-        {/* Search */}
-        <Card className="mb-6">
-          <Input
-            placeholder="Rechercher un client (nom, telephone, email)..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-            }
-          />
-        </Card>
+        {!showTop && (
+          <>
+            {/* Search */}
+            <Card className="mb-6">
+              <Input
+                placeholder="Rechercher un client (nom, telephone, email)..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                icon={
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                }
+              />
+            </Card>
 
-        {/* Client Table */}
-        {loading ? (
-          <Card>
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="animate-pulse bg-gray-200 rounded-lg h-12 w-full" />
-              ))}
-            </div>
-          </Card>
-        ) : (
-          <DataTable
-            columns={columns}
-            data={tableData}
-            emptyMessage="Aucun client trouve"
-            actions={(row) => (
-              <div className="flex gap-1">
-                <a
-                  href={`/clients/${(row as unknown as Client).id}`}
-                  className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-lg bg-vz-teal text-white hover:bg-vz-teal/90"
-                >
-                  Fiche
-                </a>
+            {/* Client Table */}
+            {loading ? (
+              <Card>
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="animate-pulse bg-gray-200 rounded-lg h-12 w-full" />
+                  ))}
+                </div>
+              </Card>
+            ) : (
+              <DataTable
+                columns={columns}
+                data={tableData}
+                emptyMessage="Aucun client trouve"
+                actions={(row) => (
+                  <div className="flex gap-1">
+                    <a
+                      href={`/clients/${(row as unknown as Client).id}`}
+                      className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-lg bg-vz-teal text-white hover:bg-vz-teal/90"
+                    >
+                      Fiche
+                    </a>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openDetail(row as unknown as Client)}
+                    >
+                      Aperçu
+                    </Button>
+                  </div>
+                )}
+              />
+            )}
+          </>
+        )}
+
+        {showTop && (
+          <>
+            {/* Filtres période + limite + export */}
+            <Card className="mb-6">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs uppercase tracking-wide text-gray-500 font-medium">Période</span>
+                    {TOP_PERIODS.map((p) => (
+                      <button
+                        key={p.value}
+                        onClick={() => setTopPeriod(p.value)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                          topPeriod === p.value
+                            ? 'bg-vz-teal text-white border-vz-teal'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-vz-teal hover:text-vz-teal'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs uppercase tracking-wide text-gray-500 font-medium">Afficher</span>
+                    {TOP_LIMITS.map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => setTopLimit(n)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                          topLimit === n
+                            ? 'bg-vz-teal text-white border-vz-teal'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-vz-teal hover:text-vz-teal'
+                        }`}
+                      >
+                        Top {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <Button
-                  size="sm"
                   variant="outline"
-                  onClick={() => openDetail(row as unknown as Client)}
+                  onClick={handleExportTopCsv}
+                  disabled={topExporting || topLoading || topRows.length === 0}
                 >
-                  Aperçu
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  {topExporting ? 'Export...' : 'Exporter CSV'}
                 </Button>
               </div>
+              {topStart && (
+                <p className="text-xs text-gray-400 mt-3">
+                  Ventes moins remboursements depuis le {formatIsoDay(topStart)} — les ventes
+                  sans fiche client ne sont pas comptées.
+                </p>
+              )}
+            </Card>
+
+            {/* Top Clients Table */}
+            {topLoading ? (
+              <Card>
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="animate-pulse bg-gray-200 rounded-lg h-12 w-full" />
+                  ))}
+                </div>
+              </Card>
+            ) : (
+              <DataTable
+                columns={topColumns}
+                data={topTableData}
+                emptyMessage="Aucune vente cliente sur la période"
+                actions={(row) => (
+                  <a
+                    href={`/clients/${(row as unknown as TopClient).client_id}`}
+                    className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-lg bg-vz-teal text-white hover:bg-vz-teal/90"
+                  >
+                    Fiche
+                  </a>
+                )}
+              />
             )}
-          />
+          </>
         )}
       </main>
 
