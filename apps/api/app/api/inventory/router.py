@@ -11,7 +11,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import func, select, or_
+from sqlalchemy import and_, func, select, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1178,25 +1178,29 @@ async def list_brands(
 # Categories
 # ---------------------------------------------------------------------------
 
-def _same_normalized_name(name: str):
-    """SQL predicate matching a category by its NORMALIZED name.
+def _same_category_key(name: str, gender: Gender):
+    """SQL predicate matching a category by its NORMALIZED (name, gender) key.
 
-    Must mirror the DB unique index ``uq_categories_name_lower`` created by
-    migration 0046 — ``lower(btrim(name))``. The idempotency + duplicate
-    checks below MUST use the exact same normalization as that index.
-    (``trim`` is the portable spelling of Postgres ``btrim`` — identical
-    result there, and unlike ``btrim`` it also exists on SQLite, where the
-    tests run.)
+    Mirrors the DB unique index ``uq_categories_name_gender_lower`` (migration
+    0071) — ``(lower(btrim(name)), gender)``. Categories are unique per
+    (name, gender): « Gilet » homme and « Gilet » femme are two DISTINCT
+    categories. The idempotency + duplicate checks MUST use this exact key so
+    they neither block a legitimate different-gender twin (which read as « la
+    catégorie ne se crée pas ») nor collide with the index on INSERT.
 
-    A plain ``ILIKE`` probe is NOT equivalent: it is case-insensitive but does
-    not trim, and it treats ``%``/``_`` as wildcards. So a legacy row with
-    stray whitespace ("Robes " — cited verbatim in migration 0046) slips past
-    an ``ILIKE 'Robes'`` lookup yet still collides on INSERT via the index,
-    raising an ``IntegrityError`` that surfaced as a generic 500. In the
-    settings screen the error banner sits at the top of the page, far from the
-    form, so the manager just saw "rien ne se passe" when adding a category.
+    ``trim`` is the portable spelling of Postgres ``btrim`` — identical result
+    there, and unlike ``btrim`` it also exists on SQLite, where the tests run.
+    A plain ``ILIKE`` on the name is NOT equivalent (case-insensitive but not
+    trimmed, ``%``/``_`` act as wildcards): a legacy whitespace row ("Robes ")
+    slips past it yet still collides on the index → IntegrityError → 500.
+
+    ``gender`` must already be a ``Gender`` enum (coerce via ``_coerce_gender``
+    at the call site so an invalid value is a clean 400, not a query error).
     """
-    return func.lower(func.trim(Category.name)) == name.strip().lower()
+    return and_(
+        func.lower(func.trim(Category.name)) == name.strip().lower(),
+        Category.gender == gender,
+    )
 
 
 @router.get("/categories", response_model=list[CategoryResponse])
@@ -1228,8 +1232,9 @@ async def update_category(
 ):
     """Edit a category (name / gender / parent) or toggle its active flag.
 
-    Renaming is guarded against case-insensitive duplicates so the catalogue
-    can't end up with "Robes" + "robes" again.
+    Renaming / re-gendering is guarded against duplicates on the (name, gender)
+    key so the catalogue can't end up with "Robes"+"robes" for the same gender,
+    while still allowing « Gilet » homme and « Gilet » femme side by side.
     """
     result = await db.execute(select(Category).where(Category.id == category_id))
     category = result.scalar_one_or_none()
@@ -1238,30 +1243,37 @@ async def update_category(
 
     data = category_in.model_dump(exclude_unset=True)
 
+    new_name = None
     if "name" in data and data["name"] is not None:
-        name = data["name"].strip()
-        if not name:
+        new_name = data["name"].strip()
+        if not new_name:
             raise HTTPException(status_code=400, detail="nom de catégorie manquant")
-        # Normalized match mirrors uq_categories_name_lower (see
-        # _same_normalized_name): catches whitespace/case duplicates that a
-        # bare ILIKE would miss and let collide on flush.
+
+    new_gender = None
+    if "gender" in data and data["gender"] is not None:
+        new_gender = _coerce_gender(data["gender"])
+
+    # Duplicate check on the resulting (name, gender) key — only when either
+    # side actually changes. Mirrors uq_categories_name_gender_lower so it
+    # catches whitespace/case twins a bare ILIKE would miss and let collide.
+    if new_name is not None or new_gender is not None:
+        eff_name = new_name if new_name is not None else category.name
+        eff_gender = new_gender if new_gender is not None else category.gender
         dup = await db.execute(
             select(Category).where(
-                _same_normalized_name(name), Category.id != category_id
+                _same_category_key(eff_name, eff_gender), Category.id != category_id
             ).limit(1)
         )
         if dup.scalars().first() is not None:
-            raise HTTPException(status_code=409, detail=f"La catégorie « {name} » existe déjà")
-        category.name = name
-
-    if "gender" in data and data["gender"] is not None:
-        try:
-            category.gender = Gender(data["gender"])
-        except ValueError:
             raise HTTPException(
-                status_code=400,
-                detail=f"genre invalide : {data['gender']}. Valeurs : {[g.value for g in Gender]}",
+                status_code=409,
+                detail=f"La catégorie « {eff_name} » ({eff_gender.value}) existe déjà",
             )
+
+    if new_name is not None:
+        category.name = new_name
+    if new_gender is not None:
+        category.gender = new_gender
 
     if "parent_id" in data:
         if data["parent_id"] == category_id:
@@ -1274,7 +1286,7 @@ async def update_category(
     try:
         await db.flush()
     except IntegrityError:
-        # Backstop for the normalized-name index: a rename that still collides
+        # Backstop for the (name, gender) index: a change that still collides
         # (e.g. a legacy whitespace row) returns a clean 409 instead of a 500.
         await db.rollback()
         raise HTTPException(
@@ -1291,29 +1303,34 @@ async def create_category(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    """Create a category — idempotent on name to avoid duplicate rows.
+    """Create a category — idempotent on the (name, gender) pair.
 
-    Le formulaire (et d'anciens seeds non idempotents) pouvaient créer
-    plusieurs fois la même catégorie ("Robes", "robes", "Robes ") d'où la
-    liste qui apparaissait en double. On normalise (trim) et on renvoie la
-    catégorie existante si le nom correspond déjà (insensible à la casse).
+    Categories are unique per (name, gender): « Gilet » homme and « Gilet »
+    femme are two DISTINCT categories (see migration 0071). We normalise (trim)
+    and, if that exact (name, gender) already exists, return it instead of
+    inserting a duplicate — but a same-name / different-gender twin is created
+    normally. Old seeds/forms could create "Robes" / "robes" / "Robes " dupes,
+    hence the trim normalisation.
     """
     name = (category_in.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="nom de catégorie manquant")
+    # Category.gender is NOT NULL (default mixte); _coerce_gender returns None
+    # only for an empty value, so fall back to mixte there.
+    gender = _coerce_gender(category_in.gender) or Gender.mixte
 
     async def _idempotent_existing() -> Category | None:
-        """Return the canonical row for this normalized name, reactivated."""
+        """Return the row for this (name, gender) key, reactivated if disabled."""
         res = await db.execute(
             select(Category)
-            .where(_same_normalized_name(name))
+            .where(_same_category_key(name, gender))
             .order_by(Category.created_at)
             .limit(1)
         )
         row = res.scalars().first()
         if row is not None and not row.is_active:
-            # Re-adding a deactivated name is a clear intent to make it
-            # available again — reactivate it, otherwise it re-appears greyed
+            # Re-adding a deactivated (name, gender) is a clear intent to make
+            # it available again — reactivate it, otherwise it re-appears greyed
             # out and the manager thinks nothing happened.
             row.is_active = True
             await db.flush()
@@ -1327,16 +1344,16 @@ async def create_category(
     category = Category(
         name=name,
         parent_id=category_in.parent_id,
-        gender=category_in.gender,
+        gender=gender,
     )
     db.add(category)
     try:
         await db.flush()
     except IntegrityError:
-        # A legacy row whose normalized name matches but slipped past the
-        # SELECT above (e.g. stored with stray whitespace), or a concurrent
-        # insert, tripped uq_categories_name_lower. Recover instead of 500:
-        # roll back the failed INSERT and return the existing category.
+        # A legacy row whose normalized (name, gender) matches but slipped past
+        # the SELECT above (e.g. stored with stray whitespace), or a concurrent
+        # insert, tripped the unique index. Recover instead of 500: roll back
+        # the failed INSERT and return the existing category.
         await db.rollback()
         found = await _idempotent_existing()
         if found is None:
