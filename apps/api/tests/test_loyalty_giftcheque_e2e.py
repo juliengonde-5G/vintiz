@@ -109,6 +109,17 @@ async def test_giftcheque_generated_then_used_as_payment(session):
         assert (cheque.valid_until - cheque.valid_from).days == cfg.voucher_valid_days
     assert cheque.redeemed_at is None  # not yet used
 
+    # --- POS visibility: the cheque shows in the client's voucher list with
+    # the affectable value the caisse chip renders ("Affecter 5,00 €"). This is
+    # exactly what GET /pos/clients/{id}/vouchers returns to the POS. ---
+    from app.services.coupon import compute_voucher_discount
+    from app.services.event_vouchers import list_client_vouchers
+
+    active = await list_client_vouchers(session, client.id, only_active=True)
+    assert any(v.code == cheque.code for v in active), "gift cheque not usable in POS"
+    # 20 € cart → the whole 5 € cheque is affectable.
+    assert compute_voucher_discount(cheque, 20.0) == pytest.approx(5.0)
+
     # --- SALE 2: 20 € paid with the gift cheque (value) + cash remainder ---
     value = float(cheque.discount_value)
     p20 = await _product(session, 20.0)
