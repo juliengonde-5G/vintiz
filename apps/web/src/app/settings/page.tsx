@@ -118,6 +118,10 @@ export default function SettingsPage() {
   // New category form
   const [newCatName, setNewCatName] = useState('');
   const [newCatGender, setNewCatGender] = useState('femme');
+  // Feedback shown INLINE inside the categories tab, right by the form — the
+  // global banner sits at the top of the page, off-screen when the manager is
+  // scrolled down to the form, which read as "il ne se passe rien".
+  const [catFeedback, setCatFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   // Inline category edit
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [editCatName, setEditCatName] = useState('');
@@ -684,15 +688,21 @@ export default function SettingsPage() {
     }
   };
 
+  // Success feedback near the category form, auto-cleared after 3s.
+  const flashCatSuccess = (text: string) => {
+    setCatFeedback({ type: 'success', text });
+    setTimeout(() => setCatFeedback((f) => (f?.text === text ? null : f)), 3000);
+  };
+
   const loadCategories = async () => {
     setLoading(true);
     // include_inactive so the management screen can show + re-enable disabled ones.
     try {
       const res = await api.get('/api/inventory/categories?include_inactive=true');
       if (res.ok) setCategories(await res.json());
-      else setError('Erreur lors du chargement des catégories');
+      else setCatFeedback({ type: 'error', text: 'Erreur lors du chargement des catégories' });
     } catch {
-      setError('Erreur de connexion lors du chargement des catégories');
+      setCatFeedback({ type: 'error', text: 'Erreur de connexion lors du chargement des catégories' });
     }
     setLoading(false);
   };
@@ -704,8 +714,8 @@ export default function SettingsPage() {
   };
 
   const saveCat = async (id: string) => {
-    if (!editCatName.trim()) { setError('Le nom de la catégorie est requis'); return; }
-    setError('');
+    if (!editCatName.trim()) { setCatFeedback({ type: 'error', text: 'Le nom de la catégorie est requis' }); return; }
+    setCatFeedback(null);
     try {
       const res = await api.put(`/api/inventory/categories/${id}`, {
         name: editCatName.trim(),
@@ -714,30 +724,28 @@ export default function SettingsPage() {
       if (res.ok) {
         setEditingCatId(null);
         await loadCategories();
-        setMessage('Catégorie modifiée');
-        setTimeout(() => setMessage(''), 3000);
+        flashCatSuccess('Catégorie modifiée');
       } else {
         const e = await res.json().catch(() => ({}));
-        setError(e.detail || 'Erreur lors de la modification');
+        setCatFeedback({ type: 'error', text: e.detail || 'Erreur lors de la modification' });
       }
     } catch {
-      setError('Erreur de connexion — la modification a échoué');
+      setCatFeedback({ type: 'error', text: 'Erreur de connexion — la modification a échoué' });
     }
   };
 
   const toggleCatActive = async (c: Category) => {
-    setError('');
+    setCatFeedback(null);
     try {
       const res = await api.put(`/api/inventory/categories/${c.id}`, { is_active: !c.is_active });
       if (res.ok) {
         await loadCategories();
-        setMessage(c.is_active ? 'Catégorie désactivée' : 'Catégorie activée');
-        setTimeout(() => setMessage(''), 3000);
+        flashCatSuccess(c.is_active ? 'Catégorie désactivée' : 'Catégorie activée');
       } else {
-        setError('Erreur lors du changement de statut');
+        setCatFeedback({ type: 'error', text: 'Erreur lors du changement de statut' });
       }
     } catch {
-      setError('Erreur de connexion — le statut n’a pas changé');
+      setCatFeedback({ type: 'error', text: 'Erreur de connexion — le statut n’a pas changé' });
     }
   };
 
@@ -788,24 +796,24 @@ export default function SettingsPage() {
   };
 
   const addCategory = async () => {
-    if (!newCatName.trim()) { setError('Le nom de la catégorie est requis'); return; }
-    setError('');
+    if (!newCatName.trim()) { setCatFeedback({ type: 'error', text: 'Le nom de la catégorie est requis' }); return; }
+    setCatFeedback(null);
+    const added = newCatName.trim();
     try {
       const res = await api.post('/api/inventory/categories', {
-        name: newCatName.trim(),
+        name: added,
         gender: newCatGender,
       });
       if (res.ok) {
         setNewCatName('');
         await loadCategories();
-        setMessage('Catégorie ajoutée');
-        setTimeout(() => setMessage(''), 3000);
+        flashCatSuccess(`Catégorie « ${added} » ajoutée`);
       } else {
         const e = await res.json().catch(() => ({}));
-        setError(e.detail || "Erreur lors de l'ajout de la catégorie");
+        setCatFeedback({ type: 'error', text: e.detail || "Erreur lors de l'ajout de la catégorie" });
       }
     } catch {
-      setError('Erreur de connexion — la catégorie n’a pas pu être créée');
+      setCatFeedback({ type: 'error', text: 'Erreur de connexion — la catégorie n’a pas pu être créée' });
     }
   };
 
@@ -1514,6 +1522,25 @@ export default function SettingsPage() {
                 </select>
                 <Button onClick={addCategory}>Ajouter</Button>
               </div>
+              {catFeedback && (
+                <div
+                  role="status"
+                  className={`mt-3 p-3 rounded-lg text-sm flex items-start justify-between gap-2 ${
+                    catFeedback.type === 'success'
+                      ? 'bg-green-50 text-green-700'
+                      : 'bg-red-50 text-red-700'
+                  }`}
+                >
+                  <span>{catFeedback.text}</span>
+                  <button
+                    onClick={() => setCatFeedback(null)}
+                    className="font-bold shrink-0"
+                    aria-label="Fermer"
+                  >
+                    &times;
+                  </button>
+                </div>
+              )}
             </Card>
 
             <Card title="Categories existantes">
