@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -1177,6 +1178,27 @@ async def list_brands(
 # Categories
 # ---------------------------------------------------------------------------
 
+def _same_normalized_name(name: str):
+    """SQL predicate matching a category by its NORMALIZED name.
+
+    Must mirror the DB unique index ``uq_categories_name_lower`` created by
+    migration 0046 — ``lower(btrim(name))``. The idempotency + duplicate
+    checks below MUST use the exact same normalization as that index.
+    (``trim`` is the portable spelling of Postgres ``btrim`` — identical
+    result there, and unlike ``btrim`` it also exists on SQLite, where the
+    tests run.)
+
+    A plain ``ILIKE`` probe is NOT equivalent: it is case-insensitive but does
+    not trim, and it treats ``%``/``_`` as wildcards. So a legacy row with
+    stray whitespace ("Robes " — cited verbatim in migration 0046) slips past
+    an ``ILIKE 'Robes'`` lookup yet still collides on INSERT via the index,
+    raising an ``IntegrityError`` that surfaced as a generic 500. In the
+    settings screen the error banner sits at the top of the page, far from the
+    form, so the manager just saw "rien ne se passe" when adding a category.
+    """
+    return func.lower(func.trim(Category.name)) == name.strip().lower()
+
+
 @router.get("/categories", response_model=list[CategoryResponse])
 async def list_categories(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -1220,9 +1242,12 @@ async def update_category(
         name = data["name"].strip()
         if not name:
             raise HTTPException(status_code=400, detail="nom de catégorie manquant")
+        # Normalized match mirrors uq_categories_name_lower (see
+        # _same_normalized_name): catches whitespace/case duplicates that a
+        # bare ILIKE would miss and let collide on flush.
         dup = await db.execute(
             select(Category).where(
-                Category.name.ilike(name), Category.id != category_id
+                _same_normalized_name(name), Category.id != category_id
             ).limit(1)
         )
         if dup.scalars().first() is not None:
@@ -1246,7 +1271,16 @@ async def update_category(
     if "is_active" in data and data["is_active"] is not None:
         category.is_active = bool(data["is_active"])
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Backstop for the normalized-name index: a rename that still collides
+        # (e.g. a legacy whitespace row) returns a clean 409 instead of a 500.
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"La catégorie « {data.get('name', category_id)} » existe déjà",
+        )
     await db.refresh(category)
     return CategoryResponse.model_validate(category)
 
@@ -1268,19 +1302,26 @@ async def create_category(
     if not name:
         raise HTTPException(status_code=400, detail="nom de catégorie manquant")
 
-    existing = await db.execute(
-        select(Category).where(Category.name.ilike(name)).order_by(Category.created_at).limit(1)
-    )
-    found = existing.scalars().first()
-    if found is not None:
-        # Re-adding a name that already exists is idempotent — but if that
-        # category had been deactivated, "adding" it again is a clear intent to
-        # make it available, so reactivate it (otherwise it re-appears greyed
-        # out and the manager thinks nothing happened).
-        if not found.is_active:
-            found.is_active = True
+    async def _idempotent_existing() -> Category | None:
+        """Return the canonical row for this normalized name, reactivated."""
+        res = await db.execute(
+            select(Category)
+            .where(_same_normalized_name(name))
+            .order_by(Category.created_at)
+            .limit(1)
+        )
+        row = res.scalars().first()
+        if row is not None and not row.is_active:
+            # Re-adding a deactivated name is a clear intent to make it
+            # available again — reactivate it, otherwise it re-appears greyed
+            # out and the manager thinks nothing happened.
+            row.is_active = True
             await db.flush()
-            await db.refresh(found)
+            await db.refresh(row)
+        return row
+
+    found = await _idempotent_existing()
+    if found is not None:
         return CategoryResponse.model_validate(found)
 
     category = Category(
@@ -1289,7 +1330,18 @@ async def create_category(
         gender=category_in.gender,
     )
     db.add(category)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # A legacy row whose normalized name matches but slipped past the
+        # SELECT above (e.g. stored with stray whitespace), or a concurrent
+        # insert, tripped uq_categories_name_lower. Recover instead of 500:
+        # roll back the failed INSERT and return the existing category.
+        await db.rollback()
+        found = await _idempotent_existing()
+        if found is None:
+            raise
+        return CategoryResponse.model_validate(found)
     await db.refresh(category)
     return CategoryResponse.model_validate(category)
 
