@@ -2831,10 +2831,12 @@ async def update_event_voucher_catalog(
 
 
 class LoyaltyEarningRequest(BaseModel):
+    # Defaults mirror app.services.loyalty_config (source of truth) : 5 € tous
+    # les 100 pts, sans expiration (0 jour).
     euro_per_point: int = 1
-    voucher_value_cents: int = 800
+    voucher_value_cents: int = 500
     voucher_threshold: int = 100
-    voucher_valid_days: int = 180
+    voucher_valid_days: int = 0
     points_expiry_days: int = 730
 
 

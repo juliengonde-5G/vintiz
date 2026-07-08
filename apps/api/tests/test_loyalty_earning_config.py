@@ -36,8 +36,18 @@ async def test_defaults_match_historical_constants(session):
     # Règle boutique : 100 pts = chèque cadeau de 5 € (500 cents).
     assert cfg.voucher_value_cents == 500
     assert cfg.voucher_threshold == DEFAULT_VOUCHER_THRESHOLD == 100
-    assert cfg.voucher_valid_days == 180
+    # Chèque cadeau SANS expiration par défaut (0 = pas de date limite).
+    assert cfg.voucher_valid_days == 0
     assert cfg.points_expiry_days == 730
+
+
+@pytest.mark.anyio
+async def test_zero_validity_is_accepted_as_no_expiry(session):
+    cfg = await set_earning_config(
+        session, euro_per_point=1, voucher_value_cents=500,
+        voucher_threshold=100, voucher_valid_days=0, points_expiry_days=730,
+    )
+    assert cfg.voucher_valid_days == 0  # no expiry, not rejected
 
 
 @pytest.mark.anyio

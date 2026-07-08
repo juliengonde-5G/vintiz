@@ -712,7 +712,8 @@ class PosService:
                     transaction.id, coupon_code, exc,
                 )
 
-        # Loyalty: 1 € = 1 pt; every 100 pts crossed → 8 € coupon (60d, auto)
+        # Loyalty: 1 € = 1 pt; every 100 pts crossed → 5 € gift cheque (auto,
+        # no expiry by default — all values admin-configurable).
         if transaction.client_id is not None:
             try:
                 await self._credit_loyalty_and_emit_milestones(transaction)
@@ -841,7 +842,12 @@ class PosService:
             return
 
         now = datetime.now(timezone.utc)
-        valid_until = now + timedelta(days=cfg.voucher_valid_days)
+        # voucher_valid_days == 0 → chèque cadeau SANS expiration (valid_until
+        # NULL). Une valeur > 0 réintroduit une date limite.
+        valid_until = (
+            now + timedelta(days=cfg.voucher_valid_days)
+            if cfg.voucher_valid_days > 0 else None
+        )
         voucher_value = cfg.voucher_value_cents / 100.0
         created_codes: list[str] = []
         for _ in range(crossed):
@@ -881,7 +887,7 @@ class PosService:
         client_id: uuid.UUID,
         code: str,
         value_eur: float,
-        valid_until: datetime,
+        valid_until: datetime | None,
     ) -> None:
         """Prévient la cliente qu'un chèque cadeau fidélité a été généré.
 
@@ -899,13 +905,17 @@ class PosService:
         if client is None:
             return
 
-        valid_str = valid_until.date().strftime("%d/%m/%Y")
+        # valid_until NULL = chèque cadeau sans expiration.
+        valide_jusqu_au = (
+            f"jusqu'au {valid_until.date().strftime('%d/%m/%Y')}"
+            if valid_until else "sans date d'expiration"
+        )
         prenom = (client.first_name or "").strip() or "Bonjour"
         context = {
             "prenom": prenom,
             "valeur": f"{value_eur:g}",
             "code_bon": code,
-            "valide_jusqu_au": valid_str,
+            "valide_jusqu_au": valide_jusqu_au,
         }
 
         if client.email:
@@ -925,13 +935,13 @@ class PosService:
                     "<p>Félicitations ! Vous avez atteint 100 points de fidélité. "
                     "Un <strong>chèque cadeau de {valeur} €</strong> (code "
                     "<strong>{code_bon}</strong>) vient d'être crédité sur votre "
-                    "compte. Valable jusqu'au {valide_jusqu_au}, à présenter en "
+                    "compte. Valable {valide_jusqu_au}, à présenter en "
                     "caisse lors de votre prochain passage.</p>"
                 ),
                 fallback_text=(
                     "Bonjour {prenom}, vous avez atteint 100 points : un chèque "
                     "cadeau de {valeur} € (code {code_bon}) a été crédité sur votre "
-                    "compte. Valable jusqu'au {valide_jusqu_au}."
+                    "compte. Valable {valide_jusqu_au}."
                 ),
             )
             status = "sent"
@@ -968,7 +978,7 @@ class PosService:
             body = (
                 f"Vintiz : bravo {prenom} ! 100 pts atteints. Cheque cadeau de "
                 f"{value_eur:g} EUR (code {code}) credite sur votre compte, "
-                f"valable jusqu'au {valid_str}."
+                f"valable {valide_jusqu_au}."
             )
             outcome = send_sms(SMSMessage(to=client.phone, body=body))
             await log_communication(

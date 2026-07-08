@@ -6,7 +6,7 @@ interface LoyaltyHeroProps {
   points: number;
   nextTierLabel?: string;       // ex: "Prochain palier"
   pointsToNext?: number;         // ex: 260
-  benefitText?: string;          // ex: "1 € = 1 pt · 100 pts = bon de 8 €"
+  benefitText?: string;          // ex: "1 € = 1 pt · 100 pts = bon de 5 €"
 }
 
 /**
@@ -20,7 +20,7 @@ export default function LoyaltyHeroCard({
   points,
   nextTierLabel = "Prochain palier",
   pointsToNext,
-  benefitText = "1 € dépensé = 1 pt · 100 pts = bon de 8 €",
+  benefitText = "1 € dépensé = 1 pt · 100 pts = bon de 5 €",
 }: LoyaltyHeroProps) {
   // Compute progress to the next 100-pts tier when caller doesn't supply one.
   const remainder = pointsToNext ?? Math.max(0, 100 - (points % 100));
@@ -63,7 +63,7 @@ export default function LoyaltyHeroCard({
           />
         </div>
         <p className="mt-2 text-xs text-vz-ink-mute">
-          {nextTierLabel} · <strong className="text-vz-ink-soft">{remainder}</strong> pts pour un bon de 8 €
+          {nextTierLabel} · <strong className="text-vz-ink-soft">{remainder}</strong> pts pour un bon de 5 €
         </p>
       </div>
 

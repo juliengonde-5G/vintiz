@@ -250,7 +250,7 @@ export default function AccountHomePage() {
                 </div>
                 <p className="text-sm text-vz-ink-soft leading-relaxed">
                   Chaque euro dépensé en boutique vous rapporte un point. À 100 points cumulés, un bon de
-                  8 € est crédité automatiquement sur votre carte. Les points expirent après 24 mois sans activité.
+                  5 € est crédité automatiquement sur votre carte. Les points expirent après 24 mois sans activité.
                 </p>
               </div>
             )}

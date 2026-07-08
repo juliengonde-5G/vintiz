@@ -519,7 +519,7 @@ export default function ClientDetailPage() {
                           : `-${cp.discount_value} %`}
                       </span>
                       <span className="text-xs text-gray-500">
-                        jusqu&apos;au {formatDate(cp.valid_until)}
+                        {cp.valid_until ? `jusqu'au ${formatDate(cp.valid_until)}` : 'sans expiration'}
                       </span>
                     </li>
                   ))}

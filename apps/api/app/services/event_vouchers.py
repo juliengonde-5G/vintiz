@@ -267,8 +267,13 @@ async def list_client_vouchers(
     for c in rows:
         if not c.is_active or c.redeemed_at is not None:
             continue
-        vu = c.valid_until.replace(tzinfo=timezone.utc) if c.valid_until.tzinfo is None else c.valid_until
         vf = c.valid_from.replace(tzinfo=timezone.utc) if c.valid_from.tzinfo is None else c.valid_from
-        if vf <= now <= vu:
-            out.append(c)
+        if now < vf:
+            continue
+        # valid_until NULL = no expiry (loyalty gift cheque) → always in-window.
+        if c.valid_until is not None:
+            vu = c.valid_until.replace(tzinfo=timezone.utc) if c.valid_until.tzinfo is None else c.valid_until
+            if now > vu:
+                continue
+        out.append(c)
     return out

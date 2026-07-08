@@ -103,10 +103,10 @@ export default function LoyaltyCardConfig() {
           onChange={(v) => patch('voucher_value_cents', v)}
         />
         <Field
-          label="Validité du bon d'achat"
+          label="Validité du bon d'achat (0 = sans expiration)"
           suffix="jours"
           value={cfg.voucher_valid_days}
-          min={1}
+          min={0}
           onChange={(v) => patch('voucher_valid_days', v)}
         />
         <Field
@@ -122,7 +122,10 @@ export default function LoyaltyCardConfig() {
         Résumé : 1 point tous les <strong>{cfg.euro_per_point} €</strong> ·{' '}
         bon de <strong>{euros} €</strong> tous les{' '}
         <strong>{cfg.voucher_threshold} points</strong> ·{' '}
-        bon valable <strong>{cfg.voucher_valid_days} jours</strong> ·{' '}
+        bon{' '}
+        <strong>
+          {cfg.voucher_valid_days > 0 ? `valable ${cfg.voucher_valid_days} jours` : 'sans expiration'}
+        </strong> ·{' '}
         points expirés après <strong>{cfg.points_expiry_days} jours</strong> sans activité.
       </p>
 

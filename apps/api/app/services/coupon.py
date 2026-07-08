@@ -44,7 +44,7 @@ class CouponPreview:
     discount_amount: float      # what to actually subtract from cart_total
     new_total: float
     source: str
-    valid_until: datetime
+    valid_until: datetime | None  # None = no expiry (loyalty gift cheque)
     free_item_label: str | None = None
     # ``free_item`` bons need an eligible article in the cart (ex. un foulard) ;
     # the UI uses this to prompt « ajoutez un foulard au panier ».
@@ -233,12 +233,13 @@ async def validate_coupon(
     valid_until = coupon.valid_until
     if valid_from.tzinfo is None:
         valid_from = valid_from.replace(tzinfo=timezone.utc)
-    if valid_until.tzinfo is None:
+    # valid_until NULL = no expiry (loyalty gift cheques) → never "expired".
+    if valid_until is not None and valid_until.tzinfo is None:
         valid_until = valid_until.replace(tzinfo=timezone.utc)
 
     if now < valid_from:
         raise CouponError("not_yet_valid")
-    if now > valid_until:
+    if valid_until is not None and now > valid_until:
         raise CouponError("expired")
 
     # Bons d'ouverture (zone Événementiel) « prochain achat » :

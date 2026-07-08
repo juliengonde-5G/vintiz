@@ -342,7 +342,7 @@ async def validate_pos_coupon(
         "discount_amount": preview.discount_amount,
         "new_total": preview.new_total,
         "source": preview.source,
-        "valid_until": preview.valid_until.isoformat(),
+        "valid_until": preview.valid_until.isoformat() if preview.valid_until else None,
         "free_item_label": preview.free_item_label,
         "requires_item": preview.requires_item,
     }

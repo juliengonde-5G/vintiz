@@ -91,7 +91,7 @@ export default function AccountOffresPage() {
       {!loading && !error && coupons.length === 0 && (
         <p className="text-gray-600">
           Aucun coupon actif pour le moment. Cumulez 100 points sur votre carte
-          fidélité pour générer un bon d&apos;achat de 8 € automatique.
+          fidélité pour générer un bon d&apos;achat de 5 € automatique.
         </p>
       )}
       {coupons.length > 0 && (
@@ -112,7 +112,8 @@ export default function AccountOffresPage() {
                   {formatDiscount(c)}
                 </p>
                 <p className="text-sm text-gray-600">
-                  Code <strong>{c.code}</strong> · valable jusqu&apos;au {formatDate(c.valid_until)}
+                  Code <strong>{c.code}</strong> ·{" "}
+                  {c.valid_until ? `valable jusqu'au ${formatDate(c.valid_until)}` : "sans expiration"}
                 </p>
                 {c.notes && <p className="text-xs text-gray-500 mt-1">{c.notes}</p>}
               </div>

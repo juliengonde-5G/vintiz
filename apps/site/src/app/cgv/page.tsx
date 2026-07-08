@@ -132,9 +132,8 @@ export default function CGVPage() {
             conditions actives sont affichées en boutique au moment de la
             souscription. Mécanique unique&nbsp;:{" "}
             <strong>1 € dépensé = 1 point</strong>. Tous les{" "}
-            <strong>100 points</strong>, un bon d&apos;achat de 8 € est généré
-            automatiquement (durée de validité affichée en boutique et dans
-            votre espace client, par défaut 6 mois). Les points expirent au
+            <strong>100 points</strong>, un bon d&apos;achat de 5 € est généré
+            automatiquement, sans date d&apos;expiration. Les points expirent au
             bout de <strong>24 mois sans activité</strong>. Vintiz se réserve le droit
             de modifier les conditions du programme avec préavis affiché en
             boutique et envoyé par email aux membres opt-in.

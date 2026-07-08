@@ -341,7 +341,7 @@ export default function AccountLoginPage() {
 
         <p className="mt-8 text-xs text-gray-500">
           La carte de fidélité est gratuite — adhérez en boutique à Vernon.
-          1 € dépensé = 1 point. 100 points = bon de 8 €. Validité 24 mois sans activité.
+          1 € dépensé = 1 point. 100 points = bon de 5 €. Validité 24 mois sans activité.
         </p>
       </section>
       <PublicFooter />

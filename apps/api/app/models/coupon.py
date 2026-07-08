@@ -70,8 +70,10 @@ class Coupon(Base):
     valid_from: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    valid_until: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+    # NULL = no expiry (e.g. loyalty gift cheques, which never expire). All
+    # readers treat a null ``valid_until`` as "always valid".
+    valid_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     redeemed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

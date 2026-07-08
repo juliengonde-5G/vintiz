@@ -2557,7 +2557,7 @@ export default function SettingsPage() {
                   {loyaltySaving ? 'Enregistrement...' : 'Enregistrer'}
                 </Button>
                 <span className="text-xs text-gray-500">
-                  Mecanique : 1 € depense = 1 pt · 100 pts = bon de 8 € · peremption 24 mois sans activite.
+                  Mecanique : 1 € depense = 1 pt · 100 pts = bon de 5 € · peremption 24 mois sans activite.
                 </span>
               </div>
             </Card>

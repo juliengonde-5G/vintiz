@@ -123,7 +123,9 @@ KEY_POINTS_EXPIRY_DAYS = "loyalty_points_expiry_days"  # points validity (days)
 DEFAULT_EURO_PER_POINT = 1
 DEFAULT_VOUCHER_VALUE_CENTS = 500      # 5 €
 DEFAULT_VOUCHER_THRESHOLD = 100        # 100 pts → 1 chèque cadeau
-DEFAULT_VOUCHER_VALID_DAYS = 180       # 6 months
+# 0 = SANS expiration (le chèque cadeau fidélité ne périme pas). Une valeur
+# > 0 réintroduit une date de validité en jours.
+DEFAULT_VOUCHER_VALID_DAYS = 0         # no expiry
 DEFAULT_POINTS_EXPIRY_DAYS = 730       # 24 months
 
 
@@ -154,7 +156,8 @@ async def get_earning_config(db: AsyncSession) -> LoyaltyEarningConfig:
             await _get_setting(db, KEY_VOUCHER_VALUE), DEFAULT_VOUCHER_VALUE_CENTS)),
         voucher_threshold=max(1, _to_int(
             await _get_setting(db, KEY_VOUCHER_THRESHOLD), DEFAULT_VOUCHER_THRESHOLD)),
-        voucher_valid_days=max(1, _to_int(
+        # 0 = no expiry (chèque cadeau fidélité sans date limite).
+        voucher_valid_days=max(0, _to_int(
             await _get_setting(db, KEY_VOUCHER_VALID_DAYS), DEFAULT_VOUCHER_VALID_DAYS)),
         points_expiry_days=max(1, _to_int(
             await _get_setting(db, KEY_POINTS_EXPIRY_DAYS), DEFAULT_POINTS_EXPIRY_DAYS)),
@@ -177,8 +180,11 @@ async def set_earning_config(
         raise ValueError("voucher_threshold doit être ≥ 1")
     if voucher_value_cents < 0:
         raise ValueError("voucher_value_cents doit être ≥ 0")
-    if voucher_valid_days < 1 or points_expiry_days < 1:
-        raise ValueError("les durées de validité doivent être ≥ 1 jour")
+    # voucher_valid_days == 0 → chèque cadeau sans expiration (autorisé).
+    if voucher_valid_days < 0:
+        raise ValueError("voucher_valid_days doit être ≥ 0 (0 = sans expiration)")
+    if points_expiry_days < 1:
+        raise ValueError("la durée de validité des points doit être ≥ 1 jour")
     await _set_setting(db, KEY_EURO_PER_POINT, str(euro_per_point))
     await _set_setting(db, KEY_VOUCHER_VALUE, str(voucher_value_cents))
     await _set_setting(db, KEY_VOUCHER_THRESHOLD, str(voucher_threshold))

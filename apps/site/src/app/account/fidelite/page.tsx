@@ -18,7 +18,7 @@ const FAQ = [
   },
   {
     q: "Comment j'utilise mes points ?",
-    a: "Tous les 100 points, un bon d'achat de 8 € est généré automatiquement et associé à votre carte. Il s'applique au prochain passage en caisse, valable 6 mois.",
+    a: "Tous les 100 points, un bon d'achat de 5 € est généré automatiquement et associé à votre carte. Il s'applique au prochain passage en caisse, sans date d'expiration.",
   },
   {
     q: "Mes points expirent-ils ?",
@@ -100,7 +100,7 @@ export default function AccountFidelitePage() {
               </li>
               <li className="bg-white rounded-2xl p-4 shadow-sm">
                 <p className="text-3xl font-display text-vz-teal">100 pts</p>
-                <p className="text-sm text-gray-600">= bon d&apos;achat 8 €</p>
+                <p className="text-sm text-gray-600">= bon d&apos;achat 5 €</p>
               </li>
               <li className="bg-white rounded-2xl p-4 shadow-sm">
                 <p className="text-3xl font-display text-vz-teal">24 mois</p>
