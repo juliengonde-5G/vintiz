@@ -697,8 +697,10 @@ export default function SettingsPage() {
   const loadCategories = async () => {
     setLoading(true);
     // include_inactive so the management screen can show + re-enable disabled ones.
+    // Cache-bust (&_=…) : sans ça, Safari (iPad) resservait la liste GET en
+    // cache juste après un ajout → la catégorie n'apparaissait qu'après un F5.
     try {
-      const res = await api.get('/api/inventory/categories?include_inactive=true');
+      const res = await api.get(`/api/inventory/categories?include_inactive=true&_=${Date.now()}`);
       if (res.ok) setCategories(await res.json());
       else setCatFeedback({ type: 'error', text: 'Erreur lors du chargement des catégories' });
     } catch {
@@ -805,9 +807,26 @@ export default function SettingsPage() {
         gender: newCatGender,
       });
       if (res.ok) {
+        const created: Category = await res.json();
         setNewCatName('');
+        // Une catégorie est unique par (nom + genre) : même nom, genre
+        // différent = deux catégories distinctes. Si l'API renvoie une ligne
+        // déjà présente, c'est qu'elle existait (idempotent) — on le dit
+        // clairement plutôt que d'annoncer une création trompeuse.
+        const alreadyListed = categories.some((c) => c.id === created.id);
+        // Merge optimiste : la nouvelle ligne s'affiche tout de suite, sans
+        // attendre (et sans dépendre d') un GET potentiellement en cache.
+        setCategories((prev) =>
+          [...prev.filter((c) => c.id !== created.id), created].sort((a, b) =>
+            a.name.localeCompare(b.name, 'fr') || a.gender.localeCompare(b.gender),
+          ),
+        );
         await loadCategories();
-        flashCatSuccess(`Catégorie « ${added} » ajoutée`);
+        flashCatSuccess(
+          alreadyListed
+            ? `« ${created.name} » (${created.gender}) existe déjà`
+            : `Catégorie « ${created.name} » (${created.gender}) ajoutée`,
+        );
       } else {
         const e = await res.json().catch(() => ({}));
         setCatFeedback({ type: 'error', text: e.detail || "Erreur lors de l'ajout de la catégorie" });

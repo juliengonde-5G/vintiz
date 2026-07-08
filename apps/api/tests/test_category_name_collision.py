@@ -38,18 +38,21 @@ def anyio_backend():
 
 
 async def _memory_session_with_index():
-    """In-memory SQLite + the production unique index on lower(trim(name))."""
+    """In-memory SQLite + the production composite unique index.
+
+    Mirrors uq_categories_name_gender_lower from migration 0071 —
+    ``(lower(btrim(name)), gender)``. Postgres uses btrim; trim is the portable
+    equivalent and identical for spaces.
+    """
     eng = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with eng.begin() as conn:
         await conn.run_sync(
             lambda c: Base.metadata.create_all(c, tables=[Category.__table__])
         )
-        # Mirror uq_categories_name_lower from migration 0046. Postgres uses
-        # btrim; trim is the portable equivalent and identical for spaces.
         await conn.execute(
             text(
-                "CREATE UNIQUE INDEX uq_categories_name_lower "
-                "ON categories (lower(trim(name)))"
+                "CREATE UNIQUE INDEX uq_categories_name_gender_lower "
+                "ON categories (lower(trim(name)), gender)"
             )
         )
     return eng, async_sessionmaker(eng, expire_on_commit=False)
@@ -136,5 +139,70 @@ async def test_rename_into_whitespace_duplicate_is_409_not_500():
             await update_category(
                 keep_id, CategoryUpdate(name="vestes"), s, _fake_user()
             )
+        assert exc.value.status_code == 409
+    await eng.dispose()
+
+
+# ---------------------------------------------------------------------------
+# (name, gender) uniqueness — « Gilet » homme + « Gilet » femme are distinct
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_same_name_other_gender_creates_second_category():
+    """The reported bug: "Gilet" exists as homme, adding it as femme must
+    create a SECOND category (not silently return the homme one)."""
+    eng, Session = await _memory_session_with_index()
+    async with Session() as s:
+        s.add(Category(name="Gilet", gender="homme"))
+        await s.commit()
+
+    async with Session() as s:
+        resp = await create_category(
+            CategoryCreate(name="Gilet", gender="femme"), s, _fake_user()
+        )
+        await s.commit()
+        assert resp.gender == "femme"
+        rows = (await s.execute(select(Category))).scalars().all()
+        assert len(rows) == 2  # homme + femme side by side
+        assert {(r.name, r.gender) for r in rows} == {("Gilet", "homme"), ("Gilet", "femme")}
+    await eng.dispose()
+
+
+@pytest.mark.anyio
+async def test_same_name_same_gender_stays_idempotent():
+    """Re-adding the exact (name, gender) — even with case/whitespace noise —
+    returns the existing row, no duplicate."""
+    eng, Session = await _memory_session_with_index()
+    async with Session() as s:
+        s.add(Category(name="Gilet", gender="homme"))
+        await s.commit()
+
+    async with Session() as s:
+        resp = await create_category(
+            CategoryCreate(name="  gilet ", gender="homme"), s, _fake_user()
+        )
+        await s.commit()
+        assert resp.gender == "homme"
+        rows = (await s.execute(select(Category))).scalars().all()
+        assert len(rows) == 1
+    await eng.dispose()
+
+
+@pytest.mark.anyio
+async def test_regender_onto_existing_twin_is_409():
+    """Changing a category's gender onto an existing (name, gender) twin is a
+    clean 409, not a 500."""
+    eng, Session = await _memory_session_with_index()
+    async with Session() as s:
+        s.add(Category(name="Pull", gender="homme"))
+        femme = Category(name="Pull", gender="femme")
+        s.add(femme)
+        await s.commit()
+        femme_id = femme.id
+
+    async with Session() as s:
+        with pytest.raises(HTTPException) as exc:
+            await update_category(femme_id, CategoryUpdate(gender="homme"), s, _fake_user())
         assert exc.value.status_code == 409
     await eng.dispose()
