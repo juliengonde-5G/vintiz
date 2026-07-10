@@ -156,6 +156,7 @@ const jsonLd = {
   priceRange: "€€",
   currenciesAccepted: "EUR",
   paymentAccepted: "Cash, Credit Card",
+  telephone: "+33 2 77 19 01 97",
   address: {
     "@type": "PostalAddress",
     streetAddress: "6 rue Saint-Jacques",

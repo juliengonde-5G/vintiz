@@ -37,6 +37,7 @@ const contactJsonLd = {
     name: "Vintiz",
     url: SITE_URL,
     email: "contact@vintiz.fr",
+    telephone: "+33 2 77 19 01 97",
     address: {
       "@type": "PostalAddress",
       streetAddress: "6 rue Saint-Jacques",
@@ -68,6 +69,7 @@ const contactJsonLd = {
       {
         "@type": "ContactPoint",
         contactType: "customer service",
+        telephone: "+33 2 77 19 01 97",
         email: "contact@vintiz.fr",
         areaServed: "FR",
         availableLanguage: ["French"],
@@ -144,6 +146,20 @@ export default function ContactPage() {
                 </p>
                 <p className="mt-2 text-sm text-vz-ink-mute">
                   Fermé dimanche et lundi.
+                </p>
+              </section>
+
+              <section>
+                <h2 className="font-display text-xl text-vz-ink mb-4">
+                  Téléphone
+                </h2>
+                <p className="text-vz-ink">
+                  <a
+                    href="tel:+33277190197"
+                    className="hover:text-vz-teal transition-colors"
+                  >
+                    02 77 19 01 97
+                  </a>
                 </p>
               </section>
 

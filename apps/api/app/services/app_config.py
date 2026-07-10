@@ -34,7 +34,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "postal_code": "27200",
         "city": "Vernon",
         "country": "France",
-        "phone": "",
+        "phone": "02 77 19 01 97",
         "email": "contact@vintiz.fr",
         "website": "vintiz.fr",
         "hours": "Mar-Sam : 10h-19h",
