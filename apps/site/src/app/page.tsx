@@ -110,7 +110,7 @@ export default async function Home() {
                 </a>
               </div>
               <p className="mt-5 text-sm text-black/55">
-                6 rue Saint-Jacques · 27200 Vernon · 02 58 65 66 46
+                6 rue Saint-Jacques · 27200 Vernon · 02 77 19 01 97
               </p>
             </div>
             <div className="relative aspect-[4/5] sm:aspect-[3/4] lg:aspect-[4/5] rounded-xl overflow-hidden bg-stone-200">

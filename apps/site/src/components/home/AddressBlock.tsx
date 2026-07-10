@@ -13,7 +13,7 @@ export default function AddressBlock({ align = "left" }: { align?: "left" | "cen
             <path d="M22 16.92V21a1 1 0 0 1-1.09 1 19.86 19.86 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.86 19.86 0 0 1 3.22 4.09 1 1 0 0 1 4.21 3h4.09a1 1 0 0 1 1 .75 12.11 12.11 0 0 0 .66 2.67 1 1 0 0 1-.23 1l-1.73 1.73a16 16 0 0 0 6 6l1.73-1.73a1 1 0 0 1 1-.23 12.11 12.11 0 0 0 2.67.66 1 1 0 0 1 .75 1z" />
           </svg>
         </span>
-        02 58 65 66 46
+        02 77 19 01 97
       </div>
       <div className="flex items-center gap-2 text-base">
         <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-vz-teal/10 text-vz-teal">
