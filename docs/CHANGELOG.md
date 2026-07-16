@@ -8,6 +8,8 @@
   le compose de production impose explicitement `ENVIRONMENT=production`.
 - Test de non-régression interdisant plusieurs commandes SQL de premier niveau
   dans un même appel Alembic.
+- Smoke-test de production aligné sur la protection JWT des routes clientes ;
+  procès-verbal 1.1.1 initial : 30 contrôles OK, aucun échec.
 
 ## [1.1.0] - 2026-07-15 — Durcissement révision, fidélité et NF525
 

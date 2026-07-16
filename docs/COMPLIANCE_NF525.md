@@ -149,6 +149,9 @@ nécessiter un nouveau certificat.
 
 ## 5. Vérifications avant candidature
 
+La recette candidate est suivie dans
+[`RECETTE_POST_DEPLOIEMENT_1.1.1.md`](./RECETTE_POST_DEPLOIEMENT_1.1.1.md).
+
 1. Exécuter la suite Python, le lint, les migrations sur base vide et les deux
    builds Next.js sans tolérance d'erreur.
 2. Réaliser un jeu d'essai documenté : espèces avec rendu, CB, paiement mixte,

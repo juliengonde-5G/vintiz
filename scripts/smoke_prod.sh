@@ -103,6 +103,29 @@ esac
 code=$(http_get_anon "$HEALTH_PATH")
 if [ "$code" = "200" ]; then
   ok "$HEALTH_PATH → 200"
+  if command -v jq >/dev/null 2>&1; then
+    version=$(jq -r '.version // ""' < /tmp/smoke_body)
+    db_revision=$(jq -r '.database_revision // ""' < /tmp/smoke_body)
+    fiscal_version=$(jq -r '.fiscal_signature_version // ""' < /tmp/smoke_body)
+    build_sha=$(jq -r '.build_sha // ""' < /tmp/smoke_body)
+    [ "$db_revision" = "0072" ] \
+      && ok "  révision DB attendue : 0072" \
+      || fail "  révision DB annoncée : ${db_revision:-absente} (attendu 0072)"
+    [ "$fiscal_version" = "2" ] \
+      && ok "  signature fiscale : v2" \
+      || fail "  signature fiscale : ${fiscal_version:-absente} (attendu 2)"
+    [ -n "$version" ] \
+      && ok "  version applicative : $version" \
+      || fail "  version applicative absente"
+    if [ -n "${VINTIZ_EXPECTED_BUILD_SHA:-}" ]; then
+      case "$build_sha" in
+        "${VINTIZ_EXPECTED_BUILD_SHA}"*) ok "  build SHA : $build_sha" ;;
+        *) fail "  build SHA : ${build_sha:-absent} (attendu ${VINTIZ_EXPECTED_BUILD_SHA}…)" ;;
+      esac
+    else
+      info "    build SHA = ${build_sha:-absent}"
+    fi
+  fi
 else
   fail "$HEALTH_PATH → $code (attendu 200) — l'API est down ou l'URL est fausse, on stoppe."
   if [ "$code" = "000" ]; then
@@ -159,6 +182,9 @@ if [ "$code" = "200" ]; then
     "/api/admin/loyalty/config"
     "/api/admin/trend-alerts/run"
     "/api/pos/coupons/validate"
+    "/api/admin/fiscal-closures"
+    "/api/admin/fiscal-closures/integrity"
+    "/api/admin/fiscal-export"
   )
   for p in "${EXPECTED_PATHS[@]}"; do
     if grep -q "\"$p\"" /tmp/smoke_body; then
@@ -189,15 +215,12 @@ fi
 echo ""
 echo "── 3. Endpoints publics ─────────────────────────────────"
 
-# 404 attendu sur lookup d'un email qui n'existe pas — confirme que la
-# route est branchée à la DB (vs 500 = DB cassée).
+# Les données client privées doivent être inaccessibles sans JWT client.
 code=$(http_get_anon "/api/crm/clients/lookup?email=smoke-no-such@vintiz.fr")
-if [ "$code" = "404" ]; then
-  ok "/api/crm/clients/lookup (email inconnu) → 404"
-elif [ "$code" = "400" ]; then
-  ok "/api/crm/clients/lookup (email inconnu) → 400 (validation)"
+if [ "$code" = "401" ]; then
+  ok "/api/crm/clients/lookup sans JWT client → 401"
 else
-  fail "/api/crm/clients/lookup → $code (attendu 404)"
+  fail "/api/crm/clients/lookup sans JWT → $code (attendu 401)"
 fi
 
 # PR1: magic-link issue est public et toujours 204 (anti-énumération).
@@ -214,10 +237,18 @@ else
 fi
 
 code=$(http_get_anon "/api/crm/account/wallet?email=smoke-no-such@vintiz.fr")
-if [ "$code" = "404" ]; then
-  ok "/api/crm/account/wallet (email inconnu) → 404"
+if [ "$code" = "401" ]; then
+  ok "/api/crm/account/wallet sans JWT client → 401"
 else
-  fail "/api/crm/account/wallet → $code (attendu 404)"
+  fail "/api/crm/account/wallet sans JWT → $code (attendu 401)"
+fi
+
+# La sélection éditoriale reste volontairement publique et anonyme.
+code=$(http_get_anon "/api/crm/account/selection")
+if [ "$code" = "200" ]; then
+  ok "/api/crm/account/selection → 200"
+else
+  fail "/api/crm/account/selection → $code (attendu 200)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -298,7 +329,7 @@ cat <<EOF
   ${YELLOW}b. Magic-link client${NC}
      1. /account/login → email d'une cliente existante → "Envoyer le code"
      2. Lire le code dans les logs API (mode sim) ou la boîte mail (Brevo)
-     3. Saisir le code → JWT stocké, redirect /account/data
+     3. Saisir le code → JWT stocké, redirection /account
 
   ${YELLOW}c. Coupon anniversaire${NC}
      1. POST /api/admin/anniversary/run (déclenche la cron à la demande)
@@ -314,8 +345,8 @@ cat <<EOF
        daily_seo_snapshot, monthly_rfm_segmentation,
        daily_anniversary_emails, weekly_new_arrivals_emails,
        morning_restock, monday_position_reco, thursday_six_weeks_exit,
-       daily_loyalty_expiry, daily_trend_alerts
-     soit 15 jobs.
+       daily_loyalty_expiry, daily_trend_alerts, daily_drawer_close_guard,
+       monthly_fiscal_closure, annual_fiscal_closure.
 
 EOF
 
