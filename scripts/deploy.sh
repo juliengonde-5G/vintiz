@@ -103,6 +103,36 @@ if grep -q "CHANGER_MOI" "$ENV_FILE"; then
   exit 1
 fi
 
+read_env_value() {
+  local key="$1"
+  local line
+  line=$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$ENV_FILE" | tail -n 1 || true)
+  line="${line#*=}"
+  # Trim surrounding whitespace and optional matching quotes without sourcing
+  # the file (an env file is data and must never be executed as shell code).
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+  if [[ "$line" == \"*\" ]] || [[ "$line" == \'*\' ]]; then
+    line="${line:1:${#line}-2}"
+  fi
+  printf '%s' "$line"
+}
+
+DEPLOY_ENVIRONMENT=$(read_env_value "ENVIRONMENT")
+if [[ "$DEPLOY_ENVIRONMENT" != "production" && "$DEPLOY_ENVIRONMENT" != "prod" ]]; then
+  err "ENVIRONMENT=production est obligatoire dans .env."
+  err "APP_ENV n'est pas lu par l'API et ne remplace pas ENVIRONMENT."
+  exit 1
+fi
+
+FISCAL_KEY=$(read_env_value "FISCAL_SIGNING_KEY")
+if [ "${#FISCAL_KEY}" -lt 32 ]; then
+  err "FISCAL_SIGNING_KEY manque ou contient moins de 32 caracteres."
+  err "Generez-la une seule fois avec: openssl rand -hex 32"
+  exit 1
+fi
+unset FISCAL_KEY
+
 if ! command -v docker &>/dev/null; then
   err "Docker non installe. Installer Docker Engine 24+."
   exit 1

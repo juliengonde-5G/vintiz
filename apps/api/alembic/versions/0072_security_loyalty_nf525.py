@@ -77,7 +77,8 @@ def upgrade() -> None:
     for statement in statements:
         conn.execute(sa.text(statement))
 
-    conn.execute(sa.text("""
+    trigger_statements = (
+        """
         CREATE OR REPLACE FUNCTION vintiz_protect_signed_transaction()
         RETURNS trigger AS $$
         BEGIN
@@ -113,15 +114,15 @@ def upgrade() -> None:
           END IF;
           RETURN NEW;
         END;
-        $$ LANGUAGE plpgsql;
-
-        DROP TRIGGER IF EXISTS trg_protect_signed_transaction ON transactions;
+        $$ LANGUAGE plpgsql
+        """,
+        "DROP TRIGGER IF EXISTS trg_protect_signed_transaction ON transactions",
+        """
         CREATE TRIGGER trg_protect_signed_transaction
         BEFORE UPDATE OR DELETE ON transactions
-        FOR EACH ROW EXECUTE FUNCTION vintiz_protect_signed_transaction();
-    """))
-
-    conn.execute(sa.text("""
+        FOR EACH ROW EXECUTE FUNCTION vintiz_protect_signed_transaction()
+        """,
+        """
         CREATE OR REPLACE FUNCTION vintiz_protect_fiscal_child()
         RETURNS trigger AS $$
         DECLARE tx_id UUID; tx_hash VARCHAR(64);
@@ -133,20 +134,21 @@ def upgrade() -> None:
           END IF;
           RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
         END;
-        $$ LANGUAGE plpgsql;
-
-        DROP TRIGGER IF EXISTS trg_protect_transaction_items ON transaction_items;
+        $$ LANGUAGE plpgsql
+        """,
+        "DROP TRIGGER IF EXISTS trg_protect_transaction_items ON transaction_items",
+        """
         CREATE TRIGGER trg_protect_transaction_items
         BEFORE INSERT OR UPDATE OR DELETE ON transaction_items
-        FOR EACH ROW EXECUTE FUNCTION vintiz_protect_fiscal_child();
-
-        DROP TRIGGER IF EXISTS trg_protect_payments ON payments;
+        FOR EACH ROW EXECUTE FUNCTION vintiz_protect_fiscal_child()
+        """,
+        "DROP TRIGGER IF EXISTS trg_protect_payments ON payments",
+        """
         CREATE TRIGGER trg_protect_payments
         BEFORE INSERT OR UPDATE OR DELETE ON payments
-        FOR EACH ROW EXECUTE FUNCTION vintiz_protect_fiscal_child();
-    """))
-
-    conn.execute(sa.text("""
+        FOR EACH ROW EXECUTE FUNCTION vintiz_protect_fiscal_child()
+        """,
+        """
         CREATE OR REPLACE FUNCTION vintiz_protect_z_report()
         RETURNS trigger AS $$
         BEGIN
@@ -177,14 +179,15 @@ def upgrade() -> None:
           END IF;
           RETURN NEW;
         END;
-        $$ LANGUAGE plpgsql;
-        DROP TRIGGER IF EXISTS trg_protect_z_report ON z_reports;
+        $$ LANGUAGE plpgsql
+        """,
+        "DROP TRIGGER IF EXISTS trg_protect_z_report ON z_reports",
+        """
         CREATE TRIGGER trg_protect_z_report
         BEFORE UPDATE OR DELETE ON z_reports
-        FOR EACH ROW EXECUTE FUNCTION vintiz_protect_z_report();
-    """))
-
-    conn.execute(sa.text("""
+        FOR EACH ROW EXECUTE FUNCTION vintiz_protect_z_report()
+        """,
+        """
         CREATE OR REPLACE FUNCTION vintiz_protect_closed_drawer_period()
         RETURNS trigger AS $$
         BEGIN
@@ -196,23 +199,34 @@ def upgrade() -> None:
           END IF;
           RETURN NEW;
         END;
-        $$ LANGUAGE plpgsql;
-        DROP TRIGGER IF EXISTS trg_protect_closed_drawer_period ON cash_drawers;
+        $$ LANGUAGE plpgsql
+        """,
+        "DROP TRIGGER IF EXISTS trg_protect_closed_drawer_period ON cash_drawers",
+        """
         CREATE TRIGGER trg_protect_closed_drawer_period
         BEFORE UPDATE ON cash_drawers
-        FOR EACH ROW EXECUTE FUNCTION vintiz_protect_closed_drawer_period();
-
+        FOR EACH ROW EXECUTE FUNCTION vintiz_protect_closed_drawer_period()
+        """,
+        """
         CREATE OR REPLACE FUNCTION vintiz_protect_fiscal_closure()
         RETURNS trigger AS $$
         BEGIN
           RAISE EXCEPTION 'NF525: cloture fiscale immuable';
         END;
-        $$ LANGUAGE plpgsql;
-        DROP TRIGGER IF EXISTS trg_protect_fiscal_closure ON fiscal_closures;
+        $$ LANGUAGE plpgsql
+        """,
+        "DROP TRIGGER IF EXISTS trg_protect_fiscal_closure ON fiscal_closures",
+        """
         CREATE TRIGGER trg_protect_fiscal_closure
         BEFORE UPDATE OR DELETE ON fiscal_closures
-        FOR EACH ROW EXECUTE FUNCTION vintiz_protect_fiscal_closure();
-    """))
+        FOR EACH ROW EXECUTE FUNCTION vintiz_protect_fiscal_closure()
+        """,
+    )
+    # asyncpg prepares one SQL command at a time and rejects strings containing
+    # several top-level commands. Function bodies may contain semicolons, but
+    # every CREATE/DROP TRIGGER is intentionally executed separately.
+    for statement in trigger_statements:
+        conn.execute(sa.text(statement))
 
 
 def downgrade() -> None:

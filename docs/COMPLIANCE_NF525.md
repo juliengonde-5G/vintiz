@@ -1,7 +1,7 @@
 # Dossier de préparation NF525 — Vintiz POS
 
 > **Statut au 15 juillet 2026 : préparation technique renforcée, non certifiée.**
-> **Version fiscale candidate : 1.1.0** — signature fiscale v2, révision DB 0072.
+> **Version fiscale candidate : 1.1.1** — signature fiscale v2, révision DB 0072.
 > Ce document ne constitue ni un certificat NF525, ni une attestation éditeur.
 
 ## 1. Position réglementaire

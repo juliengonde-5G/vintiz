@@ -66,6 +66,11 @@ services:
     restart: unless-stopped
     env_file:
       - ../.env
+    # This compose file is production-only. Force the runtime mode so a legacy
+    # .env containing APP_ENV (ignored by Pydantic) can never silently boot the
+    # API with development fallbacks for JWT or fiscal signing.
+    environment:
+      ENVIRONMENT: production
     # Persisted on disk, outside the ephemeral container layer so a redeploy
     # (deploy.sh rebuilds the image) doesn't wipe them:
     #   - /app/uploads : product photos

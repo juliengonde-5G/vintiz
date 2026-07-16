@@ -1,5 +1,14 @@
 # Changelog Vintiz
 
+## [1.1.1] - 2026-07-16 — Correctif déploiement fiscal
+
+- Migration 0072 compatible `asyncpg` : chaque fonction et trigger PostgreSQL
+  est envoyé dans une commande préparée distincte.
+- Le déploiement refuse désormais une clé fiscale absente ou trop courte et
+  le compose de production impose explicitement `ENVIRONMENT=production`.
+- Test de non-régression interdisant plusieurs commandes SQL de premier niveau
+  dans un même appel Alembic.
+
 ## [1.1.0] - 2026-07-15 — Durcissement révision, fidélité et NF525
 
 ### Sécurité et paiements
