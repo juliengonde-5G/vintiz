@@ -9,15 +9,16 @@ import { CAPSULES, capsuleProducts, findCapsule } from "@/data/capsules";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://vintiz.fr";
 
 interface PageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 export function generateStaticParams() {
   return CAPSULES.map((c) => ({ slug: c.slug }));
 }
 
-export function generateMetadata({ params }: PageProps): Metadata {
-  const capsule = findCapsule(params.slug);
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const capsule = findCapsule(slug);
   if (!capsule) {
     return { title: "Capsule introuvable", robots: { index: false } };
   }
@@ -35,8 +36,9 @@ export function generateMetadata({ params }: PageProps): Metadata {
   };
 }
 
-export default function CapsulePage({ params }: PageProps) {
-  const capsule = findCapsule(params.slug);
+export default async function CapsulePage({ params }: PageProps) {
+  const { slug } = await params;
+  const capsule = findCapsule(slug);
   if (!capsule) notFound();
 
   const products = capsuleProducts(capsule);

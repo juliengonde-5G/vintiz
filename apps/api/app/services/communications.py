@@ -244,7 +244,8 @@ DEFAULT_TEMPLATES: list[dict] = [
             "<ul>"
             "<li>Numéro : <strong>{numero_carte}</strong></li>"
             "<li>Adhésion : {mode_adhesion}</li>"
-            "<li>1 € dépensé = 1 point — 1 point = 0,10 € de remise</li>"
+            "<li>1 € dépensé hors promotion, solde ou remise = 1 point</li>"
+            "<li>100 points = un chèque cadeau de 5 € valable 6 mois</li>"
             "</ul>"
             "<p>Retrouvez votre solde, vos avantages et vos préférences depuis "
             "votre espace client.</p>"
@@ -255,7 +256,8 @@ DEFAULT_TEMPLATES: list[dict] = [
             "Bienvenue dans le programme de fidélité Vintiz Vernon.\n"
             "Numéro de carte : {numero_carte}\n"
             "Adhésion : {mode_adhesion}\n"
-            "1 € dépensé = 1 point — 1 point = 0,10 € de remise.\n\n"
+            "1 € dépensé hors promotion, solde ou remise = 1 point. "
+            "100 points = un chèque cadeau de 5 € valable 6 mois.\n\n"
             "À très vite en boutique !"
         ),
     },

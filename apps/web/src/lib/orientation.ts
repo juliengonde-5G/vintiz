@@ -4,6 +4,10 @@ import { useEffect } from 'react';
 
 import { isAndroid } from './platform';
 
+interface LockableScreenOrientation extends ScreenOrientation {
+  lock?: (orientation: string) => Promise<void>;
+}
+
 /**
  * Best-effort landscape lock — only effective when the app runs as a
  * standalone PWA (display-mode: standalone) AND the device honours the
@@ -27,7 +31,9 @@ export function useLandscapeLock(): void {
       (window.navigator as { standalone?: boolean }).standalone === true;
     if (!isStandalone) return;
 
-    const orientation = (screen as Screen & { orientation?: ScreenOrientation }).orientation;
+    const orientation = (
+      screen as Screen & { orientation?: LockableScreenOrientation }
+    ).orientation;
     if (!orientation || typeof orientation.lock !== 'function') return;
 
     let unlocked = false;

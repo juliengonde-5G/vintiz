@@ -13,7 +13,6 @@ treating them as UTC.
 """
 
 from alembic import op
-import sqlalchemy as sa
 
 revision = "0045"
 down_revision = "0044"

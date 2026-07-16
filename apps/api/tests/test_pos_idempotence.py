@@ -7,7 +7,6 @@ it to short-circuit duplicates.
 """
 
 import uuid
-from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -23,11 +22,9 @@ from app.models.client import (
 )
 from app.models.pos import (
     Payment,
-    PaymentMethod,
     Receipt,
     Transaction,
     TransactionItem,
-    TransactionType,
 )
 from app.models.offer import Offer
 from app.models.product import Category, Product, ProductPhoto, ProductStatus

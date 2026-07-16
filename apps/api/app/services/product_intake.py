@@ -26,7 +26,6 @@ import logging
 import random
 import uuid
 from datetime import datetime, timezone
-from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select

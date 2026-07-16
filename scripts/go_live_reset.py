@@ -74,10 +74,10 @@ else:
         f"{_HERE.parents[1] / 'apps' / 'api'} et {_HERE.parents[1]}"
     )
 
-from sqlalchemy import inspect, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import inspect, text  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
-from app.core.database import engine
+from app.core.database import engine  # noqa: E402
 
 
 # Ordre indicatif (feuilles → racines). Sur PostgreSQL on utilise

@@ -39,14 +39,7 @@ export default function AccountSelectionPage() {
 
   useEffect(() => {
     let cancelled = false;
-    let email = "";
-    try {
-      email = window.localStorage.getItem("vintiz_account_email") || "";
-    } catch {
-      /* private mode */
-    }
-    const qs = email ? `?email=${encodeURIComponent(email)}` : "";
-    fetch(`${API_URL}/api/crm/account/selection${qs}`, { cache: "no-store" })
+    fetch(`${API_URL}/api/crm/account/selection`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (cancelled || !d) return;

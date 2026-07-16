@@ -76,7 +76,9 @@ Dans **/settings > Fidélité** :
 - **Mode** : libre choix parmi *gratuite* / *payante* / *offerte 1er achat*.
 - **Plage temporelle** : facultatif. Hors plage → retour au mode gratuit
   par défaut (utile pour une opération « adhésion offerte » pendant 1 mois).
-- 1 € = 1 pt · 100 pts = chèque cadeau de 5 € · péremption 24 mois sans activité.
+- 1 € dépensé sur un produit hors promotion, solde ou remise = 1 point.
+- Chaque tranche de 100 points génère un chèque cadeau de 5 €, utilisable comme moyen de paiement au POS et valable 6 mois.
+- Les points expirent après 24 mois sans activité. Un retour annule les points correspondants et, si nécessaire, le bon non utilisé associé.
 
 ### 6. Formation caissière (J-1, 30 minutes)
 
@@ -101,7 +103,7 @@ Démo par l'équipe technique :
 | Taux de souscription / cliente identifiée | > 40 % | `/admin > Sessions caisses` + `/clients` |
 | Nombre cartes V###### actives | 50 | `SELECT COUNT(*) FROM loyalty_accounts WHERE active = true` |
 | Taux de retour membre fidélité | > 25 % | RFM via `/api/admin/rfm/run` |
-| Bons 8 € émis vs convertis | > 60 % conversion | `coupons` + `transactions` |
+| Chèques cadeaux de 5 € émis vs convertis | > 60 % conversion | `coupons` + `transactions` |
 | Wallet pass téléchargés | > 30 % des membres | logs Caddy `/api/crm/account/wallet/*` |
 | OTP envoyés / vérifiés | ratio > 80 % | logs `magic_link` |
 

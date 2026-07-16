@@ -14,7 +14,7 @@ export const revalidate = 300;
 export const dynamicParams = true;
 
 interface PageProps {
-  params: { brand: string };
+  params: Promise<{ brand: string }>;
 }
 
 /**
@@ -33,7 +33,8 @@ async function resolveBrand(slug: string): Promise<string | null> {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const brand = await resolveBrand(params.brand);
+  const { brand: brandParam } = await params;
+  const brand = await resolveBrand(brandParam);
   if (!brand) {
     return { title: "Marque introuvable", robots: { index: false } };
   }
@@ -43,11 +44,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: `${brand} seconde main`,
     description: `Notre sélection ${brand} d'occasion authentifiée à Vernon — ${products.length} pièces uniques. Robes, vestes, sacs et accessoires premium curés par l'équipe Vintiz.`,
-    alternates: { canonical: `${SITE_URL}/produits/marque/${params.brand}` },
+    alternates: { canonical: `${SITE_URL}/produits/marque/${brandParam}` },
     openGraph: {
       title: `${brand} occasion à Vernon | Vintiz`,
       description: `Pièces ${brand} seconde main authentifiées, sélection Vintiz Vernon.`,
-      url: `${SITE_URL}/produits/marque/${params.brand}`,
+      url: `${SITE_URL}/produits/marque/${brandParam}`,
       type: "website",
       locale: "fr_FR",
     },
@@ -55,7 +56,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function BrandPage({ params }: PageProps) {
-  const brand = await resolveBrand(params.brand);
+  const { brand: brandParam } = await params;
+  const brand = await resolveBrand(brandParam);
   if (!brand) notFound();
 
   const products = (await listPublicProducts({ marque: brand })).sort((a, b) => {
@@ -68,7 +70,7 @@ export default async function BrandPage({ params }: PageProps) {
     "@type": "CollectionPage",
     name: `${brand} seconde main premium — Vintiz Vernon`,
     description: `Sélection de pièces ${brand} d'occasion authentifiées à Vernon, Normandie.`,
-    url: `${SITE_URL}/produits/marque/${params.brand}`,
+    url: `${SITE_URL}/produits/marque/${brandParam}`,
     about: { "@type": "Brand", name: brand },
     hasPart: {
       "@type": "ItemList",

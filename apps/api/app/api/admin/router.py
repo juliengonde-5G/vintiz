@@ -5,7 +5,7 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, List
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
@@ -27,6 +27,7 @@ from app.api.admin import receipt_templates as _receipt_templates_module
 from app.api.admin import sumup_terminals as _sumup_terminals_module
 from app.api.admin import database as _database_module
 from app.api.admin import price_reference as _price_reference_module
+from app.api.admin import fiscal_closures as _fiscal_closures_module
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -40,6 +41,7 @@ router.include_router(_receipt_templates_module.router)
 router.include_router(_sumup_terminals_module.router)
 router.include_router(_database_module.router)
 router.include_router(_price_reference_module.router)
+router.include_router(_fiscal_closures_module.router)
 
 
 # ---------------------------------------------------------------------------
@@ -1807,7 +1809,10 @@ def _parse_iso_date(value: str | None, field: str) -> datetime | None:
         # Accept "YYYY-MM-DD" or full ISO 8601.
         if "T" in value:
             return datetime.fromisoformat(value)
-        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+        parsed = datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+        # Date-only ``to`` is inclusive for the caller and represented as an
+        # exclusive upper bound internally, so the whole requested day is kept.
+        return parsed + timedelta(days=1) if field == "to" else parsed
     except ValueError as exc:
         raise HTTPException(
             status_code=400,
@@ -2579,7 +2584,7 @@ async def update_ai_routing(
     """Replace the AI routing table.
 
     Body must be a dict prompt_name → { provider, model }.
-    Provider must be in {anthropic, mistral, openai, gemini}.
+    Only the production-ready ``anthropic`` provider is currently accepted.
     """
     from app.services.ai_router import update_routing
 
@@ -2832,7 +2837,7 @@ async def update_event_voucher_catalog(
 
 class LoyaltyEarningRequest(BaseModel):
     euro_per_point: int = 1
-    voucher_value_cents: int = 800
+    voucher_value_cents: int = 500
     voucher_threshold: int = 100
     voucher_valid_days: int = 180
     points_expiry_days: int = 730
@@ -2939,7 +2944,6 @@ async def get_appro_brief(
 @router.get("/brevo/status", dependencies=[Depends(manager_only)])
 async def brevo_status():
     """Diagnostic rapide : clé configurée ? listes définies ? compte joignable ?"""
-    import os
     from app.services.brevo_contacts import _api_key, _call, _email_list_ids, _sms_list_ids
 
     api_key = _api_key()

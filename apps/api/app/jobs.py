@@ -520,10 +520,116 @@ async def run_retry_failed_payments() -> None:
         logger.exception("Failed-payment retry cron failed: %s", exc)
 
 
+async def run_daily_fiscal_close_guard() -> None:
+    """Close any forgotten open drawer and seal its daily Z at 23:59 Paris."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.fiscal import FiscalService
+
+        async with AsyncSession(engine) as db:
+            reports = await FiscalService(db).close_open_drawers(user_id=None)
+            await db.commit()
+            if reports:
+                logger.warning(
+                    "NF525 daily guard auto-closed %d drawer(s): Z=%s",
+                    len(reports),
+                    [report.report_number for report in reports],
+                )
+    except Exception as exc:
+        logger.exception("NF525 daily close guard failed: %s", exc)
+
+
+async def run_monthly_fiscal_closure() -> None:
+    """Seal the previous calendar month and its perpetual totals."""
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.fiscal_closure import FiscalClosureService
+
+        paris = ZoneInfo("Europe/Paris")
+        now = datetime.now(paris)
+        period_end = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if period_end.month == 1:
+            period_start = period_end.replace(year=period_end.year - 1, month=12)
+        else:
+            period_start = period_end.replace(month=period_end.month - 1)
+        async with AsyncSession(engine) as db:
+            closure = await FiscalClosureService(db).close_period(
+                closure_type="monthly",
+                period_start=period_start,
+                period_end=period_end,
+                user_id=None,
+            )
+            await db.commit()
+            logger.info(
+                "NF525 monthly closure #%d sealed (%s -> %s)",
+                closure.sequence_number,
+                period_start.isoformat(),
+                period_end.isoformat(),
+            )
+    except Exception as exc:
+        logger.exception("NF525 monthly closure failed: %s", exc)
+
+
+async def run_annual_fiscal_closure() -> None:
+    """Seal the previous calendar year after its December monthly closure."""
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.services.fiscal_closure import FiscalClosureService
+
+        paris = ZoneInfo("Europe/Paris")
+        now = datetime.now(paris)
+        period_end = now.replace(
+            month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+        period_start = period_end.replace(year=period_end.year - 1)
+        async with AsyncSession(engine) as db:
+            closure = await FiscalClosureService(db).close_period(
+                closure_type="annual",
+                period_start=period_start,
+                period_end=period_end,
+                user_id=None,
+            )
+            await db.commit()
+            logger.info(
+                "NF525 annual closure #%d sealed for %d",
+                closure.sequence_number,
+                period_start.year,
+            )
+    except Exception as exc:
+        logger.exception("NF525 annual closure failed: %s", exc)
+
+
 def register_all_jobs(scheduler) -> None:
     """Register all cron jobs with the given APScheduler instance."""
     from apscheduler.triggers.cron import CronTrigger
 
+    scheduler.add_job(
+        run_daily_fiscal_close_guard,
+        CronTrigger(hour=23, minute=59),
+        id="daily_fiscal_close_guard",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_monthly_fiscal_closure,
+        CronTrigger(day="1", hour=0, minute=15),
+        id="monthly_fiscal_closure",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_annual_fiscal_closure,
+        CronTrigger(month="1", day="1", hour=0, minute=30),
+        id="annual_fiscal_closure",
+        replace_existing=True,
+    )
     scheduler.add_job(
         run_retry_failed_payments,
         CronTrigger(minute="*/5"),

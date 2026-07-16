@@ -1,6 +1,6 @@
 import React from 'react';
 
-type Variant = 'default' | 'elevated' | 'bordered' | 'teal' | 'accent';
+type Variant = 'default' | 'elevated' | 'bordered' | 'teal' | 'accent' | 'gradient';
 
 interface CardProps {
   title?: string;
@@ -21,6 +21,7 @@ const variantClasses: Record<Variant, string> = {
   bordered: 'bg-vz-surface border border-vz-line',
   teal: 'bg-vz-teal text-white',
   accent: 'bg-vz-accent-soft border border-dashed border-vz-accent',
+  gradient: 'bg-gradient-to-br from-vz-teal-soft to-vz-surface border border-vz-line',
 };
 
 export default function Card({

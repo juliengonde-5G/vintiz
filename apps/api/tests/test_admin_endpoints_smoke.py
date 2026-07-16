@@ -22,7 +22,7 @@ async def test_routes_registered():
     """All four new admin endpoints are mounted in the FastAPI app."""
     from app.main import app
 
-    paths = {r.path for r in app.routes if hasattr(r, "path")}
+    paths = set(app.openapi()["paths"])
     assert "/api/admin/cash-reporting/monthly" in paths
     assert "/api/admin/cash-reporting/last-12" in paths
     assert "/api/admin/embeddings/cleanup/preview" in paths

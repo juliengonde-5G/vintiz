@@ -1,7 +1,6 @@
 """Tests for the cold-start onboarding service (P2-004)."""
 
 import math
-import uuid
 
 import pytest
 from sqlalchemy import select

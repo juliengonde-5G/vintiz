@@ -32,6 +32,7 @@ import type { PaymentStatus } from '@/components/pos/PaymentStatusBanner';
 /** SumUp identifiers captured at PAID time, persisted on the Payment row so
  * a later card refund can be issued through the SumUp API. */
 export interface SumUpPaymentDetails {
+  attempt_id?: string;
   sumup_checkout_id?: string;
   sumup_transaction_id?: string;
   sumup_transaction_code?: string;
@@ -54,6 +55,7 @@ function extractSumUpDetails(
   checkoutId?: string,
 ): SumUpPaymentDetails {
   return {
+    attempt_id: data.attempt_id as string | undefined,
     sumup_checkout_id: (data.checkout_id as string) || checkoutId,
     sumup_transaction_id: data.sumup_transaction_id as string | undefined,
     sumup_transaction_code: data.sumup_transaction_code as string | undefined,
@@ -284,7 +286,7 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
                     status: 'paid',
                     checkout_id: checkoutId,
                     attempt_id: attemptId,
-                    sumup,
+                    sumup: { ...sumup, attempt_id: attemptId },
                   };
                 }
               }
@@ -320,7 +322,7 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
                   status: 'paid',
                   checkout_id: checkoutId,
                   attempt_id: attemptId,
-                  sumup,
+                  sumup: { ...sumup, attempt_id: attemptId },
                 };
               }
             }
@@ -387,7 +389,7 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
                 status: 'paid',
                 checkout_id: checkoutId,
                 attempt_id: attemptId,
-                sumup,
+                sumup: { ...sumup, attempt_id: attemptId },
               };
             }
             if (raw === 'FAILED') {
@@ -409,7 +411,7 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
                 detail,
                 checkout_id: checkoutId,
                 attempt_id: attemptId,
-                sumup,
+                sumup: { ...sumup, attempt_id: attemptId },
               };
             }
             if (raw === 'CANCELLED') {

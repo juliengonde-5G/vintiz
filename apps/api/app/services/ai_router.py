@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from typing import Any
 
@@ -32,6 +31,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit import Settings
+from app.models.audit import AuditLog
+from app.core.config import settings
 
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,10 @@ DEFAULT_ROUTING: dict[str, dict[str, str]] = {
 }
 
 
-VALID_PROVIDERS = {"anthropic", "mistral", "openai", "gemini"}
+# Only Anthropic has a production implementation in this repository. Existing
+# stored routes targeting another provider are handled safely at call time by
+# falling back to Anthropic, but new unsupported configurations are rejected.
+VALID_PROVIDERS = {"anthropic"}
 
 
 async def get_routing(db: AsyncSession) -> dict[str, dict[str, str]]:
@@ -128,15 +132,53 @@ async def call_with_routing(
     if not cfg:
         cfg = {"provider": "anthropic", "model": "claude-haiku-4-5"}
 
-    provider = cfg["provider"]
-    model = cfg["model"]
+    requested_provider = cfg.get("provider", "anthropic")
+    requested_model = cfg.get("model", "claude-haiku-4-5")
+    provider = requested_provider
+    model = requested_model
     start = time.perf_counter()
 
-    if provider == "anthropic" and os.getenv("ANTHROPIC_API_KEY"):
+    # A legacy routing row may name a provider that is not implemented. Honour
+    # the documented failover contract instead of returning an empty answer.
+    provider_fallback = provider != "anthropic"
+    if provider_fallback:
+        logger.warning(
+            "AI provider %s is unavailable for %s; falling back to Anthropic",
+            provider,
+            prompt_name,
+        )
+        provider = "anthropic"
+        model = (DEFAULT_ROUTING.get(prompt_name) or {}).get(
+            "model", "claude-haiku-4-5"
+        )
+
+    def _record(result: dict[str, Any]) -> dict[str, Any]:
+        # Operational metrics only: prompts and model output can contain client
+        # profiling data and are deliberately never persisted in this log.
+        db.add(
+            AuditLog(
+                action="ai_call",
+                entity=prompt_name[:100],
+                data={
+                    "requested_provider": requested_provider,
+                    "provider": result.get("provider"),
+                    "model": result.get("model"),
+                    "latency_ms": result.get("latency_ms", 0),
+                    "tokens_in": result.get("tokens_in", 0),
+                    "tokens_out": result.get("tokens_out", 0),
+                    "cost_usd": result.get("cost_usd", 0),
+                    "fallback_used": result.get("fallback_used", False),
+                    "success": bool(result.get("output_text")),
+                },
+            )
+        )
+        return result
+
+    if provider == "anthropic" and settings.ANTHROPIC_API_KEY:
         try:
             import anthropic
 
-            client = anthropic.AsyncAnthropic()
+            client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
             kwargs: dict[str, Any] = {
                 "model": model,
                 "max_tokens": max_tokens,
@@ -149,7 +191,7 @@ async def call_with_routing(
             text = msg.content[0].text if msg.content else ""
             tokens_in = msg.usage.input_tokens
             tokens_out = msg.usage.output_tokens
-            return {
+            return _record({
                 "output_text": text,
                 "provider": provider,
                 "model": model,
@@ -157,11 +199,12 @@ async def call_with_routing(
                 "tokens_in": tokens_in,
                 "tokens_out": tokens_out,
                 "cost_usd": cost_estimate(provider, tokens_in, tokens_out),
-                "fallback_used": False,
-            }
+                "fallback_used": provider_fallback,
+                "requested_provider": requested_provider,
+            })
         except Exception as exc:  # noqa: BLE001
             logger.warning("Anthropic call failed for %s: %s", prompt_name, exc)
-            return {
+            return _record({
                 "output_text": None,
                 "provider": provider,
                 "model": model,
@@ -171,17 +214,18 @@ async def call_with_routing(
                 "cost_usd": 0,
                 "fallback_used": True,
                 "error": str(exc)[:200],
-            }
+                "requested_provider": requested_provider,
+            })
 
-    # Other providers — to be implemented when keys / SDKs are present.
-    return {
+    return _record({
         "output_text": None,
         "provider": provider,
         "model": model,
-        "latency_ms": 0,
+        "latency_ms": int((time.perf_counter() - start) * 1000),
         "tokens_in": 0,
         "tokens_out": 0,
         "cost_usd": 0,
         "fallback_used": True,
-        "error": f"Provider {provider} not yet implemented; install SDK and add the call.",
-    }
+        "error": "ANTHROPIC_API_KEY is not configured",
+        "requested_provider": requested_provider,
+    })

@@ -11,7 +11,6 @@ au cas où create_all a déjà créé les tables au premier démarrage.
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision = "0047"
 down_revision = "0046"

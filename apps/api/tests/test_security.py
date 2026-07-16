@@ -5,6 +5,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core import rate_limit
 from app.core.config import settings
+from app.core.security import create_access_token
 from app.main import app
 
 
@@ -17,32 +18,28 @@ def _reset_rate_limit_state():
 
 
 @pytest.mark.anyio
-async def test_login_invalid_credentials_returns_401():
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post(
-            "/api/auth/login",
-            data={"username": "nope", "password": "wrong"},
-        )
-        assert resp.status_code == 401
+async def test_login_invalid_credentials_returns_401(client):
+    resp = await client.post(
+        "/api/auth/login",
+        data={"username": "nope", "password": "wrong"},
+    )
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
-async def test_login_rate_limit_kicks_in_after_max_attempts():
+async def test_login_rate_limit_kicks_in_after_max_attempts(client):
     """After LOGIN_RATE_LIMIT_ATTEMPTS bad attempts the next call must return 429."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        for _ in range(settings.LOGIN_RATE_LIMIT_ATTEMPTS):
-            await client.post(
-                "/api/auth/login",
-                data={"username": "nope", "password": "wrong"},
-            )
-        resp = await client.post(
+    for _ in range(settings.LOGIN_RATE_LIMIT_ATTEMPTS):
+        await client.post(
             "/api/auth/login",
             data={"username": "nope", "password": "wrong"},
         )
-        assert resp.status_code == 429
-        assert "Retry-After" in resp.headers
+    resp = await client.post(
+        "/api/auth/login",
+        data={"username": "nope", "password": "wrong"},
+    )
+    assert resp.status_code == 429
+    assert "Retry-After" in resp.headers
 
 
 @pytest.mark.anyio
@@ -81,8 +78,31 @@ async def test_security_headers_present_on_health():
 
 
 @pytest.mark.anyio
-async def test_lookup_client_invalid_email_returns_400():
+async def test_lookup_client_requires_client_auth_before_validation():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get("/api/crm/clients/lookup", params={"email": "not-an-email"})
-        assert resp.status_code == 400
+        assert resp.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_client_route_rejects_missing_or_staff_token(client):
+    missing = await client.get("/api/crm/account/coupons")
+    assert missing.status_code == 401
+
+    staff_token = create_access_token({"sub": "not-even-read", "role": "manager"})
+    staff = await client.get(
+        "/api/crm/account/coupons",
+        headers={"Authorization": f"Bearer {staff_token}"},
+    )
+    assert staff.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_malformed_client_subject_returns_401_not_500(client):
+    token = create_access_token({"sub": "not-a-uuid", "role": "client"})
+    response = await client.get(
+        "/api/crm/account/coupons",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 401

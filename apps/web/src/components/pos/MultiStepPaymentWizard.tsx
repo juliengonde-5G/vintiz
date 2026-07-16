@@ -227,7 +227,7 @@ export default function MultiStepPaymentWizard({
             const active =
               (slot === 'select' && step.kind === 'select') ||
               (slot === 'amount/card' &&
-                (step.kind === 'amount' || step.kind === 'card-pending')) ||
+                step.kind === 'card-pending') ||
               (slot === 'confirm' && step.kind === 'confirm');
             return (
               <span

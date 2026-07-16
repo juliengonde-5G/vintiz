@@ -23,11 +23,12 @@ export const revalidate = 300;
 export const dynamicParams = true;
 
 interface PageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const product = await getPublicProduct(params.slug);
+  const { slug } = await params;
+  const product = await getPublicProduct(slug);
   if (!product) {
     return {
       title: "Pièce introuvable",
@@ -63,7 +64,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function ProductPage({ params }: PageProps) {
-  const product = await getPublicProduct(params.slug);
+  const { slug } = await params;
+  const product = await getPublicProduct(slug);
   if (!product) {
     notFound();
   }

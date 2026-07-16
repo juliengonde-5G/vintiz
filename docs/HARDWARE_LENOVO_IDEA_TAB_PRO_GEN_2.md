@@ -53,10 +53,8 @@ Tablette caissier officielle Vintiz Vernon. Modèle : **TB39OFU**
 - Le câble OTG USB-A femelle / USB-C mâle est fourni avec la MUNBYN.
 
 ### 5. Bluetooth 6.0
-- Non utilisé directement par Vintiz aujourd'hui.
-- Potentiel futur (post-migration TWA Android natif) : pilotage
-  direct du SumUp Solo en BLE via le SDK natif (cf.
-  `docs/MIGRATION_ANDROID_NATIVE.md`).
+- Utilisable depuis Chrome avec Web Bluetooth pour les périphériques
+  compatibles, notamment l'imprimante Zebra en mode BLE.
 
 ### 6. Orientation
 - Tablette en mode paysage permanent en boutique.

@@ -141,8 +141,8 @@ async def test_add_photo_unknown_product_404(session):
 async def test_set_primary_promotes_photo_and_remaps_indices(session):
     p = await _make_product(session)
     svc = PhotoService(session)
-    a = await svc.add_photo(p.id, "https://cdn/a.jpg")
-    b = await svc.add_photo(p.id, "https://cdn/b.jpg")
+    await svc.add_photo(p.id, "https://cdn/a.jpg")
+    await svc.add_photo(p.id, "https://cdn/b.jpg")
     c = await svc.add_photo(p.id, "https://cdn/c.jpg")
 
     await svc.set_primary(p.id, c.id)
@@ -180,7 +180,7 @@ async def test_deleting_primary_promotes_next_one(session):
     p = await _make_product(session)
     svc = PhotoService(session)
     a = await svc.add_photo(p.id, "https://cdn/a.jpg")
-    b = await svc.add_photo(p.id, "https://cdn/b.jpg")
+    await svc.add_photo(p.id, "https://cdn/b.jpg")
 
     await svc.delete_photo(p.id, a.id)
     photos = await svc.list_photos(p.id)
@@ -308,7 +308,7 @@ async def test_set_processed_updates_and_mirrors(session):
 async def test_storefront_url_follows_primary(session):
     p = await _make_product(session)
     svc = PhotoService(session)
-    a = await svc.add_photo(
+    await svc.add_photo(
         p.id, "https://cdn/a.jpg", processed_url="https://cdn/a_sf.png", processing_status="done"
     )
     b = await svc.add_photo(

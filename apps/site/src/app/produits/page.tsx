@@ -33,11 +33,12 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  searchParams?: { categorie?: string };
+  searchParams?: Promise<{ categorie?: string }>;
 }
 
 export default async function ProduitsPage({ searchParams }: PageProps) {
-  const requested = searchParams?.categorie?.toLowerCase();
+  const query = await searchParams;
+  const requested = query?.categorie?.toLowerCase();
 
   // Catalogue temps réel (API boutique) avec fallback démo. Pas de
   // pagination côté API → on filtre/trie côté serveur.

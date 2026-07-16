@@ -4,7 +4,6 @@ Covers the name → default matching, the brand bucket (standard vs premium),
 the floor check, and the auto-seed of defaults for matching categories.
 """
 
-import uuid
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine

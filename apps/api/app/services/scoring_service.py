@@ -73,7 +73,10 @@ def _age_score(weeks_on_shelf: int, weeks_table: list[float]) -> float:
     if weeks_on_shelf <= 0:
         # Just landed — bench-mark on week 1
         return float(weeks_table[0])
-    idx = min(weeks_on_shelf - 1, len(weeks_table) - 1)
+    # ``weeks_on_shelf`` counts completed seven-day periods: 0 is the first
+    # week, 1 the second, and so on. Index directly to avoid keeping week-one
+    # points for the first fourteen days.
+    idx = min(weeks_on_shelf, len(weeks_table) - 1)
     if weeks_on_shelf >= len(weeks_table):
         return float(last)
     return float(weeks_table[idx])

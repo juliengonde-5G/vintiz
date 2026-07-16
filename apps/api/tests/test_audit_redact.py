@@ -73,8 +73,8 @@ def test_phone_is_hashed():
     out = _redact("phone", "+33 6 12 34 56 78")
     assert isinstance(out, str)
     assert out.startswith("sha256:")
-    assert "33" not in out
     assert "612345678" not in out
+    assert out != "+33 6 12 34 56 78"
 
 
 def test_phone_normalization_strips_spaces_and_punctuation():

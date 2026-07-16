@@ -129,13 +129,19 @@ DEMO_PRODUCTS: list[dict] = [
 
 API_URL = os.getenv("VINTIZ_API_URL", "http://localhost:8000")
 API_TOKEN = os.getenv("VINTIZ_API_TOKEN", "")
+TEST_USERNAME = os.getenv("VINTIZ_TEST_USERNAME", "")
+TEST_PASSWORD = os.getenv("VINTIZ_TEST_PASSWORD", "")
 
 
 async def login_admin(client: httpx.AsyncClient) -> str:
-    """Fallback login when no token is provided. Uses default admin/vintiz2026."""
+    """Fallback login with explicitly supplied non-production credentials."""
+    if not TEST_USERNAME or not TEST_PASSWORD:
+        raise RuntimeError(
+            "Set VINTIZ_API_TOKEN or VINTIZ_TEST_USERNAME/VINTIZ_TEST_PASSWORD"
+        )
     r = await client.post(
         f"{API_URL}/api/auth/login",
-        data={"username": "admin", "password": "vintiz2026"},
+        data={"username": TEST_USERNAME, "password": TEST_PASSWORD},
     )
     r.raise_for_status()
     return r.json()["access_token"]

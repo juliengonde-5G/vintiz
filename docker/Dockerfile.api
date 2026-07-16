@@ -15,6 +15,10 @@ FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
+# Keep packaging tooling patched as well: scanners inspect the full runtime
+# image even though the application never invokes pip after the build.
+RUN python -m pip install --no-cache-dir --upgrade pip
+
 # postgresql-client provides pg_dump for the nightly database backup
 # (gestionnaire de base de données). The backup service degrades gracefully
 # (failed row + alert email) if it is ever missing or version-mismatched.

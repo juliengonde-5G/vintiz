@@ -20,9 +20,8 @@ import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
-from sqlalchemy import desc, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings

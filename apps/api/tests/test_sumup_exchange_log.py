@@ -276,29 +276,25 @@ async def app_ctx():
 
 
 @pytest.mark.anyio
-async def test_initiate_creates_authoritative_failed_attempt_when_unconfigured(app_ctx):
-    """SumUp unconfigured → FAILED, but the backend still records the attempt
-    and returns its id so the failure shows in « CB échouées »."""
+async def test_initiate_fails_closed_when_unconfigured(app_ctx):
+    """Aucun paiement ne peut être créé sans identifiants SumUp complets."""
     Session = app_ctx
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         r = await ac.post("/api/pos/payments/cb/initiate", json={"amount": 19.9})
-        assert r.status_code == 200, r.text
-        body = r.json()
-        assert body["status"] == "FAILED"
-        assert body["attempt_id"]
+        assert r.status_code == 503, r.text
 
     async with Session() as s:
         rows = (await s.execute(select(PaymentAttempt))).scalars().all()
-        assert len(rows) == 1
-        assert rows[0].status == PaymentAttemptStatus.failed
-        assert rows[0].error_detail  # carries the SumUp reason
+        assert rows == []
 
 
 @pytest.mark.anyio
 async def test_initiate_flags_link_mode_no_reader(app_ctx, monkeypatch):
     """A checkout created in link mode must be flagged: the TPE won't ring."""
     Session = app_ctx
+    monkeypatch.setenv("SUMUP_API_KEY", "sup_sk_test")
+    monkeypatch.setenv("SUMUP_MERCHANT_CODE", "MTEST")
 
     async def fake_create_checkout(self, **kwargs):
         return {
@@ -336,6 +332,9 @@ async def test_initiate_flags_link_mode_no_reader(app_ctx, monkeypatch):
 async def test_initiate_persists_exchanges_to_admin_log(app_ctx, monkeypatch):
     """End-to-end: a CB initiate that talked to SumUp lands in the log table
     and is returned by GET /api/admin/sumup-exchanges."""
+    monkeypatch.setenv("SUMUP_API_KEY", "sup_sk_test")
+    monkeypatch.setenv("SUMUP_MERCHANT_CODE", "MTEST")
+
     async def fake_create_checkout(self, **kwargs):
         # Simulate the service having pushed to a reader (SumUp accepted).
         self.exchanges.append({

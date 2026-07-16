@@ -10,7 +10,7 @@ from app.models import Base
 from app.models.events import EventLog, EventType
 from app.models.product import Category, Product, ProductPhoto, ProductStatus
 from app.models.product_location import ProductLocationEvent
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.services.product_lifecycle import (
     TERMINAL_STATES,
     ProductLifecycleService,

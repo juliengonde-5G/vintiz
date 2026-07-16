@@ -13,8 +13,8 @@ Monorepo avec 3 applications :
 ```
 apps/
   api/          FastAPI (Python 3.11) — API REST + services IA + hardware
-  web/          Next.js 14 (App Router) — Interface d'administration
-  site/         Next.js 14 — Site vitrine public + espace client
+  web/          Next.js 15 (App Router) — Interface d'administration
+  site/         Next.js 15 — Site vitrine public + espace client
 docker/
   docker-compose.yml          Stack dev local
   docker-compose.prod.yml     Stack prod (api + web + site + db + caddy + redis)
@@ -61,8 +61,8 @@ docs/
 | Email | SMTP standard (simulation si non configuré) |
 | SMS | Twilio (simulation si non configuré) |
 | Météo | OpenWeatherMap API |
-| Admin UI | Next.js 14 App Router + Tailwind CSS |
-| Site public | Next.js 14 App Router + Tailwind CSS — landing + SEO + GA4 |
+| Admin UI | Next.js 15 App Router + Tailwind CSS |
+| Site public | Next.js 15 App Router + Tailwind CSS — landing + SEO + GA4 |
 | Barcode | python-barcode + Pillow (Code 128) |
 | Imprimante ticket | **MUNBYN 047P** ESC/POS 80 mm — réseau (port 9100) **ou** USB-OTG via WebUSB sur tablette Android |
 | Imprimante étiquettes | **Zebra ZD421d** ZPL II thermique direct 25×52 mm — réseau local (TCP 9100), cloud (Weblink + SendFileToPrinter) **ou** Bluetooth LE (Web Bluetooth tablette) — preview Labelary |
@@ -82,7 +82,7 @@ cp apps/api/.env.example apps/api/.env
 
 # 2. Backend
 cd apps/api
-pip install -r requirements.txt
+pip install -e ".[dev]"
 uvicorn app.main:app --reload --port 8000
 
 # 3. Admin UI
@@ -95,9 +95,8 @@ cd apps/site
 npm install
 npm run dev  # port 3001
 
-# 5. Données de test
-PYTHONPATH=apps/api python scripts/seed_data.py
-# Crée: admin/vintiz2026, 300 produits, 50 clients, 200 transactions
+# 5. Premier manager (aucun identifiant par défaut)
+PYTHONPATH=apps/api python scripts/create_manager.py --username <nom> --email <email>
 ```
 
 ## Variables d'environnement
@@ -238,11 +237,10 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 NEXT_PUBLIC_SITE_URL=http://localhost:3001
 ```
 
-## Identifiants par défaut
+## Identifiants
 
-| Utilisateur | Mot de passe | Rôle |
-|---|---|---|
-| admin | vintiz2026 | Manager |
+Aucun identifiant par défaut n'est livré. Le premier manager est créé avec
+`scripts/create_manager.py`.
 
 ## Structure API
 

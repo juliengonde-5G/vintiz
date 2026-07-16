@@ -80,6 +80,7 @@ from app.models.accounting import (
 from app.models.database_backup import DatabaseBackup, DatabaseBackupConfig
 from app.models.permanent_item import PermanentItem
 from app.models.capsule import MonthlyCapsule
+from app.models.fiscal_closure import FiscalClosure
 
 __all__ = [
     "Base",
@@ -124,4 +125,5 @@ __all__ = [
     "DatabaseBackup", "DatabaseBackupConfig",
     "PermanentItem",
     "MonthlyCapsule",
+    "FiscalClosure",
 ]

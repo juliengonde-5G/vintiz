@@ -31,7 +31,6 @@ import {
   count as queueCount,
   drain as drainQueue,
   enqueue as enqueueOffline,
-  generateClientUuid,
   type Submitter,
 } from '@/lib/offline-queue';
 
@@ -83,6 +82,7 @@ interface ClientVoucher {
   label: string;
   discount_type: string;
   discount_value: number;
+  source: string;
   free_item_label: string | null;
   requires_item: boolean;
   value_for_cart: number;
@@ -756,9 +756,13 @@ export default function POSPage() {
   // Affecter un bon de la cliente comme moyen de paiement (ligne de règlement).
   const addVoucherPayment = (v: ClientVoucher) => {
     if (payments.some((p) => p.voucher_code === v.code)) return;
-    // Un seul bon cadeau événementiel par transaction (garde-fou aligné sur
-    // le backend qui refuse `voucher_tenders > 1`).
-    if (payments.some((p) => p.method === 'voucher')) {
+    // Les chèques fidélité peuvent se cumuler. La limite d'un bon concerne
+    // uniquement les cadeaux événementiels d'ouverture.
+    const hasEventVoucher = payments.some((payment) => {
+      const selected = clientVouchers.find((item) => item.code === payment.voucher_code);
+      return selected?.source === 'event_opening';
+    });
+    if (v.source === 'event_opening' && hasEventVoucher) {
       setError('Un seul bon cadeau événementiel autorisé par transaction.');
       return;
     }
@@ -1068,7 +1072,7 @@ export default function POSPage() {
         amount: parseFloat(amount.toFixed(2)),
         description: `Vente Vintiz #${Date.now()}`,
         // Reconciliation key so the SumUp transaction can be looked up later.
-        foreign_transaction_id: generateClientUuid(),
+        foreign_transaction_id: posPayment.clientUuid,
       });
       if (res.ok) {
         const data = await res.json();
@@ -1082,7 +1086,10 @@ export default function POSPage() {
               const s = await statusRes.json();
               if (s.status === 'PAID') {
                 stopCbPolling();
-                setCbDetails(extractCbDetails(s, data.checkout_id));
+                setCbDetails({
+                  ...extractCbDetails(s, data.checkout_id),
+                  attempt_id: data.attempt_id,
+                });
                 setCbStatus('paid');
               } else if (s.status === 'FAILED') {
                 stopCbPolling();
@@ -1121,7 +1128,8 @@ export default function POSPage() {
   const confirmCBManually = async () => {
     stopCbPolling();
     if (!cbCheckoutId) {
-      setCbStatus('paid');
+      setCbStatus('failed');
+      setError('Aucun checkout SumUp à confirmer. Relancez le paiement CB.');
       return;
     }
     try {
@@ -1138,15 +1146,11 @@ export default function POSPage() {
           return;
         }
       }
-    } catch { /* fall through — still let the cashier confirm */ }
-    // Last resort — surface a confirm dialog instead of validating blind.
-    if (window.confirm(
-      'SumUp ne confirme pas le paiement.\n\n' +
-      'Confirme manuellement UNIQUEMENT si tu vois "Paiement accepté" sur le TPE.\n' +
-      'Sinon, annule et redemande le paiement.',
-    )) {
-      setCbStatus('paid');
-    }
+    } catch { /* handled below */ }
+    setCbStatus('failed');
+    setError(
+      'SumUp ne confirme pas le paiement. Consultez le journal CB avant toute nouvelle tentative.',
+    );
   };
 
   // ── Payment ──────────────────────────────────────────────────────
@@ -1285,11 +1289,10 @@ export default function POSPage() {
    *    success)
    *  - opens the new ``ReceiptPreviewCard`` instead of the legacy modal
    */
-  const handleValidateWizard = async (): Promise<void> => {
+  const handleValidateWizard = async (tenders: PaymentLine[]): Promise<void> => {
     setSubmitting(true);
     setError('');
     try {
-      const tenders = payments;
       const body: Record<string, unknown> = {
         items: cart.map((item) => ({
           product_id: item.product_id || undefined,
@@ -1377,7 +1380,7 @@ export default function POSPage() {
         setSubmitting(false);
         return;
       }
-      const clientUuid = generateClientUuid();
+      const clientUuid = posPayment.clientUuid;
       const body: Record<string, unknown> = {
         items: cart.map(item => ({
           product_id: item.product_id || undefined,
@@ -1409,6 +1412,7 @@ export default function POSPage() {
           return;
         }
         await enqueueOffline(body);
+        posPayment.rotateUuid();
         setPendingCount(await queueCount());
         setReceiptTxId(null);
         setReceiptText(
@@ -1430,6 +1434,7 @@ export default function POSPage() {
         // Network failure mid-submit — enqueue and keep going so the
         // cashier isn't blocked. The drain will retry on reconnect.
         await enqueueOffline(body);
+        posPayment.rotateUuid();
         setPendingCount(await queueCount());
         setReceiptTxId(null);
         setReceiptText(
@@ -1452,6 +1457,7 @@ export default function POSPage() {
         throw new Error(err?.detail || 'Erreur lors de la creation');
       }
       const transaction = await res.json();
+      posPayment.rotateUuid();
       setReceiptTxId(transaction.id);
 
       // Fetch receipt
@@ -1877,7 +1883,10 @@ export default function POSPage() {
               </p>
               {clientVouchers.map((v) => {
                 const used = payments.some((p) => p.voucher_code === v.code);
-                const anotherUsed = !used && payments.some((p) => p.method === 'voucher');
+                const anotherUsed = !used && v.source === 'event_opening' && payments.some((p) => {
+                  const selected = clientVouchers.find((item) => item.code === p.voucher_code);
+                  return selected?.source === 'event_opening';
+                });
                 const blockedSameDay = v.available_today === false;
                 const cartEmpty = cartTotal <= 0;
                 const disabled = used || blockedSameDay || anotherUsed || cartEmpty;
@@ -2713,9 +2722,10 @@ export default function POSPage() {
                   <div className="space-y-2">
                     {clientVouchers.map((v) => {
                       const used = payments.some((p) => p.voucher_code === v.code);
-                      // Un seul bon par transaction : si un autre bon est déjà
-                      // affecté, les autres deviennent indisponibles.
-                      const anotherUsed = !used && payments.some((p) => p.method === 'voucher');
+                      const anotherUsed = !used && v.source === 'event_opening' && payments.some((p) => {
+                        const selected = clientVouchers.find((item) => item.code === p.voucher_code);
+                        return selected?.source === 'event_opening';
+                      });
                       // Bon d'ouverture émis aujourd'hui : utilisable
                       // seulement à partir de demain.
                       const blockedSameDay = v.available_today === false;
@@ -2917,7 +2927,13 @@ export default function POSPage() {
       {wizardEnabled && (
         <MultiStepPaymentWizard
           open={showPayment}
-          totalTtc={cartTotalAfterLoyalty}
+          totalTtc={Math.max(
+            0,
+            cartTotalAfterLoyalty
+              - payments
+                .filter((payment) => payment.method === 'voucher')
+                .reduce((sum, payment) => sum + payment.amount, 0),
+          )}
           hasClient={!!selectedClient}
           avoirBalance={selectedClient?.avoir_balance ?? undefined}
           onClose={() => {
@@ -2936,7 +2952,7 @@ export default function POSPage() {
           onCardCheckout={async (amount, onStatus) => {
             const outcome = await posPayment.runCardCheckout(amount, onStatus);
             if (outcome.status === 'paid' && outcome.sumup) {
-              setCbDetails(outcome.sumup);
+              setCbDetails({ ...outcome.sumup, attempt_id: outcome.attempt_id });
             }
             // Ticket CB : on récupère le retour Solo et on édite la copie
             // commerçant automatiquement (succès OU échec), puis on propose
@@ -2980,15 +2996,17 @@ export default function POSPage() {
               method: (methodMap[t.method] || t.method) as PaymentLine['method'],
               amount: t.amount,
             }));
+            const combined = [
+              ...payments.filter((payment) => payment.method === 'voucher'),
+              ...mapped,
+            ];
             // Force CB to "paid" so handleValidate doesn't bail on the legacy
             // guard — the wizard already drove the SumUp checkout via the hook.
             if (mapped.some((m) => m.method === 'carte')) {
               setCbStatus('paid');
             }
-            setPayments(mapped);
-            // Wait one tick so React flushes the payments state before commit
-            await new Promise((r) => setTimeout(r, 0));
-            await handleValidateWizard();
+            setPayments(combined);
+            await handleValidateWizard(combined);
           }}
         />
       )}

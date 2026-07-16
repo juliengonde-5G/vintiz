@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models import Base
 from app.models.client import Client
@@ -17,7 +17,7 @@ from app.models.pos import (
     TransactionItem,
 )
 from app.models.product import Category, Product, ProductPhoto
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.services.events import EventService
 
 

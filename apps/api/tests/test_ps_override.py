@@ -84,7 +84,7 @@ async def _seed_manager(session) -> User:
 async def test_route_registered():
     from app.main import app
 
-    paths = {r.path for r in app.routes if hasattr(r, "path")}
+    paths = set(app.openapi()["paths"])
     assert "/api/crm/personal-shopper/override" in paths
 
 

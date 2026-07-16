@@ -68,7 +68,7 @@ async def test_no_header_raises(session):
 @pytest.mark.anyio
 async def test_handles_excel_bom(session):
     """Excel saves CSVs with a UTF-8 BOM. Must not fool the parser."""
-    cat = await _make_category(session, "Robes")
+    await _make_category(session, "Robes")
     csv_bytes = "﻿name,sale_price,category_name\nRobe noire,49,Robes\n".encode("utf-8")
     summary = await ImportCsvService(session).import_csv(csv_bytes)
     assert summary.imported == 1
@@ -82,7 +82,7 @@ async def test_handles_excel_bom(session):
 
 @pytest.mark.anyio
 async def test_imports_minimal_rows(session):
-    cat = await _make_category(session, "Robes")
+    await _make_category(session, "Robes")
     csv_bytes = (
         "name,sale_price,category_name\n"
         "Robe noire,49.00,Robes\n"
@@ -123,7 +123,7 @@ async def test_skips_existing_barcode(session):
 @pytest.mark.anyio
 async def test_dedupes_within_same_upload(session):
     """Two rows with the same barcode in the same CSV — second is skipped."""
-    cat = await _make_category(session, "Robes")
+    await _make_category(session, "Robes")
     csv_bytes = (
         "name,sale_price,category_name,barcode\n"
         "Robe A,49,Robes,DUP\n"
@@ -136,7 +136,7 @@ async def test_dedupes_within_same_upload(session):
 
 @pytest.mark.anyio
 async def test_resolves_category_by_name(session):
-    cat = await _make_category(session, "Robes")
+    await _make_category(session, "Robes")
     csv_bytes = (
         "name,sale_price,category_name\nRobe,49,Robes\n"
     ).encode("utf-8")
@@ -179,7 +179,7 @@ async def test_invalid_category_id_reports_error(session):
 
 @pytest.mark.anyio
 async def test_blank_name_reports_error(session):
-    cat = await _make_category(session, "Robes")
+    await _make_category(session, "Robes")
     csv_bytes = (
         "name,sale_price,category_name\n,49,Robes\n"
     ).encode("utf-8")
@@ -190,7 +190,7 @@ async def test_blank_name_reports_error(session):
 
 @pytest.mark.anyio
 async def test_invalid_sale_price_reports_error(session):
-    cat = await _make_category(session, "Robes")
+    await _make_category(session, "Robes")
     csv_bytes = (
         "name,sale_price,category_name\nRobe,not-a-number,Robes\n"
     ).encode("utf-8")
@@ -201,7 +201,7 @@ async def test_invalid_sale_price_reports_error(session):
 
 @pytest.mark.anyio
 async def test_french_comma_decimal_accepted(session):
-    cat = await _make_category(session, "Robes")
+    await _make_category(session, "Robes")
     csv_bytes = (
         "name,sale_price,category_name\nRobe,49,90,Robes\n"
     ).encode("utf-8")
@@ -217,7 +217,7 @@ async def test_french_comma_decimal_accepted(session):
 
 @pytest.mark.anyio
 async def test_unknown_status_reports_error(session):
-    cat = await _make_category(session, "Robes")
+    await _make_category(session, "Robes")
     csv_bytes = (
         "name,sale_price,category_name,status\nRobe,49,Robes,bogus\n"
     ).encode("utf-8")
@@ -233,7 +233,7 @@ async def test_unknown_status_reports_error(session):
 
 @pytest.mark.anyio
 async def test_dry_run_does_not_persist(session):
-    cat = await _make_category(session, "Robes")
+    await _make_category(session, "Robes")
     csv_bytes = (
         "name,sale_price,category_name\nRobe,49,Robes\n"
     ).encode("utf-8")
@@ -245,7 +245,7 @@ async def test_dry_run_does_not_persist(session):
 
 @pytest.mark.anyio
 async def test_error_line_numbers_are_one_based_with_header(session):
-    cat = await _make_category(session, "Robes")
+    await _make_category(session, "Robes")
     csv_bytes = (
         "name,sale_price,category_name\n"
         "Robe valide,49,Robes\n"

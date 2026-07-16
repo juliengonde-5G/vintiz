@@ -25,7 +25,6 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.audit import AuditLog
 from app.models.client import (
     AvoirTransaction,
     Client,

@@ -35,7 +35,7 @@ async def session():
 
 @pytest.mark.anyio
 async def test_monitoring_route_registered():
-    paths = {r.path for r in app.routes if hasattr(r, "path")}
+    paths = set(app.openapi()["paths"])
     assert "/api/admin/monitoring" in paths
 
 

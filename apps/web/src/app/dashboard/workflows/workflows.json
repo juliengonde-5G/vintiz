@@ -76,7 +76,7 @@
     {
       "id": "web",
       "name": "apps/web",
-      "subtitle": "Next.js 14 App Router (admin)",
+      "subtitle": "Next.js 15 App Router (admin)",
       "category": "frontend",
       "description": "Back-office manager — port 3000. Pages /dashboard, /pos, /inventory, /clients, /settings, /seo, /admin/*, /reports.",
       "x": 290,
@@ -85,7 +85,7 @@
     {
       "id": "site",
       "name": "apps/site",
-      "subtitle": "Next.js 14 (public)",
+      "subtitle": "Next.js 15 (public)",
       "category": "frontend",
       "description": "Site vitrine + espace client — port 3001. Pages /, /produits, /account/*, /fidelite, /desinscription, sitemap.xml, robots.txt.",
       "x": 290,

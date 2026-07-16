@@ -28,6 +28,11 @@ async def create_tables(
     aliases SECRET_KEY, which would have allowed anyone with the JWT signing
     key to forge admin operations).
     """
+    if settings.is_production:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Endpoint disabled in production; use Alembic migrations.",
+        )
     import hmac
     import os
 

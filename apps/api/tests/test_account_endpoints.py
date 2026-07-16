@@ -8,10 +8,16 @@ from decimal import Decimal
 
 import pytest
 
+from app.core.security import create_access_token
 from app.models.client import Client, Consent, ConsentPurpose
 from app.models.coupon import Coupon, CouponDiscountType, CouponSource
-from app.models.pos import Payment, Receipt, Transaction, TransactionItem, TransactionType
+from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.product import Category, Product, ProductStatus
+
+
+def _client_headers(client_id: object) -> dict[str, str]:
+    token = create_access_token({"sub": str(client_id), "role": "client"})
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.mark.anyio
@@ -24,6 +30,7 @@ async def test_account_coupons_lists_active(_create_tables, client):
         c = Client(first_name="Alice", last_name="M", email="alice@x.fr")
         session.add(c)
         await session.flush()
+        headers = _client_headers(c.id)
         now = datetime.now(timezone.utc)
         session.add(Coupon(
             code="ANNIV-AAAAA",
@@ -48,7 +55,10 @@ async def test_account_coupons_lists_active(_create_tables, client):
         ))
         await session.commit()
 
-    res = await client.get("/api/crm/account/coupons?email=alice@x.fr")
+    res = await client.get(
+        "/api/crm/account/coupons?email=alice@x.fr",
+        headers=headers,
+    )
     assert res.status_code == 200
     rows = res.json()
     codes = [r["code"] for r in rows]
@@ -73,6 +83,7 @@ async def test_account_transactions_lists_recent(_create_tables, client):
         c = Client(first_name="Bob", last_name="S", email="bob@x.fr")
         session.add(c)
         await session.flush()
+        headers = _client_headers(c.id)
         cat = Category(name="t-shirt")
         session.add(cat)
         await session.flush()
@@ -104,7 +115,10 @@ async def test_account_transactions_lists_recent(_create_tables, client):
         ))
         await session.commit()
 
-    res = await client.get("/api/crm/account/transactions?email=bob@x.fr")
+    res = await client.get(
+        "/api/crm/account/transactions?email=bob@x.fr",
+        headers=headers,
+    )
     assert res.status_code == 200
     rows = res.json()
     assert len(rows) == 1
@@ -122,6 +136,7 @@ async def test_account_consents_returns_all_purposes(_create_tables, client):
         c = Client(first_name="Charlie", last_name="T", email="charlie@x.fr")
         session.add(c)
         await session.flush()
+        headers = _client_headers(c.id)
         session.add(Consent(
             client_id=c.id,
             purpose=ConsentPurpose.email_marketing,
@@ -131,7 +146,10 @@ async def test_account_consents_returns_all_purposes(_create_tables, client):
         ))
         await session.commit()
 
-    res = await client.get("/api/crm/account/consents?email=charlie@x.fr")
+    res = await client.get(
+        "/api/crm/account/consents?email=charlie@x.fr",
+        headers=headers,
+    )
     assert res.status_code == 200
     rows = res.json()
     purposes = {r["purpose"]: r for r in rows}
@@ -152,11 +170,14 @@ async def test_account_consent_toggle_appends_row(_create_tables, client):
     async with AsyncSession(engine) as session:
         c = Client(first_name="Diana", last_name="T", email="diana@x.fr")
         session.add(c)
+        await session.flush()
+        headers = _client_headers(c.id)
         await session.commit()
 
     res = await client.post(
         "/api/crm/account/consents/trend_alerts",
         json={"email": "diana@x.fr", "granted": True},
+        headers=headers,
     )
     assert res.status_code == 204
 
@@ -179,16 +200,33 @@ async def test_account_consent_unknown_purpose_404(_create_tables, client):
     async with AsyncSession(engine) as session:
         c = Client(first_name="Ed", last_name="W", email="ed@x.fr")
         session.add(c)
+        await session.flush()
+        headers = _client_headers(c.id)
         await session.commit()
 
     res = await client.post(
         "/api/crm/account/consents/something_made_up",
         json={"email": "ed@x.fr", "granted": True},
+        headers=headers,
     )
     assert res.status_code == 404
 
 
 @pytest.mark.anyio
-async def test_account_coupons_unknown_email_404(_create_tables, client):
-    res = await client.get("/api/crm/account/coupons?email=ghost@x.fr")
-    assert res.status_code == 404
+async def test_account_coupons_rejects_another_email(_create_tables, client):
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.database import engine
+
+    async with AsyncSession(engine) as session:
+        c = Client(first_name="Auth", last_name="Client", email="auth@x.fr")
+        session.add(c)
+        await session.flush()
+        headers = _client_headers(c.id)
+        await session.commit()
+
+    res = await client.get(
+        "/api/crm/account/coupons?email=ghost@x.fr",
+        headers=headers,
+    )
+    assert res.status_code == 403

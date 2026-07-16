@@ -11,7 +11,6 @@ Service-level tests on SQLite (no HTTP / auth required):
 
 from __future__ import annotations
 
-import uuid
 from decimal import Decimal
 
 import pytest
@@ -209,7 +208,7 @@ async def test_lock_z_report_is_idempotent_and_persists_pdf(session):
     pos = PosService(session)
     fiscal = FiscalService(session)
 
-    drawer = await pos.open_drawer(user.id, Decimal("100.00"))
+    await pos.open_drawer(user.id, Decimal("100.00"))
     await pos.create_transaction(
         user_id=user.id,
         items=[_FakeCartItem("Sac", 80.0)],
@@ -250,7 +249,7 @@ async def test_z_report_pdf_returns_pdf_bytes_with_breakdown(session):
     pos = PosService(session)
     fiscal = FiscalService(session)
 
-    drawer = await pos.open_drawer(
+    await pos.open_drawer(
         user.id,
         Decimal("100.00"),
         opening_breakdown=[
@@ -287,7 +286,7 @@ async def test_drawer_alert_when_discrepancy_exceeds_threshold(session):
     user = await _make_user(session)
     pos = PosService(session)
 
-    drawer = await pos.open_drawer(user.id, Decimal("100.00"))
+    await pos.open_drawer(user.id, Decimal("100.00"))
     await pos.create_transaction(
         user_id=user.id,
         items=[_FakeCartItem("Sac", 50.0)],

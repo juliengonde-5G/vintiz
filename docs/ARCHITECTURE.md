@@ -11,8 +11,8 @@ Vintiz V2 est le systeme de gestion complet pour la boutique Vintiz a Vernon, sp
 | API          | Python 3.11, FastAPI, SQLAlchemy 2 |
 | Base de donnees | PostgreSQL 16                   |
 | Cache / file | Redis 7                            |
-| Back-office  | Next.js 14, React 18, TypeScript   |
-| Site vitrine | Next.js 14, React 18, TypeScript   |
+| Back-office  | Next.js 15, React 18, TypeScript   |
+| Site vitrine | Next.js 15, React 18, TypeScript   |
 | IA           | Anthropic Claude (API)             |
 | Paiement CB  | SumUp (production / sandbox / simulation) |
 | Barcode      | python-barcode + Pillow (Code 128) |

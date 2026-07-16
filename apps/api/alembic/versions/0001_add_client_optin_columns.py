@@ -11,7 +11,6 @@ The migration is idempotent: if the columns already exist it does nothing.
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.exc import ProgrammingError
 
 
 revision = "0001"

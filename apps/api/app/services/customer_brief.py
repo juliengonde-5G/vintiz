@@ -24,14 +24,14 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.client import Client, LoyaltyTxType
+from app.models.client import Client
 from app.models.coupon import Coupon
 from app.models.pos import Transaction, TransactionItem, TransactionType
-from app.models.product import Category, Product, ProductStatus
+from app.models.product import Product, ProductStatus
 
 
 logger = logging.getLogger(__name__)

@@ -5,7 +5,8 @@ single payload aggregating everything the cashier needs to drive the next
 action:
 
 - ``loyalty.points_current`` and ``would_earn`` (1 € = 1 pt rounded down).
-- ``loyalty.can_redeem_max_cents`` capped at 50 % of the cart.
+- ``loyalty.can_redeem_max_cents`` kept at 0 for legacy clients: points are
+  converted only into 5 € vouchers at each 100-point milestone.
 - ``suggestions``: 3 complementary products surfaced from
   :func:`PersonalShopperService` filtered by category complement
   (e.g. robe → accessoires/chaussures).
@@ -23,17 +24,16 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.client import Client, LoyaltyTransaction, LoyaltyTxType
+from app.models.client import Client
 from app.models.coupon import Coupon
 from app.models.embeddings import ProductEmbedding
-from app.models.pos import Transaction, TransactionItem, TransactionType
 from app.models.product import Category, Product, ProductStatus
 from app.models.store import StoreZone
 from app.services.embeddings import _cosine, _l2_normalize
@@ -96,13 +96,6 @@ def _points_to_credit(amount_cents: int) -> int:
     return max(0, int(amount_cents // 100))
 
 
-def _redemption_cap_cents(cart_total_cents: int, points: int) -> int:
-    """1 pt = 0.10 €, max 50 % of the cart."""
-    available = points * 10  # cents
-    half_cart = cart_total_cents // 2
-    return max(0, min(available, half_cart))
-
-
 async def _resolve_complement_categories(
     db: AsyncSession, raw_categories: list[str]
 ) -> list[uuid.UUID]:
@@ -143,7 +136,11 @@ async def _suggest_complementary(
     stmt = (
         select(Product)
         .where(
-            Product.status.in_([ProductStatus.stock, ProductStatus.display]),
+            Product.status.in_([
+                ProductStatus.stock,
+                ProductStatus.display,
+                ProductStatus.displayed,
+            ]),
             Product.category_id.in_(target_category_ids),
         )
         .order_by(desc(Product.trend_score))
@@ -394,7 +391,9 @@ async def companion_payload(
 
     points_current = int(client.loyalty_account.points or 0) if client.loyalty_account else 0
     would_earn = _points_to_credit(cart_total_cents)
-    can_redeem = _redemption_cap_cents(cart_total_cents, points_current) if client.loyalty_account else 0
+    # Redemption is coupon-only (100 pts -> 5 € voucher). Direct monetary
+    # conversion was an abandoned prototype and must never be offered at POS.
+    can_redeem = 0
 
     # Categories present in the cart — drives the complementary suggestions.
     cart_categories: list[str] = []

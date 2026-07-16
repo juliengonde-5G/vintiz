@@ -8,7 +8,6 @@ from __future__ import annotations
 import calendar
 import json
 from datetime import date, datetime, time, timedelta
-from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select

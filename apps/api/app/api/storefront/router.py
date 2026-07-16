@@ -24,12 +24,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models.product import Category, Product, ProductPhoto, ProductStatus
-from app.models.store import StoreZone
+from app.models.product import Category, Product, ProductStatus
 
 router = APIRouter(prefix="/storefront", tags=["storefront"])
 

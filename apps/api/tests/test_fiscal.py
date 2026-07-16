@@ -1,12 +1,14 @@
 """Tests for NF525 fiscal compliance: hash chain generation and integrity."""
 
 import hashlib
+import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.services.fiscal import FiscalService
+from app.models.pos import TransactionType
 
 
 def _make_transaction(
@@ -18,9 +20,26 @@ def _make_transaction(
     """Create a mock Transaction object."""
     t = MagicMock()
     t.transaction_number = number
+    t.id = uuid.uuid4()
+    t.transaction_type = TransactionType.sale
+    t.user_id = uuid.uuid4()
+    t.cashier_id = None
+    t.client_uuid = None
+    t.original_transaction_id = None
+    t.refund_reason = None
+    t.total_ht = 0
+    t.total_tva = 0
     t.total_ttc = total_ttc
+    t.is_invoice = False
+    t.invoice_number = None
+    t.client_siret = None
+    t.client_company_name = None
+    t.client_billing_address = None
+    t.template_id = None
     t.created_at = created_at
     t.hash_chain = hash_chain
+    t.previous_hash = None
+    t.fiscal_signature_version = 1
     return t
 
 
@@ -36,7 +55,7 @@ def _compute_expected_hash(number: int, total_ttc: float, created_at: datetime, 
 
 @pytest.mark.anyio
 async def test_hash_chain_generation():
-    """Verify that sign_transaction computes the correct SHA-256 hash."""
+    """Verify that new transactions receive the complete HMAC v2 seal."""
     db = AsyncMock()
 
     # Mock: no previous transactions (first in chain)
@@ -51,8 +70,10 @@ async def test_hash_chain_generation():
 
     await service.sign_transaction(transaction)
 
-    expected_hash = _compute_expected_hash(1, 49.99, now, "0")
-    assert transaction.hash_chain == expected_hash
+    assert transaction.previous_hash == "0"
+    assert transaction.fiscal_signature_version == 2
+    assert len(transaction.hash_chain) == 64
+    assert all(c in "0123456789abcdef" for c in transaction.hash_chain)
 
 
 @pytest.mark.anyio

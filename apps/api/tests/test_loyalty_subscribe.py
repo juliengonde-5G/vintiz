@@ -8,7 +8,6 @@ from app.models import (
     Client,
     Consent,
     ConsentPurpose,
-    LoyaltyAccount,
 )
 from app.services.loyalty import (
     LoyaltyDuplicateError,

@@ -13,14 +13,12 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import InsufficientBalance, InvalidOperation, ResourceNotFound
+from app.core.exceptions import InvalidOperation, ResourceNotFound
 from app.models.client import (
     Client,
     Consent,
     ConsentPurpose,
     LoyaltyAccount,
-    LoyaltyTransaction,
-    LoyaltyTxType,
 )
 from app.services.membership_id import generate_membership_number
 
@@ -113,36 +111,16 @@ class LoyaltyService:
     async def earn(
         self, client_id: uuid.UUID, points: int, description: str
     ) -> LoyaltyAccount:
-        account = await self.get_account(client_id)
-        account.points += points
-        self.db.add(LoyaltyTransaction(
-            account_id=account.id,
-            tx_type=LoyaltyTxType.earn,
-            points=points,
-            description=description,
-        ))
-        await self.db.flush()
-        await self.db.refresh(account)
-        return account
+        raise InvalidOperation(
+            "Manual loyalty earning is disabled; use an eligible POS sale"
+        )
 
     async def redeem(
         self, client_id: uuid.UUID, points: int, description: str
     ) -> LoyaltyAccount:
-        account = await self.get_account(client_id)
-        if account.points < points:
-            raise InsufficientBalance(
-                f"Loyalty: available {account.points}, requested {points}"
-            )
-        account.points -= points
-        self.db.add(LoyaltyTransaction(
-            account_id=account.id,
-            tx_type=LoyaltyTxType.redeem,
-            points=points,
-            description=description,
-        ))
-        await self.db.flush()
-        await self.db.refresh(account)
-        return account
+        raise InvalidOperation(
+            "Direct loyalty redemption is disabled; use a generated voucher"
+        )
 
     def serialize(self, account: LoyaltyAccount) -> dict:
         return {

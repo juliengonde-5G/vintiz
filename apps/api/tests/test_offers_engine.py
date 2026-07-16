@@ -4,9 +4,7 @@ These tests exercise the pure-python helpers that don't need a DB.
 End-to-end POS integration is covered by the existing POS test suite.
 """
 
-from datetime import date, datetime, timedelta, timezone
 
-import pytest
 
 from app.services.offers_engine import (
     LOYALTY_MILESTONE,

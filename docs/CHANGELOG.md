@@ -1,5 +1,43 @@
 # Changelog Vintiz
 
+## [1.1.0] - 2026-07-15 — Durcissement révision, fidélité et NF525
+
+### Sécurité et paiements
+
+- Espace client protégé par JWT sur toutes les données personnelles ; les
+  emails fournis par le navigateur ne servent plus d'autorité d'identité.
+- Vente CB créée uniquement après relecture SumUp `PAID`, rapprochement du
+  checkout, du montant, de la tentative serveur et du `client_uuid`.
+- Remboursement CB local transactionnel : rollback si SumUp échoue.
+- Validation stricte des lignes et paiements POS, coupons et bons verrouillés,
+  rendu monnaie séparé du montant fiscal encaissé.
+
+### Fidélité
+
+- Promesse unifiée : 1 € éligible = 1 point ; promos, soldes, coupons et
+  remises exclus ; chèque cadeau de 5 € à chaque palier de 100 points.
+- Suppression de la conversion directe historique des points et des crédits
+  manuels ; remboursement proportionnel des points avec gestion des bons déjà
+  émis ou consommés.
+
+### NF525 — version candidate, non certifiée
+
+- Signature HMAC-SHA256 v2 sur transaction complète, lignes et paiements.
+- Triggers PostgreSQL d'inaltérabilité, compteurs rollback-safe, Z enrichis.
+- Clôtures mensuelles/annuelles, grand total et total perpétuel, archives JSON
+  gzip scellées et endpoint de contrôle d'intégrité.
+- Clé fiscale dédiée, version applicative unique, boot production refusé si la
+  révision Alembic n'est pas `0072`.
+- Documentation corrigée : une certification externe reste requise avant toute
+  revendication « conforme NF525 » pour ce logiciel développé en interne.
+
+### IA et qualité
+
+- Personal Shopper aligné sur les statuts stock modernes, filtres genre/taille
+  réellement durs, exclusion complète des cadeaux, appels via le routeur IA.
+- CI rendue bloquante (ruff, tests, TypeScript, migrations) ; suppression des
+  tolérances de build Next.js et des identifiants administrateur par défaut.
+
 ## [1.0.0] - 2026-06-03 — Mise en production officielle 🎉
 
 **Ouverture de la boutique Vintiz Vernon — 03/06/2026, 10h00.** Version

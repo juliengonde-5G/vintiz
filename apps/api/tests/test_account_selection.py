@@ -52,7 +52,7 @@ async def test_selection_one_per_category_best_rated(session):
     await _prod(session, robes, "Robe B", 95)
     await _prod(session, pulls, "Pull C", 70)
 
-    res = await public_account_selection(email=None, db=session)
+    res = await public_account_selection(db=session)
     names = [it["name"] for it in res["items"]]
     assert res["ps_member"] is False
     assert "Robe B" in names         # best-rated robe kept
@@ -66,7 +66,7 @@ async def test_selection_caps_at_ten_categories(session):
     for i in range(14):
         cat = await _cat(session, f"Cat{i}")
         await _prod(session, cat, f"P{i}", float(100 - i))
-    res = await public_account_selection(email=None, db=session)
+    res = await public_account_selection(db=session)
     assert len(res["items"]) == 10
     # Highest trend_score first.
     assert res["items"][0]["name"] == "P0"
@@ -77,7 +77,7 @@ async def test_selection_excludes_sold(session):
     cat = await _cat(session, "Robes")
     await _prod(session, cat, "Vendue", 99, status=ProductStatus.sold)
     await _prod(session, cat, "Dispo", 50)
-    res = await public_account_selection(email=None, db=session)
+    res = await public_account_selection(db=session)
     names = [it["name"] for it in res["items"]]
     assert "Vendue" not in names
     assert "Dispo" in names

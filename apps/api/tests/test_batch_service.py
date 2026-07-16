@@ -4,12 +4,12 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models import Base
 from app.models.batch import IntakeBatch, IntakeSource
 from app.models.product import Category, Product, ProductPhoto, ProductStatus
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.services.batch import BatchService
 
 
@@ -97,7 +97,7 @@ async def test_create_batch_rejects_negative_count(session):
 @pytest.mark.anyio
 async def test_list_batches_returns_newest_first_with_tagged_count(session):
     svc = BatchService(session)
-    older = await svc.create_batch(
+    await svc.create_batch(
         source=IntakeSource.deposit,
         received_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
     )

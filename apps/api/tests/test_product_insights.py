@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models import Base
-from app.models.brand_tier import BRAND_TIER_SCORE, BrandTier, BrandTierLevel
+from app.models.brand_tier import BrandTier, BrandTierLevel
 from app.models.client import (
     AvoirTransaction,
     Client,

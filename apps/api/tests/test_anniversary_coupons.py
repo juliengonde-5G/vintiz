@@ -1,6 +1,5 @@
 """Tests for anniversary email + coupon flow (P4-008)."""
 
-import uuid
 from datetime import date, datetime, timedelta, timezone
 
 import pytest

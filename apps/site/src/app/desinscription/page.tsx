@@ -43,9 +43,10 @@ async function unsubscribe(token: string | undefined): Promise<Result> {
 export default async function UnsubscribePage({
   searchParams,
 }: {
-  searchParams: { token?: string };
+  searchParams: Promise<{ token?: string }>;
 }) {
-  const result = await unsubscribe(searchParams.token);
+  const query = await searchParams;
+  const result = await unsubscribe(query.token);
 
   return (
     <>

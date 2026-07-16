@@ -2557,7 +2557,7 @@ export default function SettingsPage() {
                   {loyaltySaving ? 'Enregistrement...' : 'Enregistrer'}
                 </Button>
                 <span className="text-xs text-gray-500">
-                  Mecanique : 1 € depense = 1 pt · 100 pts = bon de 8 € · peremption 24 mois sans activite.
+                  Mécanique : 1 € hors promotion, solde ou remise = 1 pt · 100 pts = chèque cadeau de 5 € · péremption 24 mois sans activité.
                 </span>
               </div>
             </Card>
@@ -2585,7 +2585,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-500">Frontend</span>
-                  <span className="font-mono text-black">Next.js 14 (PWA)</span>
+                  <span className="font-mono text-black">Next.js 15 (PWA)</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-500">Base de donnees</span>
@@ -2611,4 +2611,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

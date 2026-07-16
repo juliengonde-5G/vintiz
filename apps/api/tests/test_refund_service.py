@@ -285,7 +285,6 @@ async def test_partial_refund(session):
 
 @pytest.mark.anyio
 async def test_cannot_refund_more_than_remaining(session):
-    from fastapi import HTTPException
 
     user = await _make_user(session)
     sale = await _make_sale(

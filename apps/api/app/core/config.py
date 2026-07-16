@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
+    # Dedicated, stable HMAC key for fiscal seals. It must never be rotated
+    # without closing/archiving the active fiscal chain first.
+    FISCAL_SIGNING_KEY: str = ""
+
     # Rate limiting
     LOGIN_RATE_LIMIT_ATTEMPTS: int = 10
     LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = 300
@@ -136,3 +140,22 @@ def _validate_secret_key() -> None:
 
 
 _validate_secret_key()
+
+
+def _validate_fiscal_key() -> None:
+    if not settings.FISCAL_SIGNING_KEY:
+        if settings.is_production:
+            raise RuntimeError(
+                "FISCAL_SIGNING_KEY is required in production. Generate a stable "
+                "64-character secret and archive it under restricted access."
+            )
+        settings.FISCAL_SIGNING_KEY = settings.SECRET_KEY
+        logger.warning(
+            "FISCAL_SIGNING_KEY not set — using the development SECRET_KEY. "
+            "Do not persist fiscal test data across key changes."
+        )
+    elif len(settings.FISCAL_SIGNING_KEY) < 32:
+        raise RuntimeError("FISCAL_SIGNING_KEY must contain at least 32 characters")
+
+
+_validate_fiscal_key()

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import RoleChecker, get_current_user
+from app.core.security import RoleChecker, get_current_client, get_current_user
 from app.models.client import (
     Client,
     Consent,
@@ -27,28 +27,34 @@ logger = logging.getLogger("vintiz")
 
 router = APIRouter(prefix="/crm", tags=["crm"])
 
+
+def _normalize_email(value: str) -> str:
+    return value.strip().lower()
+
 # Sub-routers (Sprint 3 #12 — split monolith).
 from app.api.crm import account as _account_module  # noqa: E402
 from app.api.crm.account import OnboardingRequest  # noqa: E402,F401 — re-used by manager-side endpoint
 router.include_router(_account_module.router)
 
 # ---------------------------------------------------------------------------
-# Public endpoint for client extranet
+# Authenticated endpoint for client extranet
 # ---------------------------------------------------------------------------
 
 @router.get("/clients/lookup")
 async def lookup_client(
-    email: str = Query(..., description="Client email address", min_length=5, max_length=255),
+    email: str | None = Query(
+        default=None,
+        description="Legacy client email; identity comes from the bearer token",
+        min_length=5,
+        max_length=255,
+    ),
+    current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ):
-    """Public lookup for client extranet.
-
-    Returns client info, loyalty, and recent transactions. Returns a generic
-    404 message when no account exists, to limit account enumeration. A proper
-    fix requires a magic-link / OTP flow (see correction plan).
-    """
-    from app.services.client_lookup import get_client_by_email
-    client = await get_client_by_email(db, email, raise_if_missing=True)
+    """Return the authenticated client's profile, loyalty and purchases."""
+    client = current_client
+    if email and _normalize_email(email) != (client.email or "").strip().lower():
+        raise HTTPException(status_code=403, detail="Identité client incohérente")
 
     loyalty_data = None
     if client.loyalty_account:
@@ -120,6 +126,7 @@ async def lookup_client(
 async def get_client_brief(
     client_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Return the enriched LoyaltyCustomerCard payload for the POS.
 
@@ -144,6 +151,7 @@ async def get_client_brief(
 async def lookup_client_brief(
     email: str = Query(..., min_length=5, max_length=255),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Email-based lookup that returns the enriched brief in 1 call.
 
@@ -798,43 +806,33 @@ async def get_loyalty(
     account = await svc.get_account(client_id)
     return svc.serialize(account)
 
-class LoyaltyPointsRequest(BaseModel):
-    points: int
-    description: str
-
 @router.post("/clients/{client_id}/loyalty/earn")
 async def earn_loyalty_points(
     client_id: uuid.UUID,
-    request: LoyaltyPointsRequest,
-    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Add points to a client's loyalty account."""
-    from app.services.loyalty import LoyaltyService
-    account = await LoyaltyService(db).earn(client_id, request.points, request.description)
-    return {
-        "account_id": str(account.id),
-        "client_id": str(client_id),
-        "points": account.points,
-        "earned": request.points,
-    }
+    """Retired: points are credited only by eligible, sealed POS sales."""
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Crédit manuel retiré : les points proviennent uniquement des "
+            "ventes POS éligibles (1 € = 1 point)."
+        ),
+    )
 
 @router.post("/clients/{client_id}/loyalty/redeem")
 async def redeem_loyalty_points(
     client_id: uuid.UUID,
-    request: LoyaltyPointsRequest,
-    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Redeem points from a client's loyalty account."""
-    from app.services.loyalty import LoyaltyService
-    account = await LoyaltyService(db).redeem(client_id, request.points, request.description)
-    return {
-        "account_id": str(account.id),
-        "client_id": str(client_id),
-        "points": account.points,
-        "redeemed": request.points,
-    }
+    """Retired: loyalty value is redeemed only through generated vouchers."""
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Conversion directe retirée : utilisez le chèque cadeau de 5 € généré "
+            "automatiquement à chaque palier de 100 points."
+        ),
+    )
 
 # ---------------------------------------------------------------------------
 # Email / SMS sending
@@ -1305,26 +1303,21 @@ async def get_communication(
 
 @router.get("/personal-shopper-v2")
 async def public_personal_shopper_v2(
-    email: str = Query(..., min_length=5, max_length=255),
+    email: str | None = Query(default=None, min_length=5, max_length=255),
     top_n: int = 4,
     weather: str | None = None,
+    current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ):
-    """Public flavour of Personal Shopper v2 — email-based lookup.
-
-    PR2 gating: 403 if the customer isn't a member or hasn't opted-in
-    to profiling. Same pipeline as the authenticated endpoint.
-    """
+    """Client-authenticated flavour of Personal Shopper v2."""
     from app.services.personal_shopper import (
         PersonalShopperGatedError,
         PersonalShopperService,
     )
 
-    cleaned = _normalize_email(email)
-    result_row = await db.execute(select(Client).where(Client.email == cleaned))
-    client = result_row.scalar_one_or_none()
-    if client is None:
-        raise HTTPException(status_code=404, detail="Aucun compte trouvé")
+    client = current_client
+    if email and _normalize_email(email) != (client.email or "").strip().lower():
+        raise HTTPException(status_code=403, detail="Identité client incohérente")
     try:
         result = await PersonalShopperService(db).recommend(
             client.id, top_n=max(1, min(top_n, 10)), weather_summary=weather,
@@ -1549,27 +1542,26 @@ async def submit_onboarding(
 @router.post("/personal-shopper-v2/click")
 async def personal_shopper_click(
     request: RecommendationClickRequest,
+    current_client: Client = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
 ):
-    """Public click-through endpoint. Logs ``customer.recommendation_clicked``."""
+    """Log a click for the authenticated customer's recommendation feed."""
     from app.services.personal_shopper import PersonalShopperService
 
-    customer_id: uuid.UUID | None = None
     if request.customer_email:
         cleaned = _normalize_email(request.customer_email)
-        result_row = await db.execute(
-            select(Client).where(Client.email == cleaned)
-        )
-        client = result_row.scalar_one_or_none()
-        if client is not None:
-            customer_id = client.id
+        if cleaned != (current_client.email or "").strip().lower():
+            raise HTTPException(status_code=403, detail="Identité client incohérente")
 
-    await PersonalShopperService(db).record_click(
-        recommendation_set_id=request.recommendation_set_id or uuid.uuid4(),
-        product_id=request.product_id,
-        customer_id=customer_id,
-        position_in_list=request.position_in_list,
-    )
+    try:
+        await PersonalShopperService(db).record_click(
+            recommendation_set_id=request.recommendation_set_id,
+            product_id=request.product_id,
+            customer_id=current_client.id,
+            position_in_list=request.position_in_list,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     await db.commit()
     return {"recorded": True}
 
@@ -1737,7 +1729,11 @@ async def public_curation_current(db: AsyncSession = Depends(get_db)):
         await db.execute(
             select(Product)
             .where(Product.id.in_(ids))
-            .where(Product.status.in_([ProductStatus.stock, ProductStatus.display]))
+            .where(Product.status.in_([
+                ProductStatus.stock,
+                ProductStatus.display,
+                ProductStatus.displayed,
+            ]))
         )
     ).scalars().all()
 
@@ -1885,4 +1881,3 @@ def _serialize_highlight(product, *, reason: str) -> dict:
         "photo_url": product.storefront_photo_url or product.photo_url,
         "reason": reason or None,
     }
-

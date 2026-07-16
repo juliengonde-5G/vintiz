@@ -28,8 +28,8 @@ de travail journalier, KPIs retail + ESS, segmentation RFM, emails automatiques
 ```
 apps/
   api/          FastAPI (Python 3.11) — API REST + IA + hardware
-  web/          Next.js 14 — Interface d'administration (back-office)
-  site/         Next.js 14 — Site vitrine public + espace client
+  web/          Next.js 15 — Interface d'administration (back-office)
+  site/         Next.js 15 — Site vitrine public + espace client
 docker/         Dockerfiles + docker-compose{,-prod}.yml + Caddyfile
 scripts/        seed_data.py, seed_test_products.py, deploy.sh, diag.sh, go_live_reset.py, smoke_prod.sh
 docs/           Documentation technique et utilisateur
@@ -46,7 +46,7 @@ docs/           Documentation technique et utilisateur
 pg_ctlcluster 16 main start
 
 # API
-cd apps/api && pip install -r requirements.txt
+cd apps/api && pip install -e ".[dev]"
 PYTHONPATH=apps/api uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Admin UI
@@ -55,11 +55,11 @@ cd apps/web && npm install && npm run dev        # :3000
 # Site vitrine
 cd apps/site && npm install && npm run dev       # :3001
 
-# Données de test (300 produits + 50 clients + 200 transactions)
-PYTHONPATH=apps/api python scripts/seed_data.py
+# Premier manager (aucun identifiant par défaut)
+PYTHONPATH=apps/api python scripts/create_manager.py --username <nom> --email <email>
 ```
 
-Identifiants par défaut : `admin` / `vintiz2026`
+Aucun identifiant par défaut n'est livré.
 
 > Le hook `.claude/hooks/session-start.sh` détecte Docker vs local et démarre
 > automatiquement PostgreSQL + l'API quand tu ouvres une session Claude Code
@@ -89,8 +89,8 @@ Caddy assure le reverse-proxy HTTPS sur les ports 80/443.
 |----------------|----------------------|---------------------------|
 | `vintiz-api`   | FastAPI Python 3.11  | interne :8000 (via Caddy) |
 | `vintiz-db`    | PostgreSQL 16        | interne :5432             |
-| `vintiz-web`   | Next.js 14           | interne :3000 (via Caddy) |
-| `vintiz-site`  | Next.js 14           | interne :3001 (via Caddy) |
+| `vintiz-web`   | Next.js 15           | interne :3000 (via Caddy) |
+| `vintiz-site`  | Next.js 15           | interne :3001 (via Caddy) |
 | `vintiz-caddy` | Caddy 2              | public :80 :443           |
 | `vintiz-redis` | Redis 7              | interne :6379             |
 

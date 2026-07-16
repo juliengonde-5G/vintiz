@@ -1,6 +1,6 @@
 [project]
 name = "vintiz-api"
-version = "1.0.0"
+version = "1.1.0"
 description = "Vintiz - Boutique Management API"
 requires-python = ">=3.11"
 dependencies = [
@@ -29,7 +29,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0", "httpx>=0.27.0", "ruff>=0.8.0"]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.27.0",
+    "ruff>=0.8.0",
+    "aiosqlite>=0.20.0",
+    "pip-audit>=2.10.1",
+]
 # Offline background-removal fallback for storefront photos. Heavy (onnxruntime
 # + numba/scipy stack) — install only where the local cutout is wanted:
 # ``pip install -e ".[rembg]"``. The default backend is Photoroom

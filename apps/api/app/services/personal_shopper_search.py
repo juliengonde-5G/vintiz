@@ -49,6 +49,11 @@ CACHE_TTL_SECONDS = 86400  # 24 h per the PR2 plan
 SEARCH_TOP_N = 8
 LLM_MODEL = "claude-haiku-4-5"
 LLM_MAX_TOKENS = 256
+SHOPPABLE_STATUSES = [
+    ProductStatus.stock,
+    ProductStatus.display,
+    ProductStatus.displayed,
+]
 
 
 @dataclass
@@ -222,19 +227,16 @@ def _regex_filters(query: str) -> SearchFilters:
     return f
 
 
-async def _llm_filters(query: str) -> SearchFilters | None:
+async def _llm_filters(db: AsyncSession, query: str) -> SearchFilters | None:
     """Ask Claude Haiku to extract structured filters from free text.
 
     Returns ``None`` when the API key is missing or the call fails — the
     caller falls back to ``_regex_filters`` so the search degrades
     gracefully even without Anthropic.
     """
-    if not getattr(settings, "ANTHROPIC_API_KEY", None):
-        return None
     try:
-        import anthropic
+        from app.services.ai_router import call_with_routing
 
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         prompt = (
             "Extrais des filtres structurés à partir de la requête de "
             "shopping suivante en français. Réponds UNIQUEMENT avec un "
@@ -247,15 +249,15 @@ async def _llm_filters(query: str) -> SearchFilters | None:
             'Taille XS/S/M/L/XL/XXL ou nombre (34, 36, 38…).\n\n'
             f"Requête : {query}"
         )
-        message = await asyncio.to_thread(
-            client.messages.create,
-            model=LLM_MODEL,
+        result = await call_with_routing(
+            db,
+            "personal_shopper",
+            user_message=prompt,
             max_tokens=LLM_MAX_TOKENS,
-            messages=[{"role": "user", "content": prompt}],
         )
-        text = "".join(
-            block.text for block in message.content if hasattr(block, "text")
-        ).strip()
+        text = str(result.get("output_text") or "").strip()
+        if not text:
+            return None
         # Strip code-fence guards if the model ignored the instruction.
         text = re.sub(r"^```(?:json)?", "", text).strip()
         text = re.sub(r"```$", "", text).strip()
@@ -295,7 +297,7 @@ async def _query_inventory(
     something rather than 0 results.
     """
     stmt = select(Product).where(
-        Product.status.in_([ProductStatus.stock, ProductStatus.display])
+        Product.status.in_(SHOPPABLE_STATUSES)
     )
     if filters.category:
         cat = f"%{filters.category}%"
@@ -360,7 +362,7 @@ async def search(
             rows = await db.execute(
                 select(Product).where(
                     Product.id.in_(coerced),
-                    Product.status.in_([ProductStatus.stock, ProductStatus.display]),
+                    Product.status.in_(SHOPPABLE_STATUSES),
                 )
             )
             products = list(rows.scalars().all())
@@ -373,7 +375,7 @@ async def search(
                 "normalized_query": norm,
             }
 
-    filters = await _llm_filters(query)
+    filters = await _llm_filters(db, query)
     if filters is None:
         filters = _regex_filters(query)
 

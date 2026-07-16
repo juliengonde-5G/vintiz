@@ -31,16 +31,16 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.client import Client, LoyaltyAccount
+from app.models.client import Client
 from app.models.offer import Offer, OfferType
 from app.models.pos import Transaction, TransactionType
-from app.models.product import Category, Product
+from app.models.product import Product
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +244,7 @@ def _eval_shoes_third_free(
         cat_name = (line.product.category.name or "").lower()
         return any(k in cat_name for k in cat_keywords)
 
-    shoe_indices = [i for i, l in enumerate(lines) if _is_shoe(l)]
+    shoe_indices = [i for i, line in enumerate(lines) if _is_shoe(line)]
     if len(shoe_indices) < min_items:
         return None
 
@@ -288,7 +288,7 @@ def _eval_bundle_3_for_2(
             return True
         return False
 
-    eligible = [i for i, l in enumerate(lines) if _matches(l)]
+    eligible = [i for i, line in enumerate(lines) if _matches(line)]
     if len(eligible) < 3:
         return None
 
@@ -492,4 +492,4 @@ def milestones_crossed(
     if after <= before:
         return 0
     t = max(1, int(threshold or LOYALTY_MILESTONE))
-    return (after // t) - (before // t)
+    return (max(0, after) // t) - (max(0, before) // t)

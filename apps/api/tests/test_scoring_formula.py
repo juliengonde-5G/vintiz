@@ -85,7 +85,7 @@ def test_price_ratio_thresholds():
         condition="bon",
         sale_price=10.0,
     )
-    cases = [(5.0, 20.0), (8.5, 16.0), (10.0, 12.0), (12.5, 8.0), (20.0, 4.0)]
+    cases = [(20.0, 20.0), (12.0, 16.0), (10.0, 12.0), (8.0, 8.0), (5.0, 4.0)]
     for market, expected_pts in cases:
         out = compute_score(market_price_estimate=market, **base)
         assert out["score_price"] == pytest.approx(expected_pts, abs=0.1), (

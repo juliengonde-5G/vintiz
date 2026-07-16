@@ -178,7 +178,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    is_pg = bind.dialect.name == "postgresql"
     inspector = sa.inspect(bind)
     existing_tables = set(inspector.get_table_names())
 

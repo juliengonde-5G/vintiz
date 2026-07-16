@@ -5,6 +5,7 @@ import Link from "next/link";
 import AccountShell from "@/components/account/AccountShell";
 import AccountTabs from "@/components/account/AccountTabs";
 import LoyaltyHeroCard from "@/components/account/LoyaltyHeroCard";
+import { accountFetch } from "@/lib/account-api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -85,7 +86,7 @@ export default function AccountHomePage() {
   useEffect(() => {
     if (!email) return;
     if (tab === "offres" && coupons.length === 0) {
-      fetch(`${API_URL}/api/crm/account/coupons?email=${encodeURIComponent(email)}`, { cache: "no-store" })
+      accountFetch(`${API_URL}/api/crm/account/coupons?email=${encodeURIComponent(email)}`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           if (Array.isArray(d)) setCoupons(d as Coupon[]);
@@ -94,7 +95,7 @@ export default function AccountHomePage() {
         .catch(() => undefined);
     }
     if (tab === "historique" && history.length === 0) {
-      fetch(`${API_URL}/api/crm/account/transactions?email=${encodeURIComponent(email)}&limit=10`, { cache: "no-store" })
+      accountFetch(`${API_URL}/api/crm/account/transactions?email=${encodeURIComponent(email)}&limit=10`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           if (Array.isArray(d)) setHistory(d as Transaction[]);
@@ -108,7 +109,7 @@ export default function AccountHomePage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(
+      const res = await accountFetch(
         `${API_URL}/api/crm/clients/lookup?email=${encodeURIComponent(target)}`,
         { cache: "no-store" }
       );
@@ -249,8 +250,8 @@ export default function AccountHomePage() {
                   </p>
                 </div>
                 <p className="text-sm text-vz-ink-soft leading-relaxed">
-                  Chaque euro dépensé en boutique vous rapporte un point. À 100 points cumulés, un bon de
-                  8 € est crédité automatiquement sur votre carte. Les points expirent après 24 mois sans activité.
+                  Chaque euro dépensé sur un article hors promotion, solde ou remise rapporte un point. À 100 points cumulés, un chèque cadeau de
+                  5 € est crédité automatiquement sur votre carte. Les points expirent après 24 mois sans activité.
                 </p>
               </div>
             )}

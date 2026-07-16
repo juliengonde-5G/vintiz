@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 import { isAndroid, isIOS } from "@/lib/platform";
+import {
+  accountFetch,
+  downloadAccountFile,
+  openAccountWalletUrl,
+} from "@/lib/account-api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -38,8 +43,8 @@ export default function WalletCard({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(
-      `${API_URL}/api/crm/account/wallet?email=${encodeURIComponent(email)}`,
+    accountFetch(
+      `${API_URL}/api/crm/account/wallet`,
       { cache: "no-store" },
     )
       .then(async (res) => {
@@ -105,6 +110,27 @@ export default function WalletCard({
   const SECONDARY_CLASS =
     'text-[11px] bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 font-medium transition-colors';
 
+  const downloadApple = async () => {
+    setError("");
+    try {
+      await downloadAccountFile(
+        `${API_URL}/api/crm/account/wallet/apple`,
+        `vintiz-${data.membership_number}.pkpass`,
+      );
+    } catch {
+      setError("Apple Wallet indisponible.");
+    }
+  };
+
+  const openGoogle = async () => {
+    setError("");
+    try {
+      await openAccountWalletUrl(`${API_URL}/api/crm/account/wallet/google`);
+    } catch {
+      setError("Google Wallet indisponible.");
+    }
+  };
+
   return (
     <>
     <div
@@ -152,51 +178,49 @@ export default function WalletCard({
         {/* Render the platform-native wallet first with the prominent
             "primary" style so the user installs the right one in 1 tap. */}
         {primaryWallet === 'google' && data.google_save_available && (
-          <a
-            href={`${API_URL}/api/crm/account/wallet/google?email=${encodeURIComponent(email)}`}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
+            onClick={openGoogle}
             className={PRIMARY_CLASS}
             title="Ajouter à Google Wallet"
           >
             Ajouter à Google Wallet
-          </a>
+          </button>
         )}
         {primaryWallet === 'apple' && data.apple_signed_available && (
-          <a
-            href={`${API_URL}/api/crm/account/wallet/apple?email=${encodeURIComponent(email)}`}
-            download
+          <button
+            type="button"
+            onClick={downloadApple}
             className={PRIMARY_CLASS}
             title="Télécharger un .pkpass signé pour Apple Wallet"
           >
             Ajouter à Apple Wallet
-          </a>
+          </button>
         )}
         {/* Secondary wallet (the other platform). Hidden when both are
             unavailable to avoid empty/duplicate buttons. */}
         {primaryWallet !== 'apple' && data.apple_signed_available && (
-          <a
-            href={`${API_URL}/api/crm/account/wallet/apple?email=${encodeURIComponent(email)}`}
-            download
+          <button
+            type="button"
+            onClick={downloadApple}
             className={SECONDARY_CLASS}
             title="Télécharger un .pkpass signé pour Apple Wallet"
           >
             Ajouter à Apple Wallet
-          </a>
+          </button>
         )}
         {primaryWallet !== 'google' && data.google_save_available && (
-          <a
-            href={`${API_URL}/api/crm/account/wallet/google?email=${encodeURIComponent(email)}`}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
+            onClick={openGoogle}
             className={SECONDARY_CLASS}
             title="Ajouter à Google Wallet"
           >
             Ajouter à Google Wallet
-          </a>
+          </button>
         )}
         <a
-          href={`${API_URL}/api/crm/account/wallet/qr.png?email=${encodeURIComponent(email)}`}
+          href={qrDataUrl || undefined}
           download={`vintiz-${data.membership_number}-qr.png`}
           className="text-[11px] bg-white/15 hover:bg-white/25 rounded-full px-3 py-1.5 font-medium transition-colors"
           title="Télécharger le QR code de votre carte"

@@ -30,6 +30,7 @@ cp .env.production.template .env
 nano .env
 # → Remplir POSTGRES_PASSWORD (mot de passe fort)
 # → Remplir SECRET_KEY (openssl rand -hex 32)
+# → Remplir FISCAL_SIGNING_KEY avec une autre clé stable (openssl rand -hex 32)
 # → Remplir ANTHROPIC_API_KEY
 # → Mettre a jour DATABASE_URL avec le mot de passe choisi
 # → Configurer SumUp (voir section « Hardware POS » ci-dessous)
@@ -62,10 +63,8 @@ docker compose -f docker/docker-compose.prod.yml logs -f
 
 # Smoke test complet (read-only, valide les routes Phase 4)
 bash scripts/smoke_prod.sh https://api.vintiz.fr
-# avec token manager pour les checks authentifies :
-export VINTIZ_API_TOKEN="$(curl -s -X POST https://api.vintiz.fr/api/auth/login \
-  -H 'content-type: application/json' \
-  -d '{"username":"admin","password":"vintiz2026"}' | jq -r .access_token)"
+# avec un token manager nominatif pour les checks authentifies :
+export VINTIZ_API_TOKEN="<TOKEN_MANAGER>"
 bash scripts/smoke_prod.sh https://api.vintiz.fr
 ```
 
@@ -74,8 +73,7 @@ bash scripts/smoke_prod.sh https://api.vintiz.fr
 ```bash
 cd /opt/vintiz
 ./scripts/deploy.sh                   # maj code + migrations Alembic
-./scripts/deploy.sh --test-products   # maj + seed 15 produits de test POS
-./scripts/deploy.sh --first-run       # premier deploiement (+ seed 300 produits)
+./scripts/deploy.sh --first-run       # uniquement sur une base totalement vide
 ./scripts/deploy.sh --rollback        # retour version precedente
 ```
 
@@ -84,20 +82,13 @@ cd /opt/vintiz
 ### 1. Configuration SumUp (`.env`)
 
 ```env
-SUMUP_ENVIRONMENT=sandbox         # sandbox | production
-SUMUP_API_KEY=                    # vide → simulation en memoire
+SUMUP_API_KEY=sup_sk_...          # vide → paiements CB bloqués
 SUMUP_MERCHANT_CODE=
-SUMUP_SANDBOX_AUTO_DELAY_SEC=5    # 0 = approbation manuelle
+SUMUP_READER_ID=                  # recommandé pour pousser vers le Solo
 ```
 
-Trois modes :
-
-- **production** — appels reels api.sumup.com (frais SumUp). Necessite cle
-  production + merchant code.
-- **sandbox** — cle SumUp sandbox, appels API reels en mode test.
-- **simulation** (defaut sans cle) — sandbox en memoire. Event log visible
-  dans `/settings > Paiement`, approve/decline manuel par checkout, transition
-  PENDING → PAID apres `SUMUP_SANDBOX_AUTO_DELAY_SEC` secondes.
+Il n'existe aucun paiement simulé dans l'application. En production, une clé
+test SumUp est refusée et l'absence de clé ou de merchant code bloque le CB.
 
 ### 1bis. Configuration Phase 4 (email + wallet)
 
@@ -227,15 +218,23 @@ curl https://api.vintiz.fr/api/inventory/products/search?q=TEST0001 \
 Sur l'iPad : scanner `TEST0001` → produit ajoute au panier → *Encaisser*
 especes → *Imprimer* → ticket papier + ouverture tiroir = OK.
 
-## Acces par defaut
+## Premier compte manager
 
 | Service | URL | Identifiants |
 |---|---|---|
 | Site vitrine | https://vintiz.fr | (public) |
-| Back-office | https://app.vintiz.fr | admin / vintiz2026 |
+| Back-office | https://app.vintiz.fr | compte nominatif créé ci-dessous |
 | API docs | https://api.vintiz.fr/docs | (Swagger UI) |
 
-**IMPORTANT** : Changer le mot de passe admin apres la premiere connexion.
+Après le premier déploiement sur base vide :
+
+```bash
+docker compose -f docker/docker-compose.prod.yml run --rm api \
+  python scripts/create_manager.py --username <nom> --email <email>
+```
+
+Le mot de passe (12 caractères minimum) est demandé sans écho. Aucun
+identifiant ou mot de passe par défaut n'est livré.
 
 ## Architecture des services
 
@@ -301,7 +300,16 @@ ssh vintiz "docker logs vintiz-api --tail 20"
 - après le départ d'un dev ayant eu accès au VPS
 
 `ADMIN_BOOTSTRAP_KEY` (utilisée seulement par `/admin/create-tables`)
-peut être tournée indépendamment et ne casse aucune session active.
+peut être tournée indépendamment. Cet endpoint est désactivé en production ;
+le schéma de production appartient exclusivement à Alembic.
+
+### Clé fiscale
+
+`FISCAL_SIGNING_KEY` signe les chaînes fiscales et ne suit pas la rotation JWT.
+Elle ne doit jamais être changée silencieusement. Avant toute rotation : fermer
+la caisse, produire une clôture cumulative et annuelle si applicable,
+télécharger l'archive, vérifier son SHA-256 et conserver l'ancienne clé sous
+accès restreint avec le dossier de certification.
 
 ## Pieges connus migrations / build
 

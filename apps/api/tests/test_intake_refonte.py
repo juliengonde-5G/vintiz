@@ -184,7 +184,7 @@ def test_fallback_narrative_empty_inventory():
 async def test_store_ops_routes_registered():
     from app.main import app
 
-    paths = {r.path for r in app.routes if hasattr(r, "path")}
+    paths = set(app.openapi()["paths"])
     assert "/api/ai/persona/store-ops" in paths
     assert "/api/ai/persona/store-ops/regenerate" in paths
 

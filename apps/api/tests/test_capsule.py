@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models import Base
-from app.models.audit import Settings
+from app.models.audit import AuditLog, Settings
 from app.models.capsule import MonthlyCapsule
 from app.models.client import Client, LoyaltyAccount, LoyaltyTransaction
 from app.models.pos import Payment, Receipt, Transaction, TransactionItem
@@ -48,6 +48,7 @@ async def engine():
         Payment.__table__,
         Receipt.__table__,
         Settings.__table__,
+        AuditLog.__table__,
         MonthlyCapsule.__table__,
     ]
     async with eng.begin() as conn:

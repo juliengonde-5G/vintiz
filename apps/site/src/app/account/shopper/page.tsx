@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import AccountShell from "@/components/account/AccountShell";
 import { mediaUrl } from "@/lib/media";
 import { formatPriceCents } from "@/lib/format";
+import { accountFetch } from "@/lib/account-api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -71,7 +72,7 @@ export default function AccountShopperPage() {
     setGate(null);
     setItems([]);
     try {
-      const res = await fetch(
+      const res = await accountFetch(
         `${API_URL}/api/crm/account/personal-shopper/live?email=${encodeURIComponent(mail)}`,
         { cache: "no-store" }
       );
@@ -102,7 +103,7 @@ export default function AccountShopperPage() {
     setToggleBusy(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/crm/account/personal-shopper/toggle`, {
+      const res = await accountFetch(`${API_URL}/api/crm/account/personal-shopper/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -153,7 +154,7 @@ export default function AccountShopperPage() {
     setToggleBusy(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/crm/account/loyalty/subscribe`, {
+      const res = await accountFetch(`${API_URL}/api/crm/account/loyalty/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, optin_profiling: true }),
@@ -176,7 +177,7 @@ export default function AccountShopperPage() {
     setSearchBusy(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/crm/account/personal-shopper/search`, {
+      const res = await accountFetch(`${API_URL}/api/crm/account/personal-shopper/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, q: searchQuery }),
@@ -493,7 +494,7 @@ function ProductGrid({
   // profile (CLICK_WEIGHT) + the analytics funnel. Fire-and-forget.
   const logClick = (productId: string) => {
     if (!email) return;
-    void fetch(`${API_URL}/api/crm/personal-shopper-v2/click`, {
+    void accountFetch(`${API_URL}/api/crm/personal-shopper-v2/click`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ product_id: productId, customer_email: email }),

@@ -131,8 +131,8 @@ export default function CGVPage() {
             payante ou offerte au-delà d&apos;un montant d&apos;achat — les
             conditions actives sont affichées en boutique au moment de la
             souscription. Mécanique unique&nbsp;:{" "}
-            <strong>1 € dépensé = 1 point</strong>. Tous les{" "}
-            <strong>100 points</strong>, un bon d&apos;achat de 8 € est généré
+            <strong>1 € dépensé sur un produit hors promotion, solde ou remise = 1 point</strong>. Tous les{" "}
+            <strong>100 points</strong>, un chèque cadeau de 5 € est généré
             automatiquement (durée de validité affichée en boutique et dans
             votre espace client, par défaut 6 mois). Les points expirent au
             bout de <strong>24 mois sans activité</strong>. Vintiz se réserve le droit

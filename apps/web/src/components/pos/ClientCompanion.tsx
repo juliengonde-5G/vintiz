@@ -200,7 +200,7 @@ export default function ClientCompanion({
                 cadeau). On n'affiche plus « Rachat max possible » — c'était un
                 reliquat non actionnable qui laissait croire à une remise
                 applicable. La remise fidélité se propose via les chèques cadeau
-                (100 pts → 5 €) affectés au paiement (bandeau bons cadeau). */}
+                (100 pts → 5 €) affectés au paiement (bandeau chèques cadeaux). */}
           </section>
 
           {payload.alerts.length > 0 && (

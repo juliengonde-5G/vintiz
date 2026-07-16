@@ -1,11 +1,13 @@
 import hashlib
+import hmac
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pos import (
@@ -13,9 +15,11 @@ from app.models.pos import (
     Payment,
     PaymentMethod,
     Transaction,
+    TransactionItem,
     TransactionType,
     ZReport,
 )
+from app.core.config import settings
 
 _log = logging.getLogger("vintiz")
 
@@ -23,8 +27,7 @@ _log = logging.getLogger("vintiz")
 class FiscalService:
     """NF525-compliant fiscal service.
 
-    Maintains an unbroken SHA-256 hash chain across transactions and
-    Z reports to guarantee data integrity and non-repudiation.
+    Maintains versioned HMAC-SHA256 chains across transactions and Z reports.
     """
 
     def __init__(self, db: AsyncSession) -> None:
@@ -35,30 +38,143 @@ class FiscalService:
     # ------------------------------------------------------------------
 
     async def sign_transaction(self, transaction: Transaction) -> None:
-        """Compute and store the SHA-256 hash-chain entry for a transaction.
-
-        hash = SHA256(transaction_number | total_ttc | created_at | previous_hash)
-        """
-        previous_hash = await self._get_previous_transaction_hash()
-        data_string = (
-            f"{transaction.transaction_number}|"
-            f"{float(transaction.total_ttc):.2f}|"
-            f"{transaction.created_at.isoformat() if transaction.created_at else ''}|"
-            f"{previous_hash}"
+        """Seal the complete immutable sale/refund payload (signature v2)."""
+        await self.db.flush()
+        previous_hash = await self._get_previous_transaction_hash(
+            before_number=transaction.transaction_number
         )
-        transaction.hash_chain = hashlib.sha256(data_string.encode("utf-8")).hexdigest()
+        transaction.previous_hash = previous_hash
+        transaction.fiscal_signature_version = 2
+        payload = await self._transaction_payload(transaction, previous_hash)
+        transaction.hash_chain = self._hmac(payload)
         await self.db.flush()
 
-    async def _get_previous_transaction_hash(self) -> str:
-        """Return the hash of the most recent transaction, or '0' if none."""
+    async def _get_previous_transaction_hash(
+        self, before_number: int | None = None
+    ) -> str:
+        """Return the immediately preceding signed transaction hash."""
+        query = select(Transaction.hash_chain).where(Transaction.hash_chain != "")
+        if before_number is not None:
+            query = query.where(Transaction.transaction_number < before_number)
         result = await self.db.execute(
-            select(Transaction.hash_chain)
-            .where(Transaction.hash_chain != "")
-            .order_by(Transaction.created_at.desc())
-            .limit(1)
+            query.order_by(Transaction.transaction_number.desc()).limit(1)
         )
         row = result.scalar_one_or_none()
         return row if row else "0"
+
+    @staticmethod
+    def _money(value) -> str:
+        return f"{Decimal(str(value or 0)).quantize(Decimal('0.01')):.2f}"
+
+    @staticmethod
+    def _iso(value: datetime | None) -> str:
+        if value is None:
+            return ""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat(timespec="microseconds")
+
+    @staticmethod
+    def _canonical(payload: dict) -> bytes:
+        return json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+    @classmethod
+    def _hmac(cls, payload: dict) -> str:
+        return hmac.new(
+            settings.FISCAL_SIGNING_KEY.encode("utf-8"),
+            cls._canonical(payload),
+            hashlib.sha256,
+        ).hexdigest()
+
+    async def _transaction_payload(
+        self, transaction: Transaction, previous_hash: str
+    ) -> dict:
+        items = (
+            await self.db.execute(
+                select(TransactionItem)
+                .where(TransactionItem.transaction_id == transaction.id)
+                .order_by(TransactionItem.created_at.asc(), TransactionItem.id.asc())
+            )
+        ).scalars().all()
+        payments = (
+            await self.db.execute(
+                select(Payment)
+                .where(Payment.transaction_id == transaction.id)
+                .order_by(Payment.created_at.asc(), Payment.id.asc())
+            )
+        ).scalars().all()
+        return {
+            "signature_version": 2,
+            "previous_hash": previous_hash,
+            "transaction": {
+                "id": str(transaction.id),
+                "number": transaction.transaction_number,
+                "type": transaction.transaction_type.value,
+                "created_at": self._iso(transaction.created_at),
+                "user_id": str(transaction.user_id),
+                "cashier_id": str(transaction.cashier_id) if transaction.cashier_id else None,
+                "client_uuid": str(transaction.client_uuid) if transaction.client_uuid else None,
+                "original_transaction_id": (
+                    str(transaction.original_transaction_id)
+                    if transaction.original_transaction_id else None
+                ),
+                "refund_reason": transaction.refund_reason,
+                "total_ht": self._money(transaction.total_ht),
+                "total_tva": self._money(transaction.total_tva),
+                "total_ttc": self._money(transaction.total_ttc),
+                "is_invoice": bool(transaction.is_invoice),
+                "invoice_number": transaction.invoice_number,
+                "client_siret": transaction.client_siret,
+                "client_company_name": transaction.client_company_name,
+                "client_billing_address": transaction.client_billing_address,
+                "template_id": (
+                    str(transaction.template_id) if transaction.template_id else None
+                ),
+            },
+            "items": [
+                {
+                    "product_id": str(item.product_id) if item.product_id else None,
+                    "permanent_item_id": (
+                        str(item.permanent_item_id) if item.permanent_item_id else None
+                    ),
+                    "original_item_id": (
+                        str(item.original_transaction_item_id)
+                        if item.original_transaction_item_id else None
+                    ),
+                    "name": item.product_name,
+                    "quantity": item.quantity,
+                    "unit_price": self._money(item.unit_price),
+                    "discount_percent": f"{float(item.discount_percent or 0):.4f}",
+                    "line_total": self._money(item.line_total),
+                    "promotional": bool(item.promotional),
+                    "tva_rate": f"{float(item.tva_rate or 0):.2f}",
+                }
+                for item in items
+            ],
+            "payments": [
+                {
+                    "method": payment.method.value,
+                    "amount": self._money(payment.amount),
+                    "tendered_amount": (
+                        self._money(payment.tendered_amount)
+                        if payment.tendered_amount is not None else None
+                    ),
+                    "sumup_checkout_id": payment.sumup_checkout_id,
+                    "sumup_transaction_id": payment.sumup_transaction_id,
+                    "sumup_transaction_code": payment.sumup_transaction_code,
+                    "sumup_auth_code": payment.sumup_auth_code,
+                    "sumup_card_brand": payment.sumup_card_brand,
+                    "sumup_card_last4": payment.sumup_card_last4,
+                    "sumup_environment": payment.sumup_environment,
+                }
+                for payment in payments
+            ],
+        }
 
     async def verify_chain_integrity(self) -> dict:
         """Verify the entire transaction hash chain is unbroken.
@@ -67,24 +183,38 @@ class FiscalService:
         If invalid, also returns ``broken_at`` with the transaction number.
         """
         result = await self.db.execute(
-            select(Transaction).order_by(Transaction.created_at.asc())
+            select(Transaction).order_by(Transaction.transaction_number.asc())
         )
         transactions = result.scalars().all()
 
         previous_hash = "0"
         for t in transactions:
-            data_string = (
-                f"{t.transaction_number}|"
-                f"{float(t.total_ttc):.2f}|"
-                f"{t.created_at.isoformat() if t.created_at else ''}|"
-                f"{previous_hash}"
-            )
-            expected = hashlib.sha256(data_string.encode("utf-8")).hexdigest()
-            if t.hash_chain != expected:
+            version = int(getattr(t, "fiscal_signature_version", 1) or 1)
+            if version >= 2:
+                if t.previous_hash != previous_hash:
+                    return {
+                        "valid": False,
+                        "checked": t.transaction_number,
+                        "broken_at": t.transaction_number,
+                        "reason": "previous_hash_mismatch",
+                    }
+                expected = self._hmac(
+                    await self._transaction_payload(t, previous_hash)
+                )
+            else:
+                data_string = (
+                    f"{t.transaction_number}|"
+                    f"{float(t.total_ttc):.2f}|"
+                    f"{t.created_at.isoformat() if t.created_at else ''}|"
+                    f"{previous_hash}"
+                )
+                expected = hashlib.sha256(data_string.encode("utf-8")).hexdigest()
+            if not hmac.compare_digest(t.hash_chain or "", expected):
                 return {
                     "valid": False,
                     "checked": t.transaction_number,
                     "broken_at": t.transaction_number,
+                    "reason": "signature_mismatch",
                 }
             previous_hash = t.hash_chain
 
@@ -113,7 +243,22 @@ class FiscalService:
         non-repudiable record. The chain is built normally (real creation
         time, next number, off the latest Z hash) — nothing is antedated.
         """
+        dialect = self.db.bind.dialect.name if self.db.bind else "postgresql"
+        if dialect == "postgresql":
+            await self.db.execute(text("SELECT pg_advisory_xact_lock(5252027)"))
+
         # Totals for transactions created during the drawer period
+        tx_rows = (
+            await self.db.execute(
+                select(Transaction)
+                .where(
+                    Transaction.created_at >= drawer.opened_at,
+                    Transaction.created_at <= (drawer.closed_at or func.now()),
+                )
+                .order_by(Transaction.transaction_number.asc())
+            )
+        ).scalars().all()
+
         sales_result = await self.db.execute(
             select(
                 func.coalesce(func.sum(Transaction.total_ttc), 0),
@@ -129,14 +274,20 @@ class FiscalService:
         sale_count = sales_row[1]
 
         refunds_result = await self.db.execute(
-            select(func.coalesce(func.sum(Transaction.total_ttc), 0)).where(
+            select(
+                func.coalesce(func.sum(Transaction.total_ttc), 0),
+                func.count(Transaction.id),
+            ).where(
                 Transaction.transaction_type == TransactionType.refund,
                 Transaction.created_at >= drawer.opened_at,
                 Transaction.created_at <= (drawer.closed_at or func.now()),
             )
         )
-        total_refunds = Decimal(str(refunds_result.scalar_one()))
+        refunds_row = refunds_result.one()
+        total_refunds = Decimal(str(refunds_row[0]))
+        refund_count = int(refunds_row[1] or 0)
         total_net = total_sales - total_refunds
+        transaction_count = int(sale_count or 0) + refund_count
 
         # Report number
         max_num_result = await self.db.execute(
@@ -147,28 +298,65 @@ class FiscalService:
         # Previous Z report hash
         prev_result = await self.db.execute(
             select(ZReport.hash)
-            .order_by(ZReport.created_at.desc())
+            .order_by(ZReport.report_number.desc())
             .limit(1)
         )
         previous_hash = prev_result.scalar_one_or_none() or "0"
 
-        # Compute Z report hash. Normal Z keep the historical format intact;
-        # a regularization appends a signed marker so it can't be silently
-        # reclassified as an ordinary daily close.
-        hash_data = (
-            f"{next_number}|"
-            f"{float(total_sales):.2f}|"
-            f"{float(total_refunds):.2f}|"
-            f"{float(total_net):.2f}|"
-            f"{sale_count}|"
-            f"{previous_hash}"
-        )
-        if is_regularization:
-            hash_data += (
-                f"|REG|{drawer.opened_at.isoformat() if drawer.opened_at else ''}"
-                f"|{drawer.closed_at.isoformat() if drawer.closed_at else ''}"
+        payment_rows = (
+            await self.db.execute(
+                select(
+                    Payment.method,
+                    Transaction.transaction_type,
+                    func.coalesce(func.sum(Payment.amount), 0),
+                )
+                .join(Transaction, Payment.transaction_id == Transaction.id)
+                .where(
+                    Transaction.created_at >= drawer.opened_at,
+                    Transaction.created_at <= (drawer.closed_at or func.now()),
+                )
+                .group_by(Payment.method, Transaction.transaction_type)
             )
-        report_hash = hashlib.sha256(hash_data.encode("utf-8")).hexdigest()
+        ).all()
+        payment_totals: dict[str, dict[str, str]] = {}
+        for method, transaction_type, amount in payment_rows:
+            key = method.value if isinstance(method, PaymentMethod) else str(method)
+            bucket = payment_totals.setdefault(
+                key, {"sales": "0.00", "refunds": "0.00", "net": "0.00"}
+            )
+            field = (
+                "refunds"
+                if transaction_type == TransactionType.refund
+                else "sales"
+            )
+            bucket[field] = self._money(amount)
+        for bucket in payment_totals.values():
+            bucket["net"] = self._money(
+                Decimal(bucket["sales"]) - Decimal(bucket["refunds"])
+            )
+        first_number = tx_rows[0].transaction_number if tx_rows else None
+        last_number = tx_rows[-1].transaction_number if tx_rows else None
+        last_tx_hash = tx_rows[-1].hash_chain if tx_rows else None
+
+        z_payload = {
+            "signature_version": 2,
+            "previous_hash": previous_hash,
+            "report_number": next_number,
+            "drawer_id": str(drawer.id),
+            "opened_at": self._iso(drawer.opened_at),
+            "closed_at": self._iso(drawer.closed_at),
+            "total_sales": self._money(total_sales),
+            "total_refunds": self._money(total_refunds),
+            "total_net": self._money(total_net),
+            "transaction_count": transaction_count,
+            "first_transaction_number": first_number,
+            "last_transaction_number": last_number,
+            "last_transaction_hash": last_tx_hash,
+            "payment_totals": payment_totals,
+            "is_regularization": is_regularization,
+            "regularization_reason": regularization_reason,
+        }
+        report_hash = self._hmac(z_payload)
 
         z_report = ZReport(
             report_number=next_number,
@@ -178,9 +366,14 @@ class FiscalService:
             total_sales=float(total_sales),
             total_refunds=float(total_refunds),
             total_net=float(total_net),
-            transaction_count=sale_count,
+            transaction_count=transaction_count,
+            first_transaction_number=first_number,
+            last_transaction_number=last_number,
+            last_transaction_hash=last_tx_hash,
+            payment_totals=payment_totals,
             hash=report_hash,
             previous_hash=previous_hash,
+            fiscal_signature_version=2,
             is_regularization=is_regularization,
             regularization_reason=regularization_reason,
         )
@@ -188,6 +381,90 @@ class FiscalService:
         await self.db.flush()
         await self.db.refresh(z_report)
         return z_report
+
+    async def verify_z_chain_integrity(self) -> dict:
+        """Verify the complete daily Z-report chain, including v1 history."""
+        reports = (
+            await self.db.execute(
+                select(ZReport).order_by(ZReport.report_number.asc())
+            )
+        ).scalars().all()
+        previous_hash = "0"
+        for report in reports:
+            version = int(report.fiscal_signature_version or 1)
+            if report.previous_hash != previous_hash:
+                return {
+                    "valid": False,
+                    "checked": report.report_number,
+                    "broken_at": report.report_number,
+                    "reason": "previous_hash_mismatch",
+                }
+            if version >= 2:
+                drawer = (
+                    await self.db.execute(
+                        select(CashDrawer).where(
+                            CashDrawer.id == report.cash_drawer_id
+                        )
+                    )
+                ).scalar_one_or_none()
+                if drawer is None:
+                    return {
+                        "valid": False,
+                        "checked": report.report_number,
+                        "broken_at": report.report_number,
+                        "reason": "drawer_missing",
+                    }
+                payload = {
+                    "signature_version": 2,
+                    "previous_hash": previous_hash,
+                    "report_number": report.report_number,
+                    "drawer_id": str(report.cash_drawer_id),
+                    "opened_at": self._iso(drawer.opened_at),
+                    "closed_at": self._iso(drawer.closed_at),
+                    "total_sales": self._money(report.total_sales),
+                    "total_refunds": self._money(report.total_refunds),
+                    "total_net": self._money(report.total_net),
+                    "transaction_count": report.transaction_count,
+                    "first_transaction_number": report.first_transaction_number,
+                    "last_transaction_number": report.last_transaction_number,
+                    "last_transaction_hash": report.last_transaction_hash,
+                    "payment_totals": report.payment_totals or {},
+                    "is_regularization": bool(report.is_regularization),
+                    "regularization_reason": report.regularization_reason,
+                }
+                expected = self._hmac(payload)
+            else:
+                legacy = (
+                    f"{report.report_number}|"
+                    f"{float(report.total_sales):.2f}|"
+                    f"{float(report.total_refunds):.2f}|"
+                    f"{float(report.total_net):.2f}|"
+                    f"{report.transaction_count}|"
+                    f"{previous_hash}"
+                )
+                if report.is_regularization:
+                    drawer = (
+                        await self.db.execute(
+                            select(CashDrawer).where(
+                                CashDrawer.id == report.cash_drawer_id
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if drawer is not None:
+                        legacy += (
+                            f"|REG|{drawer.opened_at.isoformat()}"
+                            f"|{drawer.closed_at.isoformat() if drawer.closed_at else ''}"
+                        )
+                expected = hashlib.sha256(legacy.encode("utf-8")).hexdigest()
+            if not hmac.compare_digest(report.hash, expected):
+                return {
+                    "valid": False,
+                    "checked": report.report_number,
+                    "broken_at": report.report_number,
+                    "reason": "signature_mismatch",
+                }
+            previous_hash = report.hash
+        return {"valid": True, "checked": len(reports)}
 
     # ------------------------------------------------------------------
     # Régularisation a posteriori (jour de caisse oublié)
@@ -303,7 +580,7 @@ class FiscalService:
 
     async def close_open_drawers(
         self,
-        user_id: uuid.UUID,
+        user_id: uuid.UUID | None,
         cashier_id: uuid.UUID | None = None,
     ) -> list[ZReport]:
         """Clôture toute caisse restée ouverte et génère son Z (fiscal seul).
@@ -314,6 +591,12 @@ class FiscalService:
         présent — comptage espèces non rejoué, écart non calculé — pour repartir
         sur une base saine avant une régularisation.
         """
+        dialect = self.db.bind.dialect.name if self.db.bind else "postgresql"
+        if dialect == "postgresql":
+            # Acquire before reading: several API replicas may run the same
+            # scheduler, but only one may observe and close a drawer.
+            await self.db.execute(text("SELECT pg_advisory_xact_lock(5252026)"))
+
         open_rows = (
             await self.db.execute(
                 select(CashDrawer).where(CashDrawer.is_open.is_(True))
@@ -356,7 +639,11 @@ class FiscalService:
             )
             await self.db.flush()
             reports.append(
-                await self.generate_z_report(drawer, user_id, cashier_id=cashier_id)
+                await self.generate_z_report(
+                    drawer,
+                    user_id or drawer.user_id,
+                    cashier_id=cashier_id or drawer.cashier_id,
+                )
             )
         return reports
 

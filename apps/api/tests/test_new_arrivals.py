@@ -97,8 +97,8 @@ async def test_generic_new_arrivals_returns_recently_displayed(session):
     now = datetime(2026, 4, 26, tzinfo=timezone.utc)
     cat = await _category(session)
     p_recent = await _product(session, cat, name="Recent", displayed_at=now - timedelta(days=2))
-    p_old = await _product(session, cat, name="Old", displayed_at=now - timedelta(days=30))
-    p_stock = await _product(session, cat, name="Stock", displayed_at=None)
+    await _product(session, cat, name="Old", displayed_at=now - timedelta(days=30))
+    await _product(session, cat, name="Stock", displayed_at=None)
 
     since = now - timedelta(days=LOOKBACK_DAYS)
     products = await _generic_new_arrivals(session, since=since)

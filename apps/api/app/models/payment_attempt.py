@@ -60,6 +60,11 @@ class PaymentAttempt(Base):
         nullable=True,
     )
     sumup_checkout_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Vintiz idempotence key forwarded to SumUp. It binds a paid checkout to
+    # the exact sale intent and prevents reusing a checkout on another basket.
+    foreign_transaction_id: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, index=True
+    )
     # SumUp Solo call + return — captured when the reader settles a CB attempt
     # (PAID or FAILED). Mirrors the Payment columns so a failed/cancelled try
     # that never produced a Transaction still records the terminal outcome:

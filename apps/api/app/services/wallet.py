@@ -40,7 +40,7 @@ from app.models.client import Client
 
 
 PRIMARY_COLOR = "#008678"  # Vintiz teal — single brand color now
-BENEFIT_TEXT = "1 € = 1 pt · 100 pts = chèque cadeau de 5 €"
+BENEFIT_TEXT = "1 € hors remise = 1 pt · 100 pts = chèque cadeau de 5 €"
 
 
 @dataclass
@@ -276,7 +276,7 @@ def build_apple_pkpass(payload: WalletPassPayload) -> bytes | None:
         manifest_bytes = _json.dumps(manifest, separators=(",", ":")).encode("utf-8")
 
         # 5) PKCS#7 detached signature of manifest.json
-        # noqa: cryptography >= 41
+        # cryptography >= 41
         builder = _pkcs7.PKCS7SignatureBuilder().set_data(manifest_bytes).add_signer(
             signing_cert, private_key, hashes.SHA256()
         ).add_certificate(wwdr_cert)

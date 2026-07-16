@@ -7,6 +7,7 @@ import PublicHeader from "@/components/PublicHeader";
 import Footer from "@/components/Footer";
 import { mediaUrl } from "@/lib/media";
 import { formatPriceCents } from "@/lib/format";
+import { accountFetch } from "@/lib/account-api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -148,7 +149,7 @@ export default function OnboardingPage() {
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/crm/account/onboarding`, {
+      const res = await accountFetch(`${API_URL}/api/crm/account/onboarding`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

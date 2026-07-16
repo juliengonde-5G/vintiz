@@ -1,14 +1,16 @@
 name: Deploy Production
 
 on:
-  # Deploiement automatique apres merge sur main
-  push:
+  # Déploiement automatique uniquement après succès du workflow CI sur main.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
   # Deploiement manuel depuis l'onglet Actions
   workflow_dispatch:
     inputs:
       first_run:
-        description: "Premier deploiement (migrations + seed data) ?"
+        description: "Base entièrement vide à initialiser (sans seed) ?"
         required: false
         default: "false"
         type: choice
@@ -23,8 +25,9 @@ jobs:
   deploy:
     name: Deploy to VPS
     runs-on: ubuntu-latest
-    # Ne se declenche qu'apres le CI
-    needs: []
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     environment: production
 
     steps:

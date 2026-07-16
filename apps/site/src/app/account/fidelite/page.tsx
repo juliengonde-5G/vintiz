@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import AccountShell from "@/components/account/AccountShell";
 import WalletCard from "@/components/WalletCard";
+import { accountFetch } from "@/lib/account-api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -14,11 +15,11 @@ interface LoyaltyPayload {
 const FAQ = [
   {
     q: "Comment je gagne des points ?",
-    a: "1 € dépensé en boutique = 1 point. Les points sont crédités automatiquement à chaque passage en caisse, dès que votre carte est identifiée.",
+    a: "1 € dépensé en boutique = 1 point sur les articles sans promotion, solde ni remise. Les points sont crédités automatiquement quand votre carte est identifiée.",
   },
   {
     q: "Comment j'utilise mes points ?",
-    a: "Tous les 100 points, un bon d'achat de 8 € est généré automatiquement et associé à votre carte. Il s'applique au prochain passage en caisse, valable 6 mois.",
+    a: "Tous les 100 points, un chèque cadeau de 5 € est généré automatiquement et associé à votre carte. Il est utilisable en caisse pendant 6 mois.",
   },
   {
     q: "Mes points expirent-ils ?",
@@ -48,7 +49,7 @@ export default function AccountFidelitePage() {
   }, []);
 
   const load = async (target: string) => {
-    const res = await fetch(
+    const res = await accountFetch(
       `${API_URL}/api/crm/clients/lookup?email=${encodeURIComponent(target)}`,
       { cache: "no-store" }
     );
@@ -100,7 +101,7 @@ export default function AccountFidelitePage() {
               </li>
               <li className="bg-white rounded-2xl p-4 shadow-sm">
                 <p className="text-3xl font-display text-vz-teal">100 pts</p>
-                <p className="text-sm text-gray-600">= bon d&apos;achat 8 €</p>
+                <p className="text-sm text-gray-600">= chèque cadeau 5 €</p>
               </li>
               <li className="bg-white rounded-2xl p-4 shadow-sm">
                 <p className="text-3xl font-display text-vz-teal">24 mois</p>

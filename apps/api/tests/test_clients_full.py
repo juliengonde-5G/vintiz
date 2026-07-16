@@ -23,5 +23,5 @@ async def test_full_endpoint_route_registered():
     """Route is wired into the router so deploy doesn't 404 it."""
     from app.main import app
 
-    paths = {r.path for r in app.routes if hasattr(r, "path")}
+    paths = set(app.openapi()["paths"])
     assert "/api/crm/clients/{client_id}/full" in paths

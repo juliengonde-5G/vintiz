@@ -1,6 +1,5 @@
 """Tests for the DGFiP fiscal export (P1-015)."""
 
-import uuid
 from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
 
@@ -173,7 +172,7 @@ async def _seed_minimal(session: AsyncSession) -> dict:
 
 @pytest.mark.anyio
 async def test_snapshot_includes_all_transactions_and_z_reports(session):
-    seed = await _seed_minimal(session)
+    await _seed_minimal(session)
     snap = await FiscalExportService(session).build_snapshot()
 
     assert snap["totals"]["transactions_count"] == 2

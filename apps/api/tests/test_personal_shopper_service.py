@@ -320,7 +320,7 @@ async def test_recommend_unknown_customer_raises_lookup(session):
 async def test_cold_start_returns_assumed_empty_state(session):
     """A profile-less customer gets the assumed empty state — NOT a generic
     newest-stock dump (PS 360 §3.2 / §5.2)."""
-    user = await _make_user(session)
+    await _make_user(session)
     client = await _make_client(session, email="newbie@example.com")
 
     await _make_product(session, name="Veste 1", category_name="Vestes")

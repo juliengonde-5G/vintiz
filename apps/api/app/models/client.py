@@ -147,6 +147,14 @@ class LoyaltyTransaction(Base):
     )
     points: Mapped[int] = mapped_column(Integer, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Exact fiscal source for idempotence and refund reversals. Nullable for
+    # the historical ledger; new sales/refunds always populate it.
+    transaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("transactions.id"), nullable=True, index=True
+    )
+    reversal_of_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("loyalty_transactions.id"), nullable=True
+    )
 
     account: Mapped["LoyaltyAccount"] = relationship(
         "LoyaltyAccount", back_populates="transactions", lazy="selectin"

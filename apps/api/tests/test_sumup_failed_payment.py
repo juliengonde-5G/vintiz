@@ -287,6 +287,8 @@ async def test_retry_endpoint_success(app_ctx, monkeypatch):
 @pytest.mark.anyio
 async def test_initiate_queues_failed_payment_on_recoverable_failure(app_ctx, monkeypatch):
     Session, _uid = app_ctx
+    monkeypatch.setenv("SUMUP_API_KEY", "sup_sk_test")
+    monkeypatch.setenv("SUMUP_MERCHANT_CODE", "MTEST")
 
     async def fake_cc(self, **kwargs):
         return {

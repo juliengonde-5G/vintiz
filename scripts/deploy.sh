@@ -4,8 +4,7 @@
 # ===========================================
 # Usage:
 #   ./scripts/deploy.sh                  Mise a jour normale
-#   ./scripts/deploy.sh --first-run      Premier deploiement (migrations + seed 300 produits)
-#   ./scripts/deploy.sh --test-products  Seed les 15 produits de test POS (TEST0001..TEST0015)
+#   ./scripts/deploy.sh --first-run      Alias compatible (migrations comme tout deploy)
 #   ./scripts/deploy.sh --rollback       Revenir a la version precedente
 #
 # Pre-requis sur le serveur:
@@ -36,16 +35,17 @@ step() { echo -e "\n${BLUE}[$1]${NC} $2"; }
 # Parse arguments
 FIRST_RUN=false
 ROLLBACK=false
-TEST_PRODUCTS=false
 for arg in "$@"; do
   case "$arg" in
     --first-run)     FIRST_RUN=true ;;
     --rollback)      ROLLBACK=true ;;
-    --test-products) TEST_PRODUCTS=true ;;
+    --test-products)
+      err "Option retiree : les scripts de seed de test ne sont pas livres en production."
+      exit 2
+      ;;
     --help|-h)
       echo "Usage: $0 [--first-run | --rollback | --test-products]"
-      echo "  --first-run      Lance migrations Alembic + seed data (300 produits, 50 clients)"
-      echo "  --test-products  Seed les 15 produits de test POS (TEST0001..TEST0015)"
+      echo "  --first-run      Alias compatible ; les migrations sont toujours appliquees"
       echo "  --rollback       Restaure la version du code precedant le dernier deploiement"
       exit 0
       ;;
@@ -162,18 +162,11 @@ docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down --remove-orphans
 log "Anciens conteneurs arretes"
 
 # ============================================================
-# 4. DEMARRAGE
+# 4. BASE, MIGRATIONS, DEMARRAGE
 # ============================================================
-step "4/6" "Demarrage des services..."
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
-log "Conteneurs demarres"
+step "4/6" "Demarrage de la base et migrations Alembic..."
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d db redis
 
-# ============================================================
-# 5. HEALTH CHECKS
-# ============================================================
-step "5/6" "Verification de sante des services..."
-
-# Attente PostgreSQL
 echo "  Attente PostgreSQL (max 60s)..."
 DB_OK=false
 for i in $(seq 1 20); do
@@ -186,21 +179,36 @@ done
 if ! $DB_OK; then
   err "PostgreSQL: TIMEOUT — verifier les logs"
   docker logs vintiz-db --tail 20
-  warn "Pour rollback: ./scripts/deploy.sh --rollback"
   exit 1
 fi
 log "PostgreSQL: OK"
 
-# Migrations Alembic (a chaque deploy pour appliquer les nouvelles)
-echo "  Application des migrations Alembic..."
-if docker exec vintiz-api python -m alembic upgrade head; then
+# Run migrations in a one-shot container before the API starts. The API has a
+# production boot guard and intentionally refuses a stale schema.
+if $FIRST_RUN; then
+  if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" run --rm api \
+      python scripts/bootstrap_database.py --confirm-empty; then
+    log "Schema initial vide cree sans donnees de demonstration"
+  else
+    err "Bootstrap refuse ou echoue — verifiez que la base est vraiment vide"
+    exit 1
+  fi
+fi
+if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" run --rm api \
+    python -m alembic upgrade head; then
   log "Migrations: OK"
 else
-  err "Migrations echouees"
-  docker logs vintiz-api --tail 20
-  warn "Pour rollback: ./scripts/deploy.sh --rollback"
+  err "Migrations echouees — API non demarree"
   exit 1
 fi
+
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
+log "Conteneurs demarres sur le schema migre"
+
+# ============================================================
+# 5. HEALTH CHECKS
+# ============================================================
+step "5/6" "Verification de sante des services..."
 
 # Attente API
 echo "  Attente API (max 120s)..."
@@ -284,38 +292,10 @@ fi
 step "7/7" "Etat des services:"
 docker compose -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
-# ============================================================
-# PREMIER DEPLOIEMENT : SEED DATA
-# ============================================================
 if $FIRST_RUN; then
-  echo ""
-  echo "  ---- Initialisation des donnees ----"
-  echo "  Injection seed data (300 produits, 50 clients, 200 transactions)..."
-  if docker exec vintiz-api python scripts/seed_data.py; then
-    log "Seed data: OK — admin/vintiz2026"
-  else
-    warn "Seed partiel. Relancer manuellement:"
-    warn "  docker exec vintiz-api python scripts/seed_data.py"
-  fi
-fi
-
-# ============================================================
-# TEST PRODUCTS : 15 articles TEST0001..TEST0015 pour la mise en route materielle
-# ============================================================
-if $TEST_PRODUCTS; then
-  echo ""
-  echo "  ---- Seed produits de test POS ----"
-  echo "  Creation/mise a jour des 15 produits TEST0001..TEST0015..."
-  if docker exec vintiz-api python scripts/seed_test_products.py; then
-    log "Produits de test: OK"
-    echo ""
-    echo "  Les codes-barres scannables sont dans:"
-    echo "    docs/POS_TEST_BARCODES.md + docs/test_barcodes/*.png"
-    echo "  Afficher sur un 2e ecran (ou imprimer) et scanner depuis l'iPad."
-  else
-    warn "Seed test produits echoue. Relancer manuellement:"
-    warn "  docker exec vintiz-api python scripts/seed_test_products.py"
-  fi
+  warn "--first-run ne cree aucun compte ni donnee de demonstration."
+  warn "Creez le premier manager avec :"
+  warn "  docker compose -f $COMPOSE_FILE run --rm api python scripts/create_manager.py --username <nom> --email <email>"
 fi
 
 # ============================================================

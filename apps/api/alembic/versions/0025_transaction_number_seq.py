@@ -31,7 +31,7 @@ def upgrade() -> None:
     ).fetchone()
     current_max = int(max_row[0]) if max_row else 0
     conn.execute(sa.text(
-        f"SELECT setval('transaction_number_seq', GREATEST(:m, 1), false)"
+        "SELECT setval('transaction_number_seq', GREATEST(:m, 1), false)"
     ), {"m": current_max + 1})
 
     # Wire the sequence as the column default so INSERT without an explicit

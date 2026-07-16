@@ -1,177 +1,173 @@
-# Conformité NF525 — Vintiz POS
+# Dossier de préparation NF525 — Vintiz POS
 
-> **Statut** : implémentation technique conforme. L'attestation éditeur (§4)
-> doit être signée par Vintiz avant ouverture publique.
-> **Version logiciel** : **1.0.0** (release de production).
-> **Mise en production / ouverture publique** : **3 juin 2026, 10h00**
-> (boutique Vintiz Vernon, 6 rue Saint-Jacques, 27200 Vernon).
-> **Mise à jour du document** : 3 juin 2026.
+> **Statut au 15 juillet 2026 : préparation technique renforcée, non certifiée.**
+> **Version fiscale candidate : 1.1.0** — signature fiscale v2, révision DB 0072.
+> Ce document ne constitue ni un certificat NF525, ni une attestation éditeur.
 
-> ⚠️ **À faire avant la première vente du 03/06 10h00** : signer l'attestation
-> éditeur (§4) en y reportant la version `1.0.0` et la date de
-> commercialisation `03/06/2026`, puis l'archiver dans le dossier fiscal.
+## 1. Position réglementaire
 
----
+Le 3° bis du I de l'article 286 du CGI impose aux logiciels de caisse concernés
+quatre qualités : inaltérabilité, sécurisation, conservation et archivage des
+données de règlement.
 
-## 1. Cadre légal
+La doctrine administrative publiée le 25 mars 2026 admet de nouveau deux modes
+de preuve : certificat d'un organisme accrédité ou attestation individuelle de
+l'éditeur. Elle précise toutefois qu'un logiciel développé en interne par
+l'assujetti pour ses propres besoins doit être certifié par un organisme
+accrédité, sauf activité réelle d'édition de logiciels ou de systèmes de caisse.
 
-La loi française anti-fraude TVA (article 88 de la loi de finances 2016, BOI-TVA-DECLA-30-10-30, décret 2016-1138) impose que **tout logiciel d'encaissement utilisé pour enregistrer des paiements de clients particuliers** soit :
+Pour Vintiz, boutique utilisatrice et détentrice du code source, la position
+prudente retenue est donc : **certification externe obligatoire avant de
+revendiquer la conformité**, sauf avis juridique documenté établissant que
+l'exception d'activité réelle d'édition est applicable.
 
-- **Inaltérable** : aucune transaction ne peut être modifiée ni supprimée après enregistrement.
-- **Sécurisé** : les données sont protégées contre toute altération.
-- **Conservé** : les données fiscales doivent être conservées 6 ans.
-- **Archivable** : les données doivent pouvoir être exportées vers les services fiscaux sur demande.
+Sources officielles :
 
-Deux modes de preuve possibles :
+- [BOI-TVA-DECLA-30-10-30 du 25 mars 2026](https://bofip.impots.gouv.fr/bofip/10691-PGP.html/identifiant%3DBOI-TVA-DECLA-30-10-30-20260325)
+- [Article 286 du CGI](https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000051203262)
+- [Information Bercy sur les logiciels de caisse](https://www.economie.gouv.fr/entreprises/gerer-son-entreprise-au-quotidien/gerer-sa-comptabilite-et-ses-demarches/ce-quil-faut-savoir-sur-la-certification-des-logiciels-de-caisse)
 
-1. **Certification** par un organisme accrédité (LNE, Infocert) — coûteux.
-2. **Attestation éditeur** (article 286, I-3° bis du CGI) — déclaration sur l'honneur de l'éditeur du logiciel, opposable aux services fiscaux. C'est la voie retenue par Vintiz.
+## 2. Périmètre fiscal candidat
 
----
+Le périmètre à présenter au certificateur comprend :
 
-## 2. Implémentation technique Vintiz
+- création des ventes, paiements et remboursements sous `/api/pos` ;
+- paiements CB SumUp et rapprochement des tentatives ;
+- tickets, factures, lignes et moyens de paiement ;
+- tiroirs de caisse et clôtures Z ;
+- clôtures mensuelles et annuelles ;
+- export fiscal et archives JSON gzip ;
+- migration 0072 et triggers PostgreSQL d'inaltérabilité ;
+- clé `FISCAL_SIGNING_KEY` et sa procédure de conservation.
 
-### 2.1 Inaltérabilité — chaînage SHA-256
+Les fonctions CRM, inventaire et IA sont hors périmètre sauf lorsqu'elles
+fournissent une donnée figée dans une vente (remise, coupon, article, client ou
+moyen de paiement).
 
-Chaque `Transaction` (`apps/api/app/models/pos.py`) porte un champ `hash_chain: String(64)` calculé par `FiscalService.sign_transaction` (`apps/api/app/services/fiscal.py`) :
+## 3. Couverture technique
 
-```
-hash = SHA-256( transaction_number | total_ttc | created_at | previous_hash )
-```
+### 3.1 Inaltérabilité et corrections
 
-où `previous_hash` est le `hash_chain` de la transaction précédente (ou `"0"` pour la première transaction de la chaîne — l'ancrage genesis).
+Chaque vente ou remboursement reçoit une signature HMAC-SHA256 v2 calculée par
+`FiscalService`. Le payload canonique contient notamment :
 
-**Effet** : modifier rétroactivement n'importe quel champ d'une transaction passée invalide la chaîne entière à partir de cette transaction. La méthode `FiscalService.verify_chain_integrity` détecte ces ruptures.
+- numéro, type, date, opérateur, cashier, référence idempotente et vente
+  d'origine en cas de remboursement ;
+- totaux HT, TVA et TTC, données de facture et modèle de ticket ;
+- chaque ligne : article, libellé figé, quantité, prix, remise, total,
+  caractère promotionnel et taux de TVA ;
+- chaque paiement : méthode, montant appliqué, montant remis en espèces et
+  références SumUp masquées ;
+- le hash précédent et la version de signature.
 
-### 2.2 Inaltérabilité — Z reports
+La clé HMAC fiscale est indépendante de la clé JWT. En production, l'API refuse
+de démarrer sans `FISCAL_SIGNING_KEY` stable d'au moins 32 caractères.
 
-Les `ZReport` portent les champs `hash` et `previous_hash`. Le `hash` est calculé sur :
+La migration 0072 installe des triggers PostgreSQL qui interdisent :
 
-```
-hash = SHA-256( report_number | total_sales | total_refunds | total_net | tx_count | previous_hash )
-```
+- modification ou suppression du cœur d'une transaction signée ;
+- ajout, modification ou suppression de ses lignes et paiements ;
+- modification ou suppression des totaux et hashes Z ;
+- modification des périodes de tiroir déjà clôturées ;
+- modification ou suppression d'une clôture fiscale périodique.
 
-Le scellement annuel (clôture exercice fiscal) consiste à archiver le dernier `ZReport` de la période et son hash hors-DB (PDF signé, bucket S3 immuable).
+Les corrections se font par une nouvelle transaction de remboursement liée à
+la vente d'origine, jamais par réécriture de la vente.
 
-### 2.3 Sécurisation
+### 3.2 Sécurisation des encaissements
 
-- **Authentification** par JWT (manager) + PIN cashier 4 chiffres bcrypt-hashé (P1-002 / P1-014). Tous les événements POS portent `cashier_id` traceable.
-- **Audit log** automatique sur toute mutation des modèles fiscaux (`Transaction`, `ZReport`, `CashDrawer`, etc.) via SQLAlchemy event listeners (P1-013 — `apps/api/app/services/audit.py`).
-- **Hash redaction** dans les logs : les valeurs `pin_hash`/`password_hash` n'apparaissent jamais en clair dans `audit_logs.data`.
-- **Connexions HTTPS** uniquement en production (Caddy reverse proxy).
-- **Backup PostgreSQL** quotidien (`scripts/backup.sh`), rétention minimum 90 jours, test de restauration mensuel.
+- Les écritures vente/remboursement sont sérialisées par verrou transactionnel
+  PostgreSQL ; le numéro est alloué par `MAX+1` sous ce verrou, sans numéro
+  consommé lors d'un rollback.
+- Une vente CB n'est créée que si SumUp confirme de nouveau `PAID`, avec le même
+  checkout, le même montant et la même référence `client_uuid` que la tentative
+  serveur verrouillée.
+- Les informations CB envoyées par le navigateur sont remplacées par la réponse
+  SumUp. Une clé SumUp de test est refusée en environnement de production.
+- Un remboursement CB local est annulé en base si le remboursement SumUp n'est
+  pas confirmé.
+- Les secrets, PAN et CVV sont expurgés des diagnostics de paiement.
 
-### 2.4 Conservation 6 ans
+### 3.3 Clôtures et compteurs
 
-- Schéma OLTP retient toutes les transactions et Z reports indéfiniment (pas de purge automatique).
-- La purge RGPD (P1-007) anonymise `client_id` à NULL mais **conserve la transaction**, son montant et son hash chain — la chaîne fiscale n'est pas rompue par l'exercice du droit à l'oubli.
+- Clôture journalière : rapport Z à la fermeture du tiroir ; une garde à 23 h 59
+  ferme et scelle toute caisse oubliée, en signalant l'absence de comptage.
+- Clôture mensuelle : le 1er à 00 h 15, sur le mois civil précédent.
+- Clôture annuelle : le 1er janvier à 00 h 30, sur l'année précédente.
 
-### 2.5 Archivage / export DGFiP — endpoint `/api/admin/fiscal-export`
+Les clôtures périodiques enregistrent un grand total de période et un total
+perpétuel (ventes, remboursements, net et nombre de transactions). Elles sont
+chaînées et signées ; le total perpétuel ne revient jamais à zéro dans une même
+installation.
 
-L'export est généré par `FiscalExportService` (`apps/api/app/services/fiscal_export.py`).
+### 3.4 Conservation et archivage
 
-**Endpoint** :
+Les transactions élémentaires, lignes, paiements, Z et clôtures sont conservés
+sans purge fiscale. Une suppression RGPD dissocie ou anonymise l'identité du
+client sans supprimer l'écriture de caisse.
 
-```
-GET /api/admin/fiscal-export?from=YYYY-MM-DD&to=YYYY-MM-DD&format=xml|json
-Headers:  Authorization: Bearer <jwt-manager>
-```
+`POST /api/admin/fiscal-closures` crée manuellement une clôture ; les crons
+mensuel et annuel utilisent le même service. Chaque clôture embarque :
 
-**Réponse** : fichier téléchargeable (`Content-Disposition: attachment`).
+- un snapshot complet JSON en format ouvert, accompagné d'une notice française ;
+- les transactions, lignes, paiements et Z de la période ;
+- les contrôles d'intégrité des chaînes ;
+- les grands totaux et le total perpétuel ;
+- un SHA-256 de l'archive gzip et un manifest HMAC chaîné ;
+- la version logicielle et les bornes de numérotation.
 
-**Contenu** (format XML par défaut, JSON équivalent disponible) :
+Endpoints manager :
 
-- Métadonnées : version, format (`vintiz-nf525-export`), nom du marchand, période, horodatage de génération.
-- Compteurs agrégés (ventes, refunds, transactions, Z reports).
-- Transactions ordonnées par `created_at` ascendant (= ordre de la chaîne) avec :
-  - Numéro, type (sale/refund/void), date, identifiants (cashier_id, user_id, client_id).
-  - Pour les refunds : `original_transaction_id` + `refund_reason`.
-  - Totaux HT / TVA / TTC + `hash_chain`.
-  - Lignes d'articles (product_id, quantité, prix unitaire, remise, total ligne).
-  - Paiements (méthode, montant).
-- Z reports avec leur chaîne (`hash` et `previous_hash`).
-
-**Verification post-export** : un auditeur peut recalculer chaque `hash` à partir des champs exportés et le comparer au `hash_chain` stocké, confirmant l'intégrité de la séquence.
-
----
-
-## 3. Tests automatisés
-
-| Fichier | Couverture |
-|---|---|
-| `apps/api/tests/test_fiscal.py` | Génération du hash chain, intégrité (chaîne valide), détection d'un hash falsifié, hash Z report. |
-| `apps/api/tests/test_nf525_chain.py` | Modification de `total_ttc`, `created_at`, `transaction_number` détectée. Attaque par insertion détectée. Chaîne longue (100 transactions) vérifiée. Format hash 64 hex. Ancrage genesis = `"0"`. |
-| `apps/api/tests/test_audit_service.py` | Toute modification/création/suppression d'une transaction est tracée dans `audit_logs`. |
-
-Critère d'acceptation P1-001 (V1) : *"un pytest test_nf525.py vérifie que toute modification d'une transaction passée invalide la chaîne"* → **satisfait**.
-
----
-
-## 4. Attestation éditeur — modèle à signer
-
-> Document à imprimer sur papier en-tête Vintiz, signer par le représentant légal (Julien Gondé), conserver dans le dossier fiscal et fournir aux services fiscaux sur demande.
-
-```
-ATTESTATION INDIVIDUELLE DE LOGICIEL DE CAISSE
-(article 286, I-3° bis du Code général des impôts)
-
-Je soussigné(e) [Nom Prénom],
-agissant en qualité de [fonction] de la société Vintiz SAS,
-sise [adresse],
-SIREN [numéro],
-
-ATTESTE que le logiciel "Vintiz POS",
-version v1.0.0, commercialisé à compter du 03/06/2026,
-
-satisfait aux conditions d'inaltérabilité, de sécurisation, de conservation et
-d'archivage des données prévues par les articles 88 de la loi 2015-1785 du 29
-décembre 2015 et 286, I-3° bis du CGI.
-
-Cette attestation porte sur les fonctions de :
-  - Enregistrement des opérations de paiement (caisse).
-  - Conservation des données pendant 6 ans.
-  - Sécurisation par chaînage SHA-256 des transactions.
-  - Export fiscal sur demande (endpoint /api/admin/fiscal-export).
-
-Fait à [ville], le [date].
-
-Signature et cachet de l'éditeur :
+```text
+GET  /api/admin/fiscal-closures
+GET  /api/admin/fiscal-closures/integrity
+POST /api/admin/fiscal-closures
+GET  /api/admin/fiscal-closures/{id}/archive
+GET  /api/admin/fiscal-export?from=YYYY-MM-DD&to=YYYY-MM-DD&format=json|xml
 ```
 
-**Conserver** : exemplaire signé + journal de version du logiciel (lien Git tag) + tests automatisés (sortie pytest archivée à chaque release).
+Les données et preuves doivent être conservées au moins six ans. L'archive
+applicative ne remplace pas une sauvegarde : l'exploitant doit dupliquer chaque
+archive annuelle sur un support externe protégé, tester sa lecture et conserver
+la clé fiscale selon une procédure d'accès restreint.
 
----
+## 4. Déploiement et gestion des versions
 
-## 5. Procédure de renouvellement
+- La production applique Alembic avant le démarrage de l'API.
+- L'API refuse une base dont `alembic_version` n'est pas `0072`.
+- `/api/admin/create-tables` est désactivé en production.
+- Une base réellement vide est initialisée uniquement par
+  `scripts/bootstrap_database.py --confirm-empty`, sans compte par défaut ni
+  données de démonstration, puis migrée vers la révision courante.
+- `/api/health` expose la version applicative, la révision DB attendue, la
+  version de signature et le SHA de build.
 
-Lors de toute évolution touchant le moteur fiscal (modèle `Transaction`, `ZReport`, service `FiscalService`, service `FiscalExportService`) :
+Toute évolution touchant le payload signé, les triggers, la numérotation, les
+clôtures, les remboursements ou l'archivage est une évolution fiscale majeure.
+Elle impose une revue avec l'organisme certificateur avant déploiement et peut
+nécessiter un nouveau certificat.
 
-1. Lancer la suite de tests (`apps/api/tests/test_fiscal.py`, `test_nf525_chain.py`, `test_fiscal_export.py`).
-2. Mettre à jour la version du logiciel + date dans l'attestation §4.
-3. Re-signer l'attestation.
-4. Régénérer un export DGFiP pour archive de référence (peut servir de "spécimen" en cas de contrôle).
+## 5. Vérifications avant candidature
 
----
+1. Exécuter la suite Python, le lint, les migrations sur base vide et les deux
+   builds Next.js sans tolérance d'erreur.
+2. Réaliser un jeu d'essai documenté : espèces avec rendu, CB, paiement mixte,
+   coupon fidélité, facture, remboursement partiel et total, caisse oubliée.
+3. Prouver qu'une altération SQL d'une vente, ligne, paiement, Z ou clôture est
+   refusée par PostgreSQL et/ou détectée par les contrôles de chaîne.
+4. Télécharger une archive annuelle, vérifier son SHA-256, la décompresser sur
+   un poste sans Vintiz et rapprocher ses totaux du Z et de la comptabilité.
+5. Tester une restauration complète de sauvegarde et conserver le procès-verbal.
+6. Figer la candidate dans un tag Git, produire la nomenclature des composants
+   et transmettre le dossier à un organisme accrédité.
 
-## 6. Version & mise en production
+## 6. Réserves bloquantes avant toute mention « conforme NF525 »
 
-| Élément | Valeur |
-|---|---|
-| Version logiciel certifiée | **v1.0.0** |
-| Date de commercialisation / mise en production | **03/06/2026, 10h00** |
-| Tag Git de référence | `v1.0.0` (commit figé sur `main`) |
-| Périmètre fiscal | Caisse POS (`/api/pos/*`), Z reports, export DGFiP |
-| Première chaîne de transactions | démarre à l'ouverture après `go_live_reset.py` (base opérationnelle vidée, inventaire conservé) |
+- certificat externe non obtenu à ce jour ;
+- exploitation réelle des clés, sauvegardes et archives externes à éprouver ;
+- recette terrain SumUp/TPE/imprimantes à signer par la responsable boutique ;
+- procédures d'incident, restauration et changement de clé à faire valider par
+  le certificateur.
 
-> Le `go_live_reset.py` exécuté avant l'ouverture remet les compteurs à zéro
-> (`transaction_number`, `report_number`) et démarre une chaîne fiscale propre
-> ancrée sur le genesis `"0"`. Aucune transaction de test/démo ne subsiste dans
-> la chaîne de production — point vérifiable lors d'un contrôle.
-
----
-
-## 7. Limites connues
-
-- L'attestation §4 doit être signée **avant ouverture publique** de la boutique Vernon. Cette tâche est humaine, hors périmètre Claude Code.
-- Le scellement annuel cryptographique externe (timestamping RFC 3161 sur le dernier hash de l'exercice) n'est pas implémenté. Il sera nécessaire si la chaîne dépasse plusieurs années sans audit ; pour la phase de lancement, le backup DB quotidien + l'export annuel suffisent.
-- Le mode "consignation" (bons de réservation 48h, P4-005) n'est pas couvert par cette attestation : aucun paiement n'est enregistré, donc pas de portée fiscale.
+La mention correcte jusqu'à levée de ces réserves est :
+**« version candidate à la certification NF525 »**.

@@ -67,7 +67,7 @@ class RefundService:
 
     async def _load_original(self, original_id: uuid.UUID) -> Transaction:
         result = await self.db.execute(
-            select(Transaction).where(Transaction.id == original_id)
+            select(Transaction).where(Transaction.id == original_id).with_for_update()
         )
         original = result.scalar_one_or_none()
         if original is None:
@@ -153,6 +153,23 @@ class RefundService:
             if existing is not None:
                 return existing
 
+        dialect = self.db.bind.dialect.name if self.db.bind else "postgresql"
+        if dialect == "postgresql":
+            from sqlalchemy import text
+
+            await self.db.execute(text("SELECT pg_advisory_xact_lock(5252026)"))
+            if client_uuid is not None:
+                existing = (
+                    await self.db.execute(
+                        select(Transaction).where(
+                            Transaction.client_uuid == client_uuid,
+                            Transaction.transaction_type == TransactionType.refund,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existing is not None:
+                    return existing
+
         original = await self._load_original(original_tx_id)
 
         original_items: dict[uuid.UUID, TransactionItem] = {
@@ -198,19 +215,11 @@ class RefundService:
         if method == "avoir" and original.client_id is None:
             raise RefundError("Avoir refund requires the original sale to have a client")
 
-        # Allocate the refund's transaction number (same dialect-safe logic as sale).
-        from sqlalchemy import text
-        dialect = self.db.bind.dialect.name if self.db.bind else "postgresql"
-        if dialect == "sqlite":
-            max_num = await self.db.execute(
-                select(func.coalesce(func.max(Transaction.transaction_number), 0))
-            )
-            next_number = (max_num.scalar_one() or 0) + 1
-        else:
-            seq_result = await self.db.execute(
-                text("SELECT nextval('transaction_number_seq')")
-            )
-            next_number = seq_result.scalar_one()
+        # Shared fiscal lock + MAX+1 gives a rollback-safe, gap-free counter.
+        max_num = await self.db.execute(
+            select(func.coalesce(func.max(Transaction.transaction_number), 0))
+        )
+        next_number = (max_num.scalar_one() or 0) + 1
 
         total_ht = (refund_amount_ttc / Decimal("1.20")).quantize(Decimal("0.01"))
         total_tva = (refund_amount_ttc - total_ht).quantize(Decimal("0.01"))
@@ -243,11 +252,14 @@ class RefundService:
                     unit_price=float(original_item.unit_price),
                     discount_percent=float(original_item.discount_percent or 0),
                     line_total=float(line_total),
+                    promotional=bool(original_item.promotional),
                 )
             )
             if original_item.product_id is not None:
                 product_result = await self.db.execute(
-                    select(Product).where(Product.id == original_item.product_id)
+                    select(Product)
+                    .where(Product.id == original_item.product_id)
+                    .with_for_update()
                 )
                 product = product_result.scalar_one_or_none()
                 if product is not None and product.status == ProductStatus.sold:
@@ -256,7 +268,9 @@ class RefundService:
 
         if method == "avoir":
             client_result = await self.db.execute(
-                select(Client).where(Client.id == original.client_id)
+                select(Client)
+                .where(Client.id == original.client_id)
+                .with_for_update()
             )
             client = client_result.scalar_one()
             client.avoir_credit = float(
@@ -281,9 +295,160 @@ class RefundService:
                 )
             )
 
+        await self._reverse_loyalty_for_refund(original, refund_tx)
         await self.db.flush()
         await self.db.refresh(refund_tx)
         return refund_tx
+
+    async def _reverse_loyalty_for_refund(
+        self,
+        original: Transaction,
+        refund_tx: Transaction,
+    ) -> None:
+        """Reverse exactly the points no longer justified after this refund.
+
+        The calculation is cumulative across partial refunds, so cent/euro
+        rounding cannot be exploited by splitting a return. Unused milestone
+        vouchers that are no longer earned are disabled. If one was already
+        spent, a points debt postpones the next voucher instead of silently
+        granting the benefit twice.
+        """
+        if original.client_id is None:
+            return
+
+        from app.models.client import (
+            LoyaltyAccount,
+            LoyaltyTransaction,
+            LoyaltyTxType,
+        )
+        from app.models.coupon import Coupon, CouponSource
+        from app.services.loyalty_config import get_earning_config
+        from app.services.offers_engine import points_to_credit
+
+        account = (
+            await self.db.execute(
+                select(LoyaltyAccount)
+                .where(LoyaltyAccount.client_id == original.client_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if account is None:
+            return
+
+        earn = (
+            await self.db.execute(
+                select(LoyaltyTransaction)
+                .where(
+                    LoyaltyTransaction.account_id == account.id,
+                    LoyaltyTransaction.tx_type == LoyaltyTxType.earn,
+                    (
+                        (LoyaltyTransaction.transaction_id == original.id)
+                        | (
+                            (LoyaltyTransaction.transaction_id.is_(None))
+                            & (
+                                LoyaltyTransaction.description
+                                == f"Sale #{original.transaction_number}"
+                            )
+                        )
+                    ),
+                )
+                .order_by(LoyaltyTransaction.created_at.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if earn is None or earn.points <= 0:
+            return
+
+        # Flush refund items so the cumulative SQL includes this refund.
+        await self.db.flush()
+        eligible_item_ids = [
+            item.id for item in (original.items or []) if not item.promotional
+        ]
+        eligible_original = sum(
+            Decimal(str(item.line_total or 0))
+            for item in (original.items or [])
+            if not item.promotional
+        )
+        refunded_eligible = Decimal("0")
+        if eligible_item_ids:
+            refunded_result = await self.db.execute(
+                select(func.coalesce(func.sum(TransactionItem.line_total), 0))
+                .join(Transaction, TransactionItem.transaction_id == Transaction.id)
+                .where(
+                    Transaction.original_transaction_id == original.id,
+                    Transaction.transaction_type == TransactionType.refund,
+                    TransactionItem.original_transaction_item_id.in_(eligible_item_ids),
+                )
+            )
+            refunded_eligible = Decimal(str(refunded_result.scalar_one() or 0))
+
+        cfg = await get_earning_config(self.db)
+        remaining_eligible = max(Decimal("0"), eligible_original - refunded_eligible)
+        justified_points = points_to_credit(
+            float(remaining_eligible), cfg.euro_per_point
+        )
+        total_should_reverse = max(0, int(earn.points) - justified_points)
+        reversed_result = await self.db.execute(
+            select(func.coalesce(func.sum(LoyaltyTransaction.points), 0)).where(
+                LoyaltyTransaction.reversal_of_id == earn.id,
+                LoyaltyTransaction.tx_type == LoyaltyTxType.adjust,
+            )
+        )
+        already_reversed = abs(int(reversed_result.scalar_one() or 0))
+        to_reverse = max(0, total_should_reverse - already_reversed)
+        if to_reverse <= 0:
+            return
+
+        before = int(account.points or 0)
+        account.points = before - to_reverse
+        self.db.add(LoyaltyTransaction(
+            account_id=account.id,
+            tx_type=LoyaltyTxType.adjust,
+            points=-to_reverse,
+            description=f"Retour #{refund_tx.transaction_number}",
+            transaction_id=refund_tx.id,
+            reversal_of_id=earn.id,
+        ))
+
+        crossed_down = max(0, before) // cfg.voucher_threshold - max(
+            0, account.points
+        ) // cfg.voucher_threshold
+        if crossed_down <= 0:
+            return
+        revocable = (
+            await self.db.execute(
+                select(Coupon)
+                .where(
+                    Coupon.client_id == original.client_id,
+                    Coupon.source == CouponSource.loyalty_milestone,
+                    Coupon.is_active.is_(True),
+                    Coupon.redeemed_at.is_(None),
+                )
+                .order_by(Coupon.created_at.desc())
+                .limit(crossed_down)
+                .with_for_update()
+            )
+        ).scalars().all()
+        for coupon in revocable:
+            coupon.is_active = False
+            suffix = f"Annulé suite retour #{refund_tx.transaction_number}"
+            coupon.notes = f"{coupon.notes or ''} · {suffix}".strip(" ·")
+
+        spent_debt = crossed_down - len(revocable)
+        if spent_debt > 0:
+            debt = spent_debt * cfg.voucher_threshold
+            account.points -= debt
+            self.db.add(LoyaltyTransaction(
+                account_id=account.id,
+                tx_type=LoyaltyTxType.adjust,
+                points=-debt,
+                description=(
+                    f"Dette bon fidélité déjà utilisé — retour "
+                    f"#{refund_tx.transaction_number}"
+                ),
+                transaction_id=refund_tx.id,
+                reversal_of_id=earn.id,
+            ))
 
     # ------------------------------------------------------------------
     # Avoir history (read-only)

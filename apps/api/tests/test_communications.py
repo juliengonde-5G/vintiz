@@ -1,6 +1,5 @@
 """Tests for the communications service (templates + log + seed)."""
 
-import uuid
 
 import pytest
 from sqlalchemy import select

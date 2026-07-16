@@ -441,7 +441,8 @@ client (cf. `apps/web/src/components/pos/ClientCompanion.tsx`,
 auto-rafraîchi avec un debounce 300 ms à chaque mutation panier) :
 
 - `loyalty.points_current` + `would_earn` (1 € = 1 pt) +
-  `can_redeem_max_cents` (1 pt = 0,10 €, plafond 50 % du panier).
+  `can_redeem_max_cents` reste à `0` pour compatibilité : les points ne sont
+  utilisables qu'au travers du chèque cadeau de 5 € généré par palier de 100 points.
 - `suggestions` : 3 produits issus du mapping `CATEGORY_COMPLEMENTS`
   (robe → accessoires/chaussures/sac/veste, jean → chemise/pull/
   ceinture/chaussures, etc.), rankés par `trend_score`.

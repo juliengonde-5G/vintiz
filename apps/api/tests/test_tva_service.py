@@ -17,7 +17,6 @@ import pytest
 from app.services.tva_service import (
     DEFAULT_TVA_RATE,
     SUPPORTED_TVA_RATES,
-    LineTotals,
     aggregate_totals,
     compute_line_totals,
     is_supported_rate,

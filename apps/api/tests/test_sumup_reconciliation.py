@@ -28,7 +28,7 @@ from app.models.pos import (
     TransactionItem,
     TransactionType,
 )
-from app.models.product import Category, Product, ProductPhoto, ProductStatus
+from app.models.product import Category, Product, ProductPhoto
 from app.models.user import User
 from app.services.sumup_reconciliation import (
     SumUpReconciliationService,

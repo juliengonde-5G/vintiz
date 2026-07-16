@@ -34,11 +34,12 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  searchParams?: { categorie?: string };
+  searchParams?: Promise<{ categorie?: string }>;
 }
 
-export default function ProductsEnPage({ searchParams }: PageProps) {
-  const requested = searchParams?.categorie?.toLowerCase();
+export default async function ProductsEnPage({ searchParams }: PageProps) {
+  const query = await searchParams;
+  const requested = query?.categorie?.toLowerCase();
 
   const allCategories = Array.from(
     new Set(PRODUCTS_EN.map((p) => p.category)),

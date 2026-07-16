@@ -12,6 +12,7 @@ Persisted as 3 rows in ``app_settings`` (seeded by migration 0031).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,23 +48,21 @@ class LoyaltyConfig:
             "window_end": self.window_end,
         }
 
-    def effective_mode(self, today: "_date | None" = None) -> str:
+    def effective_mode(self, today: date | None = None) -> str:
         """Return the active mode given the current date.
 
         Outside the [window_start, window_end] range, fall back to ``free``
         (default mode). When no window is set, the configured mode applies
         unconditionally.
         """
-        from datetime import date as _date_
-
         if not self.window_start or not self.window_end:
             return self.mode
         try:
-            start = _date_.fromisoformat(self.window_start)
-            end = _date_.fromisoformat(self.window_end)
+            start = date.fromisoformat(self.window_start)
+            end = date.fromisoformat(self.window_end)
         except ValueError:
             return self.mode
-        d = today or _date_.today()
+        d = today or date.today()
         if start <= d <= end:
             return self.mode
         return "free"
@@ -119,7 +118,7 @@ KEY_VOUCHER_THRESHOLD = "loyalty_voucher_threshold"    # points per voucher
 KEY_VOUCHER_VALID_DAYS = "loyalty_voucher_valid_days"  # voucher validity (days)
 KEY_POINTS_EXPIRY_DAYS = "loyalty_points_expiry_days"  # points validity (days)
 
-# Defaults = règles fidélité boutique : 1 € = 1 pt, 100 pts = chèque de 5 €.
+# Defaults = promesse boutique : 1 € = 1 pt, 100 pts = chèque de 5 €.
 DEFAULT_EURO_PER_POINT = 1
 DEFAULT_VOUCHER_VALUE_CENTS = 500      # 5 €
 DEFAULT_VOUCHER_THRESHOLD = 100        # 100 pts → 1 chèque cadeau

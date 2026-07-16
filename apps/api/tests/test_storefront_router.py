@@ -6,7 +6,6 @@ fonctionne, et que la fiche détail expose les photos + des pièces
 similaires."""
 from __future__ import annotations
 
-import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient

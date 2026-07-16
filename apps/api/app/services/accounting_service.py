@@ -11,7 +11,6 @@ Workflow déclenché par POST /api/pos/drawer/close :
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
 from sqlalchemy import delete, select, update
@@ -25,7 +24,6 @@ from app.models.accounting import (
 )
 from app.models.pos import (
     CashDrawer,
-    Payment,
     PaymentMethod,
     Transaction,
     TransactionType,
@@ -300,7 +298,7 @@ class AccountingService:
                 credit=float(ln.credit),
                 label=ln.label,
             )
-            for ln in sorted(lines, key=lambda l: l.line_number)
+            for ln in sorted(lines, key=lambda line: line.line_number)
         ]
         await self._export_to_pennylane(export, journal_lines, cfg, None, export.export_date)
         await self.db.commit()
@@ -703,7 +701,11 @@ class AccountingService:
                         credit=float(ln.credit),
                         label=ln.label,
                     )
-                    for ln in (sorted(lines, key=lambda l: l.line_number) if hasattr(lines[0], "line_number") else lines)
+                    for ln in (
+                        sorted(lines, key=lambda line: line.line_number)
+                        if hasattr(lines[0], "line_number")
+                        else lines
+                    )
                 ] if lines else [],
             )
             ledger_id = client.create_journal_entry(entry)

@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.models import Base
 from app.models.product import Category, Product, ProductStatus
 from app.services.personal_shopper_search import (
-    SearchFilters,
     _normalize,
     _regex_filters,
     search,
@@ -54,7 +53,7 @@ async def test_regex_filters_max_price():
 @pytest.mark.anyio
 async def test_search_filters_inventory(session, monkeypatch):
     # Disable LLM extraction to deterministically use regex filters.
-    async def fake_llm(_q):
+    async def fake_llm(_db, _q):
         return None
     monkeypatch.setattr(
         "app.services.personal_shopper_search._llm_filters", fake_llm
@@ -97,7 +96,7 @@ async def test_search_filters_inventory(session, monkeypatch):
 
 @pytest.mark.anyio
 async def test_search_uses_cache_on_second_call(session, monkeypatch):
-    async def fake_llm(_q):
+    async def fake_llm(_db, _q):
         return None
     monkeypatch.setattr(
         "app.services.personal_shopper_search._llm_filters", fake_llm

@@ -34,8 +34,9 @@ jobs:
 
     env:
       DATABASE_URL: postgresql+asyncpg://vintiz_test:vintiz_test@localhost:5432/vintiz_test
-      SECRET_KEY: ci-secret-key-not-used-in-prod
-      APP_ENV: test
+      SECRET_KEY: ci-secret-key-not-used-in-prod-00000000
+      FISCAL_SIGNING_KEY: ci-fiscal-key-not-used-in-prod-000000
+      ENVIRONMENT: test
 
     steps:
       - uses: actions/checkout@v4
@@ -47,20 +48,26 @@ jobs:
           cache-dependency-path: apps/api/pyproject.toml
 
       - name: Install dependencies
-        run: pip install -e ".[dev]" 2>/dev/null || pip install -e .
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Dependency audit
+        run: python -m pip_audit --skip-editable
 
       - name: Lint (ruff)
-        run: python -m ruff check . --output-format=github || true
+        run: python -m ruff check . --output-format=github
 
       - name: Alembic migrations
-        # Indicative only (like ruff/tests below). The base schema is created
-        # at app startup via Base.metadata.create_all(); the migrations are
-        # incremental ALTERs that assume those tables exist, so a bare
-        # ``upgrade head`` on the empty CI database can't run from scratch.
-        run: python -m alembic upgrade head || echo "Migrations non rejouables sur base vierge (schéma via create_all) — étape indicative"
+        working-directory: ${{ github.workspace }}
+        run: |
+          python scripts/bootstrap_database.py --confirm-empty
+          cd apps/api
+          python -m alembic upgrade head
+          test "$(python -m alembic current | awk '{print $1}')" = "0072"
 
       - name: Tests
-        run: python -m pytest tests/ -v --tb=short 2>/dev/null || echo "Aucun test trouve"
+        run: python -m pytest tests/ -v --tb=short
 
   # -------------------------------------------------------
   # Sanity — fast pre-flight check on TS/JSX imports
@@ -107,8 +114,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
+      - name: Lint
+        run: npm run lint
+
       - name: Type check
-        run: npx tsc --noEmit || true
+        run: npx tsc --noEmit
 
       - name: Build
         run: npm run build
@@ -138,8 +151,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
+      - name: Lint
+        run: npm run lint
+
       - name: Type check
-        run: npx tsc --noEmit || true
+        run: npx tsc --noEmit
 
       - name: Build
         run: npm run build

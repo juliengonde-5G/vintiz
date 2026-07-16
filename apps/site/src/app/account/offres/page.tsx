@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AccountShell from "@/components/account/AccountShell";
+import { accountFetch } from "@/lib/account-api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -56,7 +57,7 @@ export default function AccountOffresPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(
+      const res = await accountFetch(
         `${API_URL}/api/crm/account/coupons?email=${encodeURIComponent(target)}`,
         { cache: "no-store" }
       );
@@ -91,7 +92,7 @@ export default function AccountOffresPage() {
       {!loading && !error && coupons.length === 0 && (
         <p className="text-gray-600">
           Aucun coupon actif pour le moment. Cumulez 100 points sur votre carte
-          fidélité pour générer un bon d&apos;achat de 8 € automatique.
+          fidélité pour générer un chèque cadeau de 5 € automatique.
         </p>
       )}
       {coupons.length > 0 && (

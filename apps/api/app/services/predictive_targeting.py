@@ -21,15 +21,14 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Iterable
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.client import Client, LoyaltyAccount
 from app.models.pos import Transaction, TransactionItem, TransactionType
-from app.models.product import Category, Product
+from app.models.product import Product
 
 
 LOYAL_ACTIVE_MULTIPLIER = 2.0

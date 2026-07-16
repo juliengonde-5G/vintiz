@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AccountShell from "@/components/account/AccountShell";
+import { accountFetch } from "@/lib/account-api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -46,7 +47,7 @@ export default function AccountRgpdPage() {
   }, []);
 
   const loadConsents = async (target: string) => {
-    const res = await fetch(
+    const res = await accountFetch(
       `${API_URL}/api/crm/account/consents?email=${encodeURIComponent(target)}`,
       { cache: "no-store" }
     );
@@ -56,7 +57,7 @@ export default function AccountRgpdPage() {
   };
 
   const loadDeletionStatus = async (target: string) => {
-    const res = await fetch(
+    const res = await accountFetch(
       `${API_URL}/api/crm/clients/lookup?email=${encodeURIComponent(target)}`,
       { cache: "no-store" }
     );
@@ -70,7 +71,7 @@ export default function AccountRgpdPage() {
     setBusy(purpose);
     setError("");
     try {
-      const res = await fetch(
+      const res = await accountFetch(
         `${API_URL}/api/crm/account/consents/${encodeURIComponent(purpose)}`,
         {
           method: "POST",
@@ -93,7 +94,7 @@ export default function AccountRgpdPage() {
     setBusy("export");
     setActionMsg("");
     try {
-      const res = await fetch(
+      const res = await accountFetch(
         `${API_URL}/api/crm/account/data-export?email=${encodeURIComponent(email)}`,
         { cache: "no-store" }
       );
@@ -122,7 +123,7 @@ export default function AccountRgpdPage() {
     if (!confirm("Confirmer la demande de suppression ? Vous disposez de 30 jours pour annuler.")) return;
     setBusy("deletion");
     try {
-      const res = await fetch(`${API_URL}/api/crm/account/deletion-request`, {
+      const res = await accountFetch(`${API_URL}/api/crm/account/deletion-request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -145,7 +146,7 @@ export default function AccountRgpdPage() {
   const cancelDeletion = async () => {
     setBusy("deletion");
     try {
-      const res = await fetch(`${API_URL}/api/crm/account/deletion-cancel`, {
+      const res = await accountFetch(`${API_URL}/api/crm/account/deletion-cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

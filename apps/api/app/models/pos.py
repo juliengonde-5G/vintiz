@@ -102,6 +102,10 @@ class Transaction(Base):
     total_tva: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     total_ttc: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     hash_chain: Mapped[str] = mapped_column(String(64), nullable=False)
+    previous_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    fiscal_signature_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=2
+    )
 
     # Détection cadeau (PS 360 V2). ``is_gift`` = réponse à la micro-question
     # caisse « Cet achat est-il pour vous ? » ou marquage par la cliente depuis
@@ -195,6 +199,11 @@ class Payment(Base):
         Enum(PaymentMethod, name="payment_method"), nullable=False
     )
     amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    # Montant physiquement remis par la cliente. Renseigné uniquement quand
+    # les espèces dépassent le montant appliqué (rendu monnaie).
+    tendered_amount: Mapped[float | None] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
 
     # SumUp traceability (CB payments only). NULL when method != card or
     # the operator used a non-SumUp terminal. Populated from the SumUp
@@ -285,8 +294,15 @@ class ZReport(Base):
         Numeric(10, 2), nullable=False, default=0
     )
     transaction_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    first_transaction_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_transaction_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_transaction_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payment_totals: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     hash: Mapped[str] = mapped_column(String(64), nullable=False)
     previous_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    fiscal_signature_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=2
+    )
     # Clôture de régularisation a posteriori (NF525). Quand un jour d'ouverture
     # de caisse a été oublié, les ventes existent dans la chaîne fiscale mais
     # ne sont couvertes par aucun Z. On établit alors un Z de régularisation :

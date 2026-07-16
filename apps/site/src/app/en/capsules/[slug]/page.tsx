@@ -13,15 +13,16 @@ import {
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://vintiz.fr";
 
 interface PageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 export function generateStaticParams() {
   return CAPSULES_EN.map((c) => ({ slug: c.slug }));
 }
 
-export function generateMetadata({ params }: PageProps): Metadata {
-  const capsule = findCapsuleEn(params.slug);
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const capsule = findCapsuleEn(slug);
   if (!capsule) {
     return { title: "Capsule not found", robots: { index: false } };
   }
@@ -45,8 +46,9 @@ export function generateMetadata({ params }: PageProps): Metadata {
   };
 }
 
-export default function CapsuleEnPage({ params }: PageProps) {
-  const capsule = findCapsuleEn(params.slug);
+export default async function CapsuleEnPage({ params }: PageProps) {
+  const { slug } = await params;
+  const capsule = findCapsuleEn(slug);
   if (!capsule) notFound();
 
   const products = capsuleProductsEn(capsule);

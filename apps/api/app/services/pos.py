@@ -6,8 +6,6 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger("vintiz")
-
 from app.core.exceptions import (
     CartEmpty, InsufficientBalance, InvalidOperation, PaymentShortfall,
     ProductNotAvailable, ResourceNotFound,
@@ -24,6 +22,8 @@ from app.models.pos import (
 )
 from app.models.permanent_item import PermanentItem
 from app.models.product import Product, ProductStatus
+
+logger = logging.getLogger("vintiz")
 
 
 class PosService:
@@ -49,6 +49,7 @@ class PosService:
         client_company_name: str | None = None,
         client_billing_address: str | None = None,
         template_id: uuid.UUID | None = None,
+        coupon_code: str | None = None,
     ) -> Transaction:
         """Create a sale transaction.
 
@@ -79,6 +80,27 @@ class PosService:
         if not items:
             raise CartEmpty()
 
+        # Serialize the complete sale write on PostgreSQL. The lock lives for
+        # the SQL transaction and therefore covers sequence allocation,
+        # inventory mutation and fiscal signature ordering.
+        dialect = self.db.bind.dialect.name if self.db.bind else "postgresql"
+        if dialect == "postgresql":
+            from sqlalchemy import text
+
+            await self.db.execute(text("SELECT pg_advisory_xact_lock(5252026)"))
+            # A concurrent replay may have committed while this request was
+            # waiting for the fiscal write lock. Re-check under the lock.
+            if client_uuid is not None:
+                existing = (
+                    await self.db.execute(
+                        select(Transaction).where(
+                            Transaction.client_uuid == client_uuid
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existing is not None:
+                    return existing
+
         # B2B invoice mode requires the buyer block to be filled — DGFiP
         # mandates company name, SIRET (14 digits) and billing address on every
         # commercial invoice.
@@ -104,7 +126,9 @@ class PosService:
         for cart_item in items:
             if cart_item.product_id:
                 result = await self.db.execute(
-                    select(Product).where(Product.id == cart_item.product_id)
+                    select(Product)
+                    .where(Product.id == cart_item.product_id)
+                    .with_for_update()
                 )
                 product = result.scalar_one_or_none()
                 if product is None:
@@ -216,10 +240,10 @@ class PosService:
                 if gross > 0 else 0.0
             )
             product = row["product"]
-            # Promotionnel = remise solde appliquée OU produit déjà démarqué
+            # Promotionnel = toute remise (manuelle, solde) OU produit déjà démarqué
             # (statut discounted / deep_discounted). Ces lignes ne cotisent pas
             # de points de fidélité.
-            promotional = solde_pct > 0 or (
+            promotional = effective_discount > 0 or (
                 product is not None
                 and product.status in (
                     ProductStatus.discounted,
@@ -232,6 +256,83 @@ class PosService:
                 round(effective_discount, 2), row["name"], promotional, line_total,
             ))
 
+        # Coupon de remise : validation + verrou avant le contrôle des moyens
+        # de paiement, puis ventilation au centime sur les lignes. Les lignes
+        # remisées deviennent promotionnelles et ne génèrent donc aucun point.
+        coupon_to_redeem: uuid.UUID | None = None
+        if coupon_code:
+            from app.models.coupon import Coupon
+            from app.services.coupon import CouponError, validate_coupon
+
+            locked_coupon = (
+                await self.db.execute(
+                    select(Coupon)
+                    .where(Coupon.code == coupon_code.strip().upper())
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if locked_coupon is None:
+                raise InvalidOperation("Coupon refusé (not_found)")
+
+            cart_items = [
+                {
+                    "price": float(line_total),
+                    "text": (
+                        f"{(product.name if product else (perm.name if perm else name)) or ''} "
+                        f"{(product.category.name if product and product.category else '')}"
+                    ),
+                }
+                for product, perm, _qty, _up, _disc, name, _promo, line_total
+                in line_rows
+            ]
+            try:
+                preview = await validate_coupon(
+                    self.db,
+                    code=coupon_code,
+                    cart_total=float(total_ttc),
+                    client_id=client_id,
+                    cart_items=cart_items,
+                )
+            except CouponError as exc:
+                raise InvalidOperation(f"Coupon refusé ({exc})")
+
+            coupon_discount = Decimal(str(preview.discount_amount)).quantize(
+                Decimal("0.01")
+            )
+            if coupon_discount > 0 and total_ttc > 0:
+                original_total = total_ttc
+                remaining_discount = coupon_discount
+                adjusted_rows = []
+                for index, row in enumerate(line_rows):
+                    product, perm, quantity, unit_price, _discount, name, promotional, line_total = row
+                    if index == len(line_rows) - 1:
+                        share = remaining_discount
+                    else:
+                        share = (
+                            coupon_discount * line_total / original_total
+                        ).quantize(Decimal("0.01"))
+                        share = min(share, remaining_discount, line_total)
+                    remaining_discount -= share
+                    adjusted_total = (line_total - share).quantize(Decimal("0.01"))
+                    gross = unit_price * Decimal(str(quantity))
+                    effective_discount = (
+                        float((Decimal("1") - adjusted_total / gross) * Decimal("100"))
+                        if gross > 0 else 0.0
+                    )
+                    adjusted_rows.append((
+                        product,
+                        perm,
+                        quantity,
+                        unit_price,
+                        round(effective_discount, 2),
+                        name,
+                        promotional or share > 0,
+                        adjusted_total,
+                    ))
+                line_rows = adjusted_rows
+                total_ttc = sum((row[-1] for row in line_rows), Decimal("0"))
+            coupon_to_redeem = preview.coupon_id
+
         # TVA 20 %: HT = TTC / 1.20, TVA = TTC - HT
         total_ht = (total_ttc / Decimal("1.20")).quantize(Decimal("0.01"))
         total_tva = (total_ttc - total_ht).quantize(Decimal("0.01"))
@@ -240,38 +341,35 @@ class PosService:
         total_paid = sum(Decimal(str(p.amount)) for p in payments)
         if total_paid < total_ttc:
             raise PaymentShortfall(total_paid, total_ttc)
-
-        # Generate transaction number.
-        # On PostgreSQL use the dedicated sequence (NF525 — no gaps under concurrency).
-        # On SQLite (tests) fall back to MAX+1 because sequences don't exist.
-        from sqlalchemy import text
-        dialect = self.db.bind.dialect.name if self.db.bind else "postgresql"
-        if dialect == "sqlite":
-            max_num_result = await self.db.execute(
-                select(func.coalesce(func.max(Transaction.transaction_number), 0))
+        cash_paid = sum(
+            Decimal(str(p.amount))
+            for p in payments
+            if p.method in ("cash", "especes")
+        )
+        non_cash_paid = total_paid - cash_paid
+        if non_cash_paid > total_ttc:
+            raise InvalidOperation(
+                "Les moyens de paiement hors espèces dépassent le total de la vente"
             )
-            next_number = max_num_result.scalar_one() + 1
-        else:
-            seq_result = await self.db.execute(
-                text("SELECT nextval('transaction_number_seq')")
+        if total_paid > total_ttc and cash_paid <= 0:
+            raise InvalidOperation(
+                "Seul un règlement en espèces peut dépasser le total (rendu monnaie)"
             )
-            next_number = seq_result.scalar_one()
 
-        # B2B invoice numbering — separate sequence so tickets and invoices
-        # don't interleave (NF525 + DGFiP requirement). On SQLite tests the
-        # sequence doesn't exist so we fall back to MAX+1.
+        # The advisory lock held above serialises PostgreSQL writers, so MAX+1
+        # is rollback-safe and does not burn numbers like a SQL sequence does.
+        max_num_result = await self.db.execute(
+            select(func.coalesce(func.max(Transaction.transaction_number), 0))
+        )
+        next_number = max_num_result.scalar_one() + 1
+
+        # Invoice numbers are allocated independently under the same lock.
         invoice_number: int | None = None
         if is_invoice:
-            if dialect == "sqlite":
-                inv_result = await self.db.execute(
-                    select(func.coalesce(func.max(Transaction.invoice_number), 0))
-                )
-                invoice_number = inv_result.scalar_one() + 1
-            else:
-                inv_seq = await self.db.execute(
-                    text("SELECT nextval('invoice_number_seq')")
-                )
-                invoice_number = inv_seq.scalar_one()
+            inv_result = await self.db.execute(
+                select(func.coalesce(func.max(Transaction.invoice_number), 0))
+            )
+            invoice_number = inv_result.scalar_one() + 1
 
         transaction = Transaction(
             transaction_number=next_number,
@@ -297,6 +395,11 @@ class PosService:
         )
         self.db.add(transaction)
         await self.db.flush()
+
+        if coupon_to_redeem is not None:
+            from app.services.coupon import redeem_coupon
+
+            await redeem_coupon(self.db, coupon_to_redeem, transaction.id)
 
         # Create transaction items
         for product, perm_item, quantity, unit_price, discount, _name, promotional, line_total in line_rows:
@@ -329,13 +432,25 @@ class PosService:
         avoir_total = Decimal("0")
         # Bons cadeau affectés comme moyen de paiement : (montant, code).
         voucher_tenders: list[tuple[Decimal, str | None]] = []
+        cash_change_remaining = max(Decimal("0"), total_paid - total_ttc)
         for pay in payments:
             method_str = method_map.get(pay.method, pay.method)
             method_enum = PaymentMethod(method_str)
+            tendered_amount = Decimal(str(pay.amount))
+            applied_amount = tendered_amount
+            if method_enum == PaymentMethod.cash and cash_change_remaining > 0:
+                change_on_line = min(cash_change_remaining, tendered_amount)
+                applied_amount -= change_on_line
+                cash_change_remaining -= change_on_line
             payment = Payment(
                 transaction_id=transaction.id,
                 method=method_enum,
-                amount=float(pay.amount),
+                amount=float(applied_amount),
+                tendered_amount=(
+                    float(tendered_amount)
+                    if applied_amount != tendered_amount
+                    else None
+                ),
             )
             # Persist SumUp identifiers on card tenders so a later refund can
             # be issued via the SumUp API. The attributes are optional on the
@@ -352,10 +467,10 @@ class PosService:
                         setattr(payment, _attr, _val)
             self.db.add(payment)
             if method_enum == PaymentMethod.avoir:
-                avoir_total += Decimal(str(pay.amount))
+                avoir_total += applied_amount
             elif method_enum == PaymentMethod.voucher:
                 voucher_tenders.append(
-                    (Decimal(str(pay.amount)), getattr(pay, "voucher_code", None))
+                    (applied_amount, getattr(pay, "voucher_code", None))
                 )
 
         # Bon cadeau (ouverture) débité comme moyen de paiement : on valide le
@@ -363,13 +478,6 @@ class PosService:
         # sa valeur, puis on le marque consommé (lié à la vente). Le bon compte
         # dans ``total_paid`` → il réduit le reste à régler en espèces / CB.
         if voucher_tenders:
-            if len(voucher_tenders) > 1:
-                # Un seul bon cadeau événementiel par transaction : empiler
-                # deux bons sur la même vente est interdit côté boutique
-                # (cumul des cadeaux d'ouverture sur un même panier).
-                raise InvalidOperation(
-                    "Un seul bon cadeau événementiel autorisé par transaction"
-                )
             if client_id is None:
                 raise InvalidOperation(
                     "Un bon cadeau nécessite une cliente sélectionnée"
@@ -395,6 +503,7 @@ class PosService:
                 }
                 for prod, perm, _qty, up, disc, nm, _promo, _lt in line_rows
             ]
+            event_voucher_count = 0
             for amount, code in voucher_tenders:
                 if not code:
                     raise InvalidOperation("Bon cadeau : code manquant")
@@ -408,6 +517,12 @@ class PosService:
                     )
                 except CouponError as exc:
                     raise InvalidOperation(f"Bon cadeau refusé ({exc})")
+                if preview.source == "event_opening":
+                    event_voucher_count += 1
+                    if event_voucher_count > 1:
+                        raise InvalidOperation(
+                            "Un seul bon cadeau événementiel autorisé par transaction"
+                        )
                 if float(amount) > preview.discount_amount + 0.01:
                     raise InvalidOperation(
                         f"Bon {code} : montant affecté ({amount} €) supérieur à "
@@ -420,7 +535,7 @@ class PosService:
             if client_id is None:
                 raise InvalidOperation("Avoir payment requires a client to be selected")
             client_result = await self.db.execute(
-                select(Client).where(Client.id == client_id)
+                select(Client).where(Client.id == client_id).with_for_update()
             )
             client = client_result.scalar_one_or_none()
             if client is None:
@@ -687,32 +802,11 @@ class PosService:
         self,
         transaction: Transaction,
         *,
-        coupon_code: str | None,
         user_id: uuid.UUID,
     ) -> None:
-        """Post-sign finalization: coupon redemption + loyalty + analytics events.
+        """Post-sign finalization: loyalty and analytics events."""
 
-        Called from the router after FiscalService.sign_transaction(). Failures in
-        any step are logged and swallowed — they never roll back the signed sale.
-        """
-        # Coupon redemption
-        if coupon_code:
-            from app.services.coupon import CouponError, redeem_coupon, validate_coupon
-            try:
-                preview = await validate_coupon(
-                    self.db,
-                    code=coupon_code,
-                    cart_total=float(transaction.total_ttc),
-                    client_id=transaction.client_id,
-                )
-                await redeem_coupon(self.db, preview.coupon_id, transaction.id)
-            except CouponError as exc:
-                logger.warning(
-                    "Coupon redemption failed for tx=%s code=%s reason=%s",
-                    transaction.id, coupon_code, exc,
-                )
-
-        # Loyalty: 1 € = 1 pt; every 100 pts crossed → 8 € coupon (60d, auto)
+        # Loyalty: 1 € éligible = 1 pt; every 100 pts crossed → 5 € coupon.
         if transaction.client_id is not None:
             try:
                 await self._credit_loyalty_and_emit_milestones(transaction)
@@ -752,7 +846,7 @@ class PosService:
             )
 
     # ------------------------------------------------------------------
-    # Loyalty (1 € = 1 pt, 100 pts = chèque cadeau 5 € auto)
+    # Loyalty (1 € éligible = 1 pt, 100 pts = chèque cadeau 5 € auto)
     # ------------------------------------------------------------------
 
     async def _credit_loyalty_and_emit_milestones(
@@ -760,9 +854,7 @@ class PosService:
     ) -> None:
         """Credit points + emit milestone coupons.
 
-        Only invoked when the sale has a client. Loads/creates the
-        ``LoyaltyAccount`` lazily so unenrolled clients still earn points
-        from the moment they share their email.
+        Only invoked when the sale has an enrolled, active loyalty member.
         """
         from app.models.client import (
             LoyaltyAccount,
@@ -798,20 +890,23 @@ class PosService:
         result = await self.db.execute(
             select(LoyaltyAccount).where(
                 LoyaltyAccount.client_id == transaction.client_id
-            )
+            ).with_for_update()
         )
         account = result.scalar_one_or_none()
         if account is None:
-            from app.services.membership_id import generate_membership_number
+            return
 
-            membership = await generate_membership_number(self.db)
-            account = LoyaltyAccount(
-                client_id=transaction.client_id,
-                points=0,
-                membership_number=membership,
+        client = (
+            await self.db.execute(
+                select(Client).where(Client.id == transaction.client_id)
             )
-            self.db.add(account)
-            await self.db.flush()
+        ).scalar_one_or_none()
+        if client is None:
+            return
+        from app.services.loyalty import loyalty_active
+
+        if not loyalty_active(client):
+            return
 
         # Idempotency guard: a replay (e.g. router crash between flush and
         # commit on the first attempt) must NOT credit the same sale twice.
@@ -834,6 +929,7 @@ class PosService:
             tx_type=LoyaltyTxType.earn,
             points=points,
             description=sale_marker,
+            transaction_id=transaction.id,
         ))
 
         crossed = milestones_crossed(before, account.points, cfg.voucher_threshold)

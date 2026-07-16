@@ -6,7 +6,7 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -138,7 +138,7 @@ def _export_out(exp: AccountingExport, with_lines: bool = False) -> dict:
                 "piece_reference": ln.piece_reference,
                 "piece_date": ln.piece_date.isoformat() if ln.piece_date else None,
             }
-            for ln in sorted(exp.lines or [], key=lambda l: l.line_number)
+            for ln in sorted(exp.lines or [], key=lambda line: line.line_number)
         ]
     return base
 
@@ -323,7 +323,6 @@ async def get_journal(
     limit: int = Query(100, ge=1, le=500),
 ):
     """Journal comptable interne — toutes les lignes d'écriture sur une période (feature E)."""
-    from sqlalchemy import and_
 
     stmt = (
         select(AccountingExportLine, AccountingExport)

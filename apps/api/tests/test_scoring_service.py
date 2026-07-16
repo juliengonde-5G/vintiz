@@ -44,7 +44,7 @@ def test_weeks_on_shelf_3_weeks_ago():
 
 def test_weeks_on_shelf_naive_datetime_assumed_utc():
     """Tolère un datetime sans tzinfo en l'assumant UTC."""
-    past = datetime.utcnow() - timedelta(days=14)
+    past = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=14)
     assert _weeks_on_shelf(past) == 2
 
 
@@ -57,12 +57,12 @@ def test_age_score_week_0_uses_first_table_value():
 
 
 def test_age_score_week_1():
-    assert _age_score(1, _DEFAULT_AGE_WEEKS_TABLE) == 20.0
+    assert _age_score(1, _DEFAULT_AGE_WEEKS_TABLE) == 17.0
 
 
 def test_age_score_week_3():
-    """Index 2 dans la table par défaut [20, 17, 13, 10, 6, 2]."""
-    assert _age_score(3, _DEFAULT_AGE_WEEKS_TABLE) == 13.0
+    """Trois semaines révolues placent la pièce dans sa quatrième semaine."""
+    assert _age_score(3, _DEFAULT_AGE_WEEKS_TABLE) == 10.0
 
 
 def test_age_score_week_6_uses_last_value():

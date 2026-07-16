@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AccountShell from "@/components/account/AccountShell";
+import { accountFetch } from "@/lib/account-api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -52,7 +53,7 @@ export default function AccountHistoriquePage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(
+      const res = await accountFetch(
         `${API_URL}/api/crm/account/transactions?email=${encodeURIComponent(target)}`,
         { cache: "no-store" }
       );

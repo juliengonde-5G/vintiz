@@ -28,7 +28,7 @@ from app.models.ai_task import AITask
 from app.models.user import User
 from app.models.product import Product, ProductStatus
 from app.models.client import Client
-from app.models.pos import Transaction, TransactionItem, TransactionType
+from app.models.pos import Transaction, TransactionType
 from app.models.audit import Settings
 from app.models.store import StoreZone
 from app.services.ai_vision import (
@@ -299,7 +299,6 @@ async def get_weekly_checklist(
 
     weather_lines = []
     for d in open_days_forecast[:5]:
-        from datetime import date as _date
         day_name = datetime.strptime(d["date"], "%Y-%m-%d").strftime("%A %d/%m")
         line = f"- {day_name} : {round(d['temp_min'])}–{round(d['temp_max'])}°C, {d['description']}"
         am = _fmt_slot(d.get("morning"), "Matin")
@@ -327,7 +326,7 @@ async def get_weekly_checklist(
         .where(Product.status.in_([ProductStatus.stock, ProductStatus.display]))
         .group_by(Product.category_id)
     )
-    avg_by_cat = {str(row[0]): float(row[1]) for row in avg_by_cat_result.all()}
+    {str(row[0]): float(row[1]) for row in avg_by_cat_result.all()}
 
     # Note prix : la politique boutique impose un prix correct dès la mise en
     # rayon (pas de markdown). Aucune routine de réduction de prix n'est

@@ -16,10 +16,8 @@
 #   export VINTIZ_API_TOKEN="eyJhbGciOi..."
 #   bash scripts/smoke_prod.sh https://api.vintiz.fr
 #
-# Génération du token (depuis la machine de Camille) :
-#   curl -s -X POST https://api.vintiz.fr/api/auth/login \
-#     -H 'content-type: application/json' \
-#     -d '{"username":"admin","password":"vintiz2026"}' | jq -r .access_token
+# Générer le token avec un compte manager nominatif ; ne jamais placer son mot
+# de passe dans le script ou l'historique du shell.
 # =============================================================================
 
 set -u  # unset var = erreur explicite ; on ne met pas -e car on veut continuer après une fail

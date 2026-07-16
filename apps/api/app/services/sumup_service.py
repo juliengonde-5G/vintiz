@@ -26,6 +26,8 @@ from tenacity import (
     wait_exponential,
 )
 
+from app.core.config import settings
+
 _log = logging.getLogger("vintiz")
 
 SUMUP_API_BASE = "https://api.sumup.com/v0.1"
@@ -284,6 +286,11 @@ class SumUpService:
             # (pas seulement les managers) et l'URL peut porter un token.
             "return_url_set": bool(self.return_url),
             "affiliate_set": bool(self.affiliate_app_id and self.affiliate_key),
+            "ready": bool(
+                self.api_key
+                and self.merchant_code
+                and not (settings.is_production and self.is_sandbox)
+            ),
             "api_base": SUMUP_API_BASE,
         }
 
@@ -985,6 +992,9 @@ class SumUpService:
                     "checkout_id": checkout_id,
                     "status": status,
                     "environment": self.environment,
+                    "amount": data.get("amount"),
+                    "currency": data.get("currency"),
+                    "checkout_reference": data.get("checkout_reference"),
                 }
                 # Enrich with the SumUp transaction details when PAID.
                 # The Checkouts API embeds the resulting transaction in
@@ -1070,7 +1080,21 @@ class SumUpService:
             txn = (data["items"] or [{}])[0] or {}
         raw_status = (txn.get("status") or "").upper()
         norm = _normalize_txn_status(raw_status)
-        result = {**base, "status": norm, "sumup_status": raw_status}
+        amount = txn.get("amount")
+        if amount is None and isinstance(txn.get("total_amount"), dict):
+            total_amount = txn["total_amount"]
+            value = total_amount.get("value")
+            minor_unit = int(total_amount.get("minor_unit", 2) or 2)
+            if value is not None:
+                amount = float(value) / (10 ** minor_unit)
+        result = {
+            **base,
+            "status": norm,
+            "sumup_status": raw_status,
+            "amount": amount,
+            "currency": txn.get("currency")
+            or (txn.get("total_amount") or {}).get("currency"),
+        }
         if norm == "PAID":
             card = txn.get("card") or {}
             result.update({

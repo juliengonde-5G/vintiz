@@ -1,13 +1,11 @@
 """Tests for the unified email gateway (P4-003)."""
 
-import os
 
 import pytest
 
 from app.services.email_gateway import (
     EmailDeliveryError,
     EmailMessage,
-    EmailResult,
     _strip_html,
     send_bulk,
     send_email,
@@ -105,7 +103,7 @@ def test_brevo_http_error_raises(monkeypatch):
         ))
 
 
-def test_send_bulk_swallows_individual_failures(monkeypatch):
+def test_send_bulk_retries_transient_individual_failures(monkeypatch):
     _clear_env(monkeypatch)
     monkeypatch.setenv("BREVO_API_KEY", "ak")
 
@@ -131,7 +129,7 @@ def test_send_bulk_swallows_individual_failures(monkeypatch):
         EmailMessage(to="a@x.fr", subject="x", html="x"),
         EmailMessage(to="b@x.fr", subject="x", html="x"),
     ])
-    assert [r.status for r in results] == ["failed", "sent"]
+    assert [r.status for r in results] == ["sent", "sent"]
 
 
 def test_strip_html_collapses_tags():

@@ -15,8 +15,6 @@ import logging
 import uuid
 from typing import Annotated
 
-logger = logging.getLogger("vintiz")
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
@@ -40,6 +38,8 @@ from app.services.zebra_zpl import (
     product_to_label_data,
     resolve_profile,
 )
+
+logger = logging.getLogger("vintiz")
 
 router = APIRouter(prefix="/labels", tags=["labels"])
 

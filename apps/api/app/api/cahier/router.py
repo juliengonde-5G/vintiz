@@ -4,9 +4,8 @@ Mounted at /api/cahier. Most reads are authenticated; mutations require manager 
 """
 from __future__ import annotations
 
-import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -344,8 +343,6 @@ async def get_day_forecast(
     """
     from app.services.local_calendar import (
         active_operations,
-        events_around,
-        school_holiday_for,
         traffic_coef_for,
     )
 

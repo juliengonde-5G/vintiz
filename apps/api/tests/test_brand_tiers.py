@@ -1,7 +1,7 @@
 """Tests for the DB-backed brand-tier lookup (P2-012)."""
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models import Base
 from app.models.brand_tier import (

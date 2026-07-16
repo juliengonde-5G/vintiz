@@ -1,22 +1,15 @@
 """Tests for the POS Companion service (PR4)."""
 
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models import Base
-from app.models.client import (
-    Client, LoyaltyAccount, LoyaltyTransaction, LoyaltyTxType,
-)
-from app.models.coupon import Coupon, CouponDiscountType, CouponSource
+from app.models.client import Client, LoyaltyAccount
 from app.models.product import Category, Product, ProductStatus
 from app.services.pos_companion import (
-    CATEGORY_COMPLEMENTS,
     _normalize_category,
     _points_to_credit,
-    _redemption_cap_cents,
     companion_payload,
 )
 
@@ -53,16 +46,6 @@ async def test_points_to_credit_floor_division():
 
 
 @pytest.mark.anyio
-async def test_redemption_cap_max_50_percent():
-    # 100 pts = 10€ available, but cart is 8€ → cap at 50% of 800 cents.
-    assert _redemption_cap_cents(800, 100) == 400
-    # 5 pts = 0.50€, cart 100€ → not capped by 50%.
-    assert _redemption_cap_cents(10000, 5) == 50
-    # 0 pts → 0.
-    assert _redemption_cap_cents(5000, 0) == 0
-
-
-@pytest.mark.anyio
 async def test_companion_returns_loyalty_block_for_member(session):
     client = Client(first_name="Alice", last_name="M", email="alice@x.fr")
     session.add(client)
@@ -84,8 +67,8 @@ async def test_companion_returns_loyalty_block_for_member(session):
     assert payload["loyalty"]["active"] is True
     assert payload["loyalty"]["points_current"] == 120
     assert payload["loyalty"]["would_earn"] == 42
-    # 1200 cents available, cart half = 2100 → cap at 1200.
-    assert payload["loyalty"]["can_redeem_max_cents"] == 1200
+    # Points are never converted directly: only generated 5 € vouchers apply.
+    assert payload["loyalty"]["can_redeem_max_cents"] == 0
 
 
 @pytest.mark.anyio

@@ -1,14 +1,13 @@
 """Tests for the visibility service (P3-003 + P3-004 + P3-005)."""
 
-import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models import Base
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.models.visibility import (
     GoogleReview,
     SEOSnapshot,

@@ -14,15 +14,16 @@ import {
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://vintiz.fr";
 
 interface PageProps {
-  params: { brand: string };
+  params: Promise<{ brand: string }>;
 }
 
 export function generateStaticParams() {
   return listAvailableBrandsEn().map((b) => ({ brand: brandSlug(b) }));
 }
 
-export function generateMetadata({ params }: PageProps): Metadata {
-  const brand = findBrandBySlugEn(params.brand);
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { brand: brandParam } = await params;
+  const brand = findBrandBySlugEn(brandParam);
   if (!brand) {
     return { title: "Brand not found", robots: { index: false } };
   }
@@ -31,24 +32,25 @@ export function generateMetadata({ params }: PageProps): Metadata {
     title: `${brand} second-hand`,
     description: `Our authenticated second-hand ${brand} selection in Vernon — ${products.length} one-of-a-kind pieces. Dresses, jackets, bags and premium accessories curated by the Vintiz team.`,
     alternates: {
-      canonical: `${SITE_URL}/en/produits/marque/${params.brand}`,
+      canonical: `${SITE_URL}/en/produits/marque/${brandParam}`,
       languages: {
-        "fr-FR": `${SITE_URL}/produits/marque/${params.brand}`,
-        "en-US": `${SITE_URL}/en/produits/marque/${params.brand}`,
+        "fr-FR": `${SITE_URL}/produits/marque/${brandParam}`,
+        "en-US": `${SITE_URL}/en/produits/marque/${brandParam}`,
       },
     },
     openGraph: {
       title: `${brand} second-hand in Vernon | Vintiz`,
       description: `Authenticated second-hand ${brand} pieces, Vintiz Vernon selection.`,
-      url: `${SITE_URL}/en/produits/marque/${params.brand}`,
+      url: `${SITE_URL}/en/produits/marque/${brandParam}`,
       type: "website",
       locale: "en_US",
     },
   };
 }
 
-export default function BrandEnPage({ params }: PageProps) {
-  const brand = findBrandBySlugEn(params.brand);
+export default async function BrandEnPage({ params }: PageProps) {
+  const { brand: brandParam } = await params;
+  const brand = findBrandBySlugEn(brandParam);
   if (!brand) notFound();
 
   const products = productsByBrandEn(brand).sort((a, b) => {
@@ -63,7 +65,7 @@ export default function BrandEnPage({ params }: PageProps) {
     "@type": "CollectionPage",
     name: `${brand} premium second-hand — Vintiz Vernon`,
     description: `A selection of authenticated second-hand ${brand} pieces in Vernon, Normandy.`,
-    url: `${SITE_URL}/en/produits/marque/${params.brand}`,
+    url: `${SITE_URL}/en/produits/marque/${brandParam}`,
     inLanguage: "en",
     about: { "@type": "Brand", name: brand },
     hasPart: {
@@ -138,7 +140,7 @@ export default function BrandEnPage({ params }: PageProps) {
 
           <p className="mt-12 text-sm text-vz-ink-mute italic">
             <Link
-              href={`/produits/marque/${params.brand}`}
+              href={`/produits/marque/${brandParam}`}
               className="hover:text-vz-teal"
             >
               Lire en français

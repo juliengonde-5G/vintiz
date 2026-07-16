@@ -18,6 +18,7 @@ from app.core.middleware import (
 )
 from app.services.audit import register_audit_listeners
 from app.models import Base
+from app.version import APP_VERSION, EXPECTED_DB_REVISION, FISCAL_SIGNATURE_VERSION
 from app.api.auth.router import router as auth_router
 from app.api.inventory.router import router as inventory_router
 from app.api.inventory.permanent import router as permanent_items_router
@@ -35,20 +36,52 @@ from app.api.checklist.router import router as checklist_router
 from app.api.accounting.router import router as accounting_router
 from app.api.storefront.router import router as storefront_router
 from app.api.brevo.router import router as brevo_router
+from app.core.exceptions import (
+    AuthenticationError,
+    CartEmpty,
+    InsufficientBalance,
+    InvalidOperation,
+    InvalidState,
+    PaymentShortfall,
+    PermissionDenied,
+    ProductNotAvailable,
+    RefundError,
+    ResourceConflict,
+    ResourceNotFound,
+    VintizError,
+)
+from app.jobs import register_all_jobs
 
 setup_logging()
 logger = logging.getLogger("vintiz")
-
-
-from app.jobs import register_all_jobs
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     register_audit_listeners()
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    if settings.is_production:
+        # Production schema is migration-owned. Refuse to serve requests when
+        # the container and database revisions disagree; create_all would omit
+        # fiscal triggers and silently produce an uncertifiable hybrid schema.
+        from sqlalchemy import text
+
+        async with engine.connect() as conn:
+            try:
+                revision = (
+                    await conn.execute(text("SELECT version_num FROM alembic_version"))
+                ).scalar_one_or_none()
+            except Exception as exc:
+                raise RuntimeError(
+                    "Production database is not initialized by Alembic"
+                ) from exc
+        if revision != EXPECTED_DB_REVISION:
+            raise RuntimeError(
+                f"Database revision {revision!r} does not match "
+                f"required revision {EXPECTED_DB_REVISION!r}"
+            )
+    else:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -69,7 +102,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Vintiz API",
     description="Boutique Management API for Vintiz",
-    version="1.0.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -91,15 +124,6 @@ app.add_middleware(
 )
 
 
-# Domain exception → HTTP translation (must be registered before the catch-all below)
-from app.core.exceptions import (
-    AuthenticationError, CartEmpty, InsufficientBalance, InvalidOperation,
-    InvalidState, PaymentShortfall, PermissionDenied, ProductNotAvailable,
-    RefundError, ResourceConflict, ResourceNotFound, VintizError,
-)
-from fastapi import HTTPException as _HTTPException
-from fastapi.responses import JSONResponse as _JSONResponse
-
 _DOMAIN_STATUS: dict[type, int] = {
     ResourceNotFound: 404,
     ResourceConflict: 409,
@@ -120,7 +144,7 @@ async def domain_exception_handler(request: Request, exc: VintizError):
     status_code = next(
         (v for k, v in _DOMAIN_STATUS.items() if isinstance(exc, k)), 422
     )
-    return _JSONResponse(status_code=status_code, content={"detail": str(exc)})
+    return JSONResponse(status_code=status_code, content={"detail": str(exc)})
 
 
 # Global exception handler — ensures CORS headers are present even on 500.
@@ -188,7 +212,9 @@ async def health_check():
     import os as _os
     return {
         "status": "ok",
-        "version": "1.0.0",
+        "version": APP_VERSION,
+        "database_revision": EXPECTED_DB_REVISION,
+        "fiscal_signature_version": FISCAL_SIGNATURE_VERSION,
         "build_sha": _os.environ.get("VINTIZ_BUILD_SHA", "unknown"),
         "build_date": _os.environ.get("VINTIZ_BUILD_DATE", "unknown"),
     }

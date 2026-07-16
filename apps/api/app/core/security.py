@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -51,6 +52,18 @@ def verify_token(token: str) -> dict:
         )
 
 
+def _uuid_subject(payload: dict) -> uuid.UUID:
+    """Return a validated UUID JWT subject without leaking parser details."""
+    try:
+        return uuid.UUID(str(payload.get("sub")))
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -59,12 +72,7 @@ async def get_current_user(
     from app.models.user import User
 
     payload = verify_token(token)
-    user_id: str | None = payload.get("sub")
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-        )
+    user_id = _uuid_subject(payload)
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
@@ -93,12 +101,7 @@ async def get_current_client(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Client token required",
         )
-    client_id = payload.get("sub")
-    if not client_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-        )
+    client_id = _uuid_subject(payload)
     result = await db.execute(select(Client).where(Client.id == client_id))
     client = result.scalar_one_or_none()
     if client is None:

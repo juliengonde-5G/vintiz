@@ -51,6 +51,11 @@ DEFAULT_TOP_N = 4
 # How many candidates to fetch before diversification — wider funnel = better
 # diversity without re-querying the DB.
 CANDIDATE_FANOUT = 6
+SHOPPABLE_STATUSES = [
+    ProductStatus.stock,
+    ProductStatus.display,
+    ProductStatus.displayed,
+]
 
 
 class PersonalShopperGatedError(PermissionError):
@@ -107,7 +112,9 @@ def _build_user_prompt(
         else "première visite ou non connue"
     )
     return (
-        f"Cliente : {customer.first_name}, dernière visite "
+        # The model does not need a name or contact details to write the
+        # selection. Keep directly identifying data out of the provider call.
+        f"Cliente Vintiz authentifiée, dernière visite "
         f"{last_visit}.\n\n"
         f"3 derniers achats (du plus récent au plus ancien) :\n"
         f"{purchases_block}\n\n"
@@ -186,13 +193,13 @@ class PersonalShopperService:
         emb_svc = EmbeddingService(self.db)
         wide_candidates = await emb_svc.find_similar_products(
             profile, top_k=top_n * CANDIDATE_FANOUT,
-            statuses=[ProductStatus.stock, ProductStatus.display],
+            statuses=SHOPPABLE_STATUSES,
         )
 
         # 1b. HARD gender filter from the declared profile (#6 bug fix). The
         # cosine search is gender-blind, so without this a man gets women's
-        # pieces. Keep mixte / unset pieces. Mirrors daily_picks(); never
-        # empties the pool (fall back to the unfiltered set if it would).
+        # pieces. Keep mixte / unset pieces. An empty compatible set is an
+        # honest empty state; incompatible products must never be reintroduced.
         gender = (customer.gender_profile or "").strip().lower()
         if gender in ("femme", "homme"):
             target = Gender(gender)
@@ -200,7 +207,7 @@ class PersonalShopperService:
                 (p, score) for p, score in wide_candidates
                 if p.gender in (target, Gender.mixte) or p.gender is None
             ]
-            wide_candidates = gender_filtered or wide_candidates
+            wide_candidates = gender_filtered
 
         # 2. Apply size filter (best-effort: keep candidates whose size is in
         # the customer's preferred set OR whose size is unknown).
@@ -210,9 +217,7 @@ class PersonalShopperService:
                 (p, score) for p, score in wide_candidates
                 if not p.size or p.size.lower() in preferred_sizes
             ]
-            # Don't return empty if the size filter kills everything — fall
-            # back to the wide pool with a warning logged for observability.
-            wide_candidates = filtered or wide_candidates
+            wide_candidates = filtered
 
         # 3. Diversify: at most one product per category, score order.
         diversified = self._diversify_by_category(wide_candidates, top_n=top_n)
@@ -295,12 +300,40 @@ class PersonalShopperService:
 
     async def record_click(
         self,
-        recommendation_set_id: uuid.UUID,
+        recommendation_set_id: uuid.UUID | None,
         product_id: uuid.UUID,
         customer_id: uuid.UUID | None = None,
         position_in_list: int | None = None,
     ) -> None:
-        """Log a click on one of the recommended products."""
+        """Log an authenticated click and validate its recommendation set."""
+        if customer_id is None:
+            raise ValueError("customer_id is required")
+        from app.models.events import EventLog
+
+        product = (
+            await self.db.execute(
+                select(Product.id).where(
+                    Product.id == product_id,
+                    Product.status.in_(SHOPPABLE_STATUSES),
+                )
+            )
+        ).scalar_one_or_none()
+        if product is None:
+            raise ValueError("product is not currently available")
+        if recommendation_set_id is not None:
+            shown = (
+                await self.db.execute(
+                    select(EventLog.id).where(
+                        EventLog.event_type
+                        == EventType.customer_recommendation_shown,
+                        EventLog.customer_id == customer_id,
+                        EventLog.product_id == product_id,
+                        EventLog.session_id == recommendation_set_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if shown is None:
+                raise ValueError("product was not shown in this recommendation set")
         await EventService(self.db).emit(
             EventType.customer_recommendation_clicked,
             source=EventSource.site,
@@ -308,7 +341,10 @@ class PersonalShopperService:
             product_id=product_id,
             session_id=recommendation_set_id,
             algo_version=ALGO_VERSION,
-            meta={"position_in_list": position_in_list},
+            meta={
+                "position_in_list": position_in_list,
+                "origin": "recommendation" if recommendation_set_id else "search",
+            },
         )
 
     async def daily_picks(
@@ -356,7 +392,7 @@ class PersonalShopperService:
         wide = await EmbeddingService(self.db).find_similar_products(
             profile,
             top_k=top_n * 8,
-            statuses=[ProductStatus.stock, ProductStatus.display],
+            statuses=SHOPPABLE_STATUSES,
         )
 
         # Hard gender filter from the declared profile (mixte / unset kept).
@@ -368,18 +404,18 @@ class PersonalShopperService:
                 if p.gender in (target, Gender.mixte) or p.gender is None
             ]
 
-        # Hard size filter (don't empty the list if it kills everything).
+        # Hard size filter: never reintroduce an incompatible size.
         sizes = await self._preferred_sizes(customer_id)
         if sizes:
             wide = [
                 (p, s) for p, s in wide
                 if not p.size or p.size.lower() in sizes
-            ] or wide
+            ]
 
         # Frequency cap — drop pieces already shown in the last 24 h.
         recent = await self._recently_shown_pick_ids(customer_id)
         if recent:
-            wide = [(p, s) for p, s in wide if p.id not in recent] or wide
+            wide = [(p, s) for p, s in wide if p.id not in recent]
 
         # Rank: visual cosine desc, then trend_score desc.
         wide.sort(
@@ -514,6 +550,7 @@ class PersonalShopperService:
             .where(
                 Transaction.client_id == customer_id,
                 Transaction.transaction_type == TransactionType.sale,
+                Transaction.exclude_from_taste.is_(False),
                 Product.size.is_not(None),
             )
         )
@@ -535,6 +572,7 @@ class PersonalShopperService:
             .where(
                 Transaction.client_id == customer_id,
                 Transaction.transaction_type == TransactionType.sale,
+                Transaction.exclude_from_taste.is_(False),
                 Product.color.is_not(None),
             )
         )
@@ -551,6 +589,7 @@ class PersonalShopperService:
             .where(
                 Transaction.client_id == customer_id,
                 Transaction.transaction_type == TransactionType.sale,
+                Transaction.exclude_from_taste.is_(False),
             )
             .order_by(desc(Transaction.created_at))
             .limit(limit)
@@ -649,13 +688,7 @@ class PersonalShopperService:
         candidates: list[dict],
         weather_summary: str | None,
     ) -> tuple[str, bool]:
-        """Try Anthropic, fall back to a deterministic template on failure."""
-        if not settings.ANTHROPIC_API_KEY:
-            logger.info("Personal Shopper: no Anthropic key, using fallback")
-            return (
-                self._fallback_message(customer, last_purchases, candidates),
-                True,
-            )
+        """Call the central AI router, then use a deterministic fallback."""
 
         user_prompt = _build_user_prompt(
             customer=customer,
@@ -668,23 +701,22 @@ class PersonalShopperService:
         )
 
         try:
-            import anthropic
+            from app.services.ai_router import call_with_routing
 
-            client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-            message = await client.messages.create(
-                model=DEFAULT_MODEL,
+            result = await call_with_routing(
+                self.db,
+                "personal_shopper",
+                user_message=user_prompt,
+                system_message=_system_prompt(),
                 max_tokens=512,
-                system=_system_prompt(),
-                messages=[{"role": "user", "content": user_prompt}],
             )
-            text = message.content[0].text if message.content else ""
-            text = text.strip()
+            text = str(result.get("output_text") or "").strip()
             if not text:
                 return (
                     self._fallback_message(customer, last_purchases, candidates),
                     True,
                 )
-            return text, False
+            return text, bool(result.get("fallback_used", False))
         except Exception as exc:  # pragma: no cover — covered by fallback test
             logger.warning("Personal Shopper Claude call failed: %s", exc)
             return (

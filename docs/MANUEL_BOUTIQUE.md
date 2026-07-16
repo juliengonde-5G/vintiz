@@ -16,8 +16,8 @@ Vintiz, c'est **trois espaces** :
 | **Back-office** | `app.vintiz.fr` | manager + vendeurs | Inventaire, CRM, IA, rapports, paramètres |
 | **Site public** | `vintiz.fr` | clients | Vitrine, newsletter, espace client |
 
-L'identifiant par défaut est **admin / vintiz2026** — à changer en compte
-nominatif au premier login (Settings > Sécurité).
+Il n'existe aucun identifiant par défaut. Chaque membre de l'équipe utilise un
+compte nominatif créé par le manager (Settings > Sécurité).
 
 ## 2. Premier démarrage de la journée
 
@@ -34,7 +34,7 @@ nominatif au premier login (Settings > Sécurité).
 ### B. Se connecter
 
 1. Ouvrir Safari sur l'iPad → `app.vintiz.fr`
-2. Se connecter (admin / vintiz2026 ou compte nominatif)
+2. Se connecter avec son compte nominatif
 3. Le **Dashboard** s'affiche : météo Vernon, KPIs du jour, derniers tickets
 
 ### C. Ouvrir la caisse
@@ -83,9 +83,10 @@ Dashboard > **Cahier du jour** (`/dashboard/cahier-du-jour`)
 
 ### Fidélité
 
-- Si un client est rattaché : ses points apparaissent en haut du panier
-- Toggle **Utiliser les points** → 1 pt = 0,10 €, max 50 % du panier
-- Validation de la vente débite automatiquement les points consommés
+- Si une cliente membre est rattachée, son solde et ses bons actifs apparaissent.
+- 1 € payé sur un article **hors promotion, solde ou remise** rapporte 1 point.
+- Chaque tranche de 100 points génère automatiquement un chèque cadeau de 5 €, valable 6 mois.
+- Le bon est affecté au panier comme moyen de paiement. Les retours annulent les points correspondants.
 
 ### Encaissement
 
@@ -169,11 +170,10 @@ Le score est recalculé automatiquement le **1er mercredi de chaque mois**.
 
 ### Carte fidélité
 
-- **Bronze** : 0–500 pts
-- **Silver** : 500–1500 pts (offert à partir de 50 € d'achats)
-- **Gold** : 1500+ pts (offerts à partir de 200 € d'achats)
-- Gain : 1 pt par euro dépensé
-- Utilisation : 1 pt = 0,10 €, max 50 % du panier
+- Carte digitale unique au format `V######`, sans conversion directe des points.
+- Gain : 1 point par euro éligible, hors promotion, solde et remise.
+- Récompense : un chèque cadeau de 5 € à chaque tranche de 100 points.
+- Le bon se cumule avec d'autres bons fidélité et s'utilise comme moyen de paiement au POS.
 
 ### Personal Shopper IA
 

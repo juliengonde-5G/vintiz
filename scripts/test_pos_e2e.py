@@ -34,6 +34,8 @@ import httpx
 
 API_URL = os.getenv("VINTIZ_API_URL", "http://localhost:8000")
 API_TOKEN = os.getenv("VINTIZ_API_TOKEN", "")
+TEST_USERNAME = os.getenv("VINTIZ_TEST_USERNAME", "")
+TEST_PASSWORD = os.getenv("VINTIZ_TEST_PASSWORD", "")
 WITNESS_EMAIL = os.getenv(
     "VINTIZ_WITNESS_EMAIL", "clara.dupont@temoin.vintiz.fr"
 )
@@ -46,9 +48,13 @@ def log_step(num: int, name: str, ok: bool, detail: str = "") -> dict:
 
 
 async def login_admin(client: httpx.AsyncClient) -> str:
+    if not TEST_USERNAME or not TEST_PASSWORD:
+        raise RuntimeError(
+            "Set VINTIZ_API_TOKEN or VINTIZ_TEST_USERNAME/VINTIZ_TEST_PASSWORD"
+        )
     r = await client.post(
         f"{API_URL}/api/auth/login",
-        data={"username": "admin", "password": "vintiz2026"},
+        data={"username": TEST_USERNAME, "password": TEST_PASSWORD},
     )
     r.raise_for_status()
     return r.json()["access_token"]
@@ -64,7 +70,7 @@ async def main() -> int:
         headers = {"Authorization": f"Bearer {token}"}
 
         # 1. Cashier auth (the manager already has admin token; production cycle would use PIN)
-        report.append(log_step(1, "Auth manager", True, "via admin/vintiz2026"))
+        report.append(log_step(1, "Auth manager", True, "compte nominatif"))
 
         # 2. Open cash drawer
         try:
@@ -84,6 +90,7 @@ async def main() -> int:
             r = await http.get(
                 f"{API_URL}/api/crm/clients/lookup-brief",
                 params={"email": WITNESS_EMAIL},
+                headers=headers,
             )
             if r.status_code < 400:
                 brief = r.json()
@@ -169,7 +176,14 @@ async def main() -> int:
                     ],
                 }
                 # Don't actually commit — just simulate by hitting receipt endpoint with a fake id
-                report.append(log_step(8, "Split payment payload built", True, f"{len(product_ids)} items"))
+                report.append(
+                    log_step(
+                        8,
+                        "Split payment payload built",
+                        True,
+                        f"{len(payload['items'])} items",
+                    )
+                )
             except Exception as e:
                 report.append(log_step(8, "Split payment", False, str(e)))
         else:

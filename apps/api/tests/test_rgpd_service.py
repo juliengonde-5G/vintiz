@@ -1,6 +1,5 @@
 """Tests for the RGPD service: consent ledger, data export, soft/hard deletion (P1-007)."""
 
-import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -26,7 +25,8 @@ from app.models.pos import (
     TransactionItem,
     TransactionType,
 )
-from app.models.product import Category, Product, ProductStatus
+from app.models.embeddings import CustomerTasteProfile
+from app.models.product import Category, Product
 from app.models.user import User, UserRole
 from app.services.rgpd import (
     CURRENT_POLICY_VERSION,
@@ -56,6 +56,7 @@ async def engine():
         LoyaltyAccount.__table__,
         LoyaltyTransaction.__table__,
         AvoirTransaction.__table__,
+        CustomerTasteProfile.__table__,
     ]
     async with eng.begin() as conn:
         await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=tables))

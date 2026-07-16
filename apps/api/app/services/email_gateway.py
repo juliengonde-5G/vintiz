@@ -31,7 +31,6 @@ import logging
 import os
 import smtplib
 import time
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
@@ -240,7 +239,7 @@ def _send_via_brevo(message: EmailMessage) -> EmailResult:
             # Honour the Retry-After header when present (seconds or HTTP date)
             sleep_for = 0.0
             try:
-                retry_after = exc.headers.get("Retry-After") if hasattr(exc, "headers") else None
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
                 if retry_after:
                     sleep_for = float(retry_after)
             except (TypeError, ValueError):
