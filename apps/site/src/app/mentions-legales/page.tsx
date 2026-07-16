@@ -78,9 +78,12 @@ export default function MentionsLegalesPage() {
           </p>
           <ul className="list-disc pl-6 text-vz-ink/70 leading-relaxed">
             <li>
-              <strong>Anthropic Ireland Ltd.</strong> — service Claude
+              <strong>Anthropic</strong> — API commerciale Claude
               (Personal Shopper, alertes tendance, audit RGPD). Données
-              transmises&nbsp;: embeddings de texte, requêtes de recherche.
+              transmises&nbsp;: attributs de produits, contexte de recommandation
+              et requêtes de recherche. Le traitement peut impliquer un
+              transfert vers les États-Unis&nbsp;; voir la politique de
+              confidentialité.
             </li>
             <li>
               <strong>Brevo (Sendinblue)</strong> — envoi des emails

@@ -30,8 +30,8 @@ export default function AiDisclaimer({
       >
         <p>
           <span className="font-semibold text-vz-ink">IA — </span>
-          Cette page utilise une intelligence artificielle (Claude Haiku,
-          hébergée en Union européenne) pour vous proposer des recommandations
+          Cette page utilise Claude Haiku via l&apos;API commerciale
+          d&apos;Anthropic pour vous proposer des recommandations
           personnalisées.{" "}
           <Link
             href="/confidentialite#personal-shopper"
@@ -63,8 +63,8 @@ export default function AiDisclaimer({
             <span className="font-semibold text-vz-ink">
               Vous interagissez avec une intelligence artificielle.
             </span>{" "}
-            Personal Shopper Vintiz est alimenté par Claude Haiku
-            (Anthropic, hébergement UE). Les recommandations sont
+            Personal Shopper Vintiz est alimenté par Claude Haiku via
+            l&apos;API commerciale d&apos;Anthropic. Les recommandations sont
             personnalisées à partir de vos goûts.
           </span>
         </p>

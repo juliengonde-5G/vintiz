@@ -32,7 +32,7 @@ const serviceJsonLd = {
   name: "Personal Shopper IA Vintiz",
   serviceType: "Personal Shopping",
   description:
-    "Service de recommandation personnalisée de pièces seconde main premium, alimenté par une IA conversationnelle (Claude Haiku, hébergée en Union européenne). Disponible aux membres du programme de fidélité Vintiz, sur consentement explicite.",
+    "Service de recommandation personnalisée de pièces seconde main premium, alimenté par Claude Haiku via l’API commerciale d’Anthropic. Disponible aux membres du programme de fidélité Vintiz, sur consentement explicite.",
   provider: {
     "@type": "ClothingStore",
     name: "Vintiz",
@@ -285,8 +285,10 @@ export default function PersonalShopperPage() {
               <p className="text-vz-ink-soft leading-relaxed">
                 Vous changez d&apos;avis ? Un clic dans votre espace client
                 désactive immédiatement le service. Vos données de profilage
-                sont alors supprimées, et nous repartons de zéro si vous
-                réactivez plus tard.
+                et préférences déclarées sont alors supprimées. Votre historique
+                d&apos;achats reste conservé selon les obligations légales et ne
+                peut être réutilisé pour personnaliser le service qu&apos;après
+                un nouveau consentement.
               </p>
             </div>
           </div>
@@ -382,9 +384,9 @@ export default function PersonalShopperPage() {
             <div className="mt-10 rounded-2xl bg-vz-teal-soft/30 border border-vz-teal/20 p-6 text-sm text-vz-ink-soft leading-relaxed">
               <p>
                 <strong className="text-vz-ink">L&apos;IA utilisée :</strong>{" "}
-                Claude Haiku 4.5 d&apos;Anthropic, hébergée en Union
-                européenne. Anthropic ne réutilise pas vos données pour
-                entraîner ses modèles (engagement contractuel API).
+                Claude Haiku 4.5 via l&apos;API commerciale d&apos;Anthropic.
+                Par défaut, Anthropic n&apos;utilise pas les entrées et sorties
+                de cette API pour entraîner ses modèles.
               </p>
               <p className="mt-3">
                 <strong className="text-vz-ink">Conservation :</strong> profil

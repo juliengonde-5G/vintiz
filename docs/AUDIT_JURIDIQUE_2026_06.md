@@ -20,7 +20,7 @@ consentement / cookies, citation des marques.
 |---|---|---|
 | Mentions légales (LCEN art. 6-III) | 🔴 Incomplet | **Haute** — identité légale manquante |
 | CGV | 🟡 Présent, à compléter | Moyenne — médiateur + garanties légales |
-| Politique de confidentialité (RGPD) | 🟢 Solide | Basse — quelques précisions |
+| Politique de confidentialité (RGPD) | 🟡 À valider | Haute — transfert Anthropic hors EEE |
 | Cookies / consentement | 🟢 Conforme | Bandeau + Consent Mode v2 présents |
 | Citation des marques | 🟡 À encadrer | Moyenne — disclaimer d'indépendance absent |
 | Cohérence inter-pages | 🟡 | 1 incohérence (durée du bon : 60 j vs 6 mois) |
@@ -83,21 +83,31 @@ applicable + tribunal de Vernon.
 
 ---
 
-## 3. Politique de confidentialité (RGPD) — 🟢 solide
+## 3. Politique de confidentialité (RGPD) — 🟡 à valider
 
 Fichier : `apps/site/src/app/confidentialite/page.tsx`.
 
 **Bien couvert** : responsable de traitement, **DPO** (`dpo@solidarite-textiles.fr`),
-finalités, **sous-traitants nommés** (Anthropic Ireland/AWS Europe, Brevo, SumUp,
-Scaleway), durées de conservation (profil 24 mois, prospection 3 ans CNIL,
-compta 10 ans), droits RGPD + **réclamation CNIL**, base embeddings.
+finalités, sous-traitants nommés, durées de conservation (profil 24 mois,
+prospection 3 ans CNIL, comptabilité 10 ans), droits RGPD + **réclamation
+CNIL**, base embeddings et suppression immédiate du profil dérivé au retrait
+du consentement.
 
-**Précisions recommandées (mineures)** :
+**Réserve majeure constatée le 16/07/2026** : la version publiée affirmait à
+tort « Anthropic Ireland / AWS Europe », « aucun transfert hors UE » et une
+absence de conservation après inférence. La documentation officielle
+d'Anthropic indique au contraire un traitement possible dans plusieurs
+régions, un stockage aux États-Unis par défaut et, pour l&apos;API standard, une
+suppression des entrées/sorties sous 30 jours sauf exceptions. Les contenus ont
+été corrigés ; il reste à conserver au dossier RGPD le DPA applicable et les
+garanties du chapitre V (CCT et analyse de transfert si requise).
+
+**Précisions recommandées** :
 - **Bases légales** par finalité (exécution du contrat / intérêt légitime /
   consentement) — à expliciter finalité par finalité.
-- **Transferts hors UE** : confirmer que tout reste UE (Anthropic *Ireland* +
-  AWS Europe, Scaleway France, Brevo France) → ajouter une phrase « aucun
-  transfert hors UE » si exact, sinon mentionner les garanties (CCT).
+- **Transferts hors EEE** : vérifier et archiver le DPA Anthropic, les clauses
+  contractuelles types et l&apos;analyse de transfert applicables avant de clôturer
+  cette réserve.
 - **qrserver.com** (génération des QR de carte fidélité, `api.qrserver.com`) :
   le payload de carte (n° V######) transite par un service tiers (Allemagne/UE) —
   à mentionner dans les sous-traitants, **ou** basculer la génération QR en
@@ -105,9 +115,11 @@ compta 10 ans), droits RGPD + **réclamation CNIL**, base embeddings.
 - **OpenWeather** (météo Vernon, contexte des recos) : pas de donnée perso
   transmise → mention non obligatoire, mais à vérifier.
 
-**Correction apportée** : ajout d'une phrase « hébergement & traitements dans
-l'UE » + ajout de `api.qrserver.com` à la liste des sous-traitants (transparence)
-en attendant l'internalisation du QR.
+**Corrections apportées** : suppression des allégations d'hébergement UE,
+publication de la durée standard Anthropic (30 jours, sauf exceptions),
+transparence sur le transfert vers les États-Unis, internalisation du QR et
+suppression/anonymisation des signaux Personal Shopper lors du retrait du
+consentement.
 
 ---
 

@@ -32,7 +32,7 @@ const serviceJsonLd = {
   name: "Vintiz AI Personal Shopper",
   serviceType: "Personal Shopping",
   description:
-    "AI-powered personal shopping service for curated premium second-hand fashion in Vernon, France. Backed by Claude Haiku (Anthropic, EU hosting), opt-in only, GDPR-compliant.",
+    "AI-powered personal shopping service for curated premium second-hand fashion in Vernon, France. Backed by Claude Haiku through Anthropic’s commercial API, opt-in only.",
   provider: {
     "@type": "ClothingStore",
     name: "Vintiz",
@@ -122,7 +122,8 @@ export default function PersonalShopperEnPage() {
                   Our AI cross-references
                 </h3>
                 <p className="text-vz-ink-soft leading-relaxed">
-                  Claude Haiku 4.5 (Anthropic, EU hosting) crosses your
+                  Claude Haiku 4.5, through Anthropic&apos;s commercial API,
+                  crosses your
                   preferences with our real in-store inventory. Narrative
                   recommendations, not just a list.
                 </p>

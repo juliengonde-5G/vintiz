@@ -1,5 +1,21 @@
 # Changelog Vintiz
 
+## [1.1.2] - 2026-07-16 — Transparence IA et révocation du profilage
+
+- Révocation du Personal Shopper rendue effective depuis ses deux interfaces :
+  suppression immédiate du profil de goûts et des qualifications déclaratives,
+  anonymisation des événements de recommandation et conservation séparée de
+  l'historique d'achats soumis aux obligations légales.
+- Mentions Anthropic corrigées sur le site et dans les documents d'audit : pas
+  d'allégation d'hébergement UE, transparence sur le stockage américain par
+  défaut, la rétention API standard et l'absence d'entraînement par défaut.
+- Politique de confidentialité versionnée, promesse NF525 reformulée comme
+  démarche de certification et description de la sécurité alignée sur les
+  contrôles réellement déployés.
+- Sélecteur de langue corrigé sur les routes sans équivalent anglais, dont
+  l'espace client ; suppression de l'allégation d'hébergement UE de GA4.
+- Tests de non-régression sur les deux parcours de retrait du consentement.
+
 ## [1.1.1] - 2026-07-16 — Correctif déploiement fiscal
 
 - Migration 0072 compatible `asyncpg` : chaque fonction et trigger PostgreSQL
@@ -166,8 +182,8 @@ sans interruption de service.
 - Pages légales: CGV art. 6 réécrit (1 €=1 pt, péremption 24 mois,
   3 modes adhésion, PS + alertes tendance, pas de vente en ligne) ;
   mentions légales avec DPO + sous-traitants ; confidentialité avec
-  buckets profilage et trend_alerts détaillés (Anthropic Ireland,
-  durée 36 mois).
+  buckets profilage et trend_alerts détaillés (contenu rectifié en 1.1.2
+  concernant Anthropic et la durée du profil).
 - `/account/rgpd`: consentements lisibles + toggles + export Article 20 +
   demande suppression 30 j (annulable).
 

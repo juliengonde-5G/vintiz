@@ -51,7 +51,7 @@ export default function CookieBanner() {
             <p id="cookie-banner-desc">
               <span className="font-semibold text-black">Votre vie privée</span> — Nous utilisons
               uniquement des cookies fonctionnels nécessaires au site. Avec votre accord,
-              Google&nbsp;Analytics&nbsp;4 (mesure d&apos;audience anonymisée, hébergement UE)
+              Google&nbsp;Analytics&nbsp;4 (mesure d&apos;audience)
               pourra déposer un cookie pour améliorer votre expérience. Aucun cookie publicitaire
               tiers.{' '}
               <Link href="/confidentialite" className="underline text-vz-teal hover:text-vz-teal-deep">

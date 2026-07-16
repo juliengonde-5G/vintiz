@@ -456,7 +456,7 @@ H2 : Ce que notre IA analyse
 
 H2 : Pourquoi c'est différent
 - Stock physique premium curé à Vernon (Sandro, Maje, Sézane, Ba&sh, IRO…)
-- IA conversationnelle Claude Haiku 4.5 (Anthropic, hébergement UE)
+- IA conversationnelle Claude Haiku 4.5 via l'API commerciale Anthropic
 - Réservation 24-48h pour récupération en boutique
 - Désactivation à tout moment, conformité RGPD complète
 

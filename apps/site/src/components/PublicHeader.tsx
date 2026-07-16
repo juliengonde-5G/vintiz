@@ -63,7 +63,7 @@ function resolveSwitchHref(pathname: string, isEn: boolean): string {
     }
   }
 
-  return isEn ? "/" : "/en/personal-shopper";
+  return isEn ? "/" : "/en";
 }
 
 /**

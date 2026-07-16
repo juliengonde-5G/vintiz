@@ -34,6 +34,19 @@ Les contrôles réussis couvrent :
 - fonctionnement public du magic-link anti-énumération ;
 - disponibilité de la sélection éditoriale anonyme.
 
+## 2.1. Recette persona client sur navigateur
+
+Contrôle manuel effectué le 16/07/2026 sur `https://vintiz.fr` :
+
+- accueil, catalogue public, connexion magic-link et page Personal Shopper
+  disponibles sans erreur visible ;
+- promesse fidélité affichée correctement : 1 € éligible = 1 point, 100 points
+  = chèque cadeau de 5 € ;
+- bandeau cookies avec choix accepter/refuser présent ;
+- réserve détectée sur la transparence Anthropic et sur la suppression réelle
+  du profil après révocation. Ces deux écarts sont corrigés dans la candidate
+  1.1.2 et doivent être recontrôlés après son déploiement.
+
 ## 3. Complément automatisé avec jeton manager
 
 À exécuter sans enregistrer le jeton dans un fichier ou dans Git :

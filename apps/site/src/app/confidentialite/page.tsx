@@ -20,7 +20,7 @@ export default function ConfidentialitePage() {
             Politique de confidentialité
           </h1>
           <p className="text-xs text-black/50 mb-8">
-            Dernière mise à jour : avril 2026 — version v1.0-2026-04
+            Dernière mise à jour : 16 juillet 2026 — version v1.1-2026-07
           </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">
@@ -57,9 +57,11 @@ export default function ConfidentialitePage() {
               afin de vous proposer des sélections personnalisées.
             </li>
             <li>
-              <strong>Encaissement</strong> — chaque vente est enregistrée
-              conformément à la norme NF525 (loi anti-fraude TVA), avec montant,
-              articles, méthode de paiement et chaînage cryptographique.
+              <strong>Encaissement</strong> — chaque vente est enregistrée avec
+              montant, articles, méthode de paiement et chaînage
+              cryptographique, dans le cadre de la démarche de certification
+              du logiciel de caisse. Vintiz ne revendique pas encore une
+              certification NF525.
             </li>
           </ul>
 
@@ -79,10 +81,11 @@ export default function ConfidentialitePage() {
               <strong>Personal Shopper IA et profilage</strong> — consentement
               explicite (RGPD art. 6.1.a + art. 22). Vos préférences de style,
               tailles, couleurs et historique d&apos;achats alimentent un
-              modèle d&apos;embeddings (sous-traitant&nbsp;: Anthropic Ireland
-              pour Claude Haiku 4.5). Durée de conservation 36 mois maximum
-              après le dernier achat. Retrait via le toggle Personal Shopper
-              dans votre{" "}
+              modèle d&apos;embeddings. Claude Haiku 4.5, fourni par Anthropic,
+              peut rédiger la recommandation. Le profil dérivé est supprimé
+              dès le retrait du consentement et, à défaut, après 24 mois
+              d&apos;inactivité. Retrait via le toggle Personal Shopper dans
+              votre{" "}
               <Link href="/account/rgpd" className="text-vz-teal underline">
                 espace de gestion des données
               </Link>
@@ -178,6 +181,11 @@ export default function ConfidentialitePage() {
               légale (article L102 B du Livre des procédures fiscales).
             </li>
             <li>
+              <strong>Profil Personal Shopper</strong> — jusqu&apos;au retrait du
+              consentement ou, à défaut, 24 mois sans activité. La preuve du
+              retrait reste conservée dans le registre de consentement.
+            </li>
+            <li>
               <strong>Mesure d&apos;audience</strong> — 14 mois.
             </li>
           </ul>
@@ -195,11 +203,13 @@ export default function ConfidentialitePage() {
               et application.
             </li>
             <li>
-              <strong>Anthropic</strong> (API Claude, AWS Europe) — analyse
+              <strong>Anthropic</strong> (API commerciale Claude) — analyse
               automatisée des fiches produits et rédaction des recommandations
-              Personal Shopper. Les données envoyées sont strictement
-              fonctionnelles (description du panier ou du produit) et ne sont
-              pas conservées par Anthropic après inférence.
+              Personal Shopper. Seules les données nécessaires à la demande
+              sont transmises. Anthropic indique que les entrées et sorties de
+              son API commerciale ne servent pas, par défaut, à entraîner ses
+              modèles et sont supprimées sous 30 jours dans le régime standard,
+              sous réserve des exceptions prévues par ses conditions.
             </li>
             <li>
               <strong>SumUp</strong> (paiement CB) — informations de paiement
@@ -224,20 +234,31 @@ export default function ConfidentialitePage() {
             n&apos;est transmis à aucun service tiers.
           </p>
           <p className="text-black/70 leading-relaxed mt-2">
-            Aucun transfert hors Union européenne n&apos;est effectué pour les
-            données de profil&nbsp;; l&apos;API Claude est utilisée via une
-            instance européenne.
+            L&apos;utilisation de l&apos;API Claude peut entraîner un traitement dans
+            plusieurs régions et un stockage aux États-Unis par défaut. Elle
+            implique donc un transfert de données hors de l&apos;Espace économique
+            européen, à encadrer par les garanties contractuelles applicables.
+            Les détails à jour sont disponibles dans le{" "}
+            <a
+              href="https://privacy.claude.com/en/articles/7996890-where-are-your-servers-located-do-you-host-your-models-on-eu-servers"
+              className="text-vz-teal underline"
+              rel="noreferrer"
+              target="_blank"
+            >
+              centre de confidentialité Anthropic
+            </a>
+            .
           </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">Sécurité</h2>
           <p className="text-black/70 leading-relaxed">
-            Les données sont stockées dans une base de données PostgreSQL
-            sauvegardée quotidiennement (sauvegardes chiffrées). Les accès
-            administratifs sont protégés par authentification forte
-            (mot de passe + PIN cashier 4 chiffres). Toute modification de
-            donnée sensible est journalisée dans un registre d&apos;audit
-            inaltérable. Les transactions de caisse sont chaînées par hash
-            SHA-256 conformément à la norme NF525.
+            Les données sont stockées dans une base PostgreSQL sauvegardée
+            quotidiennement. Les accès administratifs utilisent des comptes
+            nominatifs authentifiés ; le PIN caisse identifie l&apos;opérateur et
+            ne constitue pas un second facteur. Les opérations sensibles sont
+            journalisées. Les écritures fiscales sont chaînées, signées et
+            protégées contre la modification dans la version candidate à la
+            certification NF525.
           </p>
 
           <h2
@@ -294,10 +315,11 @@ export default function ConfidentialitePage() {
             </li>
           </ul>
           <p className="text-black/70 leading-relaxed mt-4">
-            Le modèle utilisé est Claude Haiku 4.5 (Anthropic Ireland Limited,
-            hébergement AWS Union européenne). Les données envoyées au modèle
-            sont strictement nécessaires à la recommandation et ne sont pas
-            conservées par Anthropic après inférence.
+            Le modèle utilisé est Claude Haiku 4.5 via l&apos;API commerciale
+            d&apos;Anthropic. Les données envoyées sont limitées à ce qui est
+            nécessaire à la recommandation. Dans le régime standard annoncé
+            par Anthropic, les entrées et sorties sont supprimées sous 30 jours,
+            sauf exception contractuelle, légale ou liée à la sécurité.
           </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">

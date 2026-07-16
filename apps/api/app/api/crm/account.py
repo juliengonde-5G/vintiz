@@ -24,7 +24,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -34,6 +34,8 @@ from app.models.client import (
     Consent,
     ConsentPurpose,
 )
+from app.models.embeddings import CustomerTasteProfile
+from app.models.events import EventLog, EventType
 from app.models.pos import Transaction
 
 logger = logging.getLogger("vintiz")
@@ -163,6 +165,47 @@ async def _record_consent_toggle(
         )
     )
     await db.flush()
+
+
+async def _erase_personal_shopper_profile(
+    db: AsyncSession,
+    client: Client,
+) -> None:
+    """Erase every customer-linked Personal Shopper learning signal.
+
+    Purchase and fiscal history are deliberately preserved under their own
+    retention rules. Recommendation events remain only as anonymous aggregate
+    statistics so they can no longer identify the customer or rebuild a taste
+    profile after a later opt-in.
+    """
+    await db.execute(
+        delete(CustomerTasteProfile).where(
+            CustomerTasteProfile.customer_id == client.id
+        )
+    )
+    await db.execute(
+        update(EventLog)
+        .where(
+            EventLog.customer_id == client.id,
+            EventLog.event_type.in_(
+                (
+                    EventType.customer_recommendation_shown,
+                    EventType.customer_recommendation_clicked,
+                    EventType.customer_picks_shown,
+                )
+            ),
+        )
+        .values(customer_id=None)
+    )
+    for field in (
+        "gender_profile",
+        "age_band",
+        "season_bias",
+        "price_ceiling_cents",
+        "price_sensitivity",
+        "trend_affinity",
+    ):
+        setattr(client, field, None)
 
 @router.post("/account/register", status_code=202)
 async def public_account_register(
@@ -363,7 +406,9 @@ async def toggle_personal_shopper(
     """Append a ``profiling`` consent row from the client space.
 
     Returns 204 on success even if the toggle is a no-op (idempotent
-    UX); the underlying consent ledger keeps the full history.
+    UX); the underlying consent ledger keeps the full history. Revoking
+    consent immediately erases the derived and declarative taste profile,
+    without deleting purchase or fiscal history.
     """
     from fastapi import Response
 
@@ -375,6 +420,8 @@ async def toggle_personal_shopper(
         payload.enabled,
         source=payload.source,
     )
+    if not payload.enabled:
+        await _erase_personal_shopper_profile(db, client)
     await db.commit()
     return Response(status_code=204)
 
@@ -603,15 +650,15 @@ async def public_account_consent_toggle(
         raise HTTPException(status_code=404, detail="unknown_purpose")
 
     client = _authenticated_client(current_client, payload.email)
-    db.add(
-        Consent(
-            client_id=client.id,
-            purpose=consent_purpose,
-            granted=payload.granted,
-            policy_version="v2-2026-04",
-            source="account_self_service",
-        )
+    await _record_consent_toggle(
+        db,
+        client,
+        consent_purpose,
+        payload.granted,
+        source="account_self_service",
     )
+    if consent_purpose == ConsentPurpose.profiling and not payload.granted:
+        await _erase_personal_shopper_profile(db, client)
     if consent_purpose in (ConsentPurpose.email_marketing, ConsentPurpose.sms_marketing):
         # Mirror legacy boolean flag (kept for the cron jobs that still
         # consult ``Client.email_optin`` / ``sms_optin``).

@@ -1,6 +1,6 @@
 [project]
 name = "vintiz-api"
-version = "1.1.1"
+version = "1.1.2"
 description = "Vintiz - Boutique Management API"
 requires-python = ">=3.11"
 dependencies = [

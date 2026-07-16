@@ -254,7 +254,12 @@ Pour vous recommander des articles d'occasion premium qui correspondent à votre
 - Vos clics sur les recommandations précédentes (boucle de feedback)
 
 ## Quelle IA ?
-Nous utilisons Claude Haiku 4.5 (Anthropic, hébergeur AWS UE-Irlande). Anthropic ne réutilise pas vos données pour entraîner ses modèles (engagement contractuel API-Anthropic).
+Nous utilisons Claude Haiku 4.5 via l'API commerciale d'Anthropic. Anthropic
+indique que les entrées et sorties de cette API ne sont pas utilisées par
+défaut pour entraîner ses modèles. Le traitement peut intervenir dans plusieurs
+régions, avec stockage aux États-Unis par défaut et suppression sous 30 jours
+dans le régime standard, sauf exceptions. Vérifier le DPA et les garanties de
+transfert hors EEE applicables.
 
 ## Combien de temps ?
 - Profil de goûts (embeddings) : tant que vous êtes membre, supprimé après 24 mois sans activité

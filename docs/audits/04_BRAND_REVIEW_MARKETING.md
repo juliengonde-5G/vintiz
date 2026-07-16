@@ -262,7 +262,8 @@ D'après `AUDIT_VINTIZ_2026.md §1.1`, 5 personas :
 > « Notre Personal Shopper IA Vintiz, c'est comme avoir une copine styliste qui connaît votre dressing, votre budget, et qui a fouillé toute la boutique pour vous, en 30 secondes, à toute heure. »
 
 **Preuves opérationnelles** :
-- Claude Haiku 4.5 (Anthropic, hébergement UE-Irlande, anti-réutilisation training data)
+- Claude Haiku 4.5 via l'API commerciale Anthropic (entrées/sorties non
+  utilisées par défaut pour l'entraînement ; transfert hors EEE documenté)
 - Embeddings pgvector du catalogue (similarité visuelle, sémantique texte libre)
 - Croisement : historique achats + préférences + clics + contexte (saison, météo Vernon)
 - Recommandation **narrative** : 4-6 phrases explicatives, pas une grille
