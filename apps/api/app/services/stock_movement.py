@@ -240,12 +240,13 @@ async def move_product(
     elif (
         to_zone_id is None
         and to_status is not None
-        and to_status in STOCK_STATUSES
+        and to_status in (STOCK_STATUSES | TERMINAL_STATUSES)
         and before_zone is not None
     ):
-        # Retour en réserve : la cave n'a pas de zones — on libère la zone
-        # d'où vient la pièce (sinon l'historique d'emplacement et le plan
-        # boutique garderaient un fantôme de placement).
+        # Retour en réserve OU sortie définitive (retour tri, don, rejet) :
+        # dans les deux cas la pièce quitte la surface de vente — on libère
+        # sa zone (sinon l'historique d'emplacement et le plan boutique
+        # garderaient un fantôme de placement). Aligné sur ``withdraw``.
         product.zone_id = None
         await db.flush()
 

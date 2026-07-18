@@ -692,12 +692,17 @@ def register_all_jobs(scheduler) -> None:
         id="daily_embedding_refresh",
         replace_existing=True,
     )
-    scheduler.add_job(
-        run_daily_return_to_sorting,
-        CronTrigger(hour=2, minute=0),
-        id="daily_return_to_sorting",
-        replace_existing=True,
-    )
+    # DÉSACTIVÉ (2026-07-18, demande manager) : plus AUCUNE sortie
+    # automatique vers le centre de tri — les pièces basculées en base
+    # restaient physiquement en rayon (ventes orphelines en caisse).
+    # Seul le retrait manuel reste : fiche produit (withdraw) et onglet
+    # « Retour tri » des Mouvements de stock.
+    # scheduler.add_job(
+    #     run_daily_return_to_sorting,
+    #     CronTrigger(hour=2, minute=0),
+    #     id="daily_return_to_sorting",
+    #     replace_existing=True,
+    # )
     scheduler.add_job(
         run_weekly_window_display,
         CronTrigger(day_of_week="mon", hour=6, minute=0),

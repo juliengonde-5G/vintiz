@@ -2266,13 +2266,20 @@ async def accept_window_display(
 async def run_return_to_sorting(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Manually trigger the return-to-sorting cron pass. Same effect as
-    waiting for the 02:00 daily run."""
-    from app.services.return_to_sorting import ReturnToSortingService
-
-    summary = await ReturnToSortingService(db).run()
-    await db.commit()
-    return summary
+    """DÉSACTIVÉ (2026-07-18, demande manager) — plus aucune sortie
+    automatique en masse vers le centre de tri : les bascules en base sans
+    retrait physique produisaient des ventes orphelines en caisse. Le
+    preview reste disponible (lecture seule) ; le retrait se fait pièce par
+    pièce depuis la fiche produit ou l'onglet « Retour tri » des Mouvements
+    de stock."""
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "La sortie automatique au centre de tri est désactivée. "
+            "Utilisez le retrait manuel (fiche produit ou Mouvements de "
+            "stock > Retour tri)."
+        ),
+    )
 
 
 @router.post(
