@@ -24,12 +24,29 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
+from pathlib import Path
 
-from sqlalchemy import select
+# Rendre ``import app.core...`` fonctionnel en dev ET en Docker (/app).
+_HERE = Path(__file__).resolve()
+for _candidate in (
+    _HERE.parents[1] / "apps" / "api",   # layout dev (repo)
+    _HERE.parents[1],                    # layout Docker prod (/app)
+):
+    if (_candidate / "app" / "core" / "database.py").exists():
+        sys.path.insert(0, str(_candidate))
+        break
+else:
+    raise SystemExit(
+        "move_stock_to_display: package `app` introuvable — vérifié "
+        f"{_HERE.parents[1] / 'apps' / 'api'} et {_HERE.parents[1]}"
+    )
 
-from app.core.database import async_session
-from app.models.product import Product, ProductStatus
-from app.services.product_lifecycle import ProductLifecycleService
+from sqlalchemy import select  # noqa: E402
+
+from app.core.database import async_session  # noqa: E402
+from app.models.product import Product, ProductStatus  # noqa: E402
+from app.services.product_lifecycle import ProductLifecycleService  # noqa: E402
 
 
 async def run(dry_run: bool) -> None:
