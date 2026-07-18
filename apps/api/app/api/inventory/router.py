@@ -591,6 +591,52 @@ async def search_products(
     return payload
 
 
+async def _log_barcode_scan(
+    db: AsyncSession,
+    *,
+    barcode_raw: str,
+    barcode_normalized: str,
+    matched: bool,
+    product_id: uuid.UUID | None = None,
+    permanent_item_id: uuid.UUID | None = None,
+    product_name: str | None = None,
+    sale_price=None,
+    user_id: uuid.UUID | None = None,
+) -> None:
+    """Trace une lecture douchette (hit OU miss) — best-effort.
+
+    Commit explicite : sur un miss le endpoint lève 404, et ``get_db``
+    ferait alors ROLLBACK — la ligne de scan disparaîtrait avec. La
+    journalisation ne doit jamais faire échouer le scan lui-même (même
+    philosophie « swallow » que EventService) : toute erreur est loggée
+    puis avalée, avec rollback pour rendre la session réutilisable.
+    """
+    from app.models.scan_log import ProductScanLog
+
+    try:
+        db.add(
+            ProductScanLog(
+                barcode_raw=(barcode_raw or "")[:100],
+                barcode_normalized=(barcode_normalized or "")[:100],
+                matched=matched,
+                product_id=product_id,
+                permanent_item_id=permanent_item_id,
+                product_name=product_name,
+                sale_price=sale_price,
+                user_id=user_id,
+            )
+        )
+        await db.commit()
+    except Exception:
+        logging.getLogger("vintiz").warning(
+            "scan log write failed (ignored)", exc_info=True
+        )
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+
 @router.get("/products/by-barcode/{barcode}")
 async def get_product_by_barcode(
     barcode: str,
@@ -666,6 +712,19 @@ async def get_product_by_barcode(
             )
             perm = perm_res.scalar_one_or_none()
             if perm is not None:
+                # Trace même le scan d'un article désactivé (409) : une
+                # lecture a bien eu lieu, elle compte pour reconstituer
+                # un panier.
+                await _log_barcode_scan(
+                    db,
+                    barcode_raw=barcode,
+                    barcode_normalized=code,
+                    matched=True,
+                    permanent_item_id=perm.id,
+                    product_name=perm.name,
+                    sale_price=perm.sale_price,
+                    user_id=current_user.id,
+                )
                 if not perm.is_active:
                     raise HTTPException(
                         status_code=409,
@@ -690,12 +749,21 @@ async def get_product_by_barcode(
             "barcode lookup miss : raw=%r normalised=%r — check that the printed label matches Product.barcode in DB",
             barcode, code,
         )
+        # La ligne de scan doit survivre au 404 → écrite ET commitée AVANT
+        # le raise (sinon le rollback de get_db l'efface).
+        await _log_barcode_scan(
+            db,
+            barcode_raw=barcode,
+            barcode_normalized=code,
+            matched=False,
+            user_id=current_user.id,
+        )
         raise HTTPException(
             status_code=404,
             detail=f"Aucun produit ne porte le code-barres {code}",
         )
 
-    return {
+    payload = {
         "id": str(product.id),
         "barcode": product.barcode,
         "name": product.name,
@@ -704,6 +772,18 @@ async def get_product_by_barcode(
         "category": product.category.name if product.category else None,
         "photo_url": getattr(product, "photo_url", None),
     }
+    # Payload construit AVANT le commit du log — aucun accès ORM ensuite.
+    await _log_barcode_scan(
+        db,
+        barcode_raw=barcode,
+        barcode_normalized=code,
+        matched=True,
+        product_id=product.id,
+        product_name=product.name,
+        sale_price=product.sale_price,
+        user_id=current_user.id,
+    )
+    return payload
 
 
 @router.get("/products/{product_id}", response_model=ProductResponse)
