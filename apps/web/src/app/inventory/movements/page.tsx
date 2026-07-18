@@ -24,7 +24,7 @@ import Button from '@/components/ui/Button';
 import { api } from '@/lib/api';
 import { looksLikeScannerMojibake, SCANNER_MOJIBAKE_MESSAGE } from '@/lib/barcode';
 
-type Tab = 'amenagement' | 'achalandage';
+type Tab = 'amenagement' | 'achalandage' | 'retour_tri';
 
 interface PlanItem {
   product_id: string;
@@ -215,11 +215,16 @@ export default function StockMovementsPage() {
     }
   }, [focusInput]);
 
-  // (Re)load the active tab's plan.
+  // (Re)load the active tab's plan. L'onglet Retour tri n'a pas de plan IA :
+  // c'est un flux 100 % opérateur (scan → confirmation → sortie).
   const reload = useCallback(() => {
     if (tab === 'amenagement') loadWeekly();
-    else loadRestock();
-  }, [tab, loadWeekly, loadRestock]);
+    else if (tab === 'achalandage') loadRestock();
+    else {
+      setLoading(false);
+      focusInput();
+    }
+  }, [tab, loadWeekly, loadRestock, focusInput]);
 
   useEffect(() => {
     reload();
@@ -350,6 +355,67 @@ export default function StockMovementsPage() {
     },
     [executing, focusInput],
   );
+
+  // Retour tri : rayon → sortie définitive (statut « Retour tri », zone
+  // libérée). Mouvement historisé via /movements/execute — remplace la
+  // sortie automatique (crons désactivés) par un geste opérateur explicite.
+  const returnToSorting = useCallback(
+    async (p: FreeProduct) => {
+      if (executing) return;
+      if (!window.confirm(
+        `Retour centre de tri : « ${p.name} » sortira de la vente (statut Retour tri, zone libérée). Confirmer ?`,
+      )) return;
+      setExecuting(true);
+      try {
+        const res = await api.post('/api/inventory/movements/execute', {
+          barcode: p.barcode,
+          to_status: 'returned_to_sorting',
+          reason: 'Retour centre de tri — retrait manuel (Mouvements de stock)',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setToast({ kind: 'error', text: (data && data.detail) || 'Mouvement refusé.' });
+          return;
+        }
+        setFreeResults((prev) => prev.filter((x) => x.id !== p.id));
+        setToast({ kind: 'success', text: `${p.name} → Retour tri ✓` });
+        setFreeQuery('');
+        focusInput();
+      } catch {
+        setToast({ kind: 'error', text: 'Erreur réseau pendant le mouvement.' });
+      } finally {
+        setExecuting(false);
+      }
+    },
+    [executing, focusInput],
+  );
+
+  // Retour tri : Entrée = flash code-barres (exact match), sinon l'unique
+  // résultat de la recherche libre.
+  const onRetourTriEnter = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const q = freeQuery.trim();
+    if (!q || executing) return;
+    if (looksLikeScannerMojibake(q)) {
+      setToast({ kind: 'error', text: SCANNER_MOJIBAKE_MESSAGE });
+      return;
+    }
+    try {
+      const res = await api.get(`/api/inventory/products/by-barcode/${encodeURIComponent(q)}`);
+      if (res.ok) {
+        const p = await res.json();
+        await returnToSorting({
+          id: p.id, barcode: p.barcode, name: p.name, sale_price: p.sale_price,
+          status: p.status, category: p.category ?? null, photo_url: p.photo_url ?? null,
+        });
+        return;
+      }
+    } catch { /* fall through to search results */ }
+    if (freeResults.length === 1) {
+      await returnToSorting(freeResults[0]);
+    }
+  };
 
   // Resolve the scanned barcode against the CURRENT tab's proposals.
   const resolveWeekly = (
@@ -511,6 +577,7 @@ export default function StockMovementsPage() {
           {([
             { key: 'amenagement', label: 'Aménagement (hebdo)' },
             { key: 'achalandage', label: 'Achalandage (réserve → rayon)' },
+            { key: 'retour_tri', label: 'Retour tri (rayon → sortie)' },
           ] as { key: Tab; label: string }[]).map((t) => (
             <button
               key={t.key}
@@ -727,6 +794,72 @@ export default function StockMovementsPage() {
           </Card>
         )}
 
+        {/* RETOUR TRI — scan ou recherche, confirmation, sortie définitive.
+            Remplace la sortie automatique (crons désactivés le 2026-07-18) :
+            seul un geste opérateur sort une pièce de la vente, au moment où
+            elle quitte PHYSIQUEMENT le magasin. */}
+        {tab === 'retour_tri' && (
+          <Card className="mb-4">
+            <label className="block text-sm font-medium text-black mb-1.5">
+              Rechercher ou flasher la pièce à renvoyer au centre de tri
+            </label>
+            <div className="relative">
+              <input
+                ref={inputRef}
+                autoFocus
+                value={freeQuery}
+                onChange={(e) => setFreeQuery(e.target.value)}
+                onKeyDown={onRetourTriEnter}
+                placeholder="Nom, marque ou code-barres — ou flashez puis Entrée"
+                className="w-full min-h-[48px] px-4 py-2.5 pr-9 rounded-lg border border-gray-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-vz-teal"
+              />
+              {freeQuery && (
+                <button
+                  type="button"
+                  onClick={() => { setFreeQuery(''); setFreeResults([]); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label="Effacer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              La pièce passe au statut <strong>Retour tri</strong>, quitte sa zone et
+              n&apos;est plus vendable. Le mouvement est historisé dans la fiche produit.
+              {executing && <span className="text-gray-400"> Exécution…</span>}
+            </p>
+
+            {freeLoading && <p className="mt-2 text-xs text-gray-400">Recherche…</p>}
+            {freeResults.length > 0 && (
+              <ul className="mt-3 divide-y divide-gray-100 max-h-64 overflow-y-auto">
+                {freeResults.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-sm text-black truncate">{p.name}</p>
+                      <p className="text-xs text-gray-400 font-mono truncate">
+                        {p.barcode}{p.category ? ` · ${p.category}` : ''} · {p.status}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => returnToSorting(p)}
+                      disabled={executing}
+                      title="Renvoi au centre de tri — retiré de la vente"
+                      className="min-h-[40px] px-3 rounded-lg border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50 shrink-0"
+                    >
+                      Retour tri
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {freeQuery && !freeLoading && freeResults.length === 0 && (
+              <p className="mt-2 text-xs text-gray-400">Aucun article trouvé.</p>
+            )}
+          </Card>
+        )}
+
         {/* Toast partagé (les deux onglets) */}
         {toast && (
           <div className={`mb-4 px-3 py-2 rounded-lg border text-sm ${toastCls}`}>
@@ -744,7 +877,7 @@ export default function StockMovementsPage() {
           </div>
         ) : tab === 'amenagement' ? (
           <WeeklyView plan={weekly} done={done} />
-        ) : (
+        ) : tab === 'retour_tri' ? null : (
           <RestockView
             plan={restock}
             done={done}
@@ -758,7 +891,7 @@ export default function StockMovementsPage() {
           />
         )}
 
-        {!loading && plan && totalProposed === 0 && (
+        {!loading && tab !== 'retour_tri' && plan && totalProposed === 0 && (
           <Card>
             <p className="text-gray-400 text-center py-6">
               Aucun mouvement proposé cette semaine.

@@ -780,6 +780,79 @@ async def clear_sumup_exchanges(db: Annotated[AsyncSession, Depends(get_db)]):
 
 
 # ---------------------------------------------------------------------------
+# Scan log douchette — reconstitution des paniers abandonnés
+# ---------------------------------------------------------------------------
+
+
+@router.get("/scan-logs", dependencies=[Depends(manager_only)])
+async def list_scan_logs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    period_from: str | None = Query(None, alias="from"),
+    period_to: str | None = Query(None, alias="to"),
+    matched: bool | None = None,
+    q: str | None = None,
+    skip: int = 0,
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Historique des lectures douchette (manager only).
+
+    Outil de diagnostic (rétention 7 jours — pas un registre fiscal) :
+    typiquement, retrouver le contenu du panier d'une vente CB « orpheline »
+    (paiement SumUp encaissé mais vente jamais validée) via les scans qui
+    ont précédé le paiement. ``matched=false`` isole les lectures qui n'ont
+    rien trouvé (étiquette illisible, code absent du catalogue).
+    """
+    from sqlalchemy import or_
+
+    from app.models.scan_log import ProductScanLog
+
+    stmt = select(ProductScanLog).order_by(ProductScanLog.created_at.desc())
+    if period_from:
+        stmt = stmt.where(
+            ProductScanLog.created_at >= _parse_iso_date(period_from, "from")
+        )
+    if period_to:
+        stmt = stmt.where(
+            ProductScanLog.created_at <= _parse_iso_date(period_to, "to")
+        )
+    if matched is not None:
+        stmt = stmt.where(ProductScanLog.matched.is_(matched))
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                ProductScanLog.barcode_normalized.ilike(pattern),
+                ProductScanLog.product_name.ilike(pattern),
+            )
+        )
+    stmt = stmt.offset(max(skip, 0)).limit(limit)
+    rows = (await db.execute(stmt)).scalars().all()
+
+    return {
+        "scans": [
+            {
+                "id": str(r.id),
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "barcode_raw": r.barcode_raw,
+                "barcode_normalized": r.barcode_normalized,
+                "matched": bool(r.matched),
+                "product_id": str(r.product_id) if r.product_id else None,
+                "permanent_item_id": (
+                    str(r.permanent_item_id) if r.permanent_item_id else None
+                ),
+                "product_name": r.product_name,
+                "sale_price": (
+                    float(r.sale_price) if r.sale_price is not None else None
+                ),
+                "user_id": str(r.user_id) if r.user_id else None,
+            }
+            for r in rows
+        ],
+        "count": len(rows),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Cash management config — defaults consumed by POS Open/Close modals
 # ---------------------------------------------------------------------------
 
@@ -1632,6 +1705,12 @@ async def get_weather(
 
     weather_data = {"current": current, "forecast": forecast}
 
+    # Ne JAMAIS persister une météo indisponible : l'historique ne stocke que
+    # du réel (l'ancien fallback saisonnier a pollué 30 jours de
+    # weather_history avec des données fabriquées).
+    if current.get("unavailable"):
+        return weather_data
+
     try:
         # Load existing history
         history_setting = await db.execute(select(Settings).where(Settings.key == "weather_history"))
@@ -2193,13 +2272,20 @@ async def accept_window_display(
 async def run_return_to_sorting(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Manually trigger the return-to-sorting cron pass. Same effect as
-    waiting for the 02:00 daily run."""
-    from app.services.return_to_sorting import ReturnToSortingService
-
-    summary = await ReturnToSortingService(db).run()
-    await db.commit()
-    return summary
+    """DÉSACTIVÉ (2026-07-18, demande manager) — plus aucune sortie
+    automatique en masse vers le centre de tri : les bascules en base sans
+    retrait physique produisaient des ventes orphelines en caisse. Le
+    preview reste disponible (lecture seule) ; le retrait se fait pièce par
+    pièce depuis la fiche produit ou l'onglet « Retour tri » des Mouvements
+    de stock."""
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "La sortie automatique au centre de tri est désactivée. "
+            "Utilisez le retrait manuel (fiche produit ou Mouvements de "
+            "stock > Retour tri)."
+        ),
+    )
 
 
 @router.post(

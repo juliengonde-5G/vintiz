@@ -79,6 +79,7 @@ from app.models.accounting import (
 )
 from app.models.database_backup import DatabaseBackup, DatabaseBackupConfig
 from app.models.permanent_item import PermanentItem
+from app.models.scan_log import ProductScanLog
 from app.models.capsule import MonthlyCapsule
 from app.models.fiscal_closure import FiscalClosure
 
@@ -124,6 +125,7 @@ __all__ = [
     "AccountingConfig", "AccountingExport", "AccountingExportLine", "ExportStatus",
     "DatabaseBackup", "DatabaseBackupConfig",
     "PermanentItem",
+    "ProductScanLog",
     "MonthlyCapsule",
     "FiscalClosure",
 ]

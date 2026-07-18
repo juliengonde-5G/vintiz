@@ -26,6 +26,7 @@ import { looksLikeScannerMojibake, SCANNER_MOJIBAKE_MESSAGE } from '@/lib/barcod
 import { useConnectivity } from '@/lib/connectivity';
 import { isPosWizardEnabled } from '@/lib/feature-flags';
 import { formatCurrency, mediaUrl } from '@/lib/format';
+import { buildSumUpDescription } from '@/lib/sumup-description';
 import { useLandscapeLock } from '@/lib/orientation';
 import {
   count as queueCount,
@@ -1070,7 +1071,10 @@ export default function POSPage() {
     try {
       const res = await api.post('/api/pos/payments/cb/initiate', {
         amount: parseFloat(amount.toFixed(2)),
-        description: `Vente Vintiz #${Date.now()}`,
+        // Détail du panier dans la description SumUp : si la vente Vintiz
+        // n'est jamais validée (encaissement orphelin), le dashboard/reçu
+        // SumUp suffit à réconcilier. Total en tête, tronqué proprement ≤255.
+        description: buildSumUpDescription(cart, cartTotalAfterLoyalty),
         // Reconciliation key so the SumUp transaction can be looked up later.
         foreign_transaction_id: posPayment.clientUuid,
       });
@@ -2950,7 +2954,11 @@ export default function POSPage() {
               : 'TPE hors ligne'
           }
           onCardCheckout={async (amount, onStatus) => {
-            const outcome = await posPayment.runCardCheckout(amount, onStatus);
+            const outcome = await posPayment.runCardCheckout(
+              amount,
+              onStatus,
+              buildSumUpDescription(cart, cartTotalAfterLoyalty),
+            );
             if (outcome.status === 'paid' && outcome.sumup) {
               setCbDetails({ ...outcome.sumup, attempt_id: outcome.attempt_id });
             }

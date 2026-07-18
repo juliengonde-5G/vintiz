@@ -170,6 +170,9 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
     async (
       amount: number,
       onStatus: (status: PaymentStatus, detail?: string) => void,
+      // Libellé SumUp — le POS y met le détail du panier (voir
+      // lib/sumup-description.ts) pour réconcilier un encaissement orphelin.
+      description: string = 'Vente Vintiz',
     ): Promise<CardCheckoutOutcome> => {
       cancelledRef.current = false;
 
@@ -185,7 +188,7 @@ export function usePosPayment(options: UsePosPaymentOptions = {}) {
       try {
         const res = await api.post('/api/pos/payments/cb/initiate', {
           amount,
-          description: 'Vente Vintiz',
+          description,
           // Idempotence / reconciliation key — ties this checkout to the
           // sale's client_uuid so a retried initiate references the same
           // intended payment and the SumUp txn can be looked up later.

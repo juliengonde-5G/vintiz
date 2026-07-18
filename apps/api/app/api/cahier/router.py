@@ -95,6 +95,10 @@ async def get_cahier(
     if report_date == today:
         try:
             weather = await get_current_weather()
+            # Météo indisponible (pas de clé / erreur API) : on l'indique
+            # (None → « — » dans le cahier), on n'invente rien.
+            if weather and weather.get("unavailable"):
+                weather = None
         except Exception:
             weather = None
     else:
