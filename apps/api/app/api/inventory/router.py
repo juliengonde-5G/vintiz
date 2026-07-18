@@ -601,6 +601,7 @@ async def _log_barcode_scan(
     permanent_item_id: uuid.UUID | None = None,
     product_name: str | None = None,
     sale_price=None,
+    product_status: str | None = None,
     user_id: uuid.UUID | None = None,
 ) -> None:
     """Trace une lecture douchette (hit OU miss) — best-effort.
@@ -623,6 +624,7 @@ async def _log_barcode_scan(
                 permanent_item_id=permanent_item_id,
                 product_name=product_name,
                 sale_price=sale_price,
+                product_status=product_status,
                 user_id=user_id,
             )
         )
@@ -723,6 +725,7 @@ async def get_product_by_barcode(
                     permanent_item_id=perm.id,
                     product_name=perm.name,
                     sale_price=perm.sale_price,
+                    product_status="permanent",
                     user_id=current_user.id,
                 )
                 if not perm.is_active:
@@ -781,6 +784,7 @@ async def get_product_by_barcode(
         product_id=product.id,
         product_name=product.name,
         sale_price=product.sale_price,
+        product_status=(product.status.value if product.status else None),
         user_id=current_user.id,
     )
     return payload

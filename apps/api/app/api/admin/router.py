@@ -840,6 +840,7 @@ async def list_scan_logs(
                 "permanent_item_id": (
                     str(r.permanent_item_id) if r.permanent_item_id else None
                 ),
+                "product_status": r.product_status,
                 "product_name": r.product_name,
                 "sale_price": (
                     float(r.sale_price) if r.sale_price is not None else None

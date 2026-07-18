@@ -841,7 +841,29 @@ export default function POSPage() {
   };
 
   // ── Cart operations ──────────────────────────────────────────────
+  // Statuts NON vendables : refusés dès le scan, AVANT tout paiement. Sans ce
+  // garde-fou, la vente n'était refusée qu'à la validation (ProductNotAvailable)
+  // — c'est-à-dire APRÈS l'encaissement CB → paiement orphelin (incidents des
+  // 17-18/07 : pièces « Retour tri » / « Retourné » restées physiquement en rayon).
+  const DEAD_STATUSES: Record<string, string> = {
+    sold: 'Vendu', returned: 'Retourné', returned_to_sorting: 'Retour tri',
+    donated: 'Donné', rejected: 'Rejeté',
+  };
+
   const addProductToCart = (product: SearchProduct) => {
+    const deadLabel = DEAD_STATUSES[product.status];
+    if (product.kind !== 'permanent' && deadLabel) {
+      setDrawerToast({
+        msg: `⛔ « ${product.name} » n'est PAS vendable (statut ${deadLabel}). `
+          + `Retirer la pièce du rayon et prévenir un manager.`,
+        ok: false,
+      });
+      setTimeout(() => setDrawerToast(null), 6000);
+      setSearchQuery('');
+      setSearchResults([]);
+      refocusSearch();
+      return;
+    }
     // Pièce unique (tout sauf article permanent / sac) : interdiction d'ajouter
     // deux fois la même référence — chaque produit n'existe qu'en un exemplaire.
     const isPermanent = product.kind === 'permanent' && !!product.permanent_item_id;

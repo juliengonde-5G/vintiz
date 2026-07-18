@@ -4,9 +4,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.exception_handlers import (
+    http_exception_handler as fastapi_http_exception_handler,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
 from app.core.database import engine
@@ -144,7 +148,38 @@ async def domain_exception_handler(request: Request, exc: VintizError):
     status_code = next(
         (v for k, v in _DOMAIN_STATUS.items() if isinstance(exc, k)), 422
     )
+    # Motif du refus DANS les logs. Sans cette ligne, un refus de vente ne
+    # laissait que « POST /api/pos/transactions -> 400 » : impossible de
+    # savoir après coup POURQUOI (audit ventes orphelines des 17-18/07).
+    logger.warning(
+        "[%s] %s %s %s refusé (%d): %s",
+        getattr(request.state, "request_id", "-"),
+        request.method,
+        request.url.path,
+        type(exc).__name__,
+        status_code,
+        exc,
+    )
     return JSONResponse(status_code=status_code, content={"detail": str(exc)})
+
+
+# Les refus HTTPException 4xx du POS portent aussi leur motif dans les logs
+# (ex. les contrôles CB de _verify_sumup_card_tenders) — même besoin d'audit
+# que ci-dessus, sans toucher au comportement HTTP (délégation au handler
+# par défaut). Périmètre /api/pos pour ne pas rendre les logs bavards (404
+# de scan douchette, 401 de refresh token…).
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_logger(request: Request, exc: StarletteHTTPException):
+    if 400 <= exc.status_code < 500 and request.url.path.startswith("/api/pos"):
+        logger.warning(
+            "[%s] %s %s refusé (%d): %s",
+            getattr(request.state, "request_id", "-"),
+            request.method,
+            request.url.path,
+            exc.status_code,
+            exc.detail,
+        )
+    return await fastapi_http_exception_handler(request, exc)
 
 
 # Global exception handler — ensures CORS headers are present even on 500.

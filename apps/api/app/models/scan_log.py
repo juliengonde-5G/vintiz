@@ -46,6 +46,12 @@ class ProductScanLog(Base):
     )
     product_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sale_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    # Statut du produit AU MOMENT du scan (texte libre, valeurs de
+    # ProductStatus ou "permanent"). Décisif en audit : une pièce scannée en
+    # caisse avec un statut non vendable (returned…) explique à elle seule un
+    # refus de validation après encaissement (incident du 18/07 — il a fallu
+    # croiser 3 tables faute de cette colonne).
+    product_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
