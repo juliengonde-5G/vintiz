@@ -11,6 +11,11 @@ from app.core.database import engine
 
 logger = logging.getLogger("vintiz")
 
+# Rétention de l'historique des lectures douchette (product_scan_logs).
+# Outil de diagnostic (reconstitution de panier), PAS un registre fiscal —
+# 7 jours suffisent largement à investiguer une vente CB orpheline.
+SCAN_LOG_RETENTION_DAYS = 7
+
 
 async def run_daily_embedding_refresh() -> None:
     """Refresh product embeddings + customer taste profiles (P1-004).
@@ -358,6 +363,33 @@ async def run_daily_loyalty_expiry() -> None:
             logger.info("Loyalty expiry: %d account(s) expired", count)
     except Exception as exc:
         logger.exception("Loyalty expiry job failed: %s", exc)
+
+
+async def run_daily_scan_log_purge() -> None:
+    """Purge les lectures douchette de plus de SCAN_LOG_RETENTION_DAYS jours.
+
+    03:45 Paris — créneau calme, après les sauvegardes/purges de 03:00-03:30."""
+    try:
+        from datetime import datetime, timedelta, timezone
+
+        from sqlalchemy import delete
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.models.scan_log import ProductScanLog
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=SCAN_LOG_RETENTION_DAYS)
+        async with AsyncSession(engine) as db:
+            result = await db.execute(
+                delete(ProductScanLog).where(ProductScanLog.created_at < cutoff)
+            )
+            await db.commit()
+            logger.info(
+                "Scan log purge: %d ligne(s) supprimée(s) (> %d jours)",
+                result.rowcount or 0,
+                SCAN_LOG_RETENTION_DAYS,
+            )
+    except Exception as exc:
+        logger.exception("Scan log purge job failed: %s", exc)
 
 
 async def run_nightly_database_backup() -> None:
@@ -721,16 +753,28 @@ def register_all_jobs(scheduler) -> None:
         id="monday_position_reco",
         replace_existing=True,
     )
-    scheduler.add_job(
-        run_thursday_six_weeks_exit,
-        CronTrigger(day_of_week="thu", hour=9, minute=0),
-        id="thursday_six_weeks_exit",
-        replace_existing=True,
-    )
+    # DÉSACTIVÉ (2026-07-18, demande manager) : la sortie automatique à
+    # 6 semaines retirait des pièces encore vendables sans condition de
+    # score (ex. VTZ-2026-553209, sorti le jeudi 09/07 à 11h00 Paris).
+    # La sortie au tri reste possible : manuellement via la checklist
+    # (POST /api/checklist/.../run, kind=thursday_six_weeks_exit) et via le
+    # cron ``daily_return_to_sorting`` (90 j en rayon ET score < 30).
+    # scheduler.add_job(
+    #     run_thursday_six_weeks_exit,
+    #     CronTrigger(day_of_week="thu", hour=9, minute=0),
+    #     id="thursday_six_weeks_exit",
+    #     replace_existing=True,
+    # )
     scheduler.add_job(
         run_daily_loyalty_expiry,
         CronTrigger(hour=3, minute=30),
         id="daily_loyalty_expiry",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_daily_scan_log_purge,
+        CronTrigger(hour=3, minute=45),
+        id="daily_scan_log_purge",
         replace_existing=True,
     )
     scheduler.add_job(

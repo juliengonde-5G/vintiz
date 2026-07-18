@@ -133,7 +133,20 @@ async def regenerate_task(
     from app.services import checklist as svc
 
     if kind == WeeklyTaskKind.thursday_six_weeks_exit:
-        result = await svc.run_thursday_six_weeks_exit(db)
+        # DÉSACTIVÉ (2026-07-18, demande manager) : cette tâche passait en
+        # « Retour tri » toute pièce ≥ 6 semaines SANS condition de score,
+        # alors que les pièces restaient physiquement en rayon → scans en
+        # caisse refusés (ProductNotAvailable) après encaissement CB =
+        # ventes orphelines. Le cron hebdo est aussi désactivé (jobs.py).
+        # Sortie au tri restante : retrait manuel fiche produit (withdraw)
+        # ou cron daily_return_to_sorting (90 j ET score < 30).
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "La sortie automatique à 6 semaines est désactivée. "
+                "Utilisez le retrait manuel depuis la fiche produit."
+            ),
+        )
     elif kind == WeeklyTaskKind.morning_restock:
         result = await svc.run_morning_restock(db)
     elif kind == WeeklyTaskKind.monday_scoring_update:
