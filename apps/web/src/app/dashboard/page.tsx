@@ -62,6 +62,10 @@ interface WeatherData {
     description: string;
     icon: string;
     wind_speed: number;
+    // true = pas de donnée réelle (clé API absente ou erreur OpenWeather).
+    // Le backend n'invente jamais de météo : on affiche l'indisponibilité.
+    unavailable?: boolean;
+    reason?: string;
   };
   forecast: {
     date: string;
@@ -829,12 +833,13 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </Card>
-            ) : weather ? (
+            ) : weather && !weather.current?.unavailable ? (
               <WeatherWidget data={weather} />
             ) : (
               <Card title="Météo Vernon">
                 <p className="text-gray-400 text-sm text-center py-4">
-                  Météo indisponible (configurer OPENWEATHER_API_KEY)
+                  Météo indisponible —{' '}
+                  {weather?.current?.reason || 'configurer OPENWEATHER_API_KEY'}
                 </p>
               </Card>
             )}

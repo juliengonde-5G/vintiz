@@ -1705,6 +1705,12 @@ async def get_weather(
 
     weather_data = {"current": current, "forecast": forecast}
 
+    # Ne JAMAIS persister une météo indisponible : l'historique ne stocke que
+    # du réel (l'ancien fallback saisonnier a pollué 30 jours de
+    # weather_history avec des données fabriquées).
+    if current.get("unavailable"):
+        return weather_data
+
     try:
         # Load existing history
         history_setting = await db.execute(select(Settings).where(Settings.key == "weather_history"))
