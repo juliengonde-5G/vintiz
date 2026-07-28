@@ -22,7 +22,7 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.client import Client
+from app.models.client import Client, ConsentPurpose
 from app.models.product import Product, ProductStatus
 from app.services.email_gateway import EmailDeliveryError, EmailMessage, send_email
 
@@ -165,12 +165,21 @@ async def run_new_arrivals_pass(
             fallback_html=_render_html(client, products),
             fallback_text=_render_text(client, products),
         )
+        # RGPD (CNIL 2026) — pixel d'ouverture uniquement si consentement
+        # spécifique ``email_open_tracking``. Sinon envoi marketing SANS
+        # suivi individuel (track_opens=False).
+        from app.services.rgpd import latest_consent_granted
+
+        track_opens = await latest_consent_granted(
+            db, client.id, ConsentPurpose.email_open_tracking
+        )
         message = EmailMessage(
             to=client.email,
             to_name=f"{client.first_name} {client.last_name}".strip() or None,
             subject=rendered.subject,
             html=rendered.html,
             text=rendered.text,
+            track_opens=track_opens,
         )
         status = "failed"
         backend = None

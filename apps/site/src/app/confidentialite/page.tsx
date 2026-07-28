@@ -111,13 +111,38 @@ export default function ConfidentialitePage() {
             </li>
           </ul>
 
-          <h2 className="font-display text-xl text-black mt-8 mb-3">Cookies</h2>
+          <h2 className="font-display text-xl text-black mt-8 mb-3">
+            Cookies et mesure d&apos;audience
+          </h2>
           <p className="text-black/70 leading-relaxed">
             Ce site utilise uniquement des cookies fonctionnels nécessaires à
-            son fonctionnement. Avec votre accord explicite (bandeau de
-            consentement), des cookies de mesure d&apos;audience anonyme (Google
-            Analytics 4 avec IP anonymisée et Consent Mode v2) peuvent être
-            déposés. Aucun cookie publicitaire n&apos;est déposé.
+            son fonctionnement. Notre mesure d&apos;audience s&apos;appuie sur{" "}
+            <strong>Matomo en mode «&nbsp;sans cookie&nbsp;»</strong> (IP
+            anonymisée, pas de suivi entre sites, données non partagées)&nbsp;:
+            conforme aux critères d&apos;exemption de la CNIL, elle{" "}
+            <strong>ne nécessite pas votre consentement</strong> et ne dépose
+            aucun cookie. Aucun cookie publicitaire tiers n&apos;est déposé. Le
+            cas échéant, un outil complémentaire soumis à consentement (Google
+            Analytics&nbsp;4) ne serait activé qu&apos;après votre accord via le
+            bandeau, révocable à tout moment depuis le lien «&nbsp;Gérer les
+            cookies&nbsp;» en pied de page.
+          </p>
+
+          <h2 className="font-display text-xl text-black mt-8 mb-3">
+            Pixels de suivi dans les e-mails
+          </h2>
+          <p className="text-black/70 leading-relaxed">
+            Nos e-mails marketing peuvent contenir un pixel mesurant leur
+            ouverture. Conformément à la recommandation de la CNIL, ce suivi
+            individuel n&apos;est réalisé qu&apos;avec votre consentement
+            spécifique&nbsp;: vous pouvez l&apos;accorder ou le retirer à tout
+            moment depuis{" "}
+            <Link href="/account/rgpd" className="text-vz-teal underline">
+              /account/rgpd
+            </Link>{" "}
+            (consentement «&nbsp;Suivi d&apos;ouverture des e-mails&nbsp;»),
+            indépendamment de votre inscription à la newsletter. À défaut de
+            consentement, la mesure reste strictement anonyme et agrégée.
           </p>
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">

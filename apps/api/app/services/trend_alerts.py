@@ -267,6 +267,11 @@ async def run_trend_alerts(db: AsyncSession) -> dict[str, int]:
         )
         subject = rendered.subject or ALERT_SUBJECT
         body_html = build_alert_html(client, selection, intro_html=rendered.html or None)
+        # RGPD (CNIL 2026) — suivi d'ouverture uniquement si consentement
+        # spécifique ``email_open_tracking``.
+        track_opens = await _latest_consent(
+            db, client.id, ConsentPurpose.email_open_tracking
+        )
         status = "failed"
         backend = None
         detail = None
@@ -277,6 +282,7 @@ async def run_trend_alerts(db: AsyncSession) -> dict[str, int]:
                     subject=subject,
                     html=body_html,
                     to_name=f"{client.first_name} {client.last_name}".strip(),
+                    track_opens=track_opens,
                 )
             )
             status = result.status

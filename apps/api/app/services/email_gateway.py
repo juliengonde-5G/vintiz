@@ -67,6 +67,16 @@ class EmailMessage:
     # key so a network blip doesn't double-send. We derive a stable
     # key from the message content if the caller doesn't supply one.
     idempotency_key: str | None = None
+    # RGPD — pixel d'ouverture (recommandation CNIL 2026). ``None`` = non
+    # concerné (e-mail de service/transactionnel : ticket, magic-link…).
+    # ``True`` = le destinataire a consenti au suivi d'ouverture individuel.
+    # ``False`` = e-mail marketing SANS consentement → aucun suivi individuel
+    # ne doit être réalisé. Note : l'API transactionnelle Brevo ne permet pas
+    # de désactiver le pixel par message ; la conformité repose donc sur le
+    # réglage « suivi anonyme » au niveau du compte Brevo (action ops, cf.
+    # docs/COMPLIANCE_TRACKING_PIXELS_2026.md). On propage tout de même
+    # l'intention (tag d'audit + trace) pour être prêt côté first-party/campagnes.
+    track_opens: bool | None = None
 
 
 @dataclass
@@ -196,10 +206,22 @@ def _send_via_brevo(message: EmailMessage) -> EmailResult:
             }
             for a in message.attachments
         ]
-    if message.tags:
+    tags = list(message.tags)
+    if message.track_opens is False:
+        # Marketing sans consentement au suivi d'ouverture : marqueur d'audit.
+        # Brevo transactionnel ne sait pas désactiver le pixel par message —
+        # la coupure effective du suivi individuel se fait via le réglage
+        # « suivi anonyme » du compte Brevo (ops).
+        if "no-open-tracking" not in tags:
+            tags.append("no-open-tracking")
+        logger.info(
+            "Email to %s sent WITHOUT open-tracking consent "
+            "(rely on Brevo account anonymous tracking)", message.to,
+        )
+    if tags:
         # Brevo caps tags at 5 per message — silently truncate, no need
         # to error on a non-critical analytics field.
-        payload["tags"] = list(message.tags)[:5]
+        payload["tags"] = tags[:5]
 
     body = json.dumps(payload).encode("utf-8")
     headers = {
