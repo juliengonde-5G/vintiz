@@ -3,6 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { OPEN_CONSENT_EVENT } from "@/components/CookieBanner";
+
+// GA4 (soumis à consentement) configuré ? Si non, seule la mesure Matomo
+// cookieless exemptée tourne → rien à gérer, on masque le lien.
+const HAS_CONSENT_TRACKER = Boolean(process.env.NEXT_PUBLIC_GA_ID);
 
 /**
  * Footer pour les pages publiques (hors landing `/`).
@@ -48,6 +53,7 @@ export default function PublicFooter() {
           { href: "/cgv", label: "Terms" },
           { href: "/confidentialite", label: "Privacy" },
         ],
+        manageCookies: "Manage cookies",
         copyright: "© 2026 Vintiz — Vernon, Normandy",
       }
     : {
@@ -81,6 +87,7 @@ export default function PublicFooter() {
           { href: "/cgv", label: "CGV" },
           { href: "/confidentialite", label: "Confidentialité" },
         ],
+        manageCookies: "Gérer les cookies",
         copyright: "© 2026 Vintiz — Vernon, Normandie",
       };
 
@@ -145,6 +152,19 @@ export default function PublicFooter() {
                 </Link>
               </li>
             ))}
+            {HAS_CONSENT_TRACKER && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.dispatchEvent(new CustomEvent(OPEN_CONSENT_EVENT))
+                  }
+                  className="hover:text-vz-accent-soft transition-colors text-left"
+                >
+                  {t.manageCookies}
+                </button>
+              </li>
+            )}
           </ul>
         </div>
       </div>

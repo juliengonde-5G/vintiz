@@ -31,7 +31,11 @@ const dmSerif = DM_Serif_Display({
 });
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://vintiz.fr";
+// GA4 (legacy, soumis à consentement). Vide = désactivé (recommandé après
+// migration Matomo). Matomo cookieless = mesure d'audience exemptée CNIL.
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID || "";
+const MATOMO_URL = process.env.NEXT_PUBLIC_MATOMO_URL || "";
+const MATOMO_SITE_ID = process.env.NEXT_PUBLIC_MATOMO_SITE_ID || "";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -254,8 +258,14 @@ export default function RootLayout({
       <body className="font-sans antialiased bg-vz-bg text-black">
         <OpeningBanner />
         {children}
-        <CookieBanner />
-        <Analytics gaId={GA_ID} />
+        {/* Bandeau cookies : ne s'affiche que si un traceur soumis à
+            consentement (GA4) est configuré. Matomo cookieless est exempté. */}
+        <CookieBanner hasConsentTracker={Boolean(GA_ID)} />
+        <Analytics
+          gaId={GA_ID}
+          matomoUrl={MATOMO_URL}
+          matomoSiteId={MATOMO_SITE_ID}
+        />
       </body>
     </html>
   );
