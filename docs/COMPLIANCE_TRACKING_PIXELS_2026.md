@@ -117,6 +117,42 @@ consentement spécifique), et le délai CNIL est dépassé.
 8. Journaliser la décision (ce document) et re-vérifier après la mise en
    conformité e-mail.
 
+## 4bis. Développements réalisés dans ce lot
+
+Suite à validation manager, les développements suivants ont été implémentés
+(le reste étant des actions ops/compte) :
+
+**Migration GA4 → Matomo (mesure exemptée).**
+- Nouveau composant `apps/site/src/components/Analytics.tsx` : Matomo
+  **cookieless** (`disableCookies`) chargé **sans consentement** (exempté), avec
+  suivi des changements de route SPA. GA4 conservé en **legacy**, toujours gated
+  par consentement, désactivé tant que `NEXT_PUBLIC_GA_ID` est vide.
+- Variables : `NEXT_PUBLIC_MATOMO_URL`, `NEXT_PUBLIC_MATOMO_SITE_ID`
+  (`.env.example`, `.env.production.template`).
+- ⚠️ **Action ops** : l'instance Matomo doit être réglée en audience exemptée
+  (anonymisation IP, pas de cross-site, pas de partage) pour bénéficier de
+  l'exemption de consentement.
+
+**Retrait du consentement cookies.**
+- Lien « Gérer les cookies » ajouté au footer (`PublicFooter.tsx`), visible
+  uniquement si GA4 configuré (sinon rien à gérer). Il rouvre le bandeau
+  (`CookieBanner.tsx`), qui affiche le choix courant et permet de **refuser /
+  retirer** à tout moment (bascule Consent Mode → `denied`).
+
+**Consentement au pixel d'ouverture des e-mails.**
+- Nouveau purpose RGPD `email_open_tracking` (`ConsentPurpose`), migration
+  Alembic `0075`, label FR (espace client + back-office), copie ajoutée à la
+  politique de confidentialité. Il apparaît automatiquement dans l'espace
+  client `/account/rgpd` (activer/désactiver).
+- À l'envoi, les e-mails **marketing** (nouvelles pièces, alertes tendance,
+  anniversaires) positionnent `track_opens` selon ce consentement ; sans
+  consentement, l'e-mail part avec un marqueur d'audit `no-open-tracking`.
+- ⚠️ **Limite fournisseur** : l'API transactionnelle Brevo ne permet pas de
+  désactiver le pixel **par message**. La coupure effective du suivi individuel
+  repose donc sur le réglage **« suivi anonyme »** du compte Brevo (action ops).
+  Le consentement per-client est néanmoins tracé et prêt pour un pixel
+  first-party / des campagnes Brevo (contrôle par envoi).
+
 ## 5. Note
 
 Ce document est un état des lieux à date. Le volet e-mail (point 1) est une
