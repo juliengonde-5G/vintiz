@@ -739,12 +739,17 @@ def register_all_jobs(scheduler) -> None:
         id="daily_anniversary_emails",
         replace_existing=True,
     )
-    scheduler.add_job(
-        run_weekly_new_arrivals_emails,
-        CronTrigger(day_of_week="fri", hour=10, minute=0),
-        id="weekly_new_arrivals_emails",
-        replace_existing=True,
-    )
+    # DÉSACTIVÉ (2026-07-28, demande manager) : plus d'envoi automatique du
+    # digest hebdomadaire « nouvelles pièces » (mailing du vendredi 10h00).
+    # Le déclenchement manuel reste possible via
+    # POST /api/admin/new-arrivals/run (endpoint conservé). Pour réactiver,
+    # décommenter ce bloc.
+    # scheduler.add_job(
+    #     run_weekly_new_arrivals_emails,
+    #     CronTrigger(day_of_week="fri", hour=10, minute=0),
+    #     id="weekly_new_arrivals_emails",
+    #     replace_existing=True,
+    # )
     # Lot 4 — checklist hebdo
     scheduler.add_job(
         run_morning_restock,
