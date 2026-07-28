@@ -41,14 +41,25 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const products = (await listPublicProducts({ marque: brand })).filter(
     (p) => p.available,
   );
+  // URL canonique NORMALISÉE (brandSlug) — pas le segment brut reçu.
+  // `/produits/marque/Sandro`, `/SANDRO`, `/sandro` rendent tous 200 :
+  // sans normalisation, chacun se déclarait canonique de lui-même
+  // → « page en double, Google a choisi une autre URL canonique » en GSC.
+  const canonicalUrl = `${SITE_URL}/produits/marque/${brandSlug(brand)}`;
   return {
     title: `${brand} seconde main`,
     description: `Notre sélection ${brand} d'occasion authentifiée à Vernon — ${products.length} pièces uniques. Robes, vestes, sacs et accessoires premium curés par l'équipe Vintiz.`,
-    alternates: { canonical: `${SITE_URL}/produits/marque/${brandParam}` },
+    alternates: {
+      canonical: canonicalUrl,
+      languages: {
+        "fr-FR": canonicalUrl,
+        "en-US": `${SITE_URL}/en/produits/marque/${brandSlug(brand)}`,
+      },
+    },
     openGraph: {
       title: `${brand} occasion à Vernon | Vintiz`,
       description: `Pièces ${brand} seconde main authentifiées, sélection Vintiz Vernon.`,
-      url: `${SITE_URL}/produits/marque/${brandParam}`,
+      url: canonicalUrl,
       type: "website",
       locale: "fr_FR",
     },
@@ -70,7 +81,7 @@ export default async function BrandPage({ params }: PageProps) {
     "@type": "CollectionPage",
     name: `${brand} seconde main premium — Vintiz Vernon`,
     description: `Sélection de pièces ${brand} d'occasion authentifiées à Vernon, Normandie.`,
-    url: `${SITE_URL}/produits/marque/${brandParam}`,
+    url: `${SITE_URL}/produits/marque/${brandSlug(brand)}`,
     about: { "@type": "Brand", name: brand },
     hasPart: {
       "@type": "ItemList",

@@ -25,7 +25,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: capsule.title,
     description: `${capsule.tagline}. ${capsule.intro.slice(0, 100)}…`,
-    alternates: { canonical: `${SITE_URL}/capsules/${capsule.slug}` },
+    alternates: {
+      canonical: `${SITE_URL}/capsules/${capsule.slug}`,
+      languages: {
+        "fr-FR": `${SITE_URL}/capsules/${capsule.slug}`,
+        "en-US": `${SITE_URL}/en/capsules/${capsule.slug}`,
+      },
+    },
     openGraph: {
       title: `${capsule.title} | Vintiz`,
       description: capsule.tagline,

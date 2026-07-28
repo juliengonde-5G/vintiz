@@ -28,20 +28,25 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: "Brand not found", robots: { index: false } };
   }
   const products = productsByBrandEn(brand).filter((p) => p.available);
+  // Normalised brand slug (not the raw incoming segment) so case/format
+  // variants all self-canonicalise to one URL — mirrors the FR page and
+  // avoids GSC "duplicate, Google chose a different canonical".
+  const slug = brandSlug(brand);
+  const canonicalUrl = `${SITE_URL}/en/produits/marque/${slug}`;
   return {
     title: `${brand} second-hand`,
     description: `Our authenticated second-hand ${brand} selection in Vernon — ${products.length} one-of-a-kind pieces. Dresses, jackets, bags and premium accessories curated by the Vintiz team.`,
     alternates: {
-      canonical: `${SITE_URL}/en/produits/marque/${brandParam}`,
+      canonical: canonicalUrl,
       languages: {
-        "fr-FR": `${SITE_URL}/produits/marque/${brandParam}`,
-        "en-US": `${SITE_URL}/en/produits/marque/${brandParam}`,
+        "fr-FR": `${SITE_URL}/produits/marque/${slug}`,
+        "en-US": canonicalUrl,
       },
     },
     openGraph: {
       title: `${brand} second-hand in Vernon | Vintiz`,
       description: `Authenticated second-hand ${brand} pieces, Vintiz Vernon selection.`,
-      url: `${SITE_URL}/en/produits/marque/${brandParam}`,
+      url: canonicalUrl,
       type: "website",
       locale: "en_US",
     },
@@ -65,7 +70,7 @@ export default async function BrandEnPage({ params }: PageProps) {
     "@type": "CollectionPage",
     name: `${brand} premium second-hand — Vintiz Vernon`,
     description: `A selection of authenticated second-hand ${brand} pieces in Vernon, Normandy.`,
-    url: `${SITE_URL}/en/produits/marque/${brandParam}`,
+    url: `${SITE_URL}/en/produits/marque/${brandSlug(brand)}`,
     inLanguage: "en",
     about: { "@type": "Brand", name: brand },
     hasPart: {
@@ -140,7 +145,7 @@ export default async function BrandEnPage({ params }: PageProps) {
 
           <p className="mt-12 text-sm text-vz-ink-mute italic">
             <Link
-              href={`/produits/marque/${brandParam}`}
+              href={`/produits/marque/${brandSlug(brand)}`}
               className="hover:text-vz-teal"
             >
               Lire en français

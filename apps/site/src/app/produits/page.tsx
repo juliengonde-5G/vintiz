@@ -21,7 +21,13 @@ export const metadata: Metadata = {
   title: "Boutique",
   description:
     "Notre sélection de pièces seconde main premium à Vernon. Sandro, Maje, Sézane, Ba&sh, IRO, Polène, Isabel Marant — pièces uniques authentifiées.",
-  alternates: { canonical: `${SITE_URL}/produits` },
+  alternates: {
+    canonical: `${SITE_URL}/produits`,
+    languages: {
+      "fr-FR": `${SITE_URL}/produits`,
+      "en-US": `${SITE_URL}/en/produits`,
+    },
+  },
   openGraph: {
     title: "Boutique | Vintiz Vernon",
     description:

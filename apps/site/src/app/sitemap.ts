@@ -79,7 +79,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     {
-      url: `${SITE_URL}/`,
+      // Sans slash final — doit être STRICTEMENT identique à la balise
+      // canonique de la home (layout.tsx → alternates.canonical = SITE_URL,
+      // ex. https://vintiz.fr). Un `${SITE_URL}/` divergeait de la canonique
+      // et déclenchait « page en double / URL canonique différente » en GSC.
+      url: SITE_URL,
       lastModified: homeLastModified,
       changeFrequency: 'weekly',
       priority: 1.0,

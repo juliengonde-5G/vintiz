@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import PublicHeader from "@/components/PublicHeader";
@@ -11,6 +12,20 @@ import { formatPriceCents } from "@/lib/format";
 export const revalidate = 300;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://vintiz.fr";
+
+// Canonique explicite (sans slash final, identique au sitemap) + balise
+// de retour hreflang vers la home EN. Sans ce return-tag, GSC signale
+// « hreflang sans balise de retour » puisque /en pointe déjà vers la home FR.
+export const metadata: Metadata = {
+  alternates: {
+    canonical: SITE_URL,
+    languages: {
+      "fr-FR": SITE_URL,
+      "en-US": `${SITE_URL}/en`,
+    },
+  },
+};
 
 interface Highlight {
   id: string;
