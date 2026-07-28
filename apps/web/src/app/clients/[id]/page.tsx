@@ -146,6 +146,7 @@ const CONSENT_LABELS: Record<string, string> = {
   sms_marketing: 'SMS',
   profiling: 'Profilage Personal Shopper',
   trend_alerts: 'Alertes nouveautés tendance',
+  email_open_tracking: "Suivi d'ouverture des e-mails",
   // data_sharing (B2B) volontairement absent — fonctionnalité jamais activée.
 };
 

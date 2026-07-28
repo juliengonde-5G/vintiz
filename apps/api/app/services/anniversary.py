@@ -21,7 +21,7 @@ from typing import Iterable
 from sqlalchemy import extract, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.client import Client
+from app.models.client import Client, ConsentPurpose
 from app.services.coupon import issue_anniversary_coupon
 from app.services.email_gateway import EmailDeliveryError, EmailMessage, send_email
 
@@ -132,12 +132,20 @@ async def run_anniversary_pass(
             fallback_html=_email_html(client, coupon.code, percent_off),
             fallback_text=_email_text(client, coupon.code, percent_off),
         )
+        # RGPD (CNIL 2026) — suivi d'ouverture uniquement si consentement
+        # spécifique ``email_open_tracking``.
+        from app.services.rgpd import latest_consent_granted
+
+        track_opens = await latest_consent_granted(
+            db, client.id, ConsentPurpose.email_open_tracking
+        )
         message = EmailMessage(
             to=client.email,
             to_name=f"{client.first_name} {client.last_name}".strip() or None,
             subject=rendered.subject,
             html=rendered.html,
             text=rendered.text,
+            track_opens=track_opens,
         )
         status = "failed"
         backend = None

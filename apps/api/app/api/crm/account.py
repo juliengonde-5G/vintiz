@@ -68,6 +68,7 @@ _CONSENT_LABELS = {
     ConsentPurpose.sms_marketing: "SMS commerciaux",
     ConsentPurpose.profiling: "Profilage Personal Shopper",
     ConsentPurpose.trend_alerts: "Alertes nouveautés tendance",
+    ConsentPurpose.email_open_tracking: "Suivi d'ouverture des e-mails",
 }
 
 # Purposes exposed publicly. ``data_sharing`` (B2B) is DELIBERATELY excluded:

@@ -67,6 +67,16 @@ class EmailMessage:
     # key so a network blip doesn't double-send. We derive a stable
     # key from the message content if the caller doesn't supply one.
     idempotency_key: str | None = None
+    # RGPD — pixel d'ouverture (recommandation CNIL 2026). ``None`` = non
+    # concerné (e-mail de service/transactionnel : ticket, magic-link…).
+    # ``True`` = le destinataire a consenti au suivi d'ouverture individuel.
+    # ``False`` = e-mail marketing SANS consentement → aucun suivi individuel
+    # ne doit être réalisé. Note : l'API transactionnelle Brevo ne permet pas
+    # de désactiver le pixel par message ; la conformité repose donc sur le
+    # réglage « suivi anonyme » au niveau du compte Brevo (action ops, cf.
+    # docs/COMPLIANCE_TRACKING_PIXELS_2026.md). On propage tout de même
+    # l'intention (tag d'audit + trace) pour être prêt côté first-party/campagnes.
+    track_opens: bool | None = None
 
 
 @dataclass
@@ -124,6 +134,23 @@ def _from_env(key: str, default: str = "") -> str:
     return value if value is not None else default
 
 
+def _brevo_anonymous_tracking() -> bool:
+    """L'opérateur a-t-il confirmé que le compte Brevo est en « suivi anonyme » ?
+
+    Brevo insère par défaut un pixel d'ouverture individuel sur TOUS les envois
+    (y compris transactionnels) et son API transactionnelle ne permet pas de le
+    désactiver par message. Tant que le compte n'est pas basculé en suivi
+    anonyme, un e-mail marketing envoyé à quelqu'un qui a REFUSÉ le suivi
+    d'ouverture serait quand même pisté — contraire à la politique affichée.
+    On exige donc une confirmation explicite (env ``BREVO_ANONYMOUS_TRACKING``)
+    avant d'envoyer sans consentement ; sinon on échoue en sécurité (fail-closed).
+    Voir docs/COMPLIANCE_TRACKING_PIXELS_2026.md.
+    """
+    return _from_env("BREVO_ANONYMOUS_TRACKING", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 def describe_active_provider() -> dict:
     """Snapshot of which backend would be used right now (no actual send)."""
     if _from_env("BREVO_API_KEY"):
@@ -170,6 +197,18 @@ def _send_via_brevo(message: EmailMessage) -> EmailResult:
     if not api_key:
         raise EmailDeliveryError("BREVO_API_KEY not set")
 
+    # Fail-closed : un e-mail marketing SANS consentement au suivi d'ouverture
+    # ne doit pas partir via Brevo tant que le compte n'est pas confirmé en
+    # suivi anonyme (sinon le pixel individuel s'applique quand même). Les
+    # e-mails transactionnels/de service (track_opens=None) ne sont pas
+    # concernés. Le canal SMTP (repli) n'insère aucun pixel → non concerné.
+    if message.track_opens is False and not _brevo_anonymous_tracking():
+        raise EmailDeliveryError(
+            "open-tracking consent absent and Brevo anonymous tracking not "
+            "confirmed (set BREVO_ANONYMOUS_TRACKING=true once the account is "
+            "switched to anonymous tracking)"
+        )
+
     sender_email = _from_env("EMAIL_FROM_ADDRESS", "noreply@vintiz.fr")
     sender_name = _from_env("EMAIL_FROM_NAME", "Vintiz Vernon")
 
@@ -196,10 +235,22 @@ def _send_via_brevo(message: EmailMessage) -> EmailResult:
             }
             for a in message.attachments
         ]
-    if message.tags:
+    tags = list(message.tags)
+    if message.track_opens is False:
+        # Marketing sans consentement au suivi d'ouverture : marqueur d'audit.
+        # Brevo transactionnel ne sait pas désactiver le pixel par message —
+        # la coupure effective du suivi individuel se fait via le réglage
+        # « suivi anonyme » du compte Brevo (ops).
+        if "no-open-tracking" not in tags:
+            tags.append("no-open-tracking")
+        logger.info(
+            "Email to %s sent WITHOUT open-tracking consent "
+            "(rely on Brevo account anonymous tracking)", message.to,
+        )
+    if tags:
         # Brevo caps tags at 5 per message — silently truncate, no need
         # to error on a non-critical analytics field.
-        payload["tags"] = list(message.tags)[:5]
+        payload["tags"] = tags[:5]
 
     body = json.dumps(payload).encode("utf-8")
     headers = {

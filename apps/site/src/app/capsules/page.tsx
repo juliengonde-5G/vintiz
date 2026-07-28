@@ -10,7 +10,13 @@ export const metadata: Metadata = {
   title: "Capsules — Les pépites de Vernon",
   description:
     "Chaque mois, une sélection éditoriale curée par l'équipe Vintiz parmi les arrivages premium de Solidarité Textiles.",
-  alternates: { canonical: `${SITE_URL}/capsules` },
+  alternates: {
+    canonical: `${SITE_URL}/capsules`,
+    languages: {
+      "fr-FR": `${SITE_URL}/capsules`,
+      "en-US": `${SITE_URL}/en/capsules`,
+    },
+  },
   openGraph: {
     title: "Les pépites de Vernon | Vintiz",
     description:

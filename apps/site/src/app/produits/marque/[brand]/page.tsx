@@ -5,6 +5,7 @@ import ProductCard from "@/components/ProductCard";
 import PublicFooter from "@/components/PublicFooter";
 import PublicHeader from "@/components/PublicHeader";
 import { brandSlug } from "@/data/vitrine-products";
+import { findBrandBySlugEn } from "@/data/vitrine-products.en";
 import { listPublicProducts } from "@/lib/storefront-api";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://vintiz.fr";
@@ -41,14 +42,30 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const products = (await listPublicProducts({ marque: brand })).filter(
     (p) => p.available,
   );
+  // URL canonique NORMALISÉE (brandSlug) — pas le segment brut reçu.
+  // `/produits/marque/Sandro`, `/SANDRO`, `/sandro` rendent tous 200 :
+  // sans normalisation, chacun se déclarait canonique de lui-même
+  // → « page en double, Google a choisi une autre URL canonique » en GSC.
+  const slug = brandSlug(brand);
+  const canonicalUrl = `${SITE_URL}/produits/marque/${slug}`;
+  // hreflang en-US uniquement si la page marque EN existe réellement pour ce
+  // slug. Les marques FR viennent du catalogue LIVE ; les pages EN du dataset
+  // statique. Une marque live-only émettrait sinon un alternate EN en 404.
+  const enExists = Boolean(findBrandBySlugEn(slug));
+  const languages = enExists
+    ? { "fr-FR": canonicalUrl, "en-US": `${SITE_URL}/en/produits/marque/${slug}` }
+    : { "fr-FR": canonicalUrl };
   return {
     title: `${brand} seconde main`,
     description: `Notre sélection ${brand} d'occasion authentifiée à Vernon — ${products.length} pièces uniques. Robes, vestes, sacs et accessoires premium curés par l'équipe Vintiz.`,
-    alternates: { canonical: `${SITE_URL}/produits/marque/${brandParam}` },
+    alternates: {
+      canonical: canonicalUrl,
+      languages,
+    },
     openGraph: {
       title: `${brand} occasion à Vernon | Vintiz`,
       description: `Pièces ${brand} seconde main authentifiées, sélection Vintiz Vernon.`,
-      url: `${SITE_URL}/produits/marque/${brandParam}`,
+      url: canonicalUrl,
       type: "website",
       locale: "fr_FR",
     },
@@ -70,7 +87,7 @@ export default async function BrandPage({ params }: PageProps) {
     "@type": "CollectionPage",
     name: `${brand} seconde main premium — Vintiz Vernon`,
     description: `Sélection de pièces ${brand} d'occasion authentifiées à Vernon, Normandie.`,
-    url: `${SITE_URL}/produits/marque/${brandParam}`,
+    url: `${SITE_URL}/produits/marque/${brandSlug(brand)}`,
     about: { "@type": "Brand", name: brand },
     hasPart: {
       "@type": "ItemList",

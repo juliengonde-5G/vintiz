@@ -28,6 +28,7 @@ class ConsentPurpose(str, enum.Enum):
     sms_marketing = "sms_marketing"
     profiling = "profiling"        # Personal Shopper / AI recommendations
     trend_alerts = "trend_alerts"  # Email push when a trending product matches taste profile
+    email_open_tracking = "email_open_tracking"  # CNIL 2026: pixel d'ouverture des e-mails marketing (consentement spécifique, distinct de l'opt-in newsletter)
     data_sharing = "data_sharing"  # B2B sharing — PERMANENTLY DISABLED, never surfaced/togglable (#8). Kept only for migration history.
 
 

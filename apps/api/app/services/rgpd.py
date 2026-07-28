@@ -51,6 +51,25 @@ _PURPOSE_TO_FLAG: dict[ConsentPurpose, str] = {
 }
 
 
+async def latest_consent_granted(
+    db: AsyncSession, client_id: uuid.UUID, purpose: ConsentPurpose
+) -> bool:
+    """True si le dernier enregistrement du registre pour ce purpose est accordé.
+
+    Helper réutilisable (le registre est append-only : la ligne la plus récente
+    fait foi). Utilisé notamment pour décider du suivi d'ouverture des e-mails
+    (``ConsentPurpose.email_open_tracking``) au moment de l'envoi.
+    """
+    row = await db.execute(
+        select(Consent)
+        .where(Consent.client_id == client_id, Consent.purpose == purpose)
+        .order_by(Consent.created_at.desc())
+        .limit(1)
+    )
+    consent = row.scalar_one_or_none()
+    return bool(consent and consent.granted)
+
+
 class RgpdService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db

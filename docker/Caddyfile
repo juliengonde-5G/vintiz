@@ -18,3 +18,11 @@ app.vintiz.fr {
 api.vintiz.fr {
 	reverse_proxy api:8000
 }
+
+# Matomo — mesure d'audience cookieless (exemptée CNIL).
+# Caddy transmet X-Forwarded-For : Matomo doit être configuré pour faire
+# confiance au proxy (config.ini.php : proxy_client_headers +
+# proxy_host_headers + trusted_hosts) afin d'anonymiser la vraie IP visiteur.
+analytics.vintiz.fr {
+	reverse_proxy matomo:80
+}
