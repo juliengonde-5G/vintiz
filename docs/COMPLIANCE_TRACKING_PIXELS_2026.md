@@ -145,13 +145,19 @@ Suite à validation manager, les développements suivants ont été implémenté
   politique de confidentialité. Il apparaît automatiquement dans l'espace
   client `/account/rgpd` (activer/désactiver).
 - À l'envoi, les e-mails **marketing** (nouvelles pièces, alertes tendance,
-  anniversaires) positionnent `track_opens` selon ce consentement ; sans
-  consentement, l'e-mail part avec un marqueur d'audit `no-open-tracking`.
+  anniversaires) positionnent `track_opens` selon ce consentement.
 - ⚠️ **Limite fournisseur** : l'API transactionnelle Brevo ne permet pas de
   désactiver le pixel **par message**. La coupure effective du suivi individuel
-  repose donc sur le réglage **« suivi anonyme »** du compte Brevo (action ops).
-  Le consentement per-client est néanmoins tracé et prêt pour un pixel
-  first-party / des campagnes Brevo (contrôle par envoi).
+  repose sur le réglage **« suivi anonyme »** du compte Brevo (action ops).
+- **Fail-closed** : pour éviter que la limite ci-dessus ne piste malgré tout un
+  destinataire ayant refusé, le gateway **refuse d'envoyer via Brevo** un e-mail
+  marketing sans consentement au suivi tant que l'opérateur n'a pas confirmé le
+  suivi anonyme via `BREVO_ANONYMOUS_TRACKING=true`. Sur le canal **SMTP**
+  (repli), aucun pixel n'est inséré → l'envoi passe normalement. Le canal
+  simulation/dev n'est pas concerné.
+- **Action ops** : basculer le compte Brevo en suivi anonyme, PUIS poser
+  `BREVO_ANONYMOUS_TRACKING=true`. Sans cela, les e-mails marketing vers les
+  non-consentants échouent (comptés `failed` dans le log du cron).
 
 ## 5. Note
 

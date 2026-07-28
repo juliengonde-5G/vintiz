@@ -14,12 +14,22 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models import Base
 from app.models.client import Client, Consent, ConsentPurpose
-from app.services.email_gateway import EmailMessage, send_email
+from app.services.email_gateway import (
+    EmailDeliveryError,
+    EmailMessage,
+    send_email,
+)
 from app.services.rgpd import latest_consent_granted
 
 
 def _clear_env(monkeypatch):
-    for key in ("BREVO_API_KEY", "SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"):
+    for key in (
+        "BREVO_API_KEY",
+        "SMTP_HOST",
+        "SMTP_USER",
+        "SMTP_PASSWORD",
+        "BREVO_ANONYMOUS_TRACKING",
+    ):
         monkeypatch.delenv(key, raising=False)
 
 
@@ -42,9 +52,27 @@ def _capture_brevo(monkeypatch, seen):
     monkeypatch.setattr("app.services.email_gateway.urlopen", fake_urlopen)
 
 
-def test_brevo_tags_no_open_tracking_when_declined(monkeypatch):
+def test_brevo_fails_closed_when_declined_and_not_anonymous(monkeypatch):
+    """Sans confirmation du suivi anonyme, un envoi marketing sans consentement
+    au suivi d'ouverture doit ÉCHOUER (fail-closed) plutôt que d'être pisté."""
     _clear_env(monkeypatch)
     monkeypatch.setenv("BREVO_API_KEY", "ak")
+    seen: dict = {}
+    _capture_brevo(monkeypatch, seen)
+
+    with pytest.raises(EmailDeliveryError):
+        send_email(EmailMessage(
+            to="a@x.fr", subject="Promo", html="<p>hi</p>", track_opens=False,
+        ))
+    # Aucun appel réseau n'a dû partir.
+    assert "body" not in seen
+
+
+def test_brevo_tags_no_open_tracking_when_anonymous_confirmed(monkeypatch):
+    """Compte confirmé anonyme → l'envoi part, avec le marqueur d'audit."""
+    _clear_env(monkeypatch)
+    monkeypatch.setenv("BREVO_API_KEY", "ak")
+    monkeypatch.setenv("BREVO_ANONYMOUS_TRACKING", "true")
     seen: dict = {}
     _capture_brevo(monkeypatch, seen)
 

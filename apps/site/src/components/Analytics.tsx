@@ -2,7 +2,7 @@
 
 import Script from 'next/script';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const CONSENT_KEY = 'vintiz_cookie_consent';
 
@@ -55,9 +55,17 @@ export default function Analytics({ gaId, matomoUrl, matomoSiteId }: AnalyticsPr
   }, [gaId]);
 
   // --- Matomo (primaire) : suivi des changements de route (SPA) --------------
+  // La 1ʳᵉ vue est déjà comptée par le trackPageView de l'init inline ci-dessous.
+  // On saute donc le 1er passage de cet effet pour ne pas double-compter la
+  // landing ; les passages suivants = vraies navigations SPA.
   const matomoOn = Boolean(matomoUrl && matomoSiteId);
+  const skipFirstPageView = useRef(true);
   useEffect(() => {
     if (!matomoOn || !pathname) return;
+    if (skipFirstPageView.current) {
+      skipFirstPageView.current = false;
+      return;
+    }
     const paq = (window as unknown as { _paq?: unknown[] })._paq;
     if (!paq) return;
     paq.push(['setCustomUrl', window.location.href]);

@@ -134,6 +134,23 @@ def _from_env(key: str, default: str = "") -> str:
     return value if value is not None else default
 
 
+def _brevo_anonymous_tracking() -> bool:
+    """L'opérateur a-t-il confirmé que le compte Brevo est en « suivi anonyme » ?
+
+    Brevo insère par défaut un pixel d'ouverture individuel sur TOUS les envois
+    (y compris transactionnels) et son API transactionnelle ne permet pas de le
+    désactiver par message. Tant que le compte n'est pas basculé en suivi
+    anonyme, un e-mail marketing envoyé à quelqu'un qui a REFUSÉ le suivi
+    d'ouverture serait quand même pisté — contraire à la politique affichée.
+    On exige donc une confirmation explicite (env ``BREVO_ANONYMOUS_TRACKING``)
+    avant d'envoyer sans consentement ; sinon on échoue en sécurité (fail-closed).
+    Voir docs/COMPLIANCE_TRACKING_PIXELS_2026.md.
+    """
+    return _from_env("BREVO_ANONYMOUS_TRACKING", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 def describe_active_provider() -> dict:
     """Snapshot of which backend would be used right now (no actual send)."""
     if _from_env("BREVO_API_KEY"):
@@ -179,6 +196,18 @@ def _send_via_brevo(message: EmailMessage) -> EmailResult:
     api_key = _from_env("BREVO_API_KEY")
     if not api_key:
         raise EmailDeliveryError("BREVO_API_KEY not set")
+
+    # Fail-closed : un e-mail marketing SANS consentement au suivi d'ouverture
+    # ne doit pas partir via Brevo tant que le compte n'est pas confirmé en
+    # suivi anonyme (sinon le pixel individuel s'applique quand même). Les
+    # e-mails transactionnels/de service (track_opens=None) ne sont pas
+    # concernés. Le canal SMTP (repli) n'insère aucun pixel → non concerné.
+    if message.track_opens is False and not _brevo_anonymous_tracking():
+        raise EmailDeliveryError(
+            "open-tracking consent absent and Brevo anonymous tracking not "
+            "confirmed (set BREVO_ANONYMOUS_TRACKING=true once the account is "
+            "switched to anonymous tracking)"
+        )
 
     sender_email = _from_env("EMAIL_FROM_ADDRESS", "noreply@vintiz.fr")
     sender_name = _from_env("EMAIL_FROM_NAME", "Vintiz Vernon")

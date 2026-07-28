@@ -10,6 +10,7 @@ import {
   listAvailableBrandsEn,
   productsByBrandEn,
 } from "@/data/vitrine-products.en";
+import { listPublicProducts } from "@/lib/storefront-api";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://vintiz.fr";
 
@@ -19,6 +20,18 @@ interface PageProps {
 
 export function generateStaticParams() {
   return listAvailableBrandsEn().map((b) => ({ brand: brandSlug(b) }));
+}
+
+/** La page marque FR (route dynamique) ne rend 200 que si la marque existe
+ *  dans le catalogue LIVE (resolveBrand). On ne déclare l'alternate fr-FR que
+ *  dans ce cas pour éviter un hreflang cassé (→ 404). */
+async function frBrandExists(slug: string): Promise<boolean> {
+  try {
+    const products = await listPublicProducts();
+    return products.some((p) => p.brand && brandSlug(p.brand) === slug);
+  } catch {
+    return false;
+  }
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -33,15 +46,19 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   // avoids GSC "duplicate, Google chose a different canonical".
   const slug = brandSlug(brand);
   const canonicalUrl = `${SITE_URL}/en/produits/marque/${slug}`;
+  // fr-FR uniquement si la page FR existe vraiment (marque présente dans le
+  // catalogue live) — évite un alternate cassé quand une marque EN statique
+  // n'a plus d'inventaire côté FR.
+  const frExists = await frBrandExists(slug);
+  const languages = frExists
+    ? { "fr-FR": `${SITE_URL}/produits/marque/${slug}`, "en-US": canonicalUrl }
+    : { "en-US": canonicalUrl };
   return {
     title: `${brand} second-hand`,
     description: `Our authenticated second-hand ${brand} selection in Vernon — ${products.length} one-of-a-kind pieces. Dresses, jackets, bags and premium accessories curated by the Vintiz team.`,
     alternates: {
       canonical: canonicalUrl,
-      languages: {
-        "fr-FR": `${SITE_URL}/produits/marque/${slug}`,
-        "en-US": canonicalUrl,
-      },
+      languages,
     },
     openGraph: {
       title: `${brand} second-hand in Vernon | Vintiz`,
