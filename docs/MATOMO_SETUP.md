@@ -77,28 +77,56 @@ sur `main` déclenche la GitHub Action de déploiement.
 
 ---
 
-## 4. (Recommandé) Lien d'opposition sur la page confidentialité
+## 4. Lien d'opposition sur la page confidentialité — DÉJÀ INTÉGRÉ
 
-La CNIL apprécie un moyen de s'opposer même pour la mesure exemptée. Matomo
-génère un extrait `<iframe>` d'opt-out (*Administration → Confidentialité →
-Fonctionnalité de désinscription des utilisateurs*). On peut l'ajouter à
-`apps/site/src/app/confidentialite/page.tsx`, section « Cookies et mesure
-d'audience ». Dis-moi si tu veux que je l'intègre (petit dev front, ~10 min).
+La CNIL apprécie un moyen de s'opposer même pour la mesure exemptée. C'est en
+place : le composant `apps/site/src/components/MatomoOptOut.tsx` affiche l'iframe
+d'opt-out Matomo dans la page `/confidentialite` (section « Cookies et mesure
+d'audience »). Il se masque tout seul tant que `NEXT_PUBLIC_MATOMO_URL` est vide,
+et pointe automatiquement sur `…/index.php?module=CoreAdminHome&action=optOut`
+dès que la variable est renseignée. Rien à faire côté code.
 
 ---
 
-## 5. Variante self-hosted (VPS existant)
+## 5. Self-hosted sur le VPS — DÉJÀ CÂBLÉ (option retenue)
 
-Si tu héberges Matomo sur le VPS Vintiz (déjà Docker + Caddy) :
+Le stack Matomo est fourni dans `docker/docker-compose.prod.yml` :
+- **`matomo`** (`matomo:5-apache`) + **`matomo-db`** (`mariadb:11`, base dédiée,
+  séparée de la base applicative Postgres), volumes `matomo_app` / `matomo_db_data`.
+- Vhost **`analytics.vintiz.fr`** ajouté au `docker/Caddyfile` (HTTPS auto).
+- Les variables `NEXT_PUBLIC_MATOMO_*` sont passées en **build args** au service
+  `site` (indispensable : `NEXT_PUBLIC_*` est inliné au build Next).
 
-1. Ajouter un service `matomo` + une base (MySQL/MariaDB) au
-   `docker/docker-compose.prod.yml`.
-2. Exposer `analytics.vintiz.fr` via Caddy (HTTPS auto).
-3. Faire l'assistant d'installation Matomo, créer le site `vintiz.fr` → idSite.
-4. Appliquer **toute** la checklist §2.
-5. Renseigner les variables §3 avec `https://analytics.vintiz.fr/`.
+**Étapes de mise en service :**
 
-Je peux préparer ce bloc `docker-compose` + Caddyfile si tu choisis cette voie.
+1. **Secrets** — dans le `.env` de prod (cf. `.env.production.template`) :
+   ```env
+   MATOMO_DB_PASSWORD=...            # mot de passe MariaDB Matomo
+   MATOMO_DB_ROOT_PASSWORD=...       # root MariaDB
+   NEXT_PUBLIC_MATOMO_URL=https://analytics.vintiz.fr/
+   NEXT_PUBLIC_MATOMO_SITE_ID=1
+   ```
+2. **DNS** — pointer `analytics.vintiz.fr` sur l'IP du VPS (enregistrement A).
+3. **Démarrage** — `docker compose -f docker/docker-compose.prod.yml up -d
+   matomo-db matomo caddy` (ou le `deploy.sh` habituel).
+4. **Assistant d'install** — ouvrir `https://analytics.vintiz.fr`, suivre
+   l'assistant (la base est déjà provisionnée via les variables
+   `MATOMO_DATABASE_*`), créer le site mesuré `vintiz.fr` → note l'**idSite**.
+5. **Confiance proxy** — comme Matomo est derrière Caddy, éditer
+   `config/config.ini.php` (persisté dans le volume `matomo_app`) :
+   ```ini
+   [General]
+   trusted_hosts[] = "analytics.vintiz.fr"
+   proxy_client_headers[] = "HTTP_X_FORWARDED_FOR"
+   proxy_host_headers[] = "HTTP_X_FORWARDED_HOST"
+   assume_secure_protocol = 1
+   ```
+   Sans ça, Matomo verrait l'IP du conteneur Caddy au lieu de celle du visiteur
+   (→ anonymisation IP inopérante).
+6. **Checklist §2** — appliquer TOUS les réglages d'exemption (anonymisation IP,
+   pas de partage, DNT, rétention 14 mois, heatmaps/session-recording off).
+7. **Rebuild du site** avec les variables renseignées (elles sont inlinées au
+   build), puis redéploiement. Vérifs : §6.
 
 ---
 

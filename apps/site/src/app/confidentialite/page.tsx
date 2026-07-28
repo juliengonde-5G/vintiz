@@ -1,5 +1,6 @@
 import PublicHeader from "@/components/PublicHeader";
 import PublicFooter from "@/components/PublicFooter";
+import MatomoOptOut from "@/components/MatomoOptOut";
 import Link from "next/link";
 import type { Metadata } from "next";
 
@@ -127,6 +128,11 @@ export default function ConfidentialitePage() {
             bandeau, révocable à tout moment depuis le lien «&nbsp;Gérer les
             cookies&nbsp;» en pied de page.
           </p>
+          <p className="text-black/70 leading-relaxed mt-3">
+            Vous pouvez à tout moment vous opposer à cette mesure d&apos;audience
+            anonyme&nbsp;:
+          </p>
+          <MatomoOptOut />
 
           <h2 className="font-display text-xl text-black mt-8 mb-3">
             Pixels de suivi dans les e-mails
