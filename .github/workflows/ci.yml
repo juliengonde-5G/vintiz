@@ -19,7 +19,11 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        # Même image qu'en prod (docker-compose.prod.yml) : embarque
+        # l'extension pgvector, requise par la migration 0008
+        # (CREATE EXTENSION vector + colonnes VECTOR). postgres:16-alpine ne
+        # l'a pas → « type vector does not exist » à l'upgrade Alembic.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: vintiz_test
           POSTGRES_PASSWORD: vintiz_test
