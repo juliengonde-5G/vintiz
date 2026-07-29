@@ -81,7 +81,17 @@ jobs:
           test "$CUR" = "$HEAD"
 
       - name: Tests
-        run: python -m pytest tests/ -v --tb=short
+        # Les tests applicatifs sont conçus pour SQLite (types portables, cf.
+        # CLAUDE.md) : conftest recrée le schéma par test via create_all/drop_all.
+        # Les faire tourner sur la MÊME base PostgreSQL que le step Alembic
+        # ci-dessus provoque des collisions (« relation ... already exists »)
+        # avec le schéma déjà migré. Le step Alembic valide déjà les migrations
+        # sur PostgreSQL ; ce step-ci valide la logique applicative sur SQLite.
+        env:
+          DATABASE_URL: sqlite+aiosqlite:////tmp/vintiz_citest.db
+        run: |
+          rm -f /tmp/vintiz_citest.db
+          python -m pytest tests/ -v --tb=short
 
   # -------------------------------------------------------
   # Sanity — fast pre-flight check on TS/JSX imports
