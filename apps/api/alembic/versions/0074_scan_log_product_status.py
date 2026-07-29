@@ -21,6 +21,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Idempotent : sur un bootstrap frais, ``create_all`` a déjà ajouté la
+    # colonne (modèle courant). On saute alors l'ajout — même contrat que 0032.
+    cols = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("product_scan_logs")}
+    if "product_status" in cols:
+        return
     op.add_column(
         "product_scan_logs",
         sa.Column("product_status", sa.String(length=30), nullable=True),

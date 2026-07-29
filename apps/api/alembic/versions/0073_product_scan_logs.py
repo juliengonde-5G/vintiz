@@ -22,6 +22,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Idempotent : sur un bootstrap frais, ``create_all`` a déjà créé la table
+    # (product_scan_logs est un modèle courant). On saute alors la création
+    # pour ne pas casser le flux bootstrap+upgrade (même contrat que 0032).
+    if "product_scan_logs" in sa.inspect(op.get_bind()).get_table_names():
+        return
     op.create_table(
         "product_scan_logs",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
