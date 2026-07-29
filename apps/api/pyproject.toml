@@ -33,7 +33,13 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
     "httpx>=0.27.0",
-    "ruff>=0.8.0",
+    # Épinglé sur la ligne 0.8.x : la CI lint est reproductible et verte avec
+    # ces règles. Ruff n'ayant PAS de [tool.ruff] dans ce repo, une version
+    # récente (0.16+) applique des règles par défaut bien plus strictes et
+    # signale ~1275 « erreurs » sur du code existant intact → CI rouge, deploy
+    # gelé. Moderniser ruff (config explicite + adoption des nouvelles règles)
+    # = tâche de maintenance dédiée, hors de ce correctif de déploiement.
+    "ruff>=0.8.0,<0.9",
     "aiosqlite>=0.20.0",
     "pip-audit>=2.10.1",
 ]
