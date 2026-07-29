@@ -15,7 +15,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from app.core.database import engine
 from app.models import Base  # imports every mapped table
@@ -26,6 +26,13 @@ BASELINE_REVISION = "0071"
 
 async def _create_only_if_empty() -> None:
     async with engine.begin() as connection:
+        # Les extensions doivent exister AVANT create_all : les modèles
+        # embeddings déclarent des colonnes VECTOR (pgvector) et certains
+        # défauts s'appuient sur pgcrypto. La migration 0008 crée aussi
+        # ``vector``, mais create_all tourne AVANT les migrations ici.
+        if engine.dialect.name == "postgresql":
+            await connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
         tables = await connection.run_sync(
             lambda sync_connection: inspect(sync_connection).get_table_names()
         )
