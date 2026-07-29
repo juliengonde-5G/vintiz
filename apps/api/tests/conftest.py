@@ -1,5 +1,6 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 
 from app.core.database import engine
 from app.main import app
@@ -20,6 +21,11 @@ async def _create_tables():
     Only requested by fixtures that actually need the DB (e.g. ``client``).
     """
     async with engine.begin() as conn:
+        # pgvector/pgcrypto requis avant create_all sur PostgreSQL (colonnes
+        # VECTOR des modèles embeddings). No-op sur SQLite.
+        if engine.dialect.name == "postgresql":
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
         await conn.run_sync(Base.metadata.create_all)
     yield
     async with engine.begin() as conn:
