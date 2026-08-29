@@ -267,6 +267,7 @@ def build_receipt(
     shop: dict[str, Any] | None = None,
     width: int = 42,
     cut: bool = True,
+    duplicata_number: int | None = None,
 ) -> bytes:
     """Produce an ESC/POS byte stream for a completed Vintiz transaction.
 
@@ -315,6 +316,13 @@ def build_receipt(
     for aline in _wrap(store_address, width):
         out += _line(aline)
     out += _line("=" * width)
+
+    # NF525 : toute réimpression est un duplicata numéroté, marqué sur le
+    # ticket lui-même (jamais une copie indiscernable de l'original).
+    if duplicata_number:
+        out += ALIGN_CENTER + BOLD_ON + DOUBLE_ON
+        out += _line(f"* DUPLICATA n.{duplicata_number} *")
+        out += DOUBLE_OFF + BOLD_OFF
 
     # Transaction meta
     out += ALIGN_LEFT
@@ -650,8 +658,12 @@ def print_receipt(
     shop: dict[str, Any] | None = None,
     width: int = 42,
     cut: bool = True,
+    duplicata_number: int | None = None,
 ) -> int:
-    payload = build_receipt(transaction, template=template, shop=shop, width=width, cut=cut)
+    payload = build_receipt(
+        transaction, template=template, shop=shop, width=width, cut=cut,
+        duplicata_number=duplicata_number,
+    )
     send_raw(host, port, payload)
     return len(payload)
 

@@ -67,8 +67,19 @@ interface CartItem {
   price: number;
   quantity: number;
   discount: number; // percent
+  // Prix de vente manuel (bouton € — prix rond, entier). Exclusif avec la
+  // remise % ; la ligne ne cotise pas de points fidélité et l'écart avec le
+  // prix étiquette compte dans les remises du jour.
+  priceOverride?: number | null;
   isManual: boolean;
 }
+
+// Net d'une ligne panier : prix manuel prioritaire, sinon prix étiquette
+// moins la remise %.
+const lineNet = (item: CartItem) =>
+  item.priceOverride != null
+    ? item.priceOverride * item.quantity
+    : item.price * item.quantity * (1 - item.discount / 100);
 
 interface PaymentLine {
   method: 'especes' | 'carte' | 'cheque' | 'cheque_cdc' | 'avoir' | 'voucher';
@@ -356,6 +367,9 @@ export default function POSPage() {
   // Which cart item has its discount strip expanded (compact layout: hide by
   // default to fit more items on Lenovo landscape).
   const [discountOpenIdx, setDiscountOpenIdx] = useState<number | null>(null);
+  // Ligne dont le bandeau « prix manuel » (bouton €) est déplié + saisie.
+  const [overridePriceIdx, setOverridePriceIdx] = useState<number | null>(null);
+  const [overrideInput, setOverrideInput] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clientDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -387,11 +401,7 @@ export default function POSPage() {
   // Computed — memoised so unrelated state changes (modals, focus, etc.)
   // don't re-run the cart reduce on every render.
   const cartTotal = useMemo(
-    () => cart.reduce((sum, item) => {
-      const linePrice = item.price * item.quantity;
-      const afterDiscount = linePrice * (1 - item.discount / 100);
-      return sum + afterDiscount;
-    }, 0),
+    () => cart.reduce((sum, item) => sum + lineNet(item), 0),
     [cart],
   );
 
@@ -715,10 +725,12 @@ export default function POSPage() {
       try {
         const res = await api.post('/api/pos/operations/evaluate', {
           items: cart.map((item) => ({
-            unit_price: item.price,
+            unit_price: item.priceOverride ?? item.price,
             quantity: item.quantity,
-            discount_percent: item.discount,
-            is_product: !!item.product_id,
+            discount_percent: item.priceOverride != null ? 0 : item.discount,
+            // Un prix manuel est un prix ferme : exclu de la remise Solde
+            // (même règle que le backend à la création de la vente).
+            is_product: !!item.product_id && item.priceOverride == null,
           })),
         });
         if (!res.ok || !active) {
@@ -1053,8 +1065,31 @@ export default function POSPage() {
 
   const updateDiscount = (index: number, discount: number) => {
     setCart(prev => prev.map((item, i) =>
-      i === index ? { ...item, discount: Math.max(0, Math.min(30, discount)) } : item
+      i === index
+        ? { ...item, discount: Math.max(0, Math.min(30, discount)), priceOverride: null }
+        : item
     ));
+  };
+
+  // Prix manuel (bouton €) : prix rond par unité, exclusif avec la remise %.
+  const updatePriceOverride = (index: number, value: number | null) => {
+    setCart(prev => prev.map((item, i) =>
+      i === index
+        ? {
+            ...item,
+            priceOverride: value != null && value > 0 ? Math.round(value) : null,
+            discount: 0,
+          }
+        : item
+    ));
+  };
+
+  const applyPriceOverride = (index: number) => {
+    const value = parseInt(overrideInput, 10);
+    if (!isNaN(value) && value > 0) updatePriceOverride(index, value);
+    setOverridePriceIdx(null);
+    setOverrideInput('');
+    refocusSearch();
   };
 
   // Inline price edit — only for manual lines (bag, custom article). Real
@@ -1326,7 +1361,8 @@ export default function POSPage() {
           name: item.isManual ? item.name : undefined,
           quantity: item.quantity,
           unit_price: item.price,
-          discount_percent: item.discount,
+          discount_percent: item.priceOverride != null ? 0 : item.discount,
+          manual_unit_price: item.priceOverride ?? undefined,
         })),
         payments: tenders.map((p) => ({
           method: p.method,
@@ -1414,7 +1450,8 @@ export default function POSPage() {
           name: item.isManual ? item.name : undefined,
           quantity: item.quantity,
           unit_price: item.price,
-          discount_percent: item.discount,
+          discount_percent: item.priceOverride != null ? 0 : item.discount,
+          manual_unit_price: item.priceOverride ?? undefined,
         })),
         payments: payments.map(p => ({
           method: p.method,
@@ -2022,8 +2059,7 @@ export default function POSPage() {
               </div>
             ) : (
               cart.map((item, idx) => {
-                const linePrice = item.price * item.quantity;
-                const afterDiscount = linePrice * (1 - item.discount / 100);
+                const afterDiscount = lineNet(item);
                 return (
                   <div key={idx} className="p-2 bg-gray-50 rounded-xl border border-gray-100">
                     <div className="flex items-center justify-between gap-2">
@@ -2055,10 +2091,12 @@ export default function POSPage() {
                               </button>
                             )
                           ) : (
-                            <span className="text-xs text-gray-500">{formatCurrency(item.price)}</span>
+                            <span className={`text-xs text-gray-500 ${item.priceOverride != null ? 'line-through text-gray-400' : ''}`}>
+                              {formatCurrency(item.price)}
+                            </span>
                           )}
                           <button
-                            onClick={() => setDiscountOpenIdx(discountOpenIdx === idx ? null : idx)}
+                            onClick={() => { setDiscountOpenIdx(discountOpenIdx === idx ? null : idx); setOverridePriceIdx(null); }}
                             className={`text-xs px-1.5 py-0.5 rounded-full font-medium transition-colors ${
                               item.discount > 0
                                 ? 'bg-red-500 text-white'
@@ -2068,6 +2106,33 @@ export default function POSPage() {
                           >
                             {item.discount > 0 ? `-${item.discount}%` : '-%'}
                           </button>
+                          {!item.isManual && (
+                            <button
+                              onClick={() => {
+                                if (overridePriceIdx === idx) {
+                                  setOverridePriceIdx(null);
+                                } else {
+                                  setOverridePriceIdx(idx);
+                                  setOverrideInput(
+                                    item.priceOverride != null ? String(item.priceOverride) : ''
+                                  );
+                                }
+                                setDiscountOpenIdx(null);
+                              }}
+                              className={`text-xs px-1.5 py-0.5 rounded-full font-medium transition-colors inline-flex items-center gap-0.5 ${
+                                item.priceOverride != null
+                                  ? 'bg-vz-teal text-white'
+                                  : 'bg-white border border-gray-200 text-gray-400 hover:border-vz-teal hover:text-vz-teal'
+                              }`}
+                              title="Prix manuel (prix rond)"
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                <circle cx="12" cy="12" r="9" />
+                                <path d="M15.5 8.6a4.4 4.4 0 100 6.8M7.5 10.6h5M7.5 13.4h5" />
+                              </svg>
+                              {item.priceOverride != null ? `${item.priceOverride} €` : ''}
+                            </button>
+                          )}
                           <span className="text-xs font-bold text-vz-teal ml-auto">{formatCurrency(afterDiscount)}</span>
                         </div>
                       </div>
@@ -2089,6 +2154,39 @@ export default function POSPage() {
                         </button>
                       </div>
                     </div>
+                    {/* Bandeau prix manuel (bouton €) : saisie d'un prix rond */}
+                    {overridePriceIdx === idx && !item.isManual && (
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <span className="text-[11px] text-gray-500">Prix rond :</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          step="1"
+                          min="1"
+                          autoFocus
+                          placeholder={String(Math.round(item.price))}
+                          value={overrideInput}
+                          onChange={(e) => setOverrideInput(e.target.value.replace(/[.,].*$/, ''))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') applyPriceOverride(idx); }}
+                          className="w-20 text-xs px-2 py-1 rounded-lg border border-vz-teal focus:outline-none focus:ring-1 focus:ring-vz-teal"
+                        />
+                        <span className="text-[11px] text-gray-400">€</span>
+                        <button
+                          onClick={() => applyPriceOverride(idx)}
+                          className="px-2.5 py-1 text-xs rounded-full bg-vz-teal text-white font-medium hover:bg-vz-teal-deep"
+                        >
+                          OK
+                        </button>
+                        {item.priceOverride != null && (
+                          <button
+                            onClick={() => { updatePriceOverride(idx, null); setOverridePriceIdx(null); setOverrideInput(''); }}
+                            className="px-2.5 py-1 text-xs rounded-full bg-white border border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-500"
+                          >
+                            Prix étiquette
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {/* Discount strip: only when expanded or a discount is already set */}
                     {(discountOpenIdx === idx || item.discount > 0) && (
                       <div className="flex items-center gap-1 mt-1.5">
@@ -2205,9 +2303,13 @@ export default function POSPage() {
                 <span className="text-2xl font-bold text-vz-teal">{formatCurrency(cartTotalAfterLoyalty)}</span>
               </div>
             </div>
-            {cart.some(i => i.discount > 0) && (
+            {cart.some(i => i.discount > 0 || (i.priceOverride != null && i.priceOverride < i.price)) && (
               <p className="text-xs text-red-500 text-right -mt-1">
-                Remises : -{formatCurrency(cart.reduce((s, i) => s + i.price * i.quantity * i.discount / 100, 0))}
+                Remises : -{formatCurrency(cart.reduce((s, i) => s + (
+                  i.priceOverride != null
+                    ? Math.max(0, i.price - i.priceOverride) * i.quantity
+                    : i.price * i.quantity * i.discount / 100
+                ), 0))}
               </p>
             )}
 
@@ -2576,15 +2678,15 @@ export default function POSPage() {
                 </header>
                 <ul className="space-y-1.5 max-h-[40vh] overflow-y-auto pr-1">
                   {cart.map((item, idx) => {
-                    const linePrice = item.price * item.quantity;
-                    const afterDiscount = linePrice * (1 - item.discount / 100);
+                    const afterDiscount = lineNet(item);
                     return (
                       <li key={idx} className="flex items-center justify-between text-sm border-b border-vz-line/40 last:border-0 pb-1.5 last:pb-0">
                         <div className="min-w-0 flex-1 pr-3">
                           <p className="font-medium text-vz-ink truncate">{item.name}</p>
                           <p className="text-[11px] text-vz-ink-mute">
-                            {item.quantity} × {formatCurrency(item.price)}
+                            {item.quantity} × {formatCurrency(item.priceOverride ?? item.price)}
                             {item.discount > 0 && <span className="ml-1.5 text-vz-accent font-semibold">−{item.discount}%</span>}
+                            {item.priceOverride != null && <span className="ml-1.5 text-vz-teal font-semibold">prix manuel</span>}
                           </p>
                         </div>
                         <span className="font-mono font-medium text-vz-ink">{formatCurrency(afterDiscount)}</span>

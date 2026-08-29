@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import Sidebar from '@/components/layout/Sidebar'
 import { api } from '@/lib/api'
 
 interface ServiceStatus {
@@ -67,7 +68,10 @@ export default function MonitoringPage() {
   const allHealthy = report?.all_healthy ?? true
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="min-h-screen bg-background">
+      <Sidebar />
+      <main className="md:ml-64 px-4 pt-16 pb-10 md:p-8">
+        <div className="max-w-4xl mx-auto">
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-display font-semibold text-vz-ink">Monitoring</h1>
@@ -159,6 +163,8 @@ export default function MonitoringPage() {
           </div>
         </>
       )}
+        </div>
+      </main>
     </div>
   )
 }

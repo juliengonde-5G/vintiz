@@ -10,7 +10,7 @@ from app.services.loyalty_config import (
     get_earning_config,
     set_earning_config,
 )
-from app.services.offers_engine import milestones_crossed, points_to_credit
+from app.services.offers_engine import points_to_credit
 
 
 @pytest.fixture
@@ -72,8 +72,6 @@ def test_points_to_credit_honours_euro_per_point():
     assert points_to_credit(49.0) == 49
 
 
-def test_milestones_crossed_honours_threshold():
-    # threshold 50 → going 40 → 110 crosses 50 and 100 = 2 vouchers
-    assert milestones_crossed(40, 110, 50) == 2
-    # default 100 → 90 → 210 crosses 100 and 200 = 2
-    assert milestones_crossed(90, 210) == 2
+# NB : ``milestones_crossed`` (franchissement absolu) a été retiré avec la
+# règle « débit à l'émission » — voir tests/test_solde_and_loyalty.py pour la
+# couverture de l'émission + débit du palier.
