@@ -31,26 +31,25 @@ jobs:
     environment: production
 
     steps:
-      # Garde-fou : si les secrets SSH ne sont pas configures dans ce repo,
-      # on n'echoue pas (rouge trompeur). On emet un avertissement clair et on
-      # marque l'etape de deploiement comme ignoree — le deploiement se fait
-      # alors manuellement sur le VPS (voir bloc commente en bas de fichier).
+      # Garde-fou : un secret SSH absent est une ERREUR, pas un succes.
+      # L'ancien comportement (warning + run vert sans deployer) a masque un
+      # mois de non-deploiement en aout 2026 : la prod restait sur le build du
+      # 28/07 alors que chaque run "Deploy Production" affichait succes.
+      # Incident : PR #183 mergee, run vert, prod toujours en 1.1.5/0075.
       - name: Verifier la configuration du deploiement
-        id: check
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
           if [ -z "${VPS_HOST}" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Deploiement SSH ignore::Secret VPS_HOST absent dans ce repo. \
-            L'auto-deploiement GitHub est desactive. Deployer manuellement sur le VPS : \
+            echo "::error title=Deploiement impossible::Secret VPS_HOST absent \
+            (Settings > Secrets and variables > Actions, ou environnement 'production'). \
+            La prod n'est PAS deployee. Restaurer VPS_HOST / VPS_USER / VPS_SSH_KEY \
+            (VPS_PORT optionnel) puis relancer, ou deployer manuellement : \
             cd /opt/vintiz && git pull origin main && ./scripts/deploy.sh"
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
 
       - name: Deploy via SSH
-        if: steps.check.outputs.configured == 'true'
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
