@@ -32,6 +32,23 @@ class PosService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
+    @staticmethod
+    def _resolve_manual_price(cart_item) -> Decimal | None:
+        """Prix de vente manuel (rond, en euros) saisi en caisse, ou None.
+
+        Le schéma API valide déjà ces règles ; on les re-vérifie ici pour les
+        appels directs au service (seeds, replays offline).
+        """
+        value = getattr(cart_item, "manual_unit_price", None)
+        if value is None:
+            return None
+        price = Decimal(str(value))
+        if price <= 0 or price != price.to_integral_value():
+            raise InvalidOperation(
+                "Prix manuel : montant rond attendu (sans décimales)"
+            )
+        return price
+
     # ------------------------------------------------------------------
     # Transactions
     # ------------------------------------------------------------------
@@ -151,6 +168,8 @@ class PosService:
                     "product": product, "perm": None,
                     "quantity": cart_item.quantity, "unit_price": unit_price,
                     "manual_discount": float(discount), "name": product.name,
+                    "manual_price": self._resolve_manual_price(cart_item),
+                    "label_price": Decimal(str(product.sale_price)),
                 })
             elif getattr(cart_item, "permanent_item_id", None):
                 # Article permanent (quantité illimitée) — pas de check de stock
@@ -171,6 +190,8 @@ class PosService:
                     "product": None, "perm": perm,
                     "quantity": cart_item.quantity, "unit_price": unit_price,
                     "manual_discount": float(discount), "name": perm.name,
+                    "manual_price": self._resolve_manual_price(cart_item),
+                    "label_price": Decimal(str(perm.sale_price)),
                 })
             else:
                 # Manual item (e.g. sac)
@@ -182,6 +203,7 @@ class PosService:
                     "product": None, "perm": None,
                     "quantity": cart_item.quantity, "unit_price": unit_price,
                     "manual_discount": float(discount), "name": cart_item.name,
+                    "manual_price": None, "label_price": None,
                 })
 
         # Pass 2 — Solde : remise automatique sur les pièces d'inventaire les
@@ -203,6 +225,8 @@ class PosService:
             for ridx, row in enumerate(resolved):
                 if row["product"] is None:
                     continue  # Solde uniquement sur les pièces d'inventaire
+                if row["manual_price"] is not None:
+                    continue  # Prix manuel = prix ferme, pas de remise Solde par-dessus
                 per_unit = float(row["unit_price"]) * (1 - row["manual_discount"] / 100.0)
                 for _ in range(max(1, int(row["quantity"]))):
                     unit_owner.append(ridx)
@@ -223,33 +247,64 @@ class PosService:
         line_rows: list[
             tuple[Product | None, PermanentItem | None, int, Decimal, float, str, bool, Decimal]
         ] = []
+        # Historisation fiche produit des prix manuels : (product, prix
+        # étiquette, prix manuel, quantité) — audit loggé après le flush de la
+        # transaction (il faut son numéro).
+        override_audits: list[tuple[Product, Decimal, Decimal, int]] = []
         for ridx, row in enumerate(resolved):
             unit_price = row["unit_price"]
             quantity = row["quantity"]
             manual_discount = row["manual_discount"]
-            solde_pct = solde_pct_by_line.get(ridx, 0.0)
-            gross = unit_price * Decimal(str(quantity))
-            line_total = (
-                gross
-                * (Decimal("100") - Decimal(str(manual_discount))) / Decimal("100")
-                * (Decimal("100") - Decimal(str(solde_pct))) / Decimal("100")
-            ).quantize(Decimal("0.01"))
-            # Remise effective combinée (manuelle + solde) figée sur la ligne.
-            effective_discount = (
-                float((Decimal("1") - (line_total / gross)) * Decimal("100"))
-                if gross > 0 else 0.0
-            )
+            manual_price = row["manual_price"]
             product = row["product"]
-            # Promotionnel = toute remise (manuelle, solde) OU produit déjà démarqué
-            # (statut discounted / deep_discounted). Ces lignes ne cotisent pas
-            # de points de fidélité.
-            promotional = effective_discount > 0 or (
-                product is not None
-                and product.status in (
-                    ProductStatus.discounted,
-                    ProductStatus.deep_discounted,
+            if manual_price is not None:
+                # Prix manuel (bouton € en caisse) : prix ferme par unité.
+                # - baisse : unit_price reste le prix étiquette → l'écart
+                #   (unit_price × qté − line_total) entre dans les remises du jour ;
+                # - hausse : unit_price devient le prix manuel (pas de « remise
+                #   négative » dans les rapports).
+                if manual_price > unit_price:
+                    unit_price = manual_price
+                line_total = (manual_price * Decimal(str(quantity))).quantize(
+                    Decimal("0.01")
                 )
-            )
+                gross = unit_price * Decimal(str(quantity))
+                effective_discount = (
+                    float((Decimal("1") - (line_total / gross)) * Decimal("100"))
+                    if gross > 0 else 0.0
+                )
+                # Jamais de points fidélité sur un prix modifié à la main.
+                promotional = True
+                if product is not None:
+                    override_audits.append((
+                        product,
+                        row["label_price"] or unit_price,
+                        manual_price,
+                        int(quantity),
+                    ))
+            else:
+                solde_pct = solde_pct_by_line.get(ridx, 0.0)
+                gross = unit_price * Decimal(str(quantity))
+                line_total = (
+                    gross
+                    * (Decimal("100") - Decimal(str(manual_discount))) / Decimal("100")
+                    * (Decimal("100") - Decimal(str(solde_pct))) / Decimal("100")
+                ).quantize(Decimal("0.01"))
+                # Remise effective combinée (manuelle + solde) figée sur la ligne.
+                effective_discount = (
+                    float((Decimal("1") - (line_total / gross)) * Decimal("100"))
+                    if gross > 0 else 0.0
+                )
+                # Promotionnel = toute remise (manuelle, solde) OU produit déjà démarqué
+                # (statut discounted / deep_discounted). Ces lignes ne cotisent pas
+                # de points de fidélité.
+                promotional = effective_discount > 0 or (
+                    product is not None
+                    and product.status in (
+                        ProductStatus.discounted,
+                        ProductStatus.deep_discounted,
+                    )
+                )
             total_ttc += line_total
             line_rows.append((
                 product, row["perm"], quantity, unit_price,
@@ -395,6 +450,28 @@ class PosService:
         )
         self.db.add(transaction)
         await self.db.flush()
+
+        # Historisation des prix manuels dans la fiche produit (audit trail lu
+        # par GET /inventory/products/{id}/history).
+        if override_audits:
+            from app.models.audit import AuditLog
+
+            for product, label_price, manual_price, quantity in override_audits:
+                self.db.add(AuditLog(
+                    user_id=user_id,
+                    action="pos.price_override",
+                    entity="product",
+                    entity_id=product.id,
+                    data={
+                        "label_price": float(label_price),
+                        "manual_price": float(manual_price),
+                        "difference": round(float(label_price) - float(manual_price), 2),
+                        "quantity": quantity,
+                        "transaction_number": transaction.transaction_number,
+                        "transaction_id": str(transaction.id),
+                        "cashier_id": str(cashier_id) if cashier_id else None,
+                    },
+                ))
 
         if coupon_to_redeem is not None:
             from app.services.coupon import redeem_coupon
@@ -864,10 +941,7 @@ class PosService:
         from app.models.coupon import Coupon, CouponDiscountType, CouponSource
         from app.services.coupon import _draw_unique_code  # collision-safe helper
         from app.services.loyalty_config import get_earning_config
-        from app.services.offers_engine import (
-            milestones_crossed,
-            points_to_credit,
-        )
+        from app.services.offers_engine import points_to_credit
 
         cfg = await get_earning_config(self.db)
         # Les articles en promotion / opération (Solde, markdown) ne cotisent
@@ -932,7 +1006,12 @@ class PosService:
             transaction_id=transaction.id,
         ))
 
-        crossed = milestones_crossed(before, account.points, cfg.voucher_threshold)
+        # Chaque chèque émis CONSOMME les points de son palier : le compteur
+        # est débité à l'émission (ligne ``redeem`` au ledger) et repart de
+        # zéro pour le chèque suivant. Un solde legacy > palier (comptes
+        # d'avant cette règle, non régularisés) est rattrapé ici.
+        threshold = max(1, int(cfg.voucher_threshold or 100))
+        crossed = max(0, int(account.points)) // threshold
         if crossed <= 0:
             return
 
@@ -941,6 +1020,7 @@ class PosService:
         voucher_value = cfg.voucher_value_cents / 100.0
         created_codes: list[str] = []
         for _ in range(crossed):
+            account.points -= threshold
             code = await _draw_unique_code(self.db, "LOYAL")
             self.db.add(Coupon(
                 code=code,
@@ -953,8 +1033,15 @@ class PosService:
                 is_active=True,
                 notes=(
                     f"Chèque cadeau fidélité {voucher_value:g} € — palier "
-                    f"{cfg.voucher_threshold} pts (tx #{transaction.transaction_number})"
+                    f"{threshold} pts (tx #{transaction.transaction_number})"
                 ),
+            ))
+            self.db.add(LoyaltyTransaction(
+                account_id=account.id,
+                tx_type=LoyaltyTxType.redeem,
+                points=-threshold,
+                description=f"Chèque fidélité {code} — palier {threshold} pts",
+                transaction_id=transaction.id,
             ))
             created_codes.append(code)
 

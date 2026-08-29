@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +48,25 @@ class CartItem(BaseModel):
     quantity: int = Field(default=1, ge=1, le=999)
     unit_price: float | None = Field(default=None, gt=0, le=999_999)
     discount_percent: float = Field(default=0, ge=0, lt=100)
+    # Prix de vente manuel saisi en caisse (bouton € à côté du chip -%).
+    # Prix rond (entier, en euros), exclusif avec la remise % ; la ligne
+    # devient promotionnelle (pas de points fidélité) et l'écart avec le
+    # prix étiquette compte dans les remises du jour.
+    manual_unit_price: float | None = Field(default=None, gt=0, le=999_999)
+
+    @model_validator(mode="after")
+    def _check_manual_price(self) -> "CartItem":
+        if self.manual_unit_price is None:
+            return self
+        if self.manual_unit_price != int(self.manual_unit_price):
+            raise ValueError("Prix manuel : montant rond attendu (sans décimales)")
+        if self.discount_percent:
+            raise ValueError("Prix manuel et remise % sont exclusifs sur une même ligne")
+        if self.product_id is None and self.permanent_item_id is None:
+            raise ValueError(
+                "Prix manuel réservé aux articles du catalogue (inventaire ou permanents)"
+            )
+        return self
 
 
 class PaymentInput(BaseModel):
@@ -2100,6 +2119,7 @@ async def print_transaction_receipt(
         raise HTTPException(status_code=400, detail="Adresse IP de l'imprimante non configuree")
 
     template, shop = await _resolve_ticket_template_and_shop(db, transaction)
+    prior_prints = await _count_receipt_prints(db, transaction_id)
     try:
         escpos_service.print_receipt(
             transaction,
@@ -2109,6 +2129,7 @@ async def print_transaction_receipt(
             shop=shop,
             width=int(rp.get("width_chars") or 42),
             cut=bool(rp.get("cut_paper", True)),
+            duplicata_number=prior_prints or None,
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Imprimante injoignable : {exc}") from exc
@@ -2144,19 +2165,20 @@ async def print_transaction_receipt(
                     transaction_id, host, port,
                 )
 
-    # Trace audit : on logge chaque impression pour qu'un manager puisse
-    # voir « combien de copies du ticket #N ont été émises et par qui ».
-    # NF525 n'oblige pas à versionner les réimpressions (le ticket original
-    # reste hash-signé), mais c'est utile pour distinguer une fraude
-    # potentielle (réimpressions multiples « par hasard ») d'une demande
-    # cliente légitime.
+    # Trace audit : chaque impression est comptée (« combien de copies du
+    # ticket #N, émises par qui »). NF525 : la 1ʳᵉ émission est l'original,
+    # toute suivante est un duplicata numéroté marqué sur le ticket.
     db.add(
         AuditLog(
             user_id=current_user.id,
             action="receipt.reprint",
             entity="transaction",
             entity_id=transaction_id,
-            data={"kick_drawer": kick_drawer},
+            data={
+                "kick_drawer": kick_drawer,
+                "copy_number": prior_prints + 1,
+                "duplicata": prior_prints > 0,
+            },
         )
     )
     await db.commit()
@@ -2167,6 +2189,27 @@ async def print_transaction_receipt(
         if drawer_error:
             response["drawer_error"] = drawer_error
     return response
+
+
+async def _count_receipt_prints(
+    db: AsyncSession, transaction_id: uuid.UUID
+) -> int:
+    """Nombre d'émissions de ticket déjà tracées pour cette transaction.
+
+    Compte les deux chemins d'impression (réseau MUNBYN + WebUSB tablette) :
+    la 1ʳᵉ émission est l'original, toute suivante un duplicata numéroté
+    (exigence NF525 — pas de copie indiscernable de l'original).
+    """
+    from sqlalchemy import func
+
+    result = await db.execute(
+        select(func.count(AuditLog.id)).where(
+            AuditLog.entity == "transaction",
+            AuditLog.entity_id == transaction_id,
+            AuditLog.action.in_(["receipt.reprint", "receipt.escpos"]),
+        )
+    )
+    return int(result.scalar_one() or 0)
 
 
 @router.get("/transactions/{transaction_id}/escpos")
@@ -2186,6 +2229,12 @@ async def get_transaction_escpos(
     Pass ``kick_drawer=true`` to append the ``ESC p`` drawer pulse at the
     end of the payload (used on cash sales when the drawer is wired to
     the printer's RJ-12 port).
+
+    Chaque récupération du flux est comptée comme une émission (le serveur
+    ne peut pas savoir si l'impression WebUSB a physiquement abouti). Sens
+    de sécurité NF525 : en cas d'échec USB puis retry, l'unique ticket
+    imprimé portera « DUPLICATA » — sur-marquage bénin, jamais de copie
+    non marquée.
     """
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
@@ -2207,13 +2256,32 @@ async def get_transaction_escpos(
     cfg = load_config()
     rp = cfg["receipt_printer"]
     template, shop = await _resolve_ticket_template_and_shop(db, transaction)
+    prior_prints = await _count_receipt_prints(db, transaction_id)
     payload = escpos_service.build_receipt(
         transaction,
         template=template,
         shop=shop,
         width=int(rp.get("width_chars") or 42),
         cut=bool(rp.get("cut_paper", True)),
+        duplicata_number=prior_prints or None,
     )
+    # NF525 : le chemin WebUSB (tablette Android) est le chemin d'impression
+    # réellement utilisé en boutique — chaque émission est tracée comme les
+    # impressions réseau, sinon les duplicatas seraient invisibles à l'audit.
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            action="receipt.escpos",
+            entity="transaction",
+            entity_id=transaction_id,
+            data={
+                "kick_drawer": kick_drawer,
+                "copy_number": prior_prints + 1,
+                "duplicata": prior_prints > 0,
+            },
+        )
+    )
+    await db.commit()
     # Only kick the drawer when the caller asked AND the sale actually took
     # cash — same guard as the network /print path. A card/cheque sale must
     # not pop the till open (no cash changed hands → accounting/security risk).

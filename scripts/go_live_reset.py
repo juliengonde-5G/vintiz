@@ -194,6 +194,23 @@ async def main(confirm: bool, dry_run: bool) -> int:
         )
         return 2
 
+    # GARDE NF525 : ce script était un one-shot PRÉ-ouverture. Après le
+    # go-live, effacer ventes / clôtures Z / FEC casse la chaîne fiscale
+    # scellée (art. 286-I-3° bis CGI — inaltérabilité), d'autant que
+    # TRUNCATE ne déclenche pas les triggers d'inaltérabilité (migration
+    # 0072). Refus inconditionnel en production ; en cas de besoin réel,
+    # passer par une restauration de sauvegarde ou un environnement clone.
+    from app.core.config import settings as _settings
+
+    if not dry_run and (_settings.ENVIRONMENT or "").lower() == "production":
+        print(
+            "REFUS : ENVIRONMENT=production — le reset go-live est interdit "
+            "après la mise en production (inaltérabilité NF525, art. "
+            "286-I-3° bis CGI). Utilisez un clone/staging ou une restauration "
+            "de sauvegarde."
+        )
+        return 3
+
     print("=" * 72)
     print(f"Vintiz GO-LIVE reset — mode: {'DRY-RUN' if dry_run else 'LIVE'}")
     print("  (efface l'historique opérationnel, CONSERVE l'inventaire)")
@@ -253,21 +270,41 @@ async def main(confirm: bool, dry_run: bool) -> int:
             return 0
 
         # 3) Vidage atomique. PG : TRUNCATE … CASCADE ; SQLite : DELETE ordonné.
+        #
+        # ⚠ Sur PostgreSQL, ``events_log`` référence ``clients`` et
+        # ``transactions`` : le CASCADE tronque donc events_log EN ENTIER,
+        # carve-out compris. On snapshotte les lignes préservées dans une
+        # table temporaire (transactionnelle, sans FK → hors CASCADE) et on
+        # les réinsère après le TRUNCATE — leurs FK (product_id, user_id)
+        # pointent vers des tables conservées.
         dialect = engine.dialect.name
         if dialect == "postgresql":
+            keep = ", ".join(f"'{t}'" for t in EVENT_TYPES_PRESERVED)
+            if events_table_present and events_to_keep > 0:
+                await db.execute(text(
+                    "CREATE TEMPORARY TABLE _events_keep ON COMMIT DROP AS "
+                    f"SELECT * FROM events_log WHERE event_type IN ({keep})"
+                ))
             quoted = ", ".join(f'"{t}"' for t in wipe_targets)
             await db.execute(
                 text(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE")
             )
+            if events_table_present:
+                # Le CASCADE a pu tronquer events_log ; on repart du snapshot.
+                await db.execute(
+                    text(f"DELETE FROM events_log WHERE event_type NOT IN ({keep})")
+                )
+                if events_to_keep > 0:
+                    await db.execute(text(
+                        "INSERT INTO events_log SELECT * FROM _events_keep "
+                        "WHERE NOT EXISTS (SELECT 1 FROM events_log LIMIT 1)"
+                    ))
         else:
             for table in reversed(wipe_targets):
                 await db.execute(text(f"DELETE FROM {table}"))
-
-        # 3 bis) events_log : DELETE filtré (préserve ``product.created``).
-        # Toujours fait APRÈS le TRUNCATE car aucune table ne référence
-        # events_log → pas de CASCADE entrante à gérer.
-        if events_table_present:
-            await _wipe_events_log_partial(db)
+            # SQLite (tests) : pas de CASCADE — DELETE filtré suffit.
+            if events_table_present:
+                await _wipe_events_log_partial(db)
 
         # 4) GARDE-FOU : l'inventaire n'a pas bougé ? Sinon ROLLBACK + abort.
         inv_changed: list[str] = []

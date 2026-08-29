@@ -200,12 +200,32 @@ class RefundService:
                     f"Cannot refund {line.quantity} units of "
                     f"{line.transaction_item_id}: only {remaining} remain"
                 )
-            unit_after_discount = (
-                Decimal(str(original_item.unit_price))
-                * (Decimal("100") - Decimal(str(original_item.discount_percent or 0)))
-                / Decimal("100")
-            ).quantize(Decimal("0.01"))
-            line_total = (unit_after_discount * line.quantity).quantize(Decimal("0.01"))
+            # Base du remboursement : le ``line_total`` réellement encaissé.
+            # Re-dériver depuis ``discount_percent`` (arrondi à 2 décimales)
+            # peut dévier d'un centime — visible sur les prix manuels (ex.
+            # étiquette 149 €, prix manuel 100 € → 32.89 % stocké → 99,99 €).
+            stored_total = Decimal(str(original_item.line_total or 0))
+            if stored_total > 0:
+                qty = max(1, int(original_item.quantity))
+                per_unit = (stored_total / qty).quantize(Decimal("0.01"))
+                if line.quantity == remaining:
+                    # Dernier lot : solde exact de la ligne (les lots
+                    # précédents ont été facturés ``per_unit`` chacun).
+                    line_total = stored_total - per_unit * already
+                else:
+                    line_total = (per_unit * line.quantity).quantize(
+                        Decimal("0.01")
+                    )
+            else:
+                # Repli (lignes legacy sans line_total) : ancien calcul.
+                unit_after_discount = (
+                    Decimal(str(original_item.unit_price))
+                    * (Decimal("100") - Decimal(str(original_item.discount_percent or 0)))
+                    / Decimal("100")
+                ).quantize(Decimal("0.01"))
+                line_total = (unit_after_discount * line.quantity).quantize(
+                    Decimal("0.01")
+                )
             refund_amount_ttc += line_total
             plan.append((original_item, line.quantity, line_total))
 
@@ -410,11 +430,17 @@ class RefundService:
             reversal_of_id=earn.id,
         ))
 
-        crossed_down = max(0, before) // cfg.voucher_threshold - max(
-            0, account.points
-        ) // cfg.voucher_threshold
-        if crossed_down <= 0:
+        # Sémantique « débit à l'émission » : les points d'un palier sont
+        # consommés quand le chèque est émis. Si l'annulation des points de la
+        # vente rend le solde négatif, le déficit correspond à des points déjà
+        # convertis en chèque(s) : on révoque les chèques non utilisés (et on
+        # re-crédite leur palier). Un chèque déjà dépensé n'est pas révocable —
+        # le solde reste alors en dette (négatif), soldée par les prochains
+        # achats.
+        if account.points >= 0:
             return
+        threshold = max(1, int(cfg.voucher_threshold or 100))
+        deficit_vouchers = (-account.points + threshold - 1) // threshold
         revocable = (
             await self.db.execute(
                 select(Coupon)
@@ -425,7 +451,7 @@ class RefundService:
                     Coupon.redeemed_at.is_(None),
                 )
                 .order_by(Coupon.created_at.desc())
-                .limit(crossed_down)
+                .limit(deficit_vouchers)
                 .with_for_update()
             )
         ).scalars().all()
@@ -433,21 +459,19 @@ class RefundService:
             coupon.is_active = False
             suffix = f"Annulé suite retour #{refund_tx.transaction_number}"
             coupon.notes = f"{coupon.notes or ''} · {suffix}".strip(" ·")
-
-        spent_debt = crossed_down - len(revocable)
-        if spent_debt > 0:
-            debt = spent_debt * cfg.voucher_threshold
-            account.points -= debt
+            account.points += threshold
+            # ``reversal_of_id`` reste vide : cette ligne annule l'émission du
+            # chèque, pas l'earn de la vente — la lier à l'earn fausserait le
+            # cumul ``already_reversed`` (garde d'idempotence ci-dessus).
             self.db.add(LoyaltyTransaction(
                 account_id=account.id,
                 tx_type=LoyaltyTxType.adjust,
-                points=-debt,
+                points=threshold,
                 description=(
-                    f"Dette bon fidélité déjà utilisé — retour "
+                    f"Chèque fidélité {coupon.code} révoqué — retour "
                     f"#{refund_tx.transaction_number}"
                 ),
                 transaction_id=refund_tx.id,
-                reversal_of_id=earn.id,
             ))
 
     # ------------------------------------------------------------------

@@ -16,7 +16,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models import Base
-from app.models.client import Client, LoyaltyAccount
+from app.models.client import (
+    Client,
+    LoyaltyAccount,
+    LoyaltyTransaction,
+    LoyaltyTxType,
+)
 from app.models.coupon import Coupon, CouponDiscountType, CouponSource
 from app.models.offer import Offer, OfferType
 from app.models.pos import TransactionItem
@@ -225,8 +230,9 @@ async def test_loyalty_voucher_generated_and_promo_excluded(session):
             select(LoyaltyAccount).where(LoyaltyAccount.client_id == client.id)
         )
     ).scalar_one()
-    # Seuls les 60 € non promo cotisent → +60 pts → 110 pts (franchit 100).
-    assert acct.points == 110
+    # Seuls les 60 € non promo cotisent → +60 pts → 110 pts (franchit 100),
+    # puis le chèque émis CONSOMME son palier : 110 − 100 = 10 pts restants.
+    assert acct.points == 10
 
     # Un chèque cadeau fidélité de 5 € a été généré (régression NameError).
     coupons = (
@@ -240,3 +246,132 @@ async def test_loyalty_voucher_generated_and_promo_excluded(session):
     assert len(coupons) == 1
     assert float(coupons[0].discount_value) == pytest.approx(5.0)
     assert coupons[0].discount_type == CouponDiscountType.amount
+
+    # Le ledger trace le débit du palier (ligne redeem −100 liée à la vente).
+    redeems = (
+        await session.execute(
+            select(LoyaltyTransaction).where(
+                LoyaltyTransaction.account_id == acct.id,
+                LoyaltyTransaction.tx_type == LoyaltyTxType.redeem,
+            )
+        )
+    ).scalars().all()
+    assert len(redeems) == 1
+    assert redeems[0].points == -100
+    assert redeems[0].transaction_id == tx.id
+
+
+@pytest.mark.anyio
+async def test_loyalty_multiple_vouchers_single_sale(session):
+    """Une grosse vente franchit plusieurs paliers : chaque chèque émis
+    consomme son palier, le compteur repart du reliquat."""
+    user = await _user(session)
+    client = Client(first_name="Zoé", last_name="B", email="zoe@x.fr")
+    session.add(client)
+    await session.flush()
+    session.add(
+        LoyaltyAccount(client_id=client.id, points=0, membership_number="V000456")
+    )
+    await session.flush()
+
+    product = await _product(session, 250.0)
+    svc = PosService(session)
+    tx = await svc.create_transaction(
+        user_id=user.id,
+        items=[_ci(product)],
+        payments=[_pay("cash", 250.0)],
+        client_id=client.id,
+    )
+    await svc._credit_loyalty_and_emit_milestones(tx)
+
+    acct = (
+        await session.execute(
+            select(LoyaltyAccount).where(LoyaltyAccount.client_id == client.id)
+        )
+    ).scalar_one()
+    # 250 pts gagnés → 2 chèques émis (2 × 100 pts consommés) → reste 50.
+    assert acct.points == 50
+
+    coupons = (
+        await session.execute(
+            select(Coupon).where(
+                Coupon.client_id == client.id,
+                Coupon.source == CouponSource.loyalty_milestone,
+            )
+        )
+    ).scalars().all()
+    assert len(coupons) == 2
+
+    redeems = (
+        await session.execute(
+            select(LoyaltyTransaction).where(
+                LoyaltyTransaction.account_id == acct.id,
+                LoyaltyTransaction.tx_type == LoyaltyTxType.redeem,
+            )
+        )
+    ).scalars().all()
+    assert sorted(r.points for r in redeems) == [-100, -100]
+
+
+@pytest.mark.anyio
+async def test_refund_revokes_voucher_and_restores_points(session):
+    """Retour d'une vente ayant déclenché un chèque : le chèque non utilisé
+    est révoqué et son palier re-crédité (état d'avant la vente)."""
+    from app.services.refund import RefundLineInput, RefundService
+
+    user = await _user(session)
+    client = Client(first_name="Mia", last_name="R", email="mia@x.fr")
+    session.add(client)
+    await session.flush()
+    session.add(
+        LoyaltyAccount(client_id=client.id, points=80, membership_number="V000789")
+    )
+    await session.flush()
+
+    product = await _product(session, 60.0)
+    svc = PosService(session)
+    tx = await svc.create_transaction(
+        user_id=user.id,
+        items=[_ci(product)],
+        payments=[_pay("cash", 60.0)],
+        client_id=client.id,
+    )
+    await svc._credit_loyalty_and_emit_milestones(tx)
+
+    acct = (
+        await session.execute(
+            select(LoyaltyAccount).where(LoyaltyAccount.client_id == client.id)
+        )
+    ).scalar_one()
+    # 80 + 60 = 140 → chèque émis, −100 → 40.
+    assert acct.points == 40
+
+    items = (
+        await session.execute(
+            select(TransactionItem).where(TransactionItem.transaction_id == tx.id)
+        )
+    ).scalars().all()
+    await RefundService(session).refund_transaction(
+        original_tx_id=tx.id,
+        items=[RefundLineInput(items[0].id, 1)],
+        refund_method="cash",
+        user_id=user.id,
+        cashier_id=None,
+        reason="Retour taille",
+    )
+
+    await session.refresh(acct)
+    # L'earn de 60 est annulé (40 − 60 = −20) → le chèque non utilisé est
+    # révoqué et son palier re-crédité : 80, comme avant la vente.
+    assert acct.points == 80
+
+    coupons = (
+        await session.execute(
+            select(Coupon).where(
+                Coupon.client_id == client.id,
+                Coupon.source == CouponSource.loyalty_milestone,
+            )
+        )
+    ).scalars().all()
+    assert len(coupons) == 1
+    assert coupons[0].is_active is False

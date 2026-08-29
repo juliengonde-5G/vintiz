@@ -20,8 +20,8 @@ docker/
   docker-compose.prod.yml     Stack prod (api + web + site + db + caddy + redis)
   Caddyfile                   Reverse-proxy HTTPS
 scripts/
-  seed_data.py                300 produits + 50 clients + 200 transactions
-  seed_test_products.py       15 produits de test POS + codes-barres PNG
+  seed_demo_products.py       Produits de démo (numéros via product_intake)
+  seed_witness_clients.py     Clients témoins (tests personal shopper)
   deploy.sh                   Déploiement prod (rebuild + migrations + smoke tests)
   diag.sh                     Diagnostic auto Docker/local (PostgreSQL, API, tables)
   go_live_reset.py            Reset one-shot pré-ouverture : vide ventes/clients/
@@ -40,7 +40,7 @@ docs/
   MANUEL_BOUTIQUE.md          Guide utilisateur/manager
   UX_DESIGN.md                Brief design (heuristiques, parcours, états)
   ZEBRA_INSTALLATION.md       Mise en service Zebra ZD421d (réseau local + cloud Weblink)
-  test_barcodes/*.png         Barcodes Code 128 (régénérés par seed_test_products)
+  audits/                     Rapports d'audit multi-agents (dette, promesse, NF525)
 .github/workflows/
   deploy.yml                  Auto-deploy SSH sur push main
 .claude/
@@ -63,7 +63,7 @@ docs/
 | Météo | OpenWeatherMap API |
 | Admin UI | Next.js 15 App Router + Tailwind CSS |
 | Site public | Next.js 15 App Router + Tailwind CSS — landing + SEO + GA4 |
-| Barcode | python-barcode + Pillow (Code 128) |
+| Barcode | Numéros Code 128 générés en interne (`product_intake._generate_barcode`) + étiquettes ZPL |
 | Imprimante ticket | **MUNBYN 047P** ESC/POS 80 mm — réseau (port 9100) **ou** USB-OTG via WebUSB sur tablette Android |
 | Imprimante étiquettes | **Zebra ZD421d** ZPL II thermique direct 25×52 mm — réseau local (TCP 9100), cloud (Weblink + SendFileToPrinter) **ou** Bluetooth LE (Web Bluetooth tablette) — preview Labelary |
 | Douchette | **Inateck BCST-35** USB HID (champ POS auto-focus) ou Inateck 160B |
@@ -470,7 +470,10 @@ POST   /api/pos/operations/evaluate                Aperçu remise Solde du panie
 # cotisent PAS de points de fidélité (TransactionItem.promotional).
 # Fidélité : 1 € = 1 pt ; 100 pts = chèque cadeau de 5 € auto-généré (coupon
 # loyalty_milestone) + notification cliente (email/SMS), affecté en caisse
-# comme bon cadeau (method=voucher). Le rachat direct de points a été retiré.
+# comme bon cadeau (method=voucher). À l'émission du chèque, le compteur est
+# DÉBITÉ du palier (ligne redeem au ledger) — il repart du reliquat pour le
+# chèque suivant (migration 0076 régularise les comptes d'avant cette règle).
+# Le rachat direct de points a été retiré.
 
 # Refonte Relation Client — PR1: Magic-link + souscription + ticket fidélité
 POST   /api/auth/magic-link/request                Issue OTP 6 chiffres + lien cliquable email (public, 204 toujours, anti-énumération)
@@ -547,6 +550,12 @@ GET    /api/admin/appro-brief                       Brief d'appro hebdo dans l'I
   (résolution via exact match sur `barcode`, fallback recherche 1 résultat)
 - **Numpad tactile** pour saisies de montants (espèces, fond de caisse)
 - Remises par article (0, 5, 10, 15, 20, 30 %) — masquées par défaut, chip `-%` pour les ouvrir
+- **Prix manuel par article** — chip € (icône pièce) à côté du chip `-%` : saisie
+  d'un prix rond (entier, sans décimales) qui remplace le prix étiquette.
+  Exclusif avec la remise %, prix ferme (pas de Solde par-dessus), ligne non
+  éligible aux points fidélité, écart étiquette↔manuel compté dans les remises
+  du jour, historisé dans la fiche produit (audit `pos.price_override`).
+  Body : `items[].manual_unit_price`
 - 3 modes de paiement :
   - *Espèces* — rendu monnaie calculé, **ouverture auto du tiroir** à la validation
   - *CB SumUp* — TPE Solo + polling + approve/decline manuel ; si `SUMUP_READER_ID`
@@ -698,10 +707,11 @@ Voir `docs/PREDICTIVE_ENGINE.md` pour la documentation détaillée.
 ## Tests et seed data
 
 ```bash
-# Seeder 300 produits + 50 clients + 200 transactions
-PYTHONPATH=apps/api python scripts/seed_data.py
+# Seeder des produits de démo (fiches complètes, numéros via product_intake)
+PYTHONPATH=apps/api python scripts/seed_demo_products.py
 
-# Le script est idempotent (peut être relancé sans dupliquer)
+# Clients témoins (profils de goûts pour le personal shopper)
+PYTHONPATH=apps/api python scripts/seed_witness_clients.py
 ```
 
 ## Reset pré-ouverture (go-live 1.0)
@@ -812,13 +822,11 @@ SUMUP_API_KEY=sup_sk_...        # OBLIGATOIRE — sinon les checkouts CB échoue
 SUMUP_MERCHANT_CODE=M...        # OBLIGATOIRE
 SUMUP_READER_ID=                # optionnel: push direct vers TPE Solo
 
-# 2. Seeder les 15 produits de test + régénérer les PNG codes-barres
-PYTHONPATH=apps/api python scripts/seed_test_products.py
-# Régénérer juste la doc + les PNG sans toucher la DB :
-python scripts/seed_test_products.py --docs-only
+# 2. Seeder des produits de démo scannables
+PYTHONPATH=apps/api python scripts/seed_demo_products.py
 
 # 3. En prod (sur le VPS)
-./scripts/deploy.sh --test-products
+./scripts/deploy.sh
 ```
 
 **Autoriser les pop-ups pour le domaine** sur l'iPad (Safari → Réglages →

@@ -1,5 +1,44 @@
 # Changelog Vintiz
 
+## [1.2.0] - 2026-08-29 — Prix manuel POS, débit fidélité à l'émission, session d'audit multi-agents
+
+### Caisse
+- **Prix manuel par article** : chip € à côté du chip remise `-%` — saisie d'un
+  prix rond (entier), exclusif avec la remise %, prix ferme (pas de Solde
+  par-dessus), ligne exclue des points fidélité, écart étiquette↔manuel compté
+  dans les remises du jour, historisé dans la fiche produit
+  (`pos.price_override`). API : `items[].manual_unit_price`.
+
+### Fidélité
+- **Correctif** : le compteur de points est désormais **débité du palier à
+  l'émission du chèque cadeau** (ligne `redeem` au ledger) — il repart du
+  reliquat. Migration `0076` : régularisation des comptes existants
+  (déduction des paliers déjà convertis en chèques).
+- Remboursements adaptés : un solde rendu négatif par l'annulation des points
+  révoque le chèque non utilisé et re-crédite son palier.
+
+### Conformité NF525
+- Toute émission de ticket est tracée (`receipt.reprint` / `receipt.escpos`,
+  `copy_number`) ; les émissions après la première impriment
+  « * DUPLICATA n.X * » sur le ticket — y compris le chemin WebUSB tablette
+  qui n'était pas tracé.
+- `scripts/go_live_reset.py` : refus en `ENVIRONMENT=production`
+  (inaltérabilité, art. 286-I-3° bis CGI) + carve-out `events_log`
+  réellement préservé sous PostgreSQL.
+- Nouveau `docs/PLAN_CONFORMITE_NF525.md` + `docs/DOSSIER_CERTIFICATION_NF525.md`.
+
+### Site public / back-office
+- Newsletter de la landing : le formulaire n'appelait aucune API — branché sur
+  l'inscription réelle avec consentement RGPD explicite.
+- Page `/admin/monitoring` raccrochée au template back-office (sidebar).
+
+### Nettoyage
+- Audit multi-agents (dette technique, promesse, NF525) archivé dans
+  `docs/audits/2026-08-multi-agents/`.
+- Code mort supprimé : `services/barcode.py` (+ dépendance `python-barcode`),
+  `services/cash_drawer.py` ; `CLAUDE.md` réaligné (scripts de seed, fidélité,
+  prix manuel).
+
 ## [1.1.2] - 2026-07-16 — Transparence IA et révocation du profilage
 
 - Révocation du Personal Shopper rendue effective depuis ses deux interfaces :

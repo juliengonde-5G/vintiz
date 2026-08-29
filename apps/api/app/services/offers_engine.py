@@ -482,14 +482,6 @@ def points_to_credit(amount_ttc: float, euro_per_point: int = LOYALTY_POINT_PER_
     return max(0, int(float(amount_ttc) // epp))
 
 
-def milestones_crossed(
-    before: int, after: int, threshold: int = LOYALTY_MILESTONE
-) -> int:
-    """Number of voucher milestones crossed from ``before`` to ``after``.
-
-    ``threshold`` = points per voucher (admin-configurable, #1).
-    """
-    if after <= before:
-        return 0
-    t = max(1, int(threshold or LOYALTY_MILESTONE))
-    return (max(0, after) // t) - (max(0, before) // t)
+# NB : l'ancien helper ``milestones_crossed`` (franchissement en cumul absolu)
+# a été retiré — depuis la règle « débit à l'émission », chaque chèque consomme
+# les points de son palier (services/pos.py::_credit_loyalty_and_emit_milestones).
