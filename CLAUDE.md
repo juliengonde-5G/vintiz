@@ -549,7 +549,7 @@ GET    /api/admin/appro-brief                       Brief d'appro hebdo dans l'I
 - **Douchette USB HID** (Inateck 160B) : scan → Entrée → ajout auto au panier
   (résolution via exact match sur `barcode`, fallback recherche 1 résultat)
 - **Numpad tactile** pour saisies de montants (espèces, fond de caisse)
-- Remises par article (0, 5, 10, 15, 20, 30 %) — masquées par défaut, chip `-%` pour les ouvrir
+- Remises par article (0, 5, 10, 15, 20, 30, 50 %) — masquées par défaut, chip `-%` pour les ouvrir
 - **Prix manuel par article** — chip € (icône pièce) à côté du chip `-%` : saisie
   d'un prix rond (entier, sans décimales) qui remplace le prix étiquette.
   Exclusif avec la remise %, prix ferme (pas de Solde par-dessus), ligne non

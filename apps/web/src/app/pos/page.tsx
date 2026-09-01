@@ -1066,7 +1066,7 @@ export default function POSPage() {
   const updateDiscount = (index: number, discount: number) => {
     setCart(prev => prev.map((item, i) =>
       i === index
-        ? { ...item, discount: Math.max(0, Math.min(30, discount)), priceOverride: null }
+        ? { ...item, discount: Math.max(0, Math.min(50, discount)), priceOverride: null }
         : item
     ));
   };
@@ -2190,7 +2190,7 @@ export default function POSPage() {
                     {/* Discount strip: only when expanded or a discount is already set */}
                     {(discountOpenIdx === idx || item.discount > 0) && (
                       <div className="flex items-center gap-1 mt-1.5">
-                        {[0, 5, 10, 15, 20, 30].map(d => (
+                        {[0, 5, 10, 15, 20, 30, 50].map(d => (
                           <button key={d} onClick={() => { updateDiscount(idx, d); if (d === 0) setDiscountOpenIdx(null); }}
                             className={`px-2 py-1 text-xs rounded-full transition-colors min-w-[34px] ${
                               item.discount === d ? 'bg-red-500 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-red-300'
