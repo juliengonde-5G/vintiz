@@ -31,6 +31,9 @@ analytics.vintiz.fr {
 # Caddy est le SEUL composant partagé : il est rattaché au réseau externe
 # `fripco-network` (docker-compose.prod.yml) et n'y fait que du proxy.
 # Front sur /, API sous /api/* : une seule origine, pas de CORS.
+# Caddy ≥ 2.5 remplace tout X-Forwarded-For entrant par l'IP réelle du client
+# (aucun `trusted_proxies` déclaré) : l'API peut donc utiliser sa première
+# valeur pour le rate-limit de connexion et le journal (JET).
 street.fripco.fr {
 	encode gzip
 	handle /api/* {
