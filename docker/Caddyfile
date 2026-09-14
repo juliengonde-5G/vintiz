@@ -26,3 +26,17 @@ api.vintiz.fr {
 analytics.vintiz.fr {
 	reverse_proxy matomo:80
 }
+
+# Frip & Co Street — caisse isolée (stack voisine /opt/fripco-street).
+# Caddy est le SEUL composant partagé : il est rattaché au réseau externe
+# `fripco-network` (docker-compose.prod.yml) et n'y fait que du proxy.
+# Front sur /, API sous /api/* : une seule origine, pas de CORS.
+street.fripco.fr {
+	encode gzip
+	handle /api/* {
+		reverse_proxy fripco-api:8000
+	}
+	handle {
+		reverse_proxy fripco-web:3000
+	}
+}

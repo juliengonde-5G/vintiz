@@ -176,6 +176,12 @@ fi
 # 2. BUILD DES IMAGES
 # ============================================================
 step "2/6" "Build des images Docker..."
+# Réseau externe partagé avec la caisse Frip & Co Street (voir Caddyfile) :
+# doit exister avant `up`, quel que soit l'ordre de démarrage des deux stacks.
+if ! docker network inspect fripco-network >/dev/null 2>&1; then
+  docker network create fripco-network >/dev/null
+  log "Réseau externe fripco-network créé"
+fi
 # Provenance du build → exposée par GET /api/health (build_sha/build_date).
 # Permet de vérifier d'un coup d'œil quelle version tourne en prod.
 export VINTIZ_BUILD_SHA="$NEW_COMMIT"

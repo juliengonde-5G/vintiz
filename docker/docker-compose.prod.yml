@@ -17,6 +17,10 @@ services:
       - matomo
     networks:
       - vintiz-network
+      # Réseau EXTERNE de la caisse Frip & Co Street (stack séparée). Caddy
+      # y est rattaché uniquement pour proxifier street.fripco.fr ; aucun
+      # autre service Vintiz ne le rejoint. Créé par scripts/deploy.sh.
+      - fripco-network
 
   db:
     # Drop-in PG 16 image with pgvector pre-installed (P1-004 / P2-003).
@@ -169,6 +173,8 @@ services:
 networks:
   vintiz-network:
     driver: bridge
+  fripco-network:
+    external: true
 
 volumes:
   postgres_data:
