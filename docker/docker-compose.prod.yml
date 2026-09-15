@@ -20,7 +20,7 @@ services:
     networks:
       - vintiz-network
       # Réseau EXTERNE de la caisse Frip & Co Street (stack séparée). Caddy
-      # y est rattaché uniquement pour proxifier street.fripco.fr ; aucun
+      # y est rattaché uniquement pour proxifier app.lloomi.fr ; aucun
       # autre service Vintiz ne le rejoint. Créé par scripts/deploy.sh.
       - fripco-network
 
