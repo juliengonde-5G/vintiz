@@ -136,15 +136,24 @@ async def update_catalog(db: AsyncSession, catalog: list[dict]) -> list[dict]:
 
 
 def _parse_valid_until(value: str | None, *, now: datetime) -> datetime:
-    """ISO date → end-of-day UTC. Falls back to the campaign end then +88j."""
+    """ISO date → end-of-day UTC. Falls back to the campaign end then +88j.
+
+    Une date déjà passée est ignorée : depuis le 31/08/2026 la fin de
+    campagne d'ouverture par défaut (30/08) rendait chaque bon émis en
+    caisse expiré à la naissance (invisible sur la fiche cliente, refusé
+    au paiement). Un bon émis ne doit jamais naître expiré — repli +88 j.
+    Pour retirer un type de bon, utiliser ``active: false`` au catalogue.
+    """
     for candidate in (value, DEFAULT_CAMPAIGN_END):
         if not candidate:
             continue
         try:
             d = datetime.fromisoformat(str(candidate)).date()
-            return datetime.combine(d, time(23, 59, 59), tzinfo=timezone.utc)
         except ValueError:
             continue
+        end = datetime.combine(d, time(23, 59, 59), tzinfo=timezone.utc)
+        if end >= now:
+            return end
     from datetime import timedelta
 
     return now + timedelta(days=88)
