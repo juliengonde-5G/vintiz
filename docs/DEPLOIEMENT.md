@@ -311,6 +311,55 @@ la caisse, produire une clôture cumulative et annuelle si applicable,
 télécharger l'archive, vérifier son SHA-256 et conserver l'ancienne clé sous
 accès restreint avec le dossier de certification.
 
+## Migration du nom de projet Compose (sept. 2026)
+
+La PR #189 a ajouté `name: vintiz` en tête de
+`docker/docker-compose.prod.yml`. Avant cette PR, le nom du projet Compose
+était dérivé du nom du dossier contenant le fichier (`docker`), donc les
+volumes créés en prod portent le préfixe `docker_` (ex.
+`docker_postgres_data`) alors que les conteneurs ont un `container_name`
+explicite (`vintiz-db`, etc., inchangés). Sans intervention, la nouvelle
+stack ne « voit » plus l'ancien projet (`docker compose down` ne trouve
+rien à arrêter), `up` échoue sur le conflit de nom `vintiz-db`, et si on
+supprime l'ancien conteneur à la main, Docker crée des volumes `vintiz_*`
+vides : base de données, uploads, certificats TLS et Matomo repartiraient
+de zéro. `docker-compose.prod.yml` déclare donc chaque volume en
+`external: true` avec son nom historique (`docker_<nom>`), pour que la
+nouvelle stack réutilise les volumes existants au lieu d'en créer des
+vides — et échoue proprement (« volume ... not found ») si jamais le nom
+ne correspond pas, plutôt que de démarrer silencieusement à vide.
+
+**Diagnostic** — retrouver le nom du projet Compose de la stack actuellement
+en place et la liste des volumes existants :
+
+```bash
+# Nom de projet Compose du conteneur (label posé par Docker Compose)
+docker inspect vintiz-db --format '{{index .Config.Labels "com.docker.compose.project"}}'
+
+# Volumes existants sur l'hôte
+docker volume ls
+```
+
+**Procédure de migration** (une seule fois, sur le VPS) :
+
+```bash
+# 1. Arrêter l'ancienne stack (nom de projet "docker") SANS supprimer les
+#    volumes — down seul ne touche jamais aux volumes nommés.
+cd /opt/vintiz
+docker compose -p docker -f docker/docker-compose.prod.yml --env-file .env down
+
+# 2. Redéployer normalement : la nouvelle stack (projet "vintiz") démarre
+#    et réutilise les volumes external: true déclarés dans le compose file.
+./scripts/deploy.sh
+```
+
+**Si l'ancien projet ne s'appelle pas `docker`** (nom de dossier différent
+lors du clone initial, ou déploiement historique renommé) : adapter le `-p`
+de l'étape 1 à la valeur retournée par la commande `docker inspect`
+ci-dessus, et mettre à jour les `name: docker_<nom>` de la section
+`volumes:` de `docker-compose.prod.yml` pour qu'ils pointent vers les noms
+de volumes réels (`docker volume ls`).
+
 ## Pieges connus migrations / build
 
 - **Numerotation des revisions Alembic** : si deux PR ajoutent en parallele

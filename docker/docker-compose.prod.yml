@@ -178,12 +178,36 @@ networks:
   fripco-network:
     external: true
 
+# Volumes externes — avant l'ajout de `name: vintiz` ci-dessus (PR #189), le
+# nom du projet Compose était dérivé du dossier `docker/`, donc Docker a créé
+# ces volumes sous le préfixe `docker_` (ex. `docker_postgres_data`). Ils
+# contiennent les données de prod existantes (base, uploads, certificats TLS,
+# Matomo) : on les déclare `external: true` pour que la nouvelle stack les
+# réutilise au lieu d'en créer des vides sous le préfixe `vintiz_`. Si le nom
+# ne correspond pas, `docker compose up` échoue proprement avec
+# « volume ... not found » plutôt que de démarrer silencieusement à vide.
 volumes:
   postgres_data:
+    external: true
+    name: docker_postgres_data
   redis_data:
+    external: true
+    name: docker_redis_data
   caddy_data:
+    external: true
+    name: docker_caddy_data
   caddy_config:
+    external: true
+    name: docker_caddy_config
   uploads_data:
+    external: true
+    name: docker_uploads_data
   vintiz_data:
+    external: true
+    name: docker_vintiz_data
   matomo_db_data:
+    external: true
+    name: docker_matomo_db_data
   matomo_app:
+    external: true
+    name: docker_matomo_app
