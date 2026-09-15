@@ -3,8 +3,13 @@
 # app.vintiz.fr → Back-office PWA
 # api.vintiz.fr → API FastAPI
 
+# Cibles = NOMS DE CONTENEURS (vintiz-web, vintiz-api…), jamais les noms de
+# services (web, api…) : ce Caddy est attaché à deux réseaux (vintiz-network
+# et fripco-network) et la pile Frip & Co Street nomme aussi ses services
+# `web` et `api`. Avec les noms de services, le DNS Docker peut résoudre
+# `web` vers fripco-web et servir l'autre application sur app.vintiz.fr.
 vintiz.fr {
-	reverse_proxy site:3001
+	reverse_proxy vintiz-site:3001
 }
 
 www.vintiz.fr {
@@ -12,11 +17,11 @@ www.vintiz.fr {
 }
 
 app.vintiz.fr {
-	reverse_proxy web:3000
+	reverse_proxy vintiz-web:3000
 }
 
 api.vintiz.fr {
-	reverse_proxy api:8000
+	reverse_proxy vintiz-api:8000
 }
 
 # Matomo — mesure d'audience cookieless (exemptée CNIL).
@@ -24,7 +29,7 @@ api.vintiz.fr {
 # confiance au proxy (config.ini.php : proxy_client_headers +
 # proxy_host_headers + trusted_hosts) afin d'anonymiser la vraie IP visiteur.
 analytics.vintiz.fr {
-	reverse_proxy matomo:80
+	reverse_proxy vintiz-matomo:80
 }
 
 # Frip & Co Street — caisse isolée (stack voisine /opt/fripco-street).
