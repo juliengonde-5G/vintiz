@@ -1,5 +1,7 @@
 version: "3.9"
 
+name: vintiz-dev
+
 services:
   db:
     # PG 16 + pgvector for the embedding work (P1-004). Mirror of prod.
